@@ -1,9 +1,24 @@
 import { useState, type ReactNode } from "react";
 import { Drawer } from "baseui/drawer";
 import { slot } from "@/lib/baseui";
+import { cx } from "@/lib/cx";
 import { useScrollLock } from "@/lib/scroll-lock";
+import { useDockedSidebar } from "@/lib/use-docked-sidebar";
 import { NavbarItem } from "@/components/ui/navbar";
-import { SidebarCloseContext } from "@/components/ui/sidebar-context";
+import {
+  SidebarCloseContext,
+  SidebarToggleContext,
+} from "@/components/ui/sidebar-context";
+// A window with a sidebar pane on the left: shows or hides the desktop sidebar.
+const sidebarIconPath =
+  "M4.75 3A2.75 2.75 0 0 0 2 5.75v8.5A2.75 2.75 0 0 0 4.75 17h10.5A2.75 2.75 0 0 0 18 14.25v-8.5A2.75 2.75 0 0 0 15.25 3H4.75ZM3.5 5.75c0-.69.56-1.25 1.25-1.25H7v11H4.75c-.69 0-1.25-.56-1.25-1.25v-8.5Zm5 9.75h6.75c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25H8.5v11Z";
+function SidebarIcon() {
+  return (
+    <svg data-slot="icon" viewBox="0 0 20 20" aria-hidden="true">
+      <path fillRule="evenodd" d={sidebarIconPath} />
+    </svg>
+  );
+}
 function OpenMenuIcon() {
   return (
     <svg data-slot="icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -64,19 +79,58 @@ function MobileSidebar({
         Close: { component: NoCloseButton },
       }}
     >
-      <div className="-mb-3 px-4 pt-3">
-        <NavbarItem onClick={close} aria-label="Close navigation">
-          <CloseMenuIcon />
-        </NavbarItem>
-      </div>
-      <SidebarCloseContext.Provider value={close}>
-        {children}
-      </SidebarCloseContext.Provider>
+      <SidebarToggleContext.Provider
+        value={{
+          label: "Close navigation",
+          icon: <CloseMenuIcon />,
+          onClick: close,
+        }}
+      >
+        <SidebarCloseContext.Provider value={close}>
+          {children}
+        </SidebarCloseContext.Provider>
+      </SidebarToggleContext.Provider>
     </Drawer>
   );
 }
-// SidebarLayout: fixed sidebar on large screens, a navbar with a
-// slide-over sidebar on small screens, and the page content in an inset card.
+// The desktop sidebar's toggle is one button that never leaves: hiding the
+// sidebar glides it from beside the workspace menu into the navbar's corner
+// (where the mobile menu button is), in step with the sidebar sliding out;
+// showing glides it back. It stays visible while the sidebar is invisible.
+// From its place in the sidebar header (p-4, at the row's end) the corner is
+// its own width plus both paddings to the right, and 1.5 up (py-2.5 vs p-4).
+function desktopToggleClasses(docked: boolean) {
+  return cx(
+    "transition-[translate] duration-300 ease-in-out motion-reduce:transition-none",
+    !docked && "visible translate-x-[calc(100%+--spacing(8))] -translate-y-1.5",
+  );
+}
+// The desktop sidebar: slides out to the left when hidden. It becomes
+// invisible (out of the tab order) only once it has slid out, and visible at
+// once when it comes back.
+function desktopSidebarClasses(docked: boolean) {
+  return cx(
+    "fixed inset-y-0 left-0 w-64 duration-300 ease-in-out max-lg:hidden motion-reduce:transition-none",
+    docked
+      ? "transition-[translate]"
+      : "invisible -translate-x-full transition-[translate,visibility]",
+  );
+}
+// The navbar: always on mobile; on desktop only while the sidebar is hidden,
+// opening and closing its height (grid rows 0fr ↔ 1fr) as it fades. There its
+// menu button only keeps the corner free for the sidebar's toggle.
+function navbarClasses(docked: boolean) {
+  return cx(
+    "grid grid-rows-[1fr] duration-300 ease-in-out motion-reduce:transition-none",
+    docked
+      ? "lg:invisible lg:grid-rows-[0fr] lg:opacity-0 lg:transition-[grid-template-rows,opacity,visibility]"
+      : "lg:transition-[grid-template-rows,opacity]",
+  );
+}
+// SidebarLayout: a sidebar docked on large screens (which <SidebarToggle>
+// hides and shows, with a navbar while it's hidden; remembered on this
+// device), a navbar with a slide-over sidebar on small screens, and the page
+// content in an inset card.
 export function SidebarLayout({
   navbar,
   sidebar,
@@ -87,8 +141,9 @@ export function SidebarLayout({
   children: ReactNode;
 }) {
   const [showSidebar, setShowSidebar] = useState(false);
+  const { docked, toggle } = useDockedSidebar();
   return (
-    <div className="relative isolate flex min-h-svh w-full bg-white max-lg:flex-col lg:bg-zinc-100 dark:bg-zinc-900 dark:lg:bg-zinc-950">
+    <div className="relative isolate flex min-h-svh w-full flex-col bg-white lg:bg-zinc-100 dark:bg-zinc-900 dark:lg:bg-zinc-950">
       <a
         href="#main"
         className="fixed top-2 left-2 z-50 -translate-y-20 rounded-lg bg-white px-3 py-2 text-sm font-medium shadow-sm ring-1 ring-zinc-950/10 focus:translate-y-0 dark:bg-zinc-900 dark:ring-white/10"
@@ -96,27 +151,43 @@ export function SidebarLayout({
         Skip to content
       </a>
       {/* Sidebar on desktop */}
-      <div className="fixed inset-y-0 left-0 w-64 max-lg:hidden">{sidebar}</div>
+      <div className={desktopSidebarClasses(docked)}>
+        <SidebarToggleContext.Provider
+          value={{
+            label: docked ? "Hide sidebar" : "Show sidebar",
+            icon: <SidebarIcon />,
+            onClick: toggle,
+            className: desktopToggleClasses(docked),
+          }}
+        >
+          {sidebar}
+        </SidebarToggleContext.Provider>
+      </div>
       {/* Sidebar on mobile */}
       <MobileSidebar open={showSidebar} close={() => setShowSidebar(false)}>
         {sidebar}
       </MobileSidebar>
-      {/* Navbar on mobile */}
-      <header className="flex items-center px-4 lg:hidden">
-        <div className="py-2.5">
-          <NavbarItem
-            onClick={() => setShowSidebar(true)}
-            aria-label="Open navigation"
-          >
-            <OpenMenuIcon />
-          </NavbarItem>
+      {/* Navbar on mobile, and on desktop while the sidebar is hidden */}
+      <header className={navbarClasses(docked)}>
+        <div className="flex min-h-0 items-center overflow-hidden px-4">
+          <div className="py-2.5 lg:invisible">
+            <NavbarItem
+              onClick={() => setShowSidebar(true)}
+              aria-label="Open navigation"
+            >
+              <OpenMenuIcon />
+            </NavbarItem>
+          </div>
+          <div className="min-w-0 flex-1">{navbar}</div>
         </div>
-        <div className="min-w-0 flex-1">{navbar}</div>
       </header>
       {/* Content */}
       <main
         id="main"
-        className="flex flex-1 flex-col pb-2 lg:min-w-0 lg:pt-2 lg:pr-2 lg:pl-64"
+        className={cx(
+          "flex flex-1 flex-col pb-2 transition-[padding] duration-300 ease-in-out motion-reduce:transition-none lg:min-w-0 lg:pt-2 lg:pr-2",
+          docked ? "lg:pl-64" : "lg:pl-2",
+        )}
       >
         <div className="grow p-6 lg:rounded-lg lg:bg-white lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-zinc-950/5 dark:lg:bg-zinc-900 dark:lg:ring-white/10">
           <div className="mx-auto max-w-6xl">{children}</div>

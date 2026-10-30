@@ -34,6 +34,7 @@ import {
 import {
   Navbar,
   NavbarItem,
+  NavbarLabel,
   NavbarSection,
   NavbarSpacer,
 } from "@/components/ui/navbar";
@@ -46,6 +47,7 @@ import {
   SidebarLabel,
   SidebarSection,
   SidebarSpacer,
+  SidebarToggle,
 } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { errorMessage, useApi } from "@/lib/api";
@@ -89,13 +91,19 @@ function AccountDropdownMenu({
 }
 // Workspace switcher: the current workspace, its settings, every workspace
 // the member belongs to and "New workspace…".
-function WorkspaceDropdown({ onCreate }: { onCreate: () => void }) {
+function WorkspaceDropdown({
+  onCreate,
+  className,
+}: {
+  onCreate: () => void;
+  className?: string;
+}) {
   const workspace = useWorkspace();
   return (
     <Dropdown>
       <DropdownButton
         as={SidebarItem}
-        className="lg:mb-2.5"
+        className={className}
         aria-label="Workspace menu"
       >
         <WorkspaceAvatar workspace={workspace} />
@@ -250,14 +258,20 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       navbar={
         <Navbar>
           <NavbarSpacer />
-          <NavbarSection>
+          <NavbarSection className="min-w-0">
             <Dropdown>
-              <DropdownButton as={NavbarItem} aria-label="Account menu">
+              <DropdownButton
+                as={NavbarItem}
+                className="min-w-0"
+                aria-label="Account menu"
+              >
                 <Avatar
                   square
                   initials={initials}
                   className="bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
                 />
+                <NavbarLabel>{session.user.name}</NavbarLabel>
+                <ChevronDownIcon />
               </DropdownButton>
               {accountMenu("bottom end")}
             </Dropdown>
@@ -267,7 +281,13 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       sidebar={
         <Sidebar>
           <SidebarHeader>
-            <WorkspaceDropdown onCreate={() => setCreating(true)} />
+            <div className="flex items-center gap-2 lg:mb-2.5">
+              <WorkspaceDropdown
+                className="min-w-0 flex-1"
+                onCreate={() => setCreating(true)}
+              />
+              <SidebarToggle />
+            </div>
           </SidebarHeader>
           <SidebarBody>
             <SidebarSection aria-label="Main navigation">

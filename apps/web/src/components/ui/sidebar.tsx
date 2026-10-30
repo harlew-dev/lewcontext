@@ -11,7 +11,7 @@ import { LayoutGroup, motion } from "motion/react";
 import { cx } from "@/lib/cx";
 import { TouchTarget } from "./button";
 import { Clickable } from "./clickable";
-import { useCloseSidebar } from "./sidebar-context";
+import { SidebarToggleContext, useCloseSidebar } from "./sidebar-context";
 export function Sidebar({
   className,
   ...props
@@ -138,8 +138,8 @@ const itemClasses = cx(
   "flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-base/6 font-medium text-zinc-950 sm:py-2 sm:text-sm/5",
   // Leading icon/icon-only
   "*:data-[slot=icon]:size-6 *:data-[slot=icon]:shrink-0 *:data-[slot=icon]:fill-zinc-500 sm:*:data-[slot=icon]:size-5",
-  // Trailing icon (down chevron or similar)
-  "*:last:data-[slot=icon]:ml-auto *:last:data-[slot=icon]:size-5 sm:*:last:data-[slot=icon]:size-4",
+  // Trailing icon (down chevron or similar), but not the icon of an icon-only item
+  "*:not-nth-2:last:data-[slot=icon]:ml-auto *:not-nth-2:last:data-[slot=icon]:size-5 sm:*:not-nth-2:last:data-[slot=icon]:size-4",
   // Avatar
   "*:data-[slot=avatar]:-m-0.5 *:data-[slot=avatar]:size-7 sm:*:data-[slot=avatar]:size-6",
   // Hover (the background comes from the section's sliding highlight, or from
@@ -229,4 +229,19 @@ export function SidebarLabel({
   ...props
 }: ComponentPropsWithoutRef<"span">) {
   return <span {...props} className={cx(className, "truncate")} />;
+}
+// Icon-only item beside the workspace menu that hides the sidebar (or closes
+// it on mobile). A SidebarItem, so it is exactly as tall as the menu's button.
+export function SidebarToggle({ className }: { className?: string }) {
+  const toggle = useContext(SidebarToggleContext);
+  if (!toggle) return null;
+  return (
+    <SidebarItem
+      className={cx(className, toggle.className, "shrink-0")}
+      aria-label={toggle.label}
+      onClick={toggle.onClick}
+    >
+      {toggle.icon}
+    </SidebarItem>
+  );
 }

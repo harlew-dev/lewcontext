@@ -52,7 +52,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
-| `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current`) · `Navbar*` |
+| `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current`), `SidebarToggle` ([Sidebar layout](#sidebar-layout)) · `Navbar*` (`NavbarItem`, `NavbarLabel`) |
 | `heading.tsx` / `text.tsx` | `Heading level`, `Subheading` · `Text`, `TextLink`, `Strong`, `Code` |
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
 | `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` |
@@ -66,6 +66,17 @@ Files are kebab-case and export a family of named components. Keep these props s
 - A toast hides after 5 seconds, paused while it's hovered or focused. Pass `{ duration }` in milliseconds to change that, or `Infinity` to keep it until dismissed.
 - It's BaseUI's `toaster` (timer, stacking) with its slots replaced by `slot()`: a zinc panel with the `Notice` variant's icon and role (`messageVariants` in `feedback.tsx`, so the two stay alike), fading and sliding on `data-closed`. BaseUI's close icon can't be reached by keyboard, so the toast renders our `DismissButton` instead.
 - `<Toaster />` is mounted by `pages/app/layout.tsx` and onboarding only, so signing out unmounts it and any open toasts. Calling `toast` where no `Toaster` is mounted throws in development (in tests, render a `<Toaster />`).
+
+## Sidebar layout
+
+`SidebarLayout` (`components/layout/sidebar-layout.tsx`) is the signed-in chrome; `ApplicationLayout` fills it with the workspace menu, navigation and account menu.
+
+- **Desktop:** the sidebar is docked on the left. `<SidebarToggle />`, beside the workspace menu, hides it: the sidebar slides out, the content widens, and a top bar opens with the account menu (avatar, name and chevron). All three move together over 300 ms.
+- **One toggle that glides.** The toggle is a single button that never leaves: hiding the sidebar glides it from beside the workspace menu into the top bar's corner, and showing glides it back. It stays visible (with `visible`) while the sidebar is invisible, its label switches between "Hide sidebar" and "Show sidebar", and focus stays on it. Its glide distance (`desktopToggleClasses`) follows the sidebar header's padding and the button's size, so change them together.
+- **Remembered on this device.** `useDockedSidebar` (`lib/use-docked-sidebar.ts`) stores `forma:sidebar=hidden` in `localStorage` (docked is the default and isn't stored). It reads the value while rendering, so the first paint is already right: the app layout renders only in the browser (never prerendered), and no effect flips it after mount, which would flash the sidebar and play its slide. Without storage (blocked, private windows) the sidebar starts docked and the toggle still works.
+- **Hidden means out of reach.** The hidden sidebar turns `invisible` (out of the tab order and the accessibility tree) once it has slid out, and visible at once when it returns; the top bar does the same while the sidebar is docked.
+- **Mobile:** a top bar with the menu button and the account menu (avatar, truncated name, chevron). The slide-over sidebar's close button sits where the desktop toggle does, beside the workspace menu (`SidebarToggleContext` tells `SidebarToggle` which sidebar it's in).
+- **Matching heights.** `SidebarToggle` is an icon-only `SidebarItem`, so it's exactly as tall as the workspace menu (36px, 44px on phones). Icon-only items keep their full-size icon: the trailing-chevron sizing skips an item whose icon is its only content (`*:not-nth-2:last:`), in both `SidebarItem` and `NavbarItem`.
 
 ## Feature components (`components/app/<feature>`)
 

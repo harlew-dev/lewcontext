@@ -7,6 +7,7 @@ const scrollEmail = `e2e-${stamp}-scroll@forma.test`;
 const memberEmail = `e2e-${stamp}-member@forma.test`;
 const ownerEmail = `e2e-${stamp}-owner@forma.test`;
 const passwordEmail = `e2e-${stamp}-password@forma.test`;
+const sidebarEmail = `e2e-${stamp}-sidebar@forma.test`;
 const emails = [
   email,
   returnEmail,
@@ -14,9 +15,16 @@ const emails = [
   memberEmail,
   ownerEmail,
   passwordEmail,
+  sidebarEmail,
 ];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
+declare global {
+  interface Window {
+    // Set by the sidebar test if the docked sidebar's toggle ever rendered.
+    sawDockedSidebar?: boolean;
+  }
+}
 // Runs SQL against the test database and returns its output; only for setup
 // the UI can't do yet (invites) and cleanup.
 function sql(statement: string): string {
@@ -292,6 +300,45 @@ test("/ is the prerendered homepage, /app needs a session, and the pre-workspace
   expect(app.headers()["location"]).toBe("/auth/login?next=%2Fapp");
   for (const gone of ["/login", "/projects", "/settings", "/auth"])
     expect((await request.get(gone, { maxRedirects: 0 })).status()).toBe(404);
+});
+test("the desktop sidebar hides and is remembered without flashing; the mobile one closes beside the workspace menu", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await register(page, sidebarEmail, "Jordan Example");
+  await onboard(page, "Jordan’s desk");
+  const workspaceMenu = page.getByRole("button", { name: "Workspace menu" });
+  await expect(workspaceMenu).toBeVisible();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(workspaceMenu).toBeHidden();
+  // The top bar takes over the account menu, with the member's name.
+  await expect(
+    page.getByRole("button", { name: "Account menu" }),
+  ).toContainText("Jordan Example");
+  // Reloading opens it hidden, without rendering it docked even for a moment.
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector('[aria-label="Hide sidebar"]'))
+        window.sawDockedSidebar = true;
+    }).observe(document, { childList: true, subtree: true, attributes: true });
+  });
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Show sidebar" }),
+  ).toBeVisible();
+  await expect(workspaceMenu).toBeHidden();
+  expect(await page.evaluate(() => window.sawDockedSidebar)).toBeUndefined();
+  await page.getByRole("button", { name: "Show sidebar" }).click();
+  await expect(workspaceMenu).toBeVisible();
+  // On a phone the drawer's close button sits beside the workspace menu.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const drawer = page.getByRole("dialog", { name: "Navigation" });
+  await expect(
+    drawer.getByRole("button", { name: "Workspace menu" }),
+  ).toBeVisible();
+  await drawer.getByRole("button", { name: "Close navigation" }).click();
+  await expect(drawer).toBeHidden();
 });
 test("signing in returns to the page that needed it, and only to our pages", async ({
   page,
