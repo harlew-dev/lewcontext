@@ -75,9 +75,7 @@ func TestWorkspaceMembershipAndRoles(t *testing.T) {
 	path := workspacePath(workspace.PublicID, "")
 	join := func(role string) factory.Session {
 		session := signedIn(t, db, f)
-		if _, err := factory.MemberOf(ctx, db, f, session.UserID, workspace.ID, role); err != nil {
-			t.Fatal(err)
-		}
+		must(factory.MemberOf(ctx, db, f, session.UserID, workspace.ID, role))(t)
 		return session
 	}
 	admin, member, outsider := join(store.RoleAdmin), join(store.RoleMember), signedIn(t, db, f)

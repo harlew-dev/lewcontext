@@ -23,10 +23,7 @@ type storedEvent struct {
 // eventsNamed returns the events with name, oldest first.
 func eventsNamed(t *testing.T, db bun.IDB, name string) []storedEvent {
 	t.Helper()
-	rows, err := db.QueryContext(context.Background(), "SELECT name, actor_id, user_id, workspace_id, payload::text, user_agent FROM events WHERE name = ? ORDER BY id", name)
-	if err != nil {
-		t.Fatal(err)
-	}
+	rows := must(db.QueryContext(context.Background(), "SELECT name, actor_id, user_id, workspace_id, payload::text, user_agent FROM events WHERE name = ? ORDER BY id", name))(t)
 	defer rows.Close()
 	var found []storedEvent
 	for rows.Next() {
@@ -63,23 +60,10 @@ func is(column sql.NullInt64, id int64) bool {
 	return column.Valid && column.Int64 == id
 }
 
-// userIDOf looks up a user's internal ID by public ID.
-func userIDOf(t *testing.T, db bun.IDB, publicID string) int64 {
-	t.Helper()
-	var id int64
-	if err := db.QueryRowContext(context.Background(), "SELECT id FROM users WHERE public_id = ?", publicID).Scan(&id); err != nil {
-		t.Fatal(err)
-	}
-	return id
-}
-
 // Payloads identify records by public ID only and never hold numeric IDs.
 func checkPayloadIDs(t *testing.T, db bun.IDB) {
 	t.Helper()
-	rows, err := db.QueryContext(context.Background(), "SELECT name, payload::text FROM events")
-	if err != nil {
-		t.Fatal(err)
-	}
+	rows := must(db.QueryContext(context.Background(), "SELECT name, payload::text FROM events"))(t)
 	defer rows.Close()
 	prefixes := map[string]string{"user": "usr", "workspace": "wsp", "project": "prj"}
 	for rows.Next() {
@@ -107,7 +91,7 @@ func TestAuthEvents(t *testing.T) {
 	registered := call(t, h, "POST", "/api/auth/register", `{"name":"Ada Lovelace","email":"ada@example.com","password":"`+password+`"}`, "", nil, 201)
 	var signed response
 	_ = json.Unmarshal(registered.Body.Bytes(), &signed)
-	userID := userIDOf(t, db, signed.User.PublicID)
+	userID := idOf(t, db, "users", signed.User.PublicID)
 
 	e := onlyEvent(t, db, "auth.registered")
 	if !is(e.ActorID, userID) || !is(e.UserID, userID) || !is(e.WorkspaceID, 0) || e.UserAgent != testUserAgent ||
@@ -166,13 +150,8 @@ func TestRateLimitRecordedOnce(t *testing.T) {
 	h := s.Routes()
 	ctx := context.Background()
 	f := factory.TestFaker(t)
-	user, err := factory.Users.CreateOne(ctx, db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f); err != nil {
-		t.Fatal(err)
-	}
+	user := must(factory.Users.CreateOne(ctx, db, f))(t)
+	must(factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	login := fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword)
 	for range 3 {
 		call(t, h, "POST", "/api/auth/login", login, "", nil, 429)
@@ -189,9 +168,7 @@ func TestRateLimitRecordedOnce(t *testing.T) {
 func TestIPRateLimitRecorded(t *testing.T) {
 	s, db := integrationServer(t)
 	f := factory.TestFaker(t)
-	if _, err := factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f); err != nil {
-		t.Fatal(err)
-	}
+	must(factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f))(t)
 	for range 2 {
 		call(t, s.Routes(), "POST", "/api/auth/login", `{"email":"a@example.com","password":"anything at all"}`, "", nil, 429)
 	}
@@ -206,9 +183,7 @@ func TestPasswordEvents(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	session := signedIn(t, db, f)
-	if _, err := factory.SessionFor(ctx, db, f, session.UserID); err != nil {
-		t.Fatal(err)
-	}
+	must(factory.SessionFor(ctx, db, f, session.UserID))(t)
 	cookie := session.Cookie()
 	verify := func(password string, want int) {
 		call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, password), session.CSRFToken, cookie, want)
@@ -250,10 +225,7 @@ func TestWorkspaceAndProjectEvents(t *testing.T) {
 	cookie := session.Cookie()
 	var workspace store.Workspace
 	_ = json.Unmarshal(call(t, h, "POST", "/api/workspaces", `{"name":"Acme"}`, session.CSRFToken, cookie, 201).Body.Bytes(), &workspace)
-	workspaceID := int64(0)
-	if err := db.QueryRowContext(context.Background(), "SELECT id FROM workspaces WHERE public_id = ?", workspace.PublicID).Scan(&workspaceID); err != nil {
-		t.Fatal(err)
-	}
+	workspaceID := idOf(t, db, "workspaces", workspace.PublicID)
 	e := onlyEvent(t, db, "workspace.created")
 	if !is(e.ActorID, session.UserID) || !is(e.WorkspaceID, workspaceID) || !is(e.UserID, 0) || e.Payload["workspace"] != workspace.PublicID || e.Payload["name"] != "Acme" {
 		t.Fatalf("workspace created: %+v", e)
@@ -304,19 +276,10 @@ func TestChangeAndEventSavedTogether(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	repository := &store.Store{DB: db}
-	user, err := factory.Users.CreateOne(ctx, db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	owned, err := factory.WorkspaceFor(ctx, db, f, user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	user := must(factory.Users.CreateOne(ctx, db, f))(t)
+	owned := must(factory.WorkspaceFor(ctx, db, f, user.ID))(t)
 	workspace := store.Workspace{ID: owned.ID, PublicID: owned.PublicID}
-	project, err := factory.ProjectsIn(owned.ID).CreateOne(ctx, db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	project := must(factory.ProjectsIn(owned.ID).CreateOne(ctx, db, f))(t)
 	// The status CHECK constraint fails after the row is locked and compared.
 	invalid := store.ProjectInput{Name: "Renamed", Status: "Nope", Color: "violet"}
 	if _, err := repository.UpdateProject(ctx, workspace, project.PublicID, invalid); err == nil {
@@ -337,9 +300,7 @@ func TestChangeAndEventSavedTogether(t *testing.T) {
 
 	// And an event that can't be written undoes its change. The table is
 	// renamed only in this test's private schema.
-	if _, err := db.ExecContext(ctx, "ALTER TABLE events RENAME TO events_unavailable"); err != nil {
-		t.Fatal(err)
-	}
+	must(db.ExecContext(ctx, "ALTER TABLE events RENAME TO events_unavailable"))(t)
 	valid := store.ProjectInput{Name: "Never saved", Status: "Planned", Color: "blue"}
 	if _, err := repository.CreateProject(ctx, workspace, valid); err == nil {
 		t.Fatal("project saved without its event")

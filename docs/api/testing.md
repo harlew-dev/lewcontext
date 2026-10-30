@@ -19,6 +19,8 @@ A skipped integration test is not database verification. Set `TEST_DATABASE_URL`
 - `integrationServer(t)` (in `httpapi`) migrates the schema (and checks a second migrate is a no-op), then returns a `*Server` and the DB.
 - `call(t, handler, method, path, body, csrf, cookie, wantStatus)` sends a request with the trusted Origin and JSON content type, and fails on an unexpected status.
 - `signedIn(t, db, faker)` returns a fake user's `factory.Session`. Use `session.UserID`, `session.Cookie()` and `session.CSRFToken`.
+- `must(call)(t)` returns a two-result call's value or fails the test: `user := must(factory.Users.CreateOne(ctx, db, f))(t)`. Go only lets a two-result call fill a whole argument list, hence the trailing `(t)`.
+- `idOf(t, db, "users" | "workspaces" | "projects", publicID)` and `emailOf(t, db, userID)` look records up instead of one-off SQL. Events have `eventsNamed` and `onlyEvent` (`events_integration_test.go`).
 - `ownedWorkspace(t, db, faker, userID)` creates a workspace the user owns; `workspacePath(workspace.PublicID, "/projects")` builds its API paths.
 
 ## Test data comes from factories

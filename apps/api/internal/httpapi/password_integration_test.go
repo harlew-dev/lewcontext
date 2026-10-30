@@ -64,10 +64,7 @@ func TestChangePassword(t *testing.T) {
 	f := factory.TestFaker(t)
 	session := signedIn(t, db, f)
 	cookie := session.Cookie()
-	other, err := factory.SessionFor(ctx, db, f, session.UserID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	other := must(factory.SessionFor(ctx, db, f, session.UserID))(t)
 	stranger := signedIn(t, db, f)
 	const path = "/api/auth/password"
 
@@ -110,10 +107,7 @@ func TestChangePassword(t *testing.T) {
 	// Another account is untouched.
 	call(t, h, "GET", "/api/auth/me", "", "", stranger.Cookie(), 200)
 
-	var email string
-	if err := db.QueryRowContext(ctx, "SELECT email FROM users WHERE id=?", session.UserID).Scan(&email); err != nil {
-		t.Fatal(err)
-	}
+	email := emailOf(t, db, session.UserID)
 	call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, factory.DefaultPassword), "", nil, 401)
 	call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, newPassword), "", nil, 200)
 }
@@ -125,13 +119,8 @@ func TestPasswordRateLimit(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	session := signedIn(t, db, f)
-	var email string
-	if err := db.QueryRowContext(ctx, "SELECT email FROM users WHERE id=?", session.UserID).Scan(&email); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := factory.AuthAttempts.State(factory.ForAccount(email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f); err != nil {
-		t.Fatal(err)
-	}
+	email := emailOf(t, db, session.UserID)
+	must(factory.AuthAttempts.State(factory.ForAccount(email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	locked := call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, factory.DefaultPassword), session.CSRFToken, session.Cookie(), 429)
 	if locked.Header().Get("Retry-After") != "900" {
 		t.Fatal("rate-limited check without Retry-After")

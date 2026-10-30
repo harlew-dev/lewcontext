@@ -54,10 +54,7 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 	// and return to the page afterwards. No HTML is sent.
 	visitors := map[string]*http.Cookie{"no cookie": nil, "unknown token": factory.Sessions.Make(f, 1)[0].Cookie()}
 	for name, state := range map[string]func(*factory.Session){"idle": factory.Idle, "expired": factory.Expired} {
-		stale, err := factory.Sessions.State(func(s *factory.Session) { s.UserID = session.UserID }).State(state).CreateOne(ctx, db, f)
-		if err != nil {
-			t.Fatal(err)
-		}
+		stale := must(factory.Sessions.State(func(s *factory.Session) { s.UserID = session.UserID }).State(state).CreateOne(ctx, db, f))(t)
 		visitors[name] = stale.Cookie()
 	}
 	for name, cookie := range visitors {

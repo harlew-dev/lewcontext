@@ -24,16 +24,11 @@ func integrationServer(t *testing.T) (*Server, *bun.DB) {
 	t.Helper()
 	db := dbtest.Open(t)
 	ctx := context.Background()
-	if _, err := database.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
+	must(database.Migrate(ctx, db))(t)
 	if group, err := database.Migrate(ctx, db); err != nil || !group.IsZero() {
 		t.Fatal("migration is not idempotent", group, err)
 	}
-	server, err := New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	server := must(New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000"}))(t)
 	return server, db
 }
 
@@ -67,25 +62,50 @@ func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie 
 // auth endpoints. The session carries the cookie and CSRF token.
 func signedIn(t *testing.T, db bun.IDB, f *gofakeit.Faker) factory.Session {
 	t.Helper()
-	user, err := factory.Users.CreateOne(context.Background(), db, f)
-	if err != nil {
+	user := must(factory.Users.CreateOne(context.Background(), db, f))(t)
+	return must(factory.SessionFor(context.Background(), db, f, user.ID))(t)
+}
+
+// must returns v, or fails the test with err. Go only lets a two-result call
+// fill a function's whole argument list, so it takes the call's results and
+// returns a function of t:
+//
+//	user := must(factory.Users.CreateOne(ctx, db, f))(t)
+func must[T any](v T, err error) func(testing.TB) T {
+	return func(t testing.TB) T {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+}
+
+// idOf is the internal ID of the record in table ("users", "workspaces",
+// "projects") with publicID.
+func idOf(t *testing.T, db bun.IDB, table, publicID string) int64 {
+	t.Helper()
+	var id int64
+	if err := db.QueryRowContext(context.Background(), "SELECT id FROM ? WHERE public_id = ?", bun.Ident(table), publicID).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	session, err := factory.SessionFor(context.Background(), db, f, user.ID)
-	if err != nil {
+	return id
+}
+
+// emailOf is the user's email address.
+func emailOf(t *testing.T, db bun.IDB, userID int64) string {
+	t.Helper()
+	var email string
+	if err := db.QueryRowContext(context.Background(), "SELECT email FROM users WHERE id = ?", userID).Scan(&email); err != nil {
 		t.Fatal(err)
 	}
-	return session
+	return email
 }
 
 // ownedWorkspace creates a workspace owned by userID.
 func ownedWorkspace(t *testing.T, db bun.IDB, f *gofakeit.Faker, userID int64) factory.Workspace {
 	t.Helper()
-	workspace, err := factory.WorkspaceFor(context.Background(), db, f, userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return workspace
+	return must(factory.WorkspaceFor(context.Background(), db, f, userID))(t)
 }
 
 // workspacePath is a path inside a workspace, e.g. workspacePath(id, "/projects").
@@ -197,20 +217,11 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "POST", "/api/auth/logout", "{}", signed.CSRF, rotated, 204)
 	call(t, h, "GET", "/api/auth/me", "", "", rotated, 401)
 	for _, state := range []func(*factory.Session){factory.Idle, factory.Expired} {
-		stale, err := factory.Sessions.State(func(s *factory.Session) { s.UserID = two.UserID }).State(state).CreateOne(ctx, db, f)
-		if err != nil {
-			t.Fatal(err)
-		}
+		stale := must(factory.Sessions.State(func(s *factory.Session) { s.UserID = two.UserID }).State(state).CreateOne(ctx, db, f))(t)
 		call(t, h, "GET", "/api/auth/me", "", "", stale.Cookie(), 401)
 	}
-	capped, err := factory.Users.CreateOne(ctx, db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, err := factory.SessionFor(ctx, db, f, capped.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	capped := must(factory.Users.CreateOne(ctx, db, f))(t)
+	first := must(factory.SessionFor(ctx, db, f, capped.ID))(t)
 	for i := 0; i < 5; i++ {
 		call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, capped.Email, factory.DefaultPassword), "", nil, 200)
 	}
@@ -232,14 +243,8 @@ func TestPasswordMinimumOnlyAtSignUp(t *testing.T) {
 	h := s.Routes()
 	ctx := context.Background()
 	call(t, h, "POST", "/api/auth/register", `{"name":"Short","email":"short@example.com","password":"password"}`, "", nil, 422)
-	hash, err := auth.HashPassword("password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	seeded, err := factory.Users.State(factory.WithPasswordHash(hash)).CreateOne(ctx, db, factory.TestFaker(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	hash := must(auth.HashPassword("password"))(t)
+	seeded := must(factory.Users.State(factory.WithPasswordHash(hash)).CreateOne(ctx, db, factory.TestFaker(t)))(t)
 	call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":"password"}`, seeded.Email), "", nil, 200)
 	call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":"passwore"}`, seeded.Email), "", nil, 401)
 }
@@ -250,14 +255,8 @@ func TestAccountRateLimit(t *testing.T) {
 	s, db := integrationServer(t)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
-	user, err := factory.Users.CreateOne(ctx, db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	user := must(factory.Users.CreateOne(ctx, db, f))(t)
+	must(factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	login := fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword)
 	locked := call(t, s.Routes(), "POST", "/api/auth/login", login, "", nil, 429)
 	if locked.Header().Get("Retry-After") != "900" {
@@ -267,9 +266,6 @@ func TestAccountRateLimit(t *testing.T) {
 func TestIPRateLimit(t *testing.T) {
 	s, db := integrationServer(t)
 	f := factory.TestFaker(t)
-	_, err := factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	must(factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f))(t)
 	call(t, s.Routes(), "POST", "/api/auth/register", `{"name":"New","email":"new@example.com","password":"correct horse battery staple"}`, "", nil, 429)
 }
