@@ -26,7 +26,7 @@ func Open(t *testing.T) *bun.DB {
 		t.Fatal(err)
 	}
 	schema := fmt.Sprintf("forma_test_%d", time.Now().UnixNano())
-	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
+	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA ?", bun.Ident(schema)); err != nil {
 		t.Fatal(err)
 	}
 	scoped, err := url.Parse(raw)
@@ -40,10 +40,14 @@ func Open(t *testing.T) *bun.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close(); _, _ = admin.ExecContext(ctx, "DROP SCHEMA "+schema+" CASCADE"); admin.Close() })
+	t.Cleanup(func() {
+		db.Close()
+		_, _ = admin.ExecContext(ctx, "DROP SCHEMA ? CASCADE", bun.Ident(schema))
+		admin.Close()
+	})
 	// Tests run down migrations, so refuse anything but the temporary schema.
 	var current string
-	if err = db.NewRaw("SELECT current_schema()").Scan(ctx, &current); err != nil || current != schema {
+	if err = db.NewSelect().ColumnExpr("current_schema()").Scan(ctx, &current); err != nil || current != schema {
 		t.Fatalf("test schema not active: got %q (%v)", current, err)
 	}
 	return db

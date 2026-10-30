@@ -9,12 +9,12 @@ import (
 	"testing"
 )
 
-var appTables = []string{"users", "sessions", "workspaces", "workspace_user", "projects", "auth_attempts"}
+var appTables = []string{"users", "sessions", "workspaces", "workspace_user", "projects", "auth_attempts", "events", "event_deliveries"}
 
 func tableExists(t *testing.T, db *bun.DB, table string) bool {
 	t.Helper()
 	var exists bool
-	if err := db.NewRaw("SELECT to_regclass(?) IS NOT NULL", table).Scan(context.Background(), &exists); err != nil {
+	if err := db.NewSelect().ColumnExpr("to_regclass(?) IS NOT NULL", table).Scan(context.Background(), &exists); err != nil {
 		t.Fatal(err)
 	}
 	return exists
@@ -56,12 +56,16 @@ func TestPublicIDDefaults(t *testing.T) {
 	}
 	var total, distinct int
 	var formatted bool
-	err := db.NewRaw(`SELECT count(*), count(DISTINCT id), bool_and(id ~ '^prj_[0-9A-Za-z]{14}$')
-		FROM (SELECT public_id('prj') AS id FROM generate_series(1, 5000)) ids`).Scan(ctx, &total, &distinct, &formatted)
+	ids := db.NewSelect().ColumnExpr("public_id('prj') AS id").TableExpr("generate_series(1, 5000)")
+	err := db.NewSelect().
+		ColumnExpr("count(*), count(DISTINCT id), bool_and(id ~ ?)", "^prj_[0-9A-Za-z]{14}$").
+		TableExpr("(?) AS ids", ids).
+		Scan(ctx, &total, &distinct, &formatted)
 	if err != nil || total != 5000 || distinct != 5000 || !formatted {
 		t.Fatalf("public_id: %d generated, %d distinct, formatted %v (%v)", total, distinct, formatted, err)
 	}
-	if _, err := db.ExecContext(ctx, "INSERT INTO users(public_id, name, email, password_hash) VALUES('usr_short', 'A', 'a@example.com', 'x')"); err == nil {
+	short := map[string]any{"public_id": "usr_short", "name": "A", "email": "a@example.com", "password_hash": "x"}
+	if _, err := db.NewInsert().Model(&short).TableExpr("users").Exec(ctx); err == nil {
 		t.Fatal("malformed public_id accepted")
 	}
 }
@@ -71,7 +75,8 @@ func TestFreshRebuildsTheSchema(t *testing.T) {
 	if _, err := database.Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, "INSERT INTO users(name, email, password_hash) VALUES('Gone', 'gone@example.com', 'x')"); err != nil {
+	gone := map[string]any{"name": "Gone", "email": "gone@example.com", "password_hash": "x"}
+	if _, err := db.NewInsert().Model(&gone).TableExpr("users").Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.Fresh(ctx, db, true); !errors.Is(err, database.ErrFreshInProduction) {

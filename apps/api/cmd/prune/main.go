@@ -19,13 +19,16 @@ import (
 // go run ./cmd/prune [target] [-older-than 90d] [-confirm]
 //
 // Without -confirm it only reports what it would delete; without a target it
-// previews every target and never deletes. Allowed in production, where it
-// would run from cron.
+// previews every target at its default age and never deletes. -older-than
+// needs a target. Allowed in production, where it would run from cron.
 func main() {
-	olderThan := flag.String("older-than", "", "delete rows older than this, in days or hours (90d, 36h); default per target")
+	olderThan := flag.String("older-than", "", "with a target: delete rows older than this, in days or hours (90d, 36h); default per target")
 	confirm := flag.Bool("confirm", false, "delete; without it the command only previews")
 	flag.Usage = usage
 	target := parseArgs()
+	if target == "" && *olderThan != "" {
+		log.Fatal("-older-than needs a target; a run over every target uses each one's default age")
+	}
 	var age time.Duration
 	if *olderThan != "" {
 		var err error
@@ -49,8 +52,8 @@ func main() {
 	repository := &store.Store{DB: db}
 
 	if target == "" {
-		for _, p := range prune.Pruners {
-			report, err := prune.Run(ctx, repository, p, prune.Options{Age: age})
+		for _, p := range prune.Pruners() {
+			report, err := prune.Run(ctx, repository, p, prune.Options{})
 			if err != nil {
 				log.Fatalf("prune %s: %v", p.Name, err)
 			}
@@ -100,7 +103,7 @@ func parseArgs() string {
 
 func names() string {
 	text := ""
-	for i, p := range prune.Pruners {
+	for i, p := range prune.Pruners() {
 		if i > 0 {
 			text += ", "
 		}
@@ -112,9 +115,9 @@ func names() string {
 func usage() {
 	out := flag.CommandLine.Output()
 	fmt.Fprintln(out, "Usage: go run ./cmd/prune [target] [-older-than 90d] [-confirm]")
-	fmt.Fprintln(out, "Previews unless -confirm; without a target previews every target and deletes nothing.")
+	fmt.Fprintln(out, "Previews unless -confirm; without a target previews every target at its default age and deletes nothing.")
 	fmt.Fprintln(out, "\nTargets:")
-	for _, p := range prune.Pruners {
+	for _, p := range prune.Pruners() {
 		fmt.Fprintf(out, "  %-7s %s (default %s)\n", p.Name, p.Description, prune.FormatAge(p.DefaultAge))
 	}
 	fmt.Fprintln(out, "\nFlags:")

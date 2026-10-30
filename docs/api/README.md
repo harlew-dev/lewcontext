@@ -19,7 +19,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
-| `internal/prune` | Prune targets, `-older-than` parsing and the batched run for `make prune` |
+| `internal/prune` | `make prune`: one file per target (`events.go`) registering itself, plus the shared list, `-older-than` parsing and batched run |
 | `migrations` | SQL migration pairs, embedded into the binaries |
 
 `cmd/server` never imports `factory` or `seed`.

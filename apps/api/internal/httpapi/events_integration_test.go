@@ -16,29 +16,30 @@ import (
 type storedEvent struct {
 	Name                         string
 	ActorID, UserID, WorkspaceID sql.NullInt64
-	Payload                      map[string]any
-	Raw                          string
+	Raw                          string         // the payload as PostgreSQL prints it
+	Payload                      map[string]any `bun:"-"`
 	UserAgent                    string
+}
+
+// storedEvents selects events with their payload as text.
+func storedEvents(db bun.IDB) *bun.SelectQuery {
+	return db.NewSelect().TableExpr("events").
+		Column("name", "actor_id", "user_id", "workspace_id", "user_agent").
+		ColumnExpr("payload::text AS raw").
+		OrderExpr("id")
 }
 
 // eventsNamed returns the events with name, oldest first.
 func eventsNamed(t *testing.T, db bun.IDB, name string) []storedEvent {
 	t.Helper()
-	rows := must(db.QueryContext(context.Background(), "SELECT name, actor_id, user_id, workspace_id, payload::text, user_agent FROM events WHERE name = ? ORDER BY id", name))(t)
-	defer rows.Close()
 	var found []storedEvent
-	for rows.Next() {
-		var e storedEvent
-		if err := rows.Scan(&e.Name, &e.ActorID, &e.UserID, &e.WorkspaceID, &e.Raw, &e.UserAgent); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal([]byte(e.Raw), &e.Payload); err != nil {
-			t.Fatal(err)
-		}
-		found = append(found, e)
-	}
-	if err := rows.Err(); err != nil {
+	if err := storedEvents(db).Where("name = ?", name).Scan(context.Background(), &found); err != nil {
 		t.Fatal(err)
+	}
+	for i := range found {
+		if err := json.Unmarshal([]byte(found[i].Raw), &found[i].Payload); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return found
 }
@@ -64,14 +65,13 @@ func is(column sql.NullInt64, id int64) bool {
 // Payloads identify records by public ID only and never hold numeric IDs.
 func checkPayloadIDs(t *testing.T, db bun.IDB) {
 	t.Helper()
-	rows := must(db.QueryContext(context.Background(), "SELECT name, payload::text FROM events"))(t)
-	defer rows.Close()
+	var all []storedEvent
+	if err := storedEvents(db).Scan(context.Background(), &all); err != nil {
+		t.Fatal(err)
+	}
 	prefixes := map[string]string{"user": "usr", "workspace": "wsp", "project": "prj"}
-	for rows.Next() {
-		var name, raw string
-		if err := rows.Scan(&name, &raw); err != nil {
-			t.Fatal(err)
-		}
+	for _, e := range all {
+		name, raw := e.Name, e.Raw
 		var payload map[string]any
 		_ = json.Unmarshal([]byte(raw), &payload)
 		for key, prefix := range prefixes {
@@ -295,13 +295,13 @@ func TestChangeAndEventSavedTogether(t *testing.T) {
 		}
 	}
 	var unchanged string
-	if err := db.QueryRowContext(ctx, "SELECT name FROM projects WHERE id = ?", project.ID).Scan(&unchanged); err != nil || unchanged != project.Name {
+	if err := db.NewSelect().TableExpr("projects").Column("name").Where("id = ?", project.ID).Scan(ctx, &unchanged); err != nil || unchanged != project.Name {
 		t.Fatalf("project changed: %q (%v)", unchanged, err)
 	}
 
 	// And an event that can't be written undoes its change. The table is
-	// renamed only in this test's private schema.
-	must(db.ExecContext(ctx, "ALTER TABLE events RENAME TO events_unavailable"))(t)
+	// dropped only in this test's private schema.
+	must(db.NewDropTable().Table("events").Cascade().Exec(ctx))(t)
 	valid := store.ProjectInput{Name: "Never saved", Status: "Planned", Color: "blue"}
 	if _, err := repository.CreateProject(ctx, workspace, valid); err == nil {
 		t.Fatal("project saved without its event")
@@ -312,12 +312,12 @@ func TestChangeAndEventSavedTogether(t *testing.T) {
 	if _, err := repository.RenameWorkspace(ctx, owned.ID, store.WorkspaceInput{Name: "Never renamed"}); err == nil {
 		t.Fatal("workspace renamed without its event")
 	}
-	var projects int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM projects WHERE name IN (?, ?)", valid.Name, project.Name).Scan(&projects); err != nil || projects != 1 {
+	projects, err := db.NewSelect().TableExpr("projects").Where("name IN (?)", bun.In([]string{valid.Name, project.Name})).Count(ctx)
+	if err != nil || projects != 1 {
 		t.Fatalf("want only the untouched project, got %d (%v)", projects, err)
 	}
 	var name string
-	if err := db.QueryRowContext(ctx, "SELECT name FROM workspaces WHERE id = ?", owned.ID).Scan(&name); err != nil || name != owned.Name {
+	if err := db.NewSelect().TableExpr("workspaces").Column("name").Where("id = ?", owned.ID).Scan(ctx, &name); err != nil || name != owned.Name {
 		t.Fatalf("workspace renamed to %q (%v)", name, err)
 	}
 }
@@ -354,7 +354,7 @@ func TestListenerReceivesEventsFromTheAPI(t *testing.T) {
 		t.Fatalf("second RunOnce: %d, %v", n, err)
 	}
 	var deliveredAt sql.NullTime
-	if err := db.QueryRowContext(context.Background(), "SELECT delivered_at FROM event_deliveries WHERE listener = 'test.projects'").Scan(&deliveredAt); err != nil || !deliveredAt.Valid {
+	if err := db.NewSelect().TableExpr("event_deliveries").Column("delivered_at").Where("listener = ?", "test.projects").Scan(context.Background(), &deliveredAt); err != nil || !deliveredAt.Valid {
 		t.Fatalf("delivery not marked delivered: %v (%v)", deliveredAt, err)
 	}
 }

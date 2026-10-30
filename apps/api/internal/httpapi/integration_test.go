@@ -86,7 +86,7 @@ func must[T any](v T, err error) func(testing.TB) T {
 func idOf(t *testing.T, db bun.IDB, table, publicID string) int64 {
 	t.Helper()
 	var id int64
-	if err := db.QueryRowContext(context.Background(), "SELECT id FROM ? WHERE public_id = ?", bun.Ident(table), publicID).Scan(&id); err != nil {
+	if err := db.NewSelect().TableExpr("?", bun.Ident(table)).Column("id").Where("public_id = ?", publicID).Scan(context.Background(), &id); err != nil {
 		t.Fatal(err)
 	}
 	return id
@@ -96,7 +96,7 @@ func idOf(t *testing.T, db bun.IDB, table, publicID string) int64 {
 func emailOf(t *testing.T, db bun.IDB, userID int64) string {
 	t.Helper()
 	var email string
-	if err := db.QueryRowContext(context.Background(), "SELECT email FROM users WHERE id = ?", userID).Scan(&email); err != nil {
+	if err := db.NewSelect().TableExpr("users").Column("email").Where("id = ?", userID).Scan(context.Background(), &email); err != nil {
 		t.Fatal(err)
 	}
 	return email
@@ -137,7 +137,11 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 		t.Fatal("cookie flags missing")
 	}
 	var stored string
-	if err := db.QueryRowContext(ctx, "SELECT s.token_hash FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.public_id=?", one.User.PublicID).Scan(&stored); err != nil {
+	err := db.NewSelect().TableExpr("sessions AS s").Column("s.token_hash").
+		Join("JOIN users AS u ON u.id = s.user_id").
+		Where("u.public_id = ?", one.User.PublicID).
+		Scan(ctx, &stored)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if stored == cookie.Value || stored != auth.Digest(cookie.Value) {
@@ -226,8 +230,8 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 		call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, capped.Email, factory.DefaultPassword), "", nil, 200)
 	}
 	call(t, h, "GET", "/api/auth/me", "", "", first.Cookie(), 401)
-	var sessions int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE user_id=?", capped.ID).Scan(&sessions); err != nil || sessions != 5 {
+	sessions, err := db.NewSelect().TableExpr("sessions").Where("user_id = ?", capped.ID).Count(ctx)
+	if err != nil || sessions != 5 {
 		t.Fatalf("session cap: want 5 sessions, got %d (%v)", sessions, err)
 	}
 	for i := 0; i < 10; i++ {

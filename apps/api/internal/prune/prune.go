@@ -1,7 +1,8 @@
 // Package prune deletes old rows from tables that grow without limit, such as
 // the events audit trail, for the prune command (cmd/prune). It previews
-// unless told to delete. The queries live in internal/store; this package
-// holds the targets and the batching.
+// unless told to delete. Each target is a file here that registers a Pruner,
+// with its queries in internal/store/prune_<target>.go; this file holds what
+// they share: the list, the age parsing and the batched run.
 package prune
 
 import (
@@ -11,42 +12,49 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
-// Pruner is one table the command can prune.
+// Pruner is one table the command can prune. Each target lives in its own
+// file (events.go) and registers itself; its queries are a store.Prunable in
+// internal/store/prune_<target>.go.
 type Pruner struct {
 	Name        string
 	Description string
 	DefaultAge  time.Duration
-	// count reports how many rows older than the cutoff would be deleted,
-	// and how many are kept on purpose.
-	count func(s *store.Store, ctx context.Context, before time.Time) (prunable, kept int, err error)
-	// delete removes up to limit of them and says how many it did.
-	delete func(s *store.Store, ctx context.Context, before time.Time, limit int) (int, error)
-	// kept says why rows are kept, after their count ("with pending deliveries").
-	kept string
+	Table       store.Prunable
+	// KeptReason follows the count of rows kept on purpose, e.g. "with
+	// pending deliveries".
+	KeptReason string
 }
 
-// Pruners lists every target.
-var Pruners = []Pruner{
-	{
-		Name:        "events",
-		Description: "the audit trail (events), keeping events whose listeners haven't run yet",
-		DefaultAge:  90 * 24 * time.Hour,
-		count:       (*store.Store).CountOldEvents,
-		delete:      (*store.Store).PruneEvents,
-		kept:        "with pending deliveries",
-	},
+const day = 24 * time.Hour
+
+var pruners = map[string]Pruner{}
+
+// register adds a target; each target's file calls it from init.
+func register(p Pruner) {
+	if _, taken := pruners[p.Name]; taken || p.Name == "" || p.DefaultAge < MinAge || p.Table.Model == nil {
+		panic(fmt.Sprintf("prune: target %q is a duplicate or incomplete", p.Name))
+	}
+	pruners[p.Name] = p
+}
+
+// Pruners lists the targets by name.
+func Pruners() []Pruner {
+	list := make([]Pruner, 0, len(pruners))
+	for _, p := range pruners {
+		list = append(list, p)
+	}
+	slices.SortFunc(list, func(a, b Pruner) int { return strings.Compare(a.Name, b.Name) })
+	return list
 }
 
 // Find returns the target with a name.
 func Find(name string) (Pruner, bool) {
-	i := slices.IndexFunc(Pruners, func(p Pruner) bool { return p.Name == name })
-	if i < 0 {
-		return Pruner{}, false
-	}
-	return Pruners[i], true
+	p, ok := pruners[name]
+	return p, ok
 }
 
 // MinAge is the youngest rows a run may delete, so a typo such as "0d"
@@ -107,7 +115,7 @@ func (r Report) String() string {
 	}
 	text := fmt.Sprintf("%s: %s %d older than %s (%s)", r.Pruner.Name, verb, r.Deleted, r.Before.UTC().Format("2006-01-02 15:04 UTC"), FormatAge(r.Age))
 	if r.Kept > 0 {
-		text += fmt.Sprintf("; kept %d %s", r.Kept, r.Pruner.kept)
+		text += fmt.Sprintf("; kept %d %s", r.Kept, r.Pruner.KeptReason)
 	}
 	return text
 }
@@ -130,7 +138,7 @@ func Run(ctx context.Context, s *store.Store, p Pruner, o Options) (Report, erro
 		o.Batch = 5000
 	}
 	r := Report{Pruner: p, Age: o.Age, Before: o.Now.Add(-o.Age), Confirmed: o.Confirm}
-	prunable, kept, err := p.count(s, ctx, r.Before)
+	prunable, kept, err := s.CountPrunable(ctx, p.Table, r.Before)
 	r.Kept = kept
 	if err != nil || !o.Confirm {
 		r.Deleted = prunable
@@ -140,7 +148,7 @@ func Run(ctx context.Context, s *store.Store, p Pruner, o Options) (Report, erro
 		if err := ctx.Err(); err != nil {
 			return r, err
 		}
-		n, err := p.delete(s, ctx, r.Before, o.Batch)
+		n, err := s.Prune(ctx, p.Table, r.Before, o.Batch)
 		r.Deleted += n
 		// A short batch means nothing older is left (rows another run holds
 		// are that run's to delete).

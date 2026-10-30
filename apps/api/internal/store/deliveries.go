@@ -45,37 +45,44 @@ func (s *Store) queueDeliveries(ctx context.Context, db bun.IDB, eventID int64, 
 	return err
 }
 
-// Claim leases up to limit due deliveries, oldest event first. FOR UPDATE
-// SKIP LOCKED lets several workers claim at once without taking each
-// other's rows or waiting on them; the row locks end with the statement.
+// claimedRow is a claimed delivery with its event, as RETURNING gives it.
+type claimedRow struct {
+	EventID   int64
+	Listener  string
+	Attempts  int
+	PublicID  string
+	Name      string
+	Payload   []byte
+	CreatedAt time.Time
+}
+
+// Claim leases up to limit due deliveries, oldest first. FOR UPDATE SKIP
+// LOCKED lets several workers claim at once without taking each other's rows
+// or waiting on them; the row locks end with the statement.
 func (s *Store) Claim(ctx context.Context, limit int, lease time.Duration) ([]events.Delivery, error) {
-	var claimed []events.Delivery
-	rows, err := s.DB.QueryContext(ctx, `
-		WITH due AS (
-			SELECT event_id, listener FROM event_deliveries
-			WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()
-			ORDER BY next_attempt_at, event_id
-			LIMIT ?
-			FOR UPDATE SKIP LOCKED
-		)
-		UPDATE event_deliveries AS d
-		SET attempts = d.attempts + 1, next_attempt_at = now() + ? * interval '1 millisecond'
-		FROM due, events AS e
-		WHERE d.event_id = due.event_id AND d.listener = due.listener AND e.id = d.event_id
-		RETURNING d.event_id, d.listener, d.attempts, e.public_id, e.name, e.payload, e.created_at`,
-		limit, lease.Milliseconds())
-	if err != nil {
-		return nil, err
+	due := s.DB.NewSelect().Model((*deliveryRecord)(nil)).
+		Column("event_id", "listener").
+		Where("delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()").
+		OrderExpr("next_attempt_at, event_id").
+		Limit(int64(limit)).
+		For("UPDATE SKIP LOCKED")
+	var rows []claimedRow
+	err := s.DB.NewUpdate().
+		With("due", due).
+		Model((*deliveryRecord)(nil)).
+		TableExpr("due").
+		TableExpr("events AS e").
+		Set("attempts = d.attempts + 1").
+		Set("next_attempt_at = now() + ? * interval '1 millisecond'", lease.Milliseconds()).
+		Where("d.event_id = due.event_id AND d.listener = due.listener").
+		Where("e.id = d.event_id").
+		Returning("d.event_id, d.listener, d.attempts, e.public_id, e.name, e.payload, e.created_at").
+		Scan(ctx, &rows)
+	claimed := make([]events.Delivery, len(rows))
+	for i, r := range rows {
+		claimed[i] = events.Delivery{EventID: r.EventID, Listener: r.Listener, Attempts: r.Attempts, PublicID: r.PublicID, Event: r.Name, Payload: r.Payload, CreatedAt: r.CreatedAt}
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var d events.Delivery
-		if err := rows.Scan(&d.EventID, &d.Listener, &d.Attempts, &d.PublicID, &d.Event, &d.Payload, &d.CreatedAt); err != nil {
-			return nil, err
-		}
-		claimed = append(claimed, d)
-	}
-	return claimed, rows.Err()
+	return claimed, err
 }
 
 // Delivered marks a delivery done.

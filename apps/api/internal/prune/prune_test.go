@@ -34,10 +34,35 @@ func TestFormatAgeRoundTrips(t *testing.T) {
 }
 
 func TestFind(t *testing.T) {
-	if p, ok := Find("events"); !ok || p.DefaultAge != 90*24*time.Hour || p.count == nil || p.delete == nil {
+	if p, ok := Find("events"); !ok || p.DefaultAge != 90*day || p.Table.Model == nil || p.Table.Keep == nil {
 		t.Fatalf("events target: %+v %v", p, ok)
 	}
 	if _, ok := Find("sessions"); ok {
 		t.Fatal("found a target that doesn't exist")
+	}
+}
+
+func TestRegister(t *testing.T) {
+	events, _ := Find("events")
+	for name, p := range map[string]Pruner{
+		"a duplicate":     events,
+		"no name":         {DefaultAge: day, Table: events.Table},
+		"an age under 1h": {Name: "young", DefaultAge: time.Minute, Table: events.Table},
+		"no table":        {Name: "tableless", DefaultAge: day},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("registering %s did not panic", name)
+				}
+			}()
+			register(p)
+		}()
+	}
+	// The list is sorted by name.
+	register(Pruner{Name: "aaa", DefaultAge: day, Table: events.Table})
+	t.Cleanup(func() { delete(pruners, "aaa") })
+	if list := Pruners(); len(list) != 2 || list[0].Name != "aaa" || list[1].Name != "events" {
+		t.Fatalf("Pruners(): %+v", list)
 	}
 }

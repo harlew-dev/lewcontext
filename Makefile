@@ -28,8 +28,8 @@ migration:
 # make seed [only=demo|volume|users] [count=n] [projects=n] [email=address]
 seed:
 	cd apps/api && go run ./cmd/seed $(if $(only),-only '$(only)') $(if $(count),-count '$(count)') $(if $(projects),-projects '$(projects)') $(if $(email),-email '$(email)')
-# make prune [target=events] [older-than=90d] [CONFIRM=1]: deletes old rows from log tables.
-# Previews unless CONFIRM=1 and a target; without a target previews every one.
+# make prune [target=events [older-than=90d]] [CONFIRM=1]: deletes old rows from log tables.
+# Previews unless CONFIRM=1 and a target; without a target previews every one at its default age.
 prune:
 	cd apps/api && go run ./cmd/prune $(if $(older-than),-older-than '$(older-than)') $(if $(CONFIRM),-confirm) $(target)
 # Development in one terminal: rebuilds the embedded web app, then runs the API and Vite together (scripts/dev.sh).

@@ -81,7 +81,7 @@ func Fresh(ctx context.Context, db *bun.DB, production bool) (*migrate.Migration
 	}
 	err := withLock(ctx, db, func() error {
 		var schema string
-		if err := db.NewRaw("SELECT current_schema()").Scan(ctx, &schema); err != nil {
+		if err := db.NewSelect().ColumnExpr("current_schema()").Scan(ctx, &schema); err != nil {
 			return err
 		}
 		return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {

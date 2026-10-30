@@ -19,7 +19,7 @@ const newPassword = "a brand new passphrase"
 func storedPasswordIs(t *testing.T, db bun.IDB, userID int64, password string) bool {
 	t.Helper()
 	var hash string
-	if err := db.QueryRowContext(context.Background(), "SELECT password_hash FROM users WHERE id=?", userID).Scan(&hash); err != nil {
+	if err := db.NewSelect().TableExpr("users").Column("password_hash").Where("id = ?", userID).Scan(context.Background(), &hash); err != nil {
 		t.Fatal(err)
 	}
 	return auth.CheckPassword(password, hash)
