@@ -63,10 +63,12 @@ func main() {
 }
 
 // passwordHash hashes DEMO_PASSWORD once for every account a seeder creates.
+// Sign-up's 12-character minimum doesn't apply: the seed never runs in
+// production, so a short development password such as "password" is allowed.
 func passwordHash() (string, error) {
 	password := os.Getenv("DEMO_PASSWORD")
-	if len(password) < 12 || len(password) > 128 {
-		return "", fmt.Errorf("set DEMO_PASSWORD to 12–128 bytes")
+	if password == "" || len(password) > 128 {
+		return "", fmt.Errorf("set DEMO_PASSWORD to 1–128 bytes")
 	}
 	return auth.HashPassword(password)
 }

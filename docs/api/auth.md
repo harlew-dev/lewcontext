@@ -5,7 +5,7 @@ Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `inte
 ## Passwords
 
 - Argon2id: 19 MiB, 2 iterations, 1 lane, random 16-byte salt, 32-byte digest, constant-time comparison.
-- Passwords are 12+ Unicode characters and at most 128 UTF-8 bytes. Emails are trimmed and lowercased; names are 1–80 characters.
+- Sign-up requires 12+ Unicode characters; every password is at most 128 UTF-8 bytes. Login only checks that cap, so seeded development accounts with a short `DEMO_PASSWORD` (`password`) can sign in. Emails are trimmed and lowercased; names are 1–80 characters.
 - Login against an unknown email still checks a dummy hash, and every failure gives the same message.
 - At most 4 password hashes run at once per process (503 when busy).
 - Plaintext passwords are never logged or stored.

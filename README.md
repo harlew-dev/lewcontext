@@ -23,7 +23,7 @@ make dev
 
 `make dev` (`scripts/dev.sh`) rebuilds the web app the API embeds, then runs the Go API on :8080 and Vite on :3000 in one terminal; Vite forwards `/api` to the API. Ctrl-C stops both. `make serve` builds and runs the production binary instead. See [running and building](docs/testing.md#run-the-dev-server). Open **http://localhost:3000**. Use this exact host (not `127.0.0.1`) because the default allowed origin is `http://localhost:3000`.
 
-Sign in with **hello@forma.test** and the `DEMO_PASSWORD` in `.env` (default local example: **DemoWorkspace2026!**). Or choose **Sign up** for your own empty workspace. The seed runs only when explicitly invoked, refuses production, and leaves an existing demo account unchanged.
+Sign in with **test@example.com** and the `DEMO_PASSWORD` in `.env` (default local example: **password**). Or choose **Sign up** for your own empty workspace. The seed runs only when explicitly invoked, refuses production, and leaves an existing demo account unchanged.
 
 More seeders add random fake data (gofakeit) for trying pagination, search and sorting. They only insert, into the `DATABASE_URL` in `.env`:
 

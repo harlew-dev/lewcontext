@@ -32,7 +32,7 @@ type Seeder struct {
 
 // Seeders lists every seeder; the first is the default.
 var Seeders = []Seeder{
-	{Name: "demo", Description: "the hello@forma.test demo account, its Acme workspace and projects (skipped if it exists)", NeedsPassword: true, run: seedDemo},
+	{Name: "demo", Description: "the test@example.com demo account, its Acme workspace and projects (skipped if it exists)", NeedsPassword: true, run: seedDemo},
 	{Name: "volume", Description: "fake projects in one account's newest workspace (-count, default 120; -email, default the demo account)", run: seedVolume},
 	{Name: "users", Description: "fake accounts, each with a workspace and projects (-count users, default 10; -projects most each, default 60)", NeedsPassword: true, run: seedUsers},
 }

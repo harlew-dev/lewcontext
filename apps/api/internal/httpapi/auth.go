@@ -19,11 +19,17 @@ type credentials struct {
 	Password string `json:"password"`
 }
 
+// validCredentials normalises the email and checks the bounds login and
+// register share. The 12-character minimum is a sign-up rule (strongPassword),
+// so accounts created another way, such as the development seed, can sign in.
 func validCredentials(in *credentials) bool {
 	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 	in.Name = strings.TrimSpace(in.Name)
 	address, err := mail.ParseAddress(in.Email)
-	return err == nil && address.Address == in.Email && len(in.Email) <= 254 && utf8.RuneCountInString(in.Password) >= 12 && len(in.Password) <= 128
+	return err == nil && address.Address == in.Email && len(in.Email) <= 254 && in.Password != "" && len(in.Password) <= 128
+}
+func strongPassword(password string) bool {
+	return utf8.RuneCountInString(password) >= 12
 }
 func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email string) bool {
 	allowed, err := s.Store.AllowAuth(r.Context(), "account:"+auth.Digest(email), 10)
@@ -43,7 +49,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !validCredentials(&in) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
+	if !validCredentials(&in) || !strongPassword(in.Password) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
 		fail(w, 422, "Use a name, a valid email, and a password of 12–128 characters.")
 		return
 	}

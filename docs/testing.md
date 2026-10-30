@@ -12,7 +12,7 @@ How to set up a local environment, run and build the app, and check it by hand. 
 3. Copy `.env.example` to `.env`. It contains the local test DB URL: `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`.
 4. Run `make install`, `make migrate`, and optionally `make seed` (more fake data: [api/seeding.md](api/seeding.md)). After pulling a schema change, rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed` (migrations are squashed while in development; [api/database.md](api/database.md#migrations)).
 5. Start the dev server: `make dev` ([below](#run-the-dev-server)).
-6. Open `http://localhost:3000`, sign in with `hello@forma.test` and the configured `DEMO_PASSWORD` (the Acme workspace), or register a new account.
+6. Open `http://localhost:3000`, sign in with `test@example.com` and the configured `DEMO_PASSWORD` (`password` in `.env.example`) (the Acme workspace), or register a new account.
 
 ## Run the dev server
 

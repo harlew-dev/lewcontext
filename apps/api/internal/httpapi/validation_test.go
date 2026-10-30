@@ -15,10 +15,17 @@ func TestCredentialsValidation(t *testing.T) {
 	for _, tc := range []struct {
 		email, password string
 		want            bool
-	}{{" HELLO@example.com ", "a long safe passphrase", true}, {"Display <a@example.com>", "a long safe passphrase", false}, {"bad", "a long safe passphrase", false}, {"a@example.com", "short", false}, {"a@example.com", strings.Repeat("x", 129), false}} {
+	}{{" HELLO@example.com ", "a long safe passphrase", true}, {"Display <a@example.com>", "a long safe passphrase", false}, {"bad", "a long safe passphrase", false}, {"a@example.com", "short", true}, {"a@example.com", "", false}, {"a@example.com", strings.Repeat("x", 129), false}} {
 		in := credentials{Email: tc.email, Password: tc.password}
 		if validCredentials(&in) != tc.want {
-			t.Errorf("unexpected validation for %s", tc.email)
+			t.Errorf("unexpected validation for %s / %q", tc.email, tc.password)
+		}
+	}
+}
+func TestStrongPassword(t *testing.T) {
+	for password, want := range map[string]bool{"password": false, "elevenchars": false, "twelve chars": true, "ünïcödé pässwörd": true} {
+		if strongPassword(password) != want {
+			t.Errorf("strongPassword(%q) != %v", password, want)
 		}
 	}
 }

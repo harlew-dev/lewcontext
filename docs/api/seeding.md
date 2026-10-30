@@ -5,7 +5,7 @@ Factories build fake records for every table, and seeders use them to fill a dev
 ## Seeding a database
 
 ```sh
-make seed                                   # demo account hello@forma.test, its "Acme" workspace + 6 projects (skipped if it exists)
+make seed                                   # demo account test@example.com, its "Acme" workspace + 6 projects (skipped if it exists)
 make seed only=volume count=500             # projects in the demo account's newest workspace
 make seed only=volume email=you@example.com # …or another existing account's (it needs a workspace)
 make seed only=users count=25 projects=20   # 25 fake accounts, each owning a workspace with 0–20 projects
@@ -17,7 +17,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `volume` | 120 projects | No (insert-only; refuses unknown accounts and accounts without a workspace) |
 | `users` | 10 users, each owning a workspace with up to 60 projects | No (insert-only) |
 
-- Accounts created by `demo` and `users` sign in with `DEMO_PASSWORD` from `.env`.
+- Accounts created by `demo` and `users` sign in with `DEMO_PASSWORD` from `.env` (`password` in `.env.example`). It may be 1–128 bytes: sign-up's 12-character minimum doesn't apply to seeded development accounts.
 - Each seeder runs in one transaction and prints its fake data seed. Seeders never delete or truncate. Production is refused before connecting.
 - Counts are 0–100 000; 0 means the default. Run `cd apps/api && go run ./cmd/seed -h` to list seeders.
 - After a schema change, rebuild the local database first: `make migrate-fresh CONFIRM=1 && make seed` ([database.md](database.md#migrations)).

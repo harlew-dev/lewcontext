@@ -222,6 +222,25 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "POST", "/api/auth/login", `{"email":"missing@example.com","password":"correct horse battery staple"}`, "", nil, 429)
 }
 
+// The 12-character minimum applies to sign-up; an account with a shorter
+// password, such as the development seed's, still signs in.
+func TestPasswordMinimumOnlyAtSignUp(t *testing.T) {
+	s, db := integrationServer(t)
+	h := s.Routes()
+	ctx := context.Background()
+	call(t, h, "POST", "/api/auth/register", `{"name":"Short","email":"short@example.com","password":"password"}`, "", nil, 422)
+	hash, err := auth.HashPassword("password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeded, err := factory.Users.State(factory.WithPasswordHash(hash)).CreateOne(ctx, db, factory.TestFaker(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":"password"}`, seeded.Email), "", nil, 200)
+	call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":"passwore"}`, seeded.Email), "", nil, 401)
+}
+
 // Prefilled counters reach the limits without making every attempt. Each
 // test starts with no counters, since a request creates its own.
 func TestAccountRateLimit(t *testing.T) {

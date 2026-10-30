@@ -32,7 +32,7 @@ Short summaries of how each part works (API, auth, pagination, database, seeding
 
 ## Authentication/security invariants
 
-- Keep Argon2id with fresh random salts and constant-time comparison. Never log/store plaintext passwords. Password minimum is 12 Unicode characters, max 128 UTF-8 bytes.
+- Keep Argon2id with fresh random salts and constant-time comparison. Never log/store plaintext passwords. Password minimum at sign-up is 12 Unicode characters, max 128 UTF-8 bytes; login checks only the max, so the development seed's `DEMO_PASSWORD` may be short (`password`).
 - Opaque 256-bit server sessions, digests in DB, independent CSRF tokens, HttpOnly/SameSite cookies; production Secure `__Host-` cookie. No session/auth tokens in localStorage or query strings.
 - Enforce exact Origin, content type, and CSRF for mutations; keep auth rate limits, hashing concurrency bound, session rotation, idle/absolute expiry, logout revocation, and other-session revocation.
 - Require session middleware on every private endpoint. Workspace data goes through `requireWorkspace` (membership via `workspace_user`, same 404 for non-members and missing workspaces) and `requireRole` where only some roles may act; scope SQL by the member's workspace ID, never a request-supplied owner, workspace or role. Test non-members, other workspaces and refused roles before adding resources.

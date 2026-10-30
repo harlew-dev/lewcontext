@@ -67,7 +67,7 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `API_ADDR` | `127.0.0.1:8080` | Listen address (loopback by default); `make serve` uses `127.0.0.1:3000` |
 | `API_URL` | `http://127.0.0.1:8080` | Only for Vite's dev proxy (`make dev`, `make web`) |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
-| `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts |
+| `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
 
 `make` loads the root `.env` and exports it, and its values win over variables set on the command line. To point a command at another database, run the Go command directly.
 

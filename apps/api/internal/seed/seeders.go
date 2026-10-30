@@ -14,7 +14,7 @@ import (
 
 // DemoEmail is the documented demo account, and DemoWorkspace its workspace.
 const (
-	DemoEmail     = "hello@forma.test"
+	DemoEmail     = "test@example.com"
 	DemoWorkspace = "Acme"
 )
 
