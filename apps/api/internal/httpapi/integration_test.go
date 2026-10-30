@@ -91,16 +91,19 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	if project.ID < 1 || project.Name != "Private project" || project.Status != "Planned" || project.CreatedAt.IsZero() || project.UpdatedAt.IsZero() {
 		t.Fatalf("created project not returned: %+v", project)
 	}
-	var owned []store.Project
+	var owned store.Page[store.Project]
 	_ = json.Unmarshal(call(t, h, "GET", "/api/projects", "", "", cookie, 200).Body.Bytes(), &owned)
-	if len(owned) != 1 || owned[0].ID != project.ID || owned[0].Description != "Owned by one" {
+	if len(owned.Data) != 1 || owned.Data[0].ID != project.ID || owned.Data[0].Description != "Owned by one" || owned.Pages.Items != 1 {
 		t.Fatalf("owner list wrong: %+v", owned)
 	}
 	list := call(t, h, "GET", "/api/projects", "", "", otherCookie, 200)
-	if strings.TrimSpace(list.Body.String()) != "[]" {
-		t.Fatal("cross-user project leak")
+	if !strings.Contains(list.Body.String(), `"data":[]`) || !strings.Contains(list.Body.String(), `"items":0`) {
+		t.Fatalf("cross-user project leak: %s", list.Body.String())
 	}
 	path := fmt.Sprintf("/api/projects/%d", project.ID)
+	call(t, h, "GET", path, "", "", cookie, 200)
+	call(t, h, "GET", path, "", "", otherCookie, 404)
+	call(t, h, "GET", "/api/projects/nope", "", "", cookie, 400)
 	call(t, h, "PATCH", path, body, two.CSRF, otherCookie, 404)
 	updated := strings.Replace(body, "Planned", "Completed", 1)
 	var saved store.Project

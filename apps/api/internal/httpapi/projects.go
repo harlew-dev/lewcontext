@@ -5,10 +5,20 @@ import (
 	"errors"
 	"forma/api/internal/store"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
+
+var (
+	projectStatuses = []string{"Planned", "In progress", "Completed"}
+	projectColors   = []string{"violet", "blue", "amber", "emerald", "rose"}
+)
+
+// maxSearchLength bounds the project search term in Unicode characters.
+const maxSearchLength = 100
 
 func validProject(in *store.ProjectInput) bool {
 	in.Name = strings.TrimSpace(in.Name)
@@ -16,25 +26,84 @@ func validProject(in *store.ProjectInput) bool {
 	if utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 100 || utf8.RuneCountInString(in.Description) > 500 {
 		return false
 	}
-	switch in.Status {
-	case "Planned", "In progress", "Completed":
-	default:
+	return slices.Contains(projectStatuses, in.Status) && slices.Contains(projectColors, in.Color)
+}
+
+// projectFilter validates the listing's "q", "status" and "sort" parameters.
+func projectFilter(params map[string]string) (store.ProjectFilter, bool) {
+	f := store.ProjectFilter{
+		Search: strings.TrimSpace(params["q"]),
+		Status: params["status"],
+		Sort:   params["sort"],
+	}
+	if !validSearch(f.Search) {
+		return store.ProjectFilter{}, false
+	}
+	if f.Status != "" && !slices.Contains(projectStatuses, f.Status) {
+		return store.ProjectFilter{}, false
+	}
+	if f.Sort == "" {
+		f.Sort = store.DefaultProjectSort
+	}
+	if !store.ProjectSortable(f.Sort) {
+		return store.ProjectFilter{}, false
+	}
+	return f, true
+}
+
+// validSearch rejects invalid UTF-8 and control characters (PostgreSQL text
+// cannot hold NUL) and bounds the length.
+func validSearch(term string) bool {
+	if !utf8.ValidString(term) || utf8.RuneCountInString(term) > maxSearchLength {
 		return false
 	}
-	switch in.Color {
-	case "violet", "blue", "amber", "emerald", "rose":
-	default:
-		return false
-	}
-	return true
+	return !strings.ContainsFunc(term, unicode.IsControl)
+}
+
+// projectID reads the {id} path value as a positive integer.
+func projectID(r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	return id, err == nil && id > 0
 }
 func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
-	projects, err := s.Store.Projects(r.Context(), current(r).User.ID)
+	params, ok := queryParams(r, "page", "perPage", "q", "status", "sort")
+	if !ok {
+		fail(w, 400, "Invalid query parameters.")
+		return
+	}
+	req, ok := pageRequest(params)
+	if !ok {
+		fail(w, 400, "Invalid page.")
+		return
+	}
+	filter, ok := projectFilter(params)
+	if !ok {
+		fail(w, 400, "Check the search, status, and sort.")
+		return
+	}
+	page, err := s.Store.ProjectPage(r.Context(), current(r).User.ID, filter, req)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, projects)
+	jsonResponse(w, 200, page)
+}
+func (s *Server) project(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectID(r)
+	if !ok {
+		fail(w, 400, "Invalid project ID.")
+		return
+	}
+	p, err := s.Store.Project(r.Context(), current(r).User.ID, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		fail(w, 404, "Project not found.")
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	jsonResponse(w, 200, p)
 }
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	var in store.ProjectInput
@@ -53,8 +122,8 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 201, p)
 }
 func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id < 1 {
+	id, ok := projectID(r)
+	if !ok {
 		fail(w, 400, "Invalid project ID.")
 		return
 	}

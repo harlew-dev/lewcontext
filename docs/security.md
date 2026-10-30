@@ -26,9 +26,12 @@ Next proxies only to the configured fixed API origin. API listeners default to l
 | GET | `/api/auth/me` | Session | User, CSRF, sign-in/expiry times |
 | POST | `/api/auth/logout` | Session + CSRF + origin | 204; revoke cookie/session |
 | DELETE | `/api/auth/sessions` | Session + CSRF + origin | 204; revoke other sessions |
-| GET | `/api/projects` | Session | Current user's projects |
+| GET | `/api/projects` | Session | One page of the current user's projects |
+| GET | `/api/projects/{id}` | Session | Owned project; 404 otherwise |
 | POST | `/api/projects` | Session + CSRF + origin | 201; created project |
 | PATCH | `/api/projects/{id}` | Session + CSRF + origin | Updated owned project |
+
+`GET /api/projects` returns `{ "data": [...], "pages": { "current", "total", "perPage", "items" } }`, counting only the caller's projects. It accepts only `page` (1–10 000), `perPage` (1–100, default 20), `q` (≤ 100 characters, no control characters; matched case-insensitively against name and description with LIKE wildcards escaped), `status`, and `sort` (`name`, `status`, `updated`, `created`, `-` prefix for descending; default `-updated`). Unknown, repeated, or out-of-range parameters return 400. Sort keys map to fixed SQL in `store/projects.go`; no column name comes from input. The page cap bounds `OFFSET`, and a page past the end returns an empty `data` with the real totals.
 
 Project mutations accept `name`, `description`, `status` (`Planned`, `In progress`, `Completed`), and `color` (`violet`, `blue`, `amber`, `emerald`, `rose`). Unknown fields are rejected; PATCH currently replaces the complete editable representation. No project deletion is exposed.
 

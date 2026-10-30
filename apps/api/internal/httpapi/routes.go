@@ -13,6 +13,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("DELETE /api/auth/sessions", s.requireSession(http.HandlerFunc(s.revokeOthers)))
 	mux.Handle("GET /api/projects", s.requireSession(http.HandlerFunc(s.projects)))
 	mux.Handle("POST /api/projects", s.requireSession(http.HandlerFunc(s.createProject)))
+	mux.Handle("GET /api/projects/{id}", s.requireSession(http.HandlerFunc(s.project)))
 	mux.Handle("PATCH /api/projects/{id}", s.requireSession(http.HandlerFunc(s.updateProject)))
 	return s.security(mux)
 }
