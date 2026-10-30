@@ -5,9 +5,9 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
-.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed dev api web web-build build serve test test-integration test-e2e check
+.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed dev api web web-build build serve test test-integration test-e2e check'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -28,6 +28,10 @@ migration:
 # make seed [only=demo|volume|users] [count=n] [projects=n] [email=address]
 seed:
 	cd apps/api && go run ./cmd/seed $(if $(only),-only '$(only)') $(if $(count),-count '$(count)') $(if $(projects),-projects '$(projects)') $(if $(email),-email '$(email)')
+# make prune [target=events] [older-than=90d] [CONFIRM=1]: deletes old rows from log tables.
+# Previews unless CONFIRM=1 and a target; without a target previews every one.
+prune:
+	cd apps/api && go run ./cmd/prune $(if $(older-than),-older-than '$(older-than)') $(if $(CONFIRM),-confirm) $(target)
 # Development in one terminal: rebuilds the embedded web app, then runs the API and Vite together (scripts/dev.sh).
 dev:
 	./scripts/dev.sh

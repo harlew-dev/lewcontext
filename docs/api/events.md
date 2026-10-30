@@ -49,7 +49,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 - **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted`, and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `auth.rate_limited`, so a flood writes one row.
-- Project and workspace names and descriptions stay in the log after they change. Nothing deletes events yet (pruning is planned). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
+- Project and workspace names and descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
 
 ## Listeners
 

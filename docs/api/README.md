@@ -9,6 +9,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/server` | Startup (with the embedded web build when there is one), event listeners and the delivery worker, HTTP server timeouts, 15-minute cleanup of expired sessions and limits, graceful shutdown |
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
+| `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
 | `internal/httpapi` | Routes (`routes.go`, API and pages), middleware, input validation, JSON responses |
@@ -18,6 +19,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
+| `internal/prune` | Prune targets, `-older-than` parsing and the batched run for `make prune` |
 | `migrations` | SQL migration pairs, embedded into the binaries |
 
 `cmd/server` never imports `factory` or `seed`.

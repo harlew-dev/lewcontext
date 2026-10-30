@@ -46,6 +46,29 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 3. **A factory in `internal/factory`** with its own model. `TestEveryTableHasAFactory` fails without it ([seeding.md](seeding.md)).
 4. Integration tests, including another user's access ([testing.md](testing.md)).
 
+## Pruning
+
+Log tables grow without limit, so `make prune` deletes their old rows on demand (`cmd/prune`, targets in `internal/prune`, queries in `internal/store/prune.go`):
+
+```sh
+make prune                                          # previews every target with its default age; deletes nothing
+make prune target=events                            # preview: "events: would delete 12408 older than 2026-08-01 20:29 UTC (90d)"
+make prune target=events older-than=7d CONFIRM=1    # deletes
+cd apps/api && go run ./cmd/prune events -older-than 36h -confirm
+cd apps/api && go run ./cmd/prune -h                # lists targets and their default ages
+```
+
+| Target | Default age | Deletes | Keeps |
+| --- | --- | --- | --- |
+| `events` | 90 days | events created before the cutoff, with their delivered or failed `event_deliveries` (cascade) | events with a pending delivery, counted as "kept" |
+
+- **Previews unless confirmed**, like `migrate-rollback`. Without a target it previews every target and never deletes, even with `CONFIRM=1`.
+- **`older-than`** takes whole days or hours (`90d`, `36h`), at least `1h`, so a typo like `0d` can't empty a table.
+- **The cutoff is fixed** when the run starts; rows created meanwhile are never in scope.
+- **Batches** of 5000 rows, each one short `DELETE … FOR UPDATE SKIP LOCKED` statement, so a large prune holds no long transaction and two runs don't wait on each other. Ctrl-C (or the 30-minute run timeout) stops between batches; the report says how many were deleted.
+- **Allowed in production**, unlike `seed`; a deployment would run it from cron. `sessions` and `auth_attempts` aren't targets: the server's 15-minute cleanup already deletes them.
+- **Adding a target:** an entry in `prune.Pruners` (name, description, default age, why rows are kept) with a count and a batched delete query in `internal/store`.
+
 ## Rules
 
 - Never drop or reset a database other than the local development one, and that one only with `make migrate-fresh`. Integration tests use their own temporary schema.
