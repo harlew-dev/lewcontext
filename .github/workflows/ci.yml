@@ -16,7 +16,6 @@ jobs:
       DATABASE_URL: postgresql://forma:test-only-password@127.0.0.1:5432/forma_test?sslmode=disable
       TEST_DATABASE_URL: postgresql://forma:test-only-password@127.0.0.1:5432/forma_test?sslmode=disable
       APP_ORIGIN: http://localhost:3000
-      API_URL: http://127.0.0.1:8080
       APP_ENV: development
     steps:
       - uses: actions/checkout@v4
@@ -33,15 +32,16 @@ jobs:
       - run: make test check build
       - run: make migrate
       - run: npm --prefix apps/web exec -- playwright install --with-deps chromium
+      # As make serve: the binary built above serves the API and the embedded web app on :3000.
       - name: Start application
         run: |
-          ./bin/api > /tmp/forma-api.log 2>&1 &
-          npm --prefix apps/web start > /tmp/forma-web.log 2>&1 &
-          for attempt in $(seq 1 30); do curl -sf http://localhost:3000/login > /dev/null && break; sleep 2; done
+          API_ADDR=127.0.0.1:3000 ./bin/api > /tmp/forma-api.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -sf http://localhost:3000/auth/login > /dev/null && exit 0; sleep 2; done
+          echo 'The app did not start on :3000'; cat /tmp/forma-api.log; exit 1
       - name: Browser tests
         run: |
           export CHROMIUM_PATH=$(node -e "console.log(require('./apps/web/node_modules/playwright').chromium.executablePath())")
           make test-e2e
       - name: Logs on failure
         if: failure()
-        run: cat /tmp/forma-api.log /tmp/forma-web.log || true
+        run: cat /tmp/forma-api.log || true
