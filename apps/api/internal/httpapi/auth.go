@@ -1,10 +1,10 @@
 package httpapi
 
 import (
+	"database/sql"
 	"errors"
 	"forma/api/internal/auth"
 	"forma/api/internal/store"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"net/http"
 	"net/mail"
@@ -80,11 +80,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, hash, err := s.Store.FindUser(r.Context(), in.Email)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		internalError(w, err)
 		return
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		hash = s.dummyHash
 	}
 	valid := auth.CheckPassword(in.Password, hash)

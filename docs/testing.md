@@ -14,7 +14,7 @@
 ## Automated checks
 
 - `make test`: Argon2id verification, salts, cookie flags, random tokens, input validation, CSRF origin rules, JSON parsing, frontend API responses, and project interactions. DB integration tests explicitly skip if `TEST_DATABASE_URL` is absent.
-- `TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable' make test-integration`: real SQL/migrations/auth/session/ownership tests. Creates a unique `forma_test_<timestamp>` schema, uses it exclusively, and drops only that schema at cleanup. Requires schema creation permissions in the **test** database. Runs the race detector.
+- `TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable' make test-integration`: real SQL/migrations (including rollback and adoption of the previous runner's history)/auth/session/ownership tests. Creates a unique `forma_test_<timestamp>` schema, uses it exclusively, and drops only that schema at cleanup. Requires schema creation permissions in the **test** database. Runs the race detector.
 - `make check`: gofmt, Go vet, strict TypeScript, ESLint, formatting.
 - `make build`: backend compile and optimized Next build. No database connection is needed during build because private pages render on request.
 - `TEST_DATABASE_URL='...' make test-e2e`: tests against the **running** application. Default browser executable `/usr/bin/chromium`; override with `CHROMIUM_PATH`. Creates a unique `e2e-<timestamp>@forma.test` user, then deletes only that user with `psql` using the provided test DB URL. Cascading FKs remove its sessions/projects. Repeated runs use distinct accounts but may encounter the intentional 60 attempts per 15 minutes IP rate limit.
@@ -37,4 +37,6 @@ Stop only the API process you started. An authenticated page reload should retur
 
 ## Migration reversal
 
-The migration runner intentionally applies forward migrations only. `001_initial.down.sql` documents the reverse migration and **drops application data**. Do not run it without explicit authorization and a backup. Never edit an applied migration; add a new numbered `.up.sql` and corresponding `.down.sql`. The runner records applied filenames in `schema_migrations`.
+Migrations run through Bun's migrator and are recorded in `bun_migrations`. Each `make migrate` that applies anything forms a group. `make migrate-rollback` shows the last group; `make migrate-rollback CONFIRM=1` runs its `.tx.down.sql` files. Each initial `.tx.down.sql` drops its table and **its application data**. Do not run a rollback without explicit authorization and a backup. Never edit an applied migration; create a new pair with `make migration name=<lowercase_name>`.
+
+Databases migrated by the previous runner keep their history: the first Bun migration command marks the matching migrations applied in `bun_migrations` as group 1 (its `001_initial.up.sql` became `001_create_users` through `004_create_auth_attempts` with unchanged SQL; see `legacyMigrations` in `internal/database/migrate.go`) and renames the old table to `schema_migrations_legacy` in one transaction. Branches still on the old runner will then fail `make migrate` against that database without changing it.

@@ -1,9 +1,9 @@
 package httpapi
 
 import (
+	"database/sql"
 	"errors"
 	"forma/api/internal/store"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strconv"
 	"strings"
@@ -67,7 +67,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := s.Store.UpdateProject(r.Context(), current(r).User.ID, id, in)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Project not found.")
 		return
 	}

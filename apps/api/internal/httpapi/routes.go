@@ -17,7 +17,7 @@ func (s *Server) Routes() http.Handler {
 	return s.security(mux)
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	if err := s.Store.DB.Ping(r.Context()); err != nil {
+	if err := s.Store.DB.PingContext(r.Context()); err != nil {
 		fail(w, 503, "Database unavailable")
 		return
 	}

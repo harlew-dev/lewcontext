@@ -5,14 +5,22 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
-.PHONY: help install migrate seed api web build test test-integration test-e2e check
+.PHONY: help install migrate migrate-status migrate-rollback migration seed api web build test test-integration test-e2e check
 help:
-	@echo 'Targets: install migrate seed api web build test test-integration test-e2e check'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migration seed api web build test test-integration test-e2e check'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
 migrate:
 	cd apps/api && go run ./cmd/migrate
+migrate-status:
+	cd apps/api && go run ./cmd/migrate status
+# Previews the last migration group; CONFIRM=1 runs its destructive down SQL.
+migrate-rollback:
+	cd apps/api && go run ./cmd/migrate rollback $(if $(CONFIRM),-confirm)
+migration:
+	@test -n "$(name)" || (echo 'Usage: make migration name=add_tasks'; exit 1)
+	cd apps/api && go run ./cmd/migrate create $(name)
 seed:
 	cd apps/api && go run ./cmd/seed
 api:

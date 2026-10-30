@@ -13,7 +13,7 @@ make migrate
 make seed
 ```
 
-The example environment uses the supplied test database at `127.0.0.1:5432/lewcontext`. Its credentials are for this local test environment only. Existing tables/data are never dropped by setup. Migrations are explicit, transactional, versioned, and protected by a PostgreSQL advisory lock.
+The example environment uses the supplied test database at `127.0.0.1:5432/lewcontext`. Its credentials are for this local test environment only. Existing tables/data are never dropped by setup. Migrations use Bun's migrator: explicit, transactional per file, versioned, grouped for rollback, and protected by a PostgreSQL advisory lock. `make migrate-status` lists them, `make migration name=add_tasks` creates an up/down pair, and `make migrate-rollback` previews undoing the last group (`CONFIRM=1` runs it and can drop data).
 
 In two terminals, from the repository root:
 
@@ -52,8 +52,8 @@ The browser test uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` for an
 
 - `apps/api/cmd`: small server, migration, and seed entrypoints.
 - `apps/api/internal/httpapi/routes.go`: all API routes and authentication requirements.
-- `apps/api/internal/{auth,config,database,httpapi,store}`: cryptography, validated config, migrations, HTTP boundary, parameterized SQL repositories.
-- `apps/api/migrations`: embedded forward and reverse SQL migrations.
+- `apps/api/internal/{auth,config,database,httpapi,store}`: cryptography, validated config, Bun connection and migrator, HTTP boundary, Bun models and queries.
+- `apps/api/migrations`: embedded Bun SQL migrations (`.tx.up.sql` / `.tx.down.sql` pairs).
 - `apps/web/src/pages`: thin Next.js Pages Router entrypoints; protected pages use request-time SSR.
 - `apps/web/src/lib/routes.ts`: navigation and API route definitions.
 - `apps/web/src/components/{ui,layout,auth,dashboard,projects}`: reusable BaseUI primitives and feature components.

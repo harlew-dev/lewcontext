@@ -7,47 +7,25 @@ import (
 	"forma/api/internal/auth"
 	"forma/api/internal/config"
 	"forma/api/internal/database"
+	"forma/api/internal/database/dbtest"
 	"forma/api/internal/store"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/uptrace/bun"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 // Each run owns a unique schema; existing application data is never reset.
-func integrationServer(t *testing.T) (*Server, *pgxpool.Pool) {
+func integrationServer(t *testing.T) (*Server, *bun.DB) {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
-	}
+	db := dbtest.Open(t)
 	ctx := context.Background()
-	admin, err := database.Open(ctx, url)
-	if err != nil {
+	if _, err := database.Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	schema := fmt.Sprintf("forma_test_%d", time.Now().UnixNano())
-	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := pgxpool.ParseConfig(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.ConnConfig.RuntimeParams["search_path"] = schema
-	db, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close(); _, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE"); admin.Close() })
-	if err = database.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-	if err = database.Migrate(ctx, db); err != nil {
-		t.Fatal("migration is not idempotent", err)
+	if group, err := database.Migrate(ctx, db); err != nil || !group.IsZero() {
+		t.Fatal("migration is not idempotent", group, err)
 	}
 	server, err := New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000"})
 	if err != nil {
@@ -92,11 +70,12 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	}
 	one, cookie := register("one@example.com")
 	two, otherCookie := register("two@example.com")
+	call(t, h, "POST", "/api/auth/register", `{"name":"Again","email":"one@example.com","password":"correct horse battery staple"}`, "", nil, 409)
 	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
 		t.Fatal("cookie flags missing")
 	}
 	var stored string
-	if err := db.QueryRow(ctx, "SELECT token_hash FROM sessions WHERE user_id=$1", one.User.ID).Scan(&stored); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT token_hash FROM sessions WHERE user_id=?", one.User.ID).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
 	if stored == cookie.Value || stored != auth.Digest(cookie.Value) {
@@ -109,6 +88,14 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	created := call(t, h, "POST", "/api/projects", body, one.CSRF, cookie, 201)
 	var project store.Project
 	_ = json.Unmarshal(created.Body.Bytes(), &project)
+	if project.ID < 1 || project.Name != "Private project" || project.Status != "Planned" || project.CreatedAt.IsZero() || project.UpdatedAt.IsZero() {
+		t.Fatalf("created project not returned: %+v", project)
+	}
+	var owned []store.Project
+	_ = json.Unmarshal(call(t, h, "GET", "/api/projects", "", "", cookie, 200).Body.Bytes(), &owned)
+	if len(owned) != 1 || owned[0].ID != project.ID || owned[0].Description != "Owned by one" {
+		t.Fatalf("owner list wrong: %+v", owned)
+	}
 	list := call(t, h, "GET", "/api/projects", "", "", otherCookie, 200)
 	if strings.TrimSpace(list.Body.String()) != "[]" {
 		t.Fatal("cross-user project leak")
@@ -116,7 +103,12 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	path := fmt.Sprintf("/api/projects/%d", project.ID)
 	call(t, h, "PATCH", path, body, two.CSRF, otherCookie, 404)
 	updated := strings.Replace(body, "Planned", "Completed", 1)
-	call(t, h, "PATCH", path, updated, one.CSRF, cookie, 200)
+	var saved store.Project
+	_ = json.Unmarshal(call(t, h, "PATCH", path, updated, one.CSRF, cookie, 200).Body.Bytes(), &saved)
+	if saved.ID != project.ID || saved.Status != "Completed" || !saved.CreatedAt.Equal(project.CreatedAt) || saved.UpdatedAt.Before(project.UpdatedAt) {
+		t.Fatalf("updated project not returned: %+v", saved)
+	}
+	call(t, h, "PATCH", "/api/projects/999999", body, one.CSRF, cookie, 404)
 	call(t, h, "PATCH", "/api/projects/nope", body, one.CSRF, cookie, 400)
 	call(t, h, "POST", "/api/auth/login", `{"email":"one@example.com","password":"wrong password long"}`, "", nil, 401)
 	login := call(t, h, "POST", "/api/auth/login", `{"email":"one@example.com","password":"correct horse battery staple"}`, "", cookie, 200)
@@ -133,15 +125,24 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "GET", "/api/auth/me", "", "", secondCookie, 401)
 	call(t, h, "POST", "/api/auth/logout", "{}", signed.CSRF, rotated, 204)
 	call(t, h, "GET", "/api/auth/me", "", "", rotated, 401)
-	if _, err := db.Exec(ctx, "UPDATE sessions SET last_seen_at=now()-interval '31 minutes' WHERE user_id=$1", two.User.ID); err != nil {
+	if _, err := db.ExecContext(ctx, "UPDATE sessions SET last_seen_at=now()-interval '31 minutes' WHERE user_id=?", two.User.ID); err != nil {
 		t.Fatal(err)
 	}
 	call(t, h, "GET", "/api/auth/me", "", "", otherCookie, 401)
 	_, expiryCookie := register("expiry@example.com")
-	if _, err := db.Exec(ctx, "UPDATE sessions SET expires_at=now()-interval '1 second' WHERE token_hash=$1", auth.Digest(expiryCookie.Value)); err != nil {
+	if _, err := db.ExecContext(ctx, "UPDATE sessions SET expires_at=now()-interval '1 second' WHERE token_hash=?", auth.Digest(expiryCookie.Value)); err != nil {
 		t.Fatal(err)
 	}
 	call(t, h, "GET", "/api/auth/me", "", "", expiryCookie, 401)
+	capped, firstCookie := register("cap@example.com")
+	for i := 0; i < 5; i++ {
+		call(t, h, "POST", "/api/auth/login", `{"email":"cap@example.com","password":"correct horse battery staple"}`, "", nil, 200)
+	}
+	call(t, h, "GET", "/api/auth/me", "", "", firstCookie, 401)
+	var sessions int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE user_id=?", capped.User.ID).Scan(&sessions); err != nil || sessions != 5 {
+		t.Fatalf("session cap: want 5 sessions, got %d (%v)", sessions, err)
+	}
 	for i := 0; i < 10; i++ {
 		call(t, h, "POST", "/api/auth/login", `{"email":"missing@example.com","password":"correct horse battery staple"}`, "", nil, 401)
 	}

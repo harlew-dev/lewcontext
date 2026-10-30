@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"forma/api/internal/auth"
 	"forma/api/internal/config"
 	"forma/api/internal/database"
 	"forma/api/internal/store"
-	"github.com/jackc/pgx/v5"
 	"log"
 	"os"
 	"time"
@@ -38,23 +38,15 @@ func main() {
 		log.Print("Demo account already exists; no data changed")
 		return
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		log.Fatal(err)
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		log.Fatal(err)
 	}
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer tx.Rollback(ctx)
-	var id int64
-	if err = tx.QueryRow(ctx, "INSERT INTO users(name,email,password_hash) VALUES('Alex Morgan','hello@forma.test',$1) RETURNING id", hash).Scan(&id); err != nil {
-		log.Fatal(err)
-	}
-	projects := []store.ProjectInput{
+	now := time.Now()
+	projects := []store.Project{
 		{Name: "Website redesign", Description: "A fresh home for everything we’re building.", Status: "In progress", Color: "violet"},
 		{Name: "Mobile experience", Description: "Bring a little more delight to the everyday.", Status: "In progress", Color: "blue"},
 		{Name: "Brand guidelines", Description: "One shared language. A thousand possibilities.", Status: "Completed", Color: "amber"},
@@ -62,12 +54,11 @@ func main() {
 		{Name: "Design system", Description: "Thoughtful foundations for what comes next.", Status: "Planned", Color: "emerald"},
 		{Name: "Product launch", Description: "Make our next chapter a memorable one.", Status: "Planned", Color: "violet"},
 	}
-	for i, p := range projects {
-		if _, err = tx.Exec(ctx, "INSERT INTO projects(user_id,name,description,status,color,created_at,updated_at) VALUES($1,$2,$3,$4,$5,now()-($6 * interval '1 day'),now()-($7 * interval '1 hour'))", id, p.Name, p.Description, p.Status, p.Color, 14+i, i*4); err != nil {
-			log.Fatal(err)
-		}
+	for i := range projects {
+		projects[i].CreatedAt = now.AddDate(0, 0, -(14 + i))
+		projects[i].UpdatedAt = now.Add(-time.Duration(i*4) * time.Hour)
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = s.CreateDemoAccount(ctx, "Alex Morgan", "hello@forma.test", hash, projects); err != nil {
 		log.Fatal(err)
 	}
 	log.Print("Created demo account hello@forma.test and six projects")

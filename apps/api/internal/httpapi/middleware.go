@@ -3,10 +3,10 @@ package httpapi
 import (
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"errors"
 	"forma/api/internal/auth"
 	"forma/api/internal/store"
-	"github.com/jackc/pgx/v5"
 	"mime"
 	"net"
 	"net/http"
@@ -51,7 +51,7 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 			return
 		}
 		session, err := s.Store.Session(r.Context(), auth.Digest(cookie.Value))
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) {
 			fail(w, 401, "Your session has expired. Please sign in again.")
 			return
 		}
