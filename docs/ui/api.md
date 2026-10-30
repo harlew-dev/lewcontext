@@ -22,7 +22,7 @@ paths.projects(ws).show(id)                              // ApiPath<Project>: "/
 | `update(id, input)` | `PATCH /api/<resource>/{id}` | `T` |
 | `destroy(id)` | `DELETE /api/<resource>/{id}` | `void` |
 
-- `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths. **Workspace resources take the workspace ID explicitly**, both in `paths.projects(ws)` and `api.projects(ws)`, so the same paths work in components, SWR keys and `getServerSideProps`.
+- `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths. **Workspace resources take the workspace ID explicitly**, both in `paths.projects(ws)` and `api.projects(ws)`, so the same paths work in components, SWR keys and route loaders.
 - Resources implement only what the API supports. Projects have `destroy` commented out until a delete endpoint exists.
 - **`index()` takes a typed query object** (`ProjectIndexQuery`: `page`, `perPage`, `q`, `status`, `sort`). Unknown keys and values the API would reject are type errors. Defaults are left out, so each query has one path.
 - **Bodies contain only the editable fields** (`create`/`update` pick them from the input), because the API rejects unknown fields.
@@ -37,16 +37,16 @@ paths.projects(ws).show(id)                              // ApiPath<Project>: "/
 ## Calling the API: `useApi()`
 
 - **`const api = useApi()`** in a component body, then `await api.projects(workspace.id).create(input)` in handlers. It is a hook, so it can't be called in a handler, a condition or at module level.
-- **CSRF is automatic.** `useApi()` reads the session's token from the session context ([pages.md](pages.md#the-session)) and sends it as `X-CSRF-Token` on mutations. Signed out (login, register), it sends none. The client is rebuilt only when the token changes. Never put the token in a URL or localStorage.
-- **Browser calls** go through the same-origin `/api` proxy with the session cookie and a 12 s timeout.
-- **Outside components** you only need `paths` (module constants, SWR keys, server loaders). There is no browser-side `api()` function: a module-level client would have to hold a token, and on the server module state is shared between users.
+- **CSRF is automatic.** `useApi()` reads the session's token from the session context ([pages.md](pages.md#the-session-and-the-workspace)) and sends it as `X-CSRF-Token` on mutations. Signed out (login, register), it sends none. The client is rebuilt only when the token changes. Never put the token in a URL or localStorage.
+- **Calls** go to the same-origin `/api` (the Go server in production; Vite's dev proxy in development) with the session cookie and a 12 s timeout.
+- **Route loaders** run outside components and use `loaderApi()`: the same client without a CSRF token, so it can only read ([pages.md](pages.md#route-loaders-libloadersts)). Elsewhere outside components you only need `paths` (module constants, SWR keys). There is no module-level client holding a token.
 
 ## Typed paths
 
 `paths` returns `ApiPath<T>`: a string that also carries its response type (only at compile time). Anything that loads a path infers its type from it, so nobody writes `<Page<Project>>` by hand and a path can't be paired with the wrong type.
 
 ```ts
-const list = useResource(paths.projects(ws).index(query), props.projects); // list.data: Page<Project>
+const list = useResource(paths.projects(ws).index(query)); // list.data: Page<Project>
 await api.get(path); // load any typed path
 ```
 
@@ -55,35 +55,26 @@ await api.get(path); // load any typed path
 `useApi()` is for doing something on a click or submit; `useResource()` is for data a component displays. It wraps SWR (cache, background refetch, retry, refetch on focus):
 
 ```ts
-const list = useResource(path, props.projects);
+const list = useResource(path);
 list.data        // the last loaded data, kept while a new path loads
 list.loading     // nothing loaded for this path yet → <ListSkeleton />
 list.error       // message → <Notice variant="error"> with Retry
+list.missing     // the API answered 404 → render "not found"
 list.refreshing  // revalidating in the background → <RefreshButton>
 list.refresh()   // Retry, refresh, or after a mutation
 ```
 
 - **SWR key** is `[path, userId]`, with the user ID from the session context, so one user never sees another's cached data.
-- **Server-rendered data** (`Initial<T>` from props) is used while `path` matches the path it was rendered for.
+- **Pages fetch their own data**: there is no server rendering, so a page renders at once with skeletons. `useResource(path, fallback)` shows `fallback` (e.g. a record from an already loaded list) until the fetch returns; a `null` path fetches nothing.
 - **Changing path** keeps the previous data in `data` while `loading` is true, and keeps it if the new request fails. Show it, dimmed, with an error `Notice` that offers Retry.
 - **`loading`** is true only when there is no data yet for this path. `refreshing` is true while revalidating.
 - **401** redirects to `/auth/login?next=<this page>` ([pages.md](pages.md#returning-after-sign-in-next)).
-
-## On the server
-
-`serverApi(context)` (`lib/server.ts`) builds the same client on a server transport: the fixed `API_URL`, only the incoming cookie, an 8 s timeout, and a new instance per request. `appProps` hands it to the page's loader ([pages.md](pages.md)):
-
-```ts
-appProps(context, async (api, workspace) => ({
-  projects: await initial(api, paths.projects(workspace.id).index(query), "We couldn’t load your projects."),
-}));
-```
 
 ## Changing data
 
 - Disable duplicate submits with `<Button loading={saving}>`. Show API errors (`ApiError`, `errorMessage(e)`) in the form with `Notice variant="error"`.
 - **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects(workspace.id).matches()` (that workspace's lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
-- **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function so the switcher reloads, and rerun the page's props (`router.push` to the new workspace, or `router.replace(router.asPath)`).
+- **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function, with the workspace's ID after a rename, so the switcher and the current workspace reload.
 - Success messages use `Notice variant="success"` (announced as status).
 
 ## Adding a resource

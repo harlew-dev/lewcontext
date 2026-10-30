@@ -5,9 +5,9 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
-.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed api web build test test-integration test-e2e check
+.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed dev api web web-build build serve test test-integration test-e2e check
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed api web build test test-integration test-e2e check'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed dev api web web-build build serve test test-integration test-e2e check'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -28,14 +28,24 @@ migration:
 # make seed [only=demo|volume|users] [count=n] [projects=n] [email=address]
 seed:
 	cd apps/api && go run ./cmd/seed $(if $(only),-only '$(only)') $(if $(count),-count '$(count)') $(if $(projects),-projects '$(projects)') $(if $(email),-email '$(email)')
+# Development in one terminal: rebuilds the embedded web app, then runs the API and Vite together (scripts/dev.sh).
+dev:
+	./scripts/dev.sh
+# Or each in its own terminal: the API on API_ADDR, and Vite on :3000 proxying /api to it.
 api:
 	cd apps/api && go run ./cmd/server
 web:
 	cd apps/web && npm run dev
-build:
+# Builds the web app and copies it where the Go binary embeds it (internal/web/dist).
+web-build:
+	./scripts/build-web.sh
+# One binary serving the API and the web app.
+build: web-build
 	mkdir -p bin
 	cd apps/api && go build -trimpath -o ../../bin/api ./cmd/server
-	cd apps/web && npm run build
+# Production-like: the built binary serves both on :3000 (APP_ORIGIN). Stop make api and make web first.
+serve: build
+	API_ADDR=127.0.0.1:3000 ./bin/api
 test:
 	cd apps/api && go test -race ./...
 	cd apps/web && npm test

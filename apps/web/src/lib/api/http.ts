@@ -13,7 +13,7 @@ export function errorMessage(error: unknown): string {
     : "Something went wrong. Please try again.";
 }
 export type Method = "POST" | "PATCH" | "DELETE";
-// How resource files reach the API; the browser and the server differ only here.
+// How resource files reach the API.
 export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;
   send<T>(method: Method, path: string, body?: unknown): Promise<T>;
@@ -57,8 +57,9 @@ async function request<T>(
   if (response.status === 204) return undefined as T;
   return response.json();
 }
-// Browser requests go through the same-origin /api proxy with the session
-// cookie; mutations add the session's CSRF token when one is given.
+// Requests go to the same-origin /api (Go serves it; Vite proxies it in
+// development) with the session cookie; mutations add the session's CSRF
+// token when one is given.
 export function browserHttp(csrfToken?: string): Http {
   return http({
     base: "",
@@ -66,9 +67,4 @@ export function browserHttp(csrfToken?: string): Http {
     credentials: "same-origin",
     timeout: 12000,
   });
-}
-// Server rendering calls the fixed private API URL and forwards only the
-// incoming request's cookie. Create one per request; never share it.
-export function serverHttp(base: string, cookie: string): Http {
-  return http({ base, headers: { cookie }, timeout: 8000 });
 }

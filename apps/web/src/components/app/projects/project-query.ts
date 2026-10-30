@@ -1,4 +1,3 @@
-import type { ParsedUrlQuery } from "querystring";
 import { page, param, sort, url } from "@/lib/pagination";
 import type { ProjectIndexQuery } from "@/lib/api";
 import { routes } from "@/lib/routes";
@@ -13,7 +12,7 @@ import {
 const maxSearch = 100;
 // The projects page state in a URL query. Values the API would reject fall
 // back to defaults, so a hand-edited URL still renders a page.
-export function projectQuery(query: ParsedUrlQuery): ProjectQuery {
+export function projectQuery(query: URLSearchParams): ProjectQuery {
   const status = param(query, "status");
   return {
     page: page(query),

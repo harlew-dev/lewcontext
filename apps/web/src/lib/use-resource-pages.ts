@@ -1,12 +1,11 @@
 import { useCallback } from "react";
-import { useRouter } from "next/router";
+import { useLocation, useNavigate } from "react-router";
 import { useSWRConfig } from "swr";
 import useSWRInfinite, { unstable_serialize } from "swr/infinite";
 import { ApiError, errorMessage, useApi, type ApiPath } from "./api";
 import type { Page } from "./pagination";
 import { loginPath } from "./routes";
 import { useOptionalSession } from "./session";
-import type { Initial } from "./types";
 type PathFor<T> = (page: number) => ApiPath<Page<T>>;
 type Key<T> = [ApiPath<Page<T>>, string | undefined];
 // SWR keys for each page of a list: [path, userId], like useResource. No key
@@ -18,27 +17,29 @@ function pageKeys<T>(pathFor: PathFor<T>, userId: string | undefined) {
       : [pathFor(index + 1), userId];
 }
 // SWR over consecutive pages of a typed list path, for infinite scrolling.
-// Page 1 can come from the server, and is revalidated whenever the list is
-// (mount, focus, refresh), so new records show up. Items are de-duplicated by ID, since
-// offset pages shift when records are added. A failed page keeps the loaded
+// Page 1 can be given (`first`, e.g. from a route loader); it is revalidated
+// whenever the list is (mount, focus, refresh), so new records show up. Items
+// are de-duplicated by ID, since offset pages shift when records are added. A failed page keeps the loaded
 // items; `retry` loads it again. Expired sessions go to login.
 export function useResourcePages<T extends { id: string }>(
   pathFor: PathFor<T>,
-  initial?: Initial<Page<T>>,
+  first?: Page<T>,
 ) {
   const api = useApi();
-  const router = useRouter();
+  const navigate = useNavigate();
+  const location = useLocation();
   const userId = useOptionalSession()?.user.id;
-  const rendered = initial?.path === pathFor(1) && initial.data;
   const { data, error, size, setSize, isValidating, mutate } = useSWRInfinite<
     Page<T>,
     unknown,
     (index: number, previous: Page<T> | null) => Key<T> | null
   >(pageKeys(pathFor, userId), ([path]) => api.get(path), {
-    fallbackData: rendered ? [rendered] : undefined,
+    fallbackData: first ? [first] : undefined,
     onError(error) {
       if (error instanceof ApiError && error.status === 401)
-        void router.replace(loginPath(router.asPath));
+        void navigate(loginPath(location.pathname + location.search), {
+          replace: true,
+        });
     },
   });
   const pages = data ?? [];

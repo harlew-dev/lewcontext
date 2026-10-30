@@ -3,10 +3,25 @@ package httpapi
 import (
 	"forma/api/internal/store"
 	"net/http"
+	"strings"
 )
 
-// Routes is the single registry of API endpoints and their authorization requirements.
+// Routes is the single registry of API endpoints and their authorization
+// requirements, and of the web app's pages when Pages is set.
 func (s *Server) Routes() http.Handler {
+	api := s.security(s.apiRoutes())
+	pages := s.pageRoutes()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+		pages.ServeHTTP(w, r)
+	})
+}
+
+// apiRoutes are the JSON endpoints under /api.
+func (s *Server) apiRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.Handle("POST /api/auth/register", s.limitAuth(http.HandlerFunc(s.register)))
@@ -25,7 +40,21 @@ func (s *Server) Routes() http.Handler {
 	ws.HandleFunc("POST", "/projects", s.createProject)
 	ws.HandleFunc("GET", "/projects/{project}", s.project)
 	ws.HandleFunc("PATCH", "/projects/{project}", s.updateProject)
-	return s.security(mux)
+	return mux
+}
+
+// pageRoutes serve the built web app (internal/web) for every other GET.
+// Signed-in pages (/app/*) need a session before any HTML is sent; the app
+// itself decides which page a URL is (apps/web/src/routes.ts).
+func (s *Server) pageRoutes() http.Handler {
+	mux := http.NewServeMux()
+	if s.Pages == nil {
+		return mux // API only: in development Vite serves the pages
+	}
+	mux.Handle("GET /", s.Pages)
+	mux.Handle("GET /app", s.requirePageSession(s.Pages))
+	mux.Handle("GET /app/", s.requirePageSession(s.Pages))
+	return mux
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.DB.PingContext(r.Context()); err != nil {

@@ -1,6 +1,5 @@
 import { useState } from "react";
-import type { GetServerSidePropsContext } from "next";
-import { useRouter } from "next/router";
+import { useSearchParams } from "react-router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
@@ -11,19 +10,19 @@ import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
 import { authPath, routes } from "@/lib/routes";
-import { guestProps } from "@/lib/server";
+import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
-// Signed-in visitors go on to ?next= or /app. Request rendering also
-// supplies a fresh CSP nonce and per-request Styletron styles.
-export function getServerSideProps(context: GetServerSidePropsContext) {
-  return guestProps(context, { redirectSignedIn: true });
+import type { Route } from "./+types/register";
+// Signed-in visitors go on to ?next= or /app.
+export function clientLoader({ request }: Route.ClientLoaderArgs) {
+  return guestLoader(request);
 }
 export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const api = useApi();
-  const router = useRouter();
+  const [search] = useSearchParams();
   // A new account has no workspace yet, so it always starts at onboarding.
   const { busy, error, submit } = useAuthSubmit(
     api.auth().register,
@@ -86,7 +85,7 @@ export default function Register() {
         </Button>
         <Text>
           Already have an account?{" "}
-          <TextLink href={authPath(routes.login, router.query.next)}>
+          <TextLink href={authPath(routes.login, search.get("next"))}>
             <Strong>Sign in</Strong>
           </TextLink>
         </Text>

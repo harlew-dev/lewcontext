@@ -1,4 +1,4 @@
-import { useRouter } from "next/router";
+import { useNavigate } from "react-router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import {
@@ -11,18 +11,23 @@ import { Heading } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
+import { onboardingLoader } from "@/lib/loaders";
 import { routes } from "@/lib/routes";
-import { useSession } from "@/lib/session";
-import type { SessionProps } from "@/lib/types";
+import { SessionProvider, useSession } from "@/lib/session";
 import { useActionError } from "@/lib/use-action-error";
+import type { Route } from "./+types/onboarding";
 // Signed in without a workspace yet: create the first one. Accounts that
 // already have one go on to /app.
-export { onboardingProps as getServerSideProps } from "@/lib/server";
-export default function Onboarding(
-  props: SessionProps | { unavailable: true },
-) {
-  if ("unavailable" in props) return <ServiceUnavailable />;
-  return <NewWorkspace />;
+export function clientLoader() {
+  return onboardingLoader();
+}
+export default function Onboarding({ loaderData }: Route.ComponentProps) {
+  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  return (
+    <SessionProvider session={loaderData.session}>
+      <NewWorkspace />
+    </SessionProvider>
+  );
 }
 function NewWorkspace() {
   const create = useCreateWorkspace();
@@ -68,12 +73,12 @@ function NewWorkspace() {
 function SignedInAs() {
   const api = useApi();
   const session = useSession();
-  const router = useRouter();
+  const navigate = useNavigate();
   const error = useActionError();
   async function signOut() {
     try {
       await api.auth().logout();
-      await router.push(routes.login);
+      await navigate(routes.login);
     } catch (e) {
       error.fail(e);
     }

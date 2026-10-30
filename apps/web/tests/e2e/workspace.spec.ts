@@ -61,12 +61,25 @@ async function onboard(page: Page, workspace: string) {
   await expect(page).toHaveURL(workspaceUrl);
   return workspaceOf(page);
 }
-test("register, create, loading, filter, edit, paginate, SSR, security, mobile, logout, and login", async ({
+test("register, create, loading, filter, edit, paginate, not found, security, mobile, logout, and login", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // The CSP's script hashes must cover every inline script the build wrote.
+  page.on("console", (message) => {
+    if (message.text().includes("Content Security Policy"))
+      errors.push(message.text());
+  });
   await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your work, in good shape." }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Log in" })).toHaveAttribute(
+    "href",
+    "/auth/login",
+  );
+  await page.goto("/app");
   await expect(page).toHaveURL("/auth/login?next=%2Fapp");
   await page.getByRole("link", { name: "Sign up" }).click();
   await expect(page).toHaveURL("/auth/register?next=%2Fapp");
@@ -134,20 +147,35 @@ test("register, create, loading, filter, edit, paginate, SSR, security, mobile, 
   await expect(
     page.getByRole("heading", { name: "Launch the good stuff" }),
   ).toBeVisible();
+  // Records that don't exist render "not found" in the app; Go has already
+  // sent the app shell, so the HTTP status is 200.
   for (const missing of [
     `/app/${ws}/projects/prj_00000000000000`,
     `/app/${ws}/projects/42`,
+  ]) {
+    await page.goto(missing);
+    await expect(
+      page.getByRole("heading", { name: "This project has wandered off." }),
+    ).toBeVisible();
+  }
+  for (const missing of [
     "/app/wsp_00000000000000/dashboard",
     "/app/dashboard",
     "/app/projects",
-  ])
-    expect((await page.request.get(missing)).status()).toBe(404);
+  ]) {
+    await page.goto(missing);
+    await expect(
+      page.getByRole("heading", { name: "This page has wandered off." }),
+    ).toBeVisible();
+  }
   await page.goto(dashboard);
-  const html = await (await page.request.get(dashboard)).text();
-  expect(html).toContain("Launch the good stuff");
-  expect(html).toContain("_styletron_hydrate_");
   const response = await page.request.get(dashboard);
-  expect(response.headers()["content-security-policy"]).toContain("nonce-");
+  const csp = response.headers()["content-security-policy"];
+  // Inline scripts run only by hash; inline CSS is allowed for Styletron.
+  expect(csp).toMatch(/script-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+;/);
+  expect(csp.split(";").find((d) => d.includes("script-src"))).not.toContain(
+    "unsafe",
+  );
   expect(response.headers()["cache-control"]).toContain("no-store");
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page).toHaveURL(`/app/${ws}/projects`);
@@ -237,13 +265,22 @@ test("register, create, loading, filter, edit, paginate, SSR, security, mobile, 
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
-test("/ opens /app, and the pre-workspace URLs are gone", async ({
+test("/ is the prerendered homepage, /app needs a session, and the pre-workspace URLs are gone", async ({
   request,
 }) => {
+  // Search engines get the homepage's content, title and description, and
+  // BaseUI's styles, in the HTML itself.
   const root = await request.get("/", { maxRedirects: 0 });
-  expect(root.status()).toBe(307);
-  expect(root.headers()["location"]).toBe("/app");
+  expect(root.status()).toBe(200);
+  const html = await root.text();
+  expect(html).toContain("<title>Forma — Your work, in good shape.</title>");
+  expect(html).toContain('<meta name="description"');
+  expect(html).toContain("Your work, in good shape.");
+  expect(html).toContain('href="/auth/login"');
+  expect(html).toContain("_styletron_hydrate_");
+  // Signed-out visitors get no app HTML, only a redirect to login.
   const app = await request.get("/app", { maxRedirects: 0 });
+  expect(app.status()).toBe(302);
   expect(app.headers()["location"]).toBe("/auth/login?next=%2Fapp");
   for (const gone of ["/login", "/projects", "/settings", "/auth"])
     expect((await request.get(gone, { maxRedirects: 0 })).status()).toBe(404);
@@ -356,7 +393,7 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
   ).toContainText("Bulk 22");
   expect(workspaceOf(page)).not.toBe(second);
 });
-test("other people's workspaces are 404s until you're a member, then read-only for members", async ({
+test("other people's workspaces are not found until you're a member, then read-only for members", async ({
   page,
   browser,
 }) => {
@@ -392,10 +429,12 @@ test("other people's workspaces are 404s until you're a member, then read-only f
   await owner.close();
   await register(page, memberEmail, "Morgan Example");
   await onboard(page, "Morgan’s own");
-  for (const path of ["dashboard", "projects", "settings"])
-    expect((await page.request.get(`/app/${theirs}/${path}`)).status()).toBe(
-      404,
-    );
+  for (const path of ["dashboard", "projects", "settings"]) {
+    await page.goto(`/app/${theirs}/${path}`);
+    await expect(
+      page.getByRole("heading", { name: "This page has wandered off." }),
+    ).toBeVisible();
+  }
   expect(
     (await page.request.get(`/api/workspaces/${theirs}/projects`)).status(),
   ).toBe(404);
@@ -469,10 +508,12 @@ async function paginate(page: Page, ws: string) {
   await expect(page.getByText("1 matching project")).toBeVisible();
   await page.getByRole("searchbox", { name: "Search projects" }).fill("");
   await expect(page).toHaveURL(`${projects}?sort=name`);
-  // A URL renders the same page on the server.
-  const html = await (await page.request.get(`${projects}?page=2`)).text();
-  expect(html).toContain("Launch the good stuff");
-  expect(html).not.toContain("Bulk 21");
+  // Opening a URL directly renders the same page.
+  await page.goto(`${projects}?page=2`);
+  await expect(
+    page.getByRole("link", { name: "Launch the good stuff" }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Bulk 21")).toHaveCount(0);
   await page.goto(`${projects}?page=9`);
   await expect(page.getByText("There’s nothing on page 9")).toBeVisible();
   await page.getByRole("link", { name: "Go to last page" }).click();

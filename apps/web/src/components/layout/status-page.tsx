@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Text } from "@/components/ui/text";
+import { routes } from "@/lib/routes";
 import { AuthLayout } from "./auth-layout";
-// Full-page message (404, service outage) in the auth layout.
+// Full-page message (homepage, 404, service outage) in the auth layout.
 export function StatusPage({
   title,
   description,
@@ -25,6 +26,16 @@ export function StatusPage({
         <div>{action}</div>
       </div>
     </AuthLayout>
+  );
+}
+// Unknown URLs, and records that don't exist or aren't the member's.
+export function NotFound() {
+  return (
+    <StatusPage
+      title="This page has wandered off."
+      description="Let’s get you back to your workspace."
+      action={<Button href={routes.app}>Back to your workspace</Button>}
+    />
   );
 }
 export function ServiceUnavailable() {

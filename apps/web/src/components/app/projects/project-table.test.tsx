@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
 import { sortable, type Project } from "@/types/projects";
@@ -35,7 +36,10 @@ describe("project table", () => {
     render(
       <WorkspaceProvider
         workspace={workspace}
-        workspaces={{ path: "", data: null, error: null }}
+        first={{
+          data: [workspace],
+          pages: { current: 1, total: 1, perPage: 20, items: 1 },
+        }}
       >
         <Table>
           <TableBody>
@@ -43,6 +47,7 @@ describe("project table", () => {
           </TableBody>
         </Table>
       </WorkspaceProvider>,
+      { wrapper: MemoryRouter },
     );
     expect(screen.getByText("Talk to our customers")).toBeInTheDocument();
     expect(screen.getByText("Planned")).toBeInTheDocument();
@@ -62,6 +67,7 @@ describe("project table", () => {
           />
         </TableHead>
       </Table>,
+      { wrapper: MemoryRouter },
     );
     expect(screen.getByRole("link", { name: "Project" })).toHaveAttribute(
       "href",
@@ -92,12 +98,14 @@ describe("project table", () => {
 describe("project query", () => {
   it("normalises URL values the API would reject", () => {
     expect(
-      projectQuery({
-        page: "0",
-        q: `  launch\u0000 ${"x".repeat(200)}`,
-        status: "Archived",
-        sort: "user_id",
-      }),
+      projectQuery(
+        new URLSearchParams({
+          page: "0",
+          q: `  launch\u0000 ${"x".repeat(200)}`,
+          status: "Archived",
+          sort: "user_id",
+        }),
+      ),
     ).toEqual({
       page: 1,
       q: `launch ${"x".repeat(93)}`,
@@ -106,12 +114,14 @@ describe("project query", () => {
     });
   });
   it("builds page and API URLs without defaults", () => {
-    const query = projectQuery({
-      q: "web",
-      status: "Planned",
-      sort: "name",
-      page: "2",
-    });
+    const query = projectQuery(
+      new URLSearchParams({
+        q: "web",
+        status: "Planned",
+        sort: "name",
+        page: "2",
+      }),
+    );
     expect(projectsPath(workspace.id, query)).toBe(
       "/app/wsp_2yEHYLwiwPVhLW/projects?q=web&status=Planned&sort=name&page=2",
     );
@@ -122,7 +132,9 @@ describe("project query", () => {
       sort: "name",
     });
     expect(
-      paths.projects(workspace.id).index(indexQuery(projectQuery({}))),
+      paths
+        .projects(workspace.id)
+        .index(indexQuery(projectQuery(new URLSearchParams()))),
     ).toBe("/api/workspaces/wsp_2yEHYLwiwPVhLW/projects");
   });
   it("mirrors the API's sort allowlist", () => {

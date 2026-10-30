@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { appLayout } from "@/components/layout/application-layout";
-import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,15 +13,8 @@ import { SettingsSection } from "@/components/ui/settings-section";
 import { Text } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
 import { useSession } from "@/lib/session";
-import type { AppPageProps } from "@/lib/types";
 import { useActionError } from "@/lib/use-action-error";
-export { sessionProps as getServerSideProps } from "@/lib/server";
-export default function Settings(props: AppPageProps) {
-  if ("unavailable" in props) return <ServiceUnavailable />;
-  return <AccountSettings />;
-}
-Settings.getLayout = appLayout;
-function AccountSettings() {
+export default function AccountSettings() {
   const session = useSession();
   return (
     <div className="mx-auto max-w-4xl">

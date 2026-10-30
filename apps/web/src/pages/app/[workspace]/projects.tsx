@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { GetServerSidePropsContext } from "next";
-import { useRouter } from "next/router";
+import { useNavigate, useSearchParams } from "react-router";
 import { MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/16/solid";
-import { appLayout } from "@/components/layout/application-layout";
-import { ServiceUnavailable } from "@/components/layout/status-page";
 import { ProjectDialog } from "@/components/app/projects/project-dialog";
 import { ProjectNotices } from "@/components/app/projects/project-notices";
 import {
@@ -26,48 +23,27 @@ import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
-import type { Page } from "@/lib/pagination";
-import { appProps, initial } from "@/lib/server";
-import type { AppPageProps, Initial } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
 import {
   statuses,
-  type Project,
   type ProjectQuery,
   type StatusFilter,
 } from "@/types/projects";
-type ProjectsProps = { projects: Initial<Page<Project>> };
-export function getServerSideProps(context: GetServerSidePropsContext) {
-  const query = indexQuery(projectQuery(context.query));
-  return appProps(context, async (api, { id }) => ({
-    projects: await initial(
-      api,
-      paths.projects(id).index(query),
-      "We couldn’t load your projects. Please try again.",
-    ),
-  }));
-}
-export default function Projects(props: AppPageProps<ProjectsProps>) {
-  if ("unavailable" in props) return <ServiceUnavailable />;
-  return <ProjectsContent {...props} />;
-}
-Projects.getLayout = appLayout;
-function ProjectsContent({ projects }: ProjectsProps) {
-  const router = useRouter();
+// The page state lives in the URL (?q=&status=&sort=&page=), so it survives
+// reloads and back/forward; every change fetches through SWR.
+export default function Projects() {
+  const [search] = useSearchParams();
+  const goTo = useNavigate();
   const workspace = useWorkspace();
-  const query = projectQuery(router.query);
+  const query = projectQuery(search);
   const list = useResource(
     paths.projects(workspace.id).index(indexQuery(query)),
-    projects,
   );
-  // Search, filter and sort changes start again from the first page. Paging
-  // fetches through SWR, so getServerSideProps doesn't need to run again.
+  // Search, filter and sort changes start again from the first page.
   function navigate(change: Partial<ProjectQuery>, replace = false) {
     const path = projectsPath(workspace.id, { ...query, page: 1, ...change });
-    const options = { shallow: true, scroll: false };
-    if (replace) void router.replace(path, undefined, options);
-    else void router.push(path, undefined, options);
+    void goTo(path, { replace, preventScrollReset: true });
   }
   // A new project sorts first, so show page 1 where it appears.
   const editor = useProjectEditor((_, created) => {
@@ -137,7 +113,6 @@ function ProjectsContent({ projects }: ProjectsProps) {
             onCreate={() => editor.setDialog("new")}
           />
         }
-        shallow
       />
       <ProjectDialog editor={editor} />
     </>

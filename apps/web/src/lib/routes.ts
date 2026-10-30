@@ -1,10 +1,11 @@
 import { HomeIcon, Square2StackIcon } from "@heroicons/react/20/solid";
 import { publicIdPattern } from "./ids";
-// Page URLs follow the file layout under src/pages (auth/* and app/*).
-// Workspace pages live under /app/<wsp_…>; /app itself opens the newest
-// workspace (pages/app/index.tsx). The only config redirect is "/" → "/app"
-// (next.config.mjs). API paths live with their resource in lib/api/*.
+// Page URLs, registered with their page files in src/routes.ts (auth/* and
+// app/*). Workspace pages live under /app/<wsp_…>; /app itself opens the
+// newest workspace (pages/app/index.tsx), and "/" is the public homepage. API
+// paths live with their resource in lib/api/*.
 export const routes = {
+  home: "/",
   app: "/app",
   onboarding: "/app/onboarding",
   settings: "/app/settings",

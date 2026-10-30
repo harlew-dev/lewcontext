@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/router";
+import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +22,7 @@ import { maxWorkspaceName, workspaceName } from "@/types/workspaces";
 // runs (the dialog closes).
 export function useCreateWorkspace(onOpened?: () => void) {
   const api = useApi();
-  const router = useRouter();
+  const navigate = useNavigate();
   const refresh = useRefreshWorkspaces();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -36,8 +36,8 @@ export function useCreateWorkspace(onOpened?: () => void) {
     try {
       const workspace = await api.workspaces().create({ name: clean });
       error.clear();
-      void refresh();
-      await router.push(routes.dashboard(workspace.id));
+      refresh();
+      await navigate(routes.dashboard(workspace.id));
       onOpened?.();
     } catch (e) {
       error.fail(e);

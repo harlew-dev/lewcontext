@@ -2,7 +2,10 @@
 .env.*
 !.env.example
 node_modules/
-.next/
+.react-router/
+apps/web/build/
+apps/api/internal/web/dist/*
+!apps/api/internal/web/dist/.gitkeep
 coverage/
 *.tsbuildinfo
 playwright-report/

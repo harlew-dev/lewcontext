@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { Session } from "./types";
-// The visitor's session for the page being rendered. _app provides it from
-// the page's props, so on the server it belongs to that one request.
+// The visitor's session. The signed-in layout (pages/app/layout.tsx) provides
+// it from its route loader; guest pages have none.
 const SessionContext = createContext<Session | null>(null);
 export function SessionProvider({
   session,
@@ -16,8 +16,8 @@ export function SessionProvider({
     </SessionContext.Provider>
   );
 }
-// The signed-in session. Only for UI on signed-in pages, where appProps
-// guarantees one; guest pages use useIsGuest() or useOptionalSession().
+// The signed-in session. Only for UI on signed-in pages, where the layout's
+// loader guarantees one; guest pages use useIsGuest() or useOptionalSession().
 export function useSession(): Session {
   const session = useContext(SessionContext);
   if (!session) throw new Error("useSession() needs a signed-in page");

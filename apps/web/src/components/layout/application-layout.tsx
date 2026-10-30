@@ -1,11 +1,5 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import { useRouter } from "next/router";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate, useNavigation } from "react-router";
 import {
   ArrowRightStartOnRectangleIcon,
   CheckIcon,
@@ -59,7 +53,7 @@ import { navigation, routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useActionError } from "@/lib/use-action-error";
 import { useWorkspace, useWorkspaceList } from "@/lib/workspace";
-import type { AppPageProps, User } from "@/lib/types";
+import type { User } from "@/lib/types";
 import { SidebarLayout } from "./sidebar-layout";
 function initialsOf(user: User) {
   return user.name
@@ -199,24 +193,12 @@ function WorkspaceRowSkeleton() {
   );
 }
 // The route being navigated to, or the current one when idle. Marking the
-// destination as current on click lets the sidebar indicator slide while the
-// next page's server data loads.
+// destination as current on click lets the sidebar indicator slide while a
+// route loader runs.
 function useCurrentPath() {
-  const router = useRouter();
-  const [pending, setPending] = useState<string | null>(null);
-  useEffect(() => {
-    const start = (url: string) => setPending(url.split(/[?#]/)[0]);
-    const stop = () => setPending(null);
-    router.events.on("routeChangeStart", start);
-    router.events.on("routeChangeComplete", stop);
-    router.events.on("routeChangeError", stop);
-    return () => {
-      router.events.off("routeChangeStart", start);
-      router.events.off("routeChangeComplete", stop);
-      router.events.off("routeChangeError", stop);
-    };
-  }, [router.events]);
-  return pending ?? router.asPath.split(/[?#]/)[0];
+  const pending = useNavigation().location;
+  const location = useLocation();
+  return (pending ?? location).pathname;
 }
 function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
@@ -238,13 +220,13 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     </Dialog>
   );
 }
-// Signed-in chrome for every /app page: the sidebar layout with Forma's
+// Signed-in chrome for /app pages (pages/app/layout.tsx): the sidebar layout with Forma's
 // navigation, account menu, sign-out and the getting-started dialog.
 export function ApplicationLayout({ children }: { children: ReactNode }) {
   const api = useApi();
   const session = useSession();
   const workspace = useWorkspace();
-  const router = useRouter();
+  const navigate = useNavigate();
   const error = useActionError();
   const [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -253,7 +235,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
   async function signOut() {
     try {
       await api.auth().logout();
-      await router.push(routes.login);
+      await navigate(routes.login);
     } catch (e) {
       error.fail(e);
     }
@@ -351,10 +333,4 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       />
     </SidebarLayout>
   );
-}
-// getLayout for signed-in pages: _app keeps this layout mounted between pages,
-// which preserves sidebar state and lets the current-page indicator animate.
-export function appLayout(page: ReactElement, props: AppPageProps) {
-  if ("unavailable" in props) return page;
-  return <ApplicationLayout>{page}</ApplicationLayout>;
 }

@@ -12,8 +12,10 @@ import (
 )
 
 type Server struct {
-	Store     *store.Store
-	Config    config.Config
+	Store  *store.Store
+	Config config.Config
+	// Pages serves the web app (internal/web); nil serves the API only.
+	Pages     http.Handler
 	dummyHash string
 	authSlots chan struct{}
 }

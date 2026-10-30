@@ -7,6 +7,7 @@ import (
 	"forma/api/internal/database"
 	"forma/api/internal/httpapi"
 	"forma/api/internal/store"
+	"forma/api/internal/web"
 	"log/slog"
 	"net/http"
 	"os"
@@ -40,9 +41,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := servePages(api, c); err != nil {
+		return err
+	}
 	server := &http.Server{Addr: c.Address, Handler: api.Routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	failures := make(chan error, 1)
-	go func() { slog.Info("API listening", "address", c.Address); failures <- server.ListenAndServe() }()
+	go func() {
+		slog.Info("listening", "address", c.Address, "pages", api.Pages != nil)
+		failures <- server.ListenAndServe()
+	}()
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -65,4 +72,19 @@ func run() error {
 			return err
 		}
 	}
+}
+
+// servePages adds the embedded web build. Production requires it; in
+// development the API can run alone while Vite serves the pages (make web).
+func servePages(api *httpapi.Server, c config.Config) error {
+	pages, err := web.New(web.Files(), c.Production)
+	if errors.Is(err, web.ErrNotBuilt) && !c.Production {
+		slog.Info("serving the API only; the web app isn't built into this binary (make serve)")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	api.Pages = pages
+	return nil
 }

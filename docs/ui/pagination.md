@@ -29,15 +29,16 @@ The API doesn't publish its sort keys. A Vitest test reads the Go allowlist and 
 ## URL state
 
 ```ts
-const query = projectQuery(router.query);      // URL state; bad values → defaults
+const [search] = useSearchParams();
+const query = projectQuery(search);            // URL state; bad values → defaults
 // indexQuery() turns it into the typed ProjectIndexQuery ("all" statuses → no filter)
-const list = useResource(paths.projects(workspace.id).index(indexQuery(query)), props.projects);
-router.push(projectsPath(workspace.id, { ...query, page: 1, status }), undefined, { shallow: true, scroll: false });
+const list = useResource(paths.projects(workspace.id).index(indexQuery(query)));
+navigate(projectsPath(workspace.id, { ...query, page: 1, status }), { preventScrollReset: true });
 ```
 
-- **Shallow routing** changes the URL without rerunning `getServerSideProps`, and SWR fetches the new key. The first render is server-rendered from the same URL.
-- **Search, filter and sort changes reset to page 1.** Search waits 300 ms after typing and uses `router.replace` so history doesn't fill up. Back and forward restore the state.
-- **Normalise the same way the API validates** (`cleanSearch` trims, strips control characters and caps at 100), so the server render never sends a request the API would reject.
+- **Changing the URL** re-renders the page with the new query, and SWR fetches the new key. Pages have no loaders, so nothing else runs. Opening the URL directly renders the same state.
+- **Search, filter and sort changes reset to page 1.** Search waits 300 ms after typing and navigates with `replace: true` so history doesn't fill up. Back and forward restore the state.
+- **Normalise the same way the API validates** (`cleanSearch` trims, strips control characters and caps at 100), so a hand-edited URL never sends a request the API would reject.
 
 ## `PaginatedTable` (`components/ui/paginated-table.tsx`)
 
@@ -51,7 +52,6 @@ router.push(projectsPath(workspace.id, { ...query, page: 1, status }), undefined
   rowKey={(project) => project.id}
   href={(page) => projectsPath(workspace.id, { ...query, page })}
   empty={<ProjectEmptyState filtered={filtered} onCreate={…} />}
-  shallow
 />
 ```
 
@@ -80,6 +80,6 @@ list.error        // keeps the loaded items → a "Couldn’t load more · Retry
 
 ## Building blocks (Catalyst style)
 
-- `Pagination`, `PaginationPrevious`, `PaginationNext`, `PaginationList`, `PaginationPage` (`current`), `PaginationGap`. They are real links, so they work during server rendering and with middle-click.
+- `Pagination`, `PaginationPrevious`, `PaginationNext`, `PaginationList`, `PaginationPage` (`current`), `PaginationGap`. They are real links, so they work with middle-click and open in a new tab.
 - `TableRow href title` makes the whole row a link (each cell gets a link overlay; only the first cell is in the tab order).
-- `TableHeader href sort shallow` makes a sortable header with a chevron and `aria-sort`.
+- `TableHeader href sort` makes a sortable header with a chevron and `aria-sort`; re-sorting keeps the scroll position.

@@ -13,12 +13,16 @@ import { Notice } from "@/components/ui/feedback";
 import { SessionProvider } from "@/lib/session";
 import type { Session } from "@/lib/types";
 import { WorkspaceNameField, useCreateWorkspace } from "./workspace-form";
-const router = vi.hoisted(() => ({ asPath: "/app/onboarding", push: vi.fn() }));
-vi.mock("next/router", () => ({ useRouter: () => router }));
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
+  useNavigate: () => navigate,
+  useLocation: () => ({ pathname: "/app/onboarding", search: "" }),
+}));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  router.push.mockReset();
+  navigate.mockReset();
 });
 const session: Session = {
   user: { id: "usr_00000000000001", name: "Ada", email: "", createdAt: "" },
@@ -93,7 +97,7 @@ describe("creating a workspace", () => {
     fireEvent.submit(submit().closest("form")!);
     release();
     await waitFor(() =>
-      expect(router.push).toHaveBeenCalledWith(
+      expect(navigate).toHaveBeenCalledWith(
         "/app/wsp_2yEHYLwiwPVhLW/dashboard",
       ),
     );
@@ -113,6 +117,6 @@ describe("creating a workspace", () => {
       "Use a workspace name of 1–80 characters.",
     );
     expect(submit()).toBeEnabled();
-    expect(router.push).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

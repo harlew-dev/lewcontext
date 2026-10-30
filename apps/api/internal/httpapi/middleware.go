@@ -7,9 +7,11 @@ import (
 	"errors"
 	"forma/api/internal/auth"
 	"forma/api/internal/store"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -49,14 +51,27 @@ func (s *Server) security(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// errNoSession means the request has no well-formed session cookie.
+var errNoSession = errors.New("no session cookie")
+
+// session looks up the request's session, refreshing its idle timer. It
+// returns errNoSession without a cookie, and sql.ErrNoRows when the session is
+// unknown, expired or idle.
+func (s *Server) session(r *http.Request) (store.Session, error) {
+	cookie, err := r.Cookie(auth.CookieName(s.Config.Production))
+	if err != nil || len(cookie.Value) != 43 {
+		return store.Session{}, errNoSession
+	}
+	return s.Store.Session(r.Context(), auth.Digest(cookie.Value))
+}
 func (s *Server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(auth.CookieName(s.Config.Production))
-		if err != nil || len(cookie.Value) != 43 {
+		session, err := s.session(r)
+		if errors.Is(err, errNoSession) {
 			fail(w, 401, "Please sign in to continue.")
 			return
 		}
-		session, err := s.Store.Session(r.Context(), auth.Digest(cookie.Value))
 		if errors.Is(err, sql.ErrNoRows) {
 			fail(w, 401, "Your session has expired. Please sign in again.")
 			return
@@ -70,6 +85,28 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
+	})
+}
+
+// requirePageSession sends visitors without a valid session from a signed-in
+// page (/app/*) to login, returning there afterwards, before any HTML is
+// served. If the database can't be reached the page is served anyway; its
+// own session check then shows the outage page.
+func (s *Server) requirePageSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		_, err := s.session(r.WithContext(ctx))
+		if errors.Is(err, errNoSession) || errors.Is(err, sql.ErrNoRows) {
+			w.Header().Set("Cache-Control", "no-store")
+			login := "/auth/login?next=" + url.QueryEscape(r.URL.RequestURI())
+			http.Redirect(w, r, login, http.StatusFound)
+			return
+		}
+		if err != nil {
+			slog.Error("page session check failed", "error", err)
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

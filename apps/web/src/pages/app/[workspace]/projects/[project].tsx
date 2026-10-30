@@ -1,7 +1,5 @@
-import type { GetServerSidePropsContext } from "next";
+import { useParams } from "react-router";
 import { ChevronLeftIcon, PencilSquareIcon } from "@heroicons/react/16/solid";
-import { appLayout } from "@/components/layout/application-layout";
-import { ServiceUnavailable } from "@/components/layout/status-page";
 import {
   ProjectAvatar,
   ProjectStatusBadge,
@@ -16,44 +14,28 @@ import {
   DescriptionList,
   DescriptionTerm,
 } from "@/components/ui/description-list";
-import { ListSkeleton } from "@/components/ui/feedback";
+import { EmptyState, ListSkeleton } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Link } from "@/components/ui/link";
 import { Text } from "@/components/ui/text";
 import { parsePublicId } from "@/lib/ids";
 import { paths } from "@/lib/api";
 import { routes } from "@/lib/routes";
-import { appProps, initial } from "@/lib/server";
-import type { AppPageProps, Initial } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
 import type { Project } from "@/types/projects";
-type ProjectProps = { id: string; project: Initial<Project> };
-export async function getServerSideProps(context: GetServerSidePropsContext) {
-  // Only well-formed project IDs reach the API; anything else is a 404 page.
-  const id = parsePublicId("prj", context.params?.project);
-  if (id === null) return { notFound: true as const };
-  return appProps(context, async (api, workspace) => ({
-    id,
-    project: await initial(
-      api,
-      paths.projects(workspace.id).show(id),
-      "We couldn’t load this project. Please try again.",
-    ),
-  }));
+// Only well-formed project IDs reach the API; anything else, and a project
+// that doesn't exist in this workspace, shows "not found" inside the layout.
+export default function ProjectPage() {
+  const id = parsePublicId("prj", useParams().project);
+  if (id === null) return <ProjectNotFound />;
+  return <ProjectContent key={id} id={id} />;
 }
-export default function ProjectPage(props: AppPageProps<ProjectProps>) {
-  if ("unavailable" in props) return <ServiceUnavailable />;
-  return <ProjectContent {...props} />;
-}
-ProjectPage.getLayout = appLayout;
-function ProjectContent({ id, project: initialProject }: ProjectProps) {
+function ProjectContent({ id }: { id: string }) {
   const workspace = useWorkspace();
-  const project = useResource(
-    paths.projects(workspace.id).show(id),
-    initialProject,
-  );
+  const project = useResource(paths.projects(workspace.id).show(id));
   const editor = useProjectEditor();
+  if (project.missing) return <ProjectNotFound />;
   return (
     <>
       <Link
@@ -127,5 +109,17 @@ function ProjectDetails({
         </DescriptionList>
       </div>
     </>
+  );
+}
+function ProjectNotFound() {
+  const workspace = useWorkspace();
+  return (
+    <EmptyState
+      title="This project has wandered off."
+      description="It isn’t in this workspace, or the link is mistyped."
+      action={
+        <Button href={routes.projects(workspace.id)}>Back to projects</Button>
+      }
+    />
   );
 }

@@ -1,4 +1,3 @@
-import type { ParsedUrlQuery } from "querystring";
 // Mirrors store.Page in the Go API: one page of results plus its position.
 export type Pages = {
   current: number;
@@ -13,19 +12,19 @@ export type SortDirection = "ascending" | "descending";
 // Matches store.MaxPage; larger page numbers in a URL fall back to page 1.
 const maxPage = 10_000;
 // One query-string value. Repeated keys count as absent.
-export function param(query: ParsedUrlQuery, key: string): string {
-  const value = query[key];
-  return typeof value === "string" ? value : "";
+export function param(query: URLSearchParams, key: string): string {
+  const values = query.getAll(key);
+  return values.length === 1 ? values[0] : "";
 }
 // The page number in a URL query; anything but a positive integer is page 1.
-export function page(query: ParsedUrlQuery): number {
+export function page(query: URLSearchParams): number {
   const value = param(query, "page");
   const number = /^\d{1,5}$/.test(value) ? Number(value) : 1;
   return number >= 1 && number <= maxPage ? number : 1;
 }
 // The sort in a URL query, or the fallback when it isn't an allowed field.
 export function sort<F extends string>(
-  query: ParsedUrlQuery,
+  query: URLSearchParams,
   fields: readonly F[],
   fallback: Sort<F>,
 ): Sort<F> {

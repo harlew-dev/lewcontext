@@ -35,8 +35,8 @@ Files are kebab-case and export a family of named components. Keep these props s
 
 | File | Exports and main props |
 | --- | --- |
-| `button.tsx` | `Button` `color` \| `outline` \| `plain`, `href` (renders a link; also `shallow`, `scroll`), `loading`, `disabled` · `TouchTarget` |
-| `link.tsx` / `clickable.tsx` | `Link` (Next link with data attributes) · `Clickable` (a link with `href`, otherwise a button) |
+| `button.tsx` | `Button` `color` \| `outline` \| `plain`, `href` (renders a React Router link), `loading`, `disabled` · `TouchTarget` |
+| `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
 | `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
 | `feedback.tsx` | `Notice variant` (`error` alert, `success` status), `onRetry`, `onDismiss` · `EmptyState title description action` · `ListSkeleton label rows` |
@@ -46,7 +46,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
 | `dropdown.tsx` | `Dropdown`, `DropdownButton`, `DropdownMenu`, `DropdownItem href keepOpen aria-current`, `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
 | `settings-section.tsx` | `SettingsSection title description` (account and workspace settings) |
-| `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort shallow` (sortable) · `TableCell` |
+| `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
 | `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current`) · `Navbar*` |

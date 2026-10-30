@@ -1,31 +1,18 @@
 import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-// Thin bar at the top of the viewport while a slow client-side navigation loads.
+import { useNavigation } from "react-router";
+// Thin bar at the top of the viewport while a slow client-side navigation
+// waits for a route loader.
 export function RouteProgress() {
-  const router = useRouter();
+  const busy = useNavigation().state !== "idle";
   const [loading, setLoading] = useState(false);
+  if (!busy && loading) setLoading(false);
   useEffect(() => {
+    if (!busy) return;
     // Only show the bar for navigations slower than this, so quick page
     // changes don't flash it.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const start = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => setLoading(true), 200);
-    };
-    const stop = () => {
-      clearTimeout(timer);
-      setLoading(false);
-    };
-    router.events.on("routeChangeStart", start);
-    router.events.on("routeChangeComplete", stop);
-    router.events.on("routeChangeError", stop);
-    return () => {
-      clearTimeout(timer);
-      router.events.off("routeChangeStart", start);
-      router.events.off("routeChangeComplete", stop);
-      router.events.off("routeChangeError", stop);
-    };
-  }, [router.events]);
+    const timer = setTimeout(() => setLoading(true), 200);
+    return () => clearTimeout(timer);
+  }, [busy]);
   return loading ? (
     <div
       role="status"

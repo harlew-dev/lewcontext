@@ -6,15 +6,19 @@ import { paths } from "./api";
 import { SessionProvider } from "./session";
 import type { Session } from "./types";
 import { useResource } from "./use-resource";
-const router = vi.hoisted(() => ({
-  asPath: "/app/wsp_00000000000001/projects?page=2",
-  replace: vi.fn(),
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
+  useNavigate: () => navigate,
+  useLocation: () => ({
+    pathname: "/app/wsp_00000000000001/projects",
+    search: "?page=2",
+  }),
 }));
-vi.mock("next/router", () => ({ useRouter: () => router }));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  router.replace.mockReset();
+  navigate.mockReset();
 });
 function sessionFor(id: number): Session {
   return {
@@ -76,8 +80,9 @@ describe("useResource()", () => {
       },
     );
     await waitFor(() =>
-      expect(router.replace).toHaveBeenCalledWith(
+      expect(navigate).toHaveBeenCalledWith(
         "/auth/login?next=%2Fapp%2Fwsp_00000000000001%2Fprojects%3Fpage%3D2",
+        { replace: true },
       ),
     );
   });

@@ -1,8 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/router";
 import { CheckIcon, DocumentDuplicateIcon } from "@heroicons/react/16/solid";
-import { appLayout } from "@/components/layout/application-layout";
-import { ServiceUnavailable } from "@/components/layout/status-page";
 import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,22 +11,15 @@ import { Input } from "@/components/ui/input";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { Strong, Text } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
-import type { AppPageProps } from "@/lib/types";
 import { useActionError } from "@/lib/use-action-error";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
 import { canManage, workspaceName, type Role } from "@/types/workspaces";
-export { sessionProps as getServerSideProps } from "@/lib/server";
-export default function WorkspaceSettings(props: AppPageProps) {
-  if ("unavailable" in props) return <ServiceUnavailable />;
-  return <WorkspaceSettingsContent />;
-}
-WorkspaceSettings.getLayout = appLayout;
 const roleBadges: Record<Role, { label: string; color: BadgeColor }> = {
   owner: { label: "Owner", color: "purple" },
   admin: { label: "Admin", color: "pink" },
   member: { label: "Member", color: "zinc" },
 };
-function WorkspaceSettingsContent() {
+export default function WorkspaceSettings() {
   const workspace = useWorkspace();
   const role = roleBadges[workspace.role];
   return (
@@ -71,11 +61,10 @@ function WorkspaceSettingsContent() {
     </div>
   );
 }
-// Renames the workspace, then reloads the page's props and the switcher so
-// the new name shows everywhere.
+// Renames the workspace, then reloads its record and the switcher so the new
+// name shows everywhere.
 function RenameForm() {
   const api = useApi();
-  const router = useRouter();
   const workspace = useWorkspace();
   const refresh = useRefreshWorkspaces();
   const [name, setName] = useState(workspace.name);
@@ -91,8 +80,7 @@ function RenameForm() {
     try {
       await api.workspaces().update(workspace.id, { name: clean });
       error.clear();
-      void refresh();
-      await router.replace(router.asPath, undefined, { scroll: false });
+      refresh(workspace.id);
       setName(clean);
       setDone(true);
     } catch (e) {

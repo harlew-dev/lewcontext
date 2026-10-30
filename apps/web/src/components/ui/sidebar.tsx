@@ -69,7 +69,7 @@ const SectionHoverContext = createContext<{
   setHovered: (id: string | null) => void;
 } | null>(null);
 // Each section is a LayoutGroup, so its current-page indicator and hover
-// background slide between items (the layout stays mounted via getLayout).
+// background slide between items (the app layout route stays mounted).
 export function SidebarSection({
   className,
   onPointerLeave,

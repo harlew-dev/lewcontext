@@ -111,14 +111,12 @@ export function TableRow({
 export function TableHeader({
   href,
   sort,
-  shallow,
   className,
   children,
   ...props
 }: {
   href?: string;
   sort?: SortDirection;
-  shallow?: boolean;
 } & ComponentPropsWithoutRef<"th">) {
   const { bleed, grid } = useContext(TableContext);
   return (
@@ -134,7 +132,7 @@ export function TableHeader({
       )}
     >
       {href ? (
-        <SortLink href={href} sort={sort} shallow={shallow}>
+        <SortLink href={href} sort={sort}>
           {children}
         </SortLink>
       ) : (
@@ -150,20 +148,17 @@ const sortIcons = {
 function SortLink({
   href,
   sort,
-  shallow,
   children,
 }: {
   href: string;
   sort?: SortDirection;
-  shallow?: boolean;
   children: ReactNode;
 }) {
   const Icon = sort ? sortIcons[sort] : ChevronUpDownIcon;
   return (
     <Link
       href={href}
-      shallow={shallow}
-      scroll={false}
+      preventScrollReset
       className={cx(
         "group inline-flex cursor-default items-center gap-1 rounded-sm focus:not-data-focus:outline-hidden data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-blue-500",
         "data-hover:text-zinc-950 dark:data-hover:text-white",

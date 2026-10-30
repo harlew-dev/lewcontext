@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Page } from "@/lib/pagination";
 import { PaginatedTable } from "./paginated-table";
@@ -33,6 +34,7 @@ function renderTable(page: Page<Item> | undefined, loading = false) {
       href={(n) => `/items?page=${n}`}
       empty={<p>Nothing yet</p>}
     />,
+    { wrapper: MemoryRouter },
   );
 }
 describe("PaginatedTable", () => {

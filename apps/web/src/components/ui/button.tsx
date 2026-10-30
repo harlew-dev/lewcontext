@@ -60,9 +60,6 @@ type LinkElementProps = {
   "aria-label"?: string;
   "aria-current"?: "page";
   onClick?: () => void;
-  // Next.js Link options, e.g. for query-only navigations such as pagination.
-  shallow?: boolean;
-  scroll?: boolean;
 };
 export type ButtonProps = Style & {
   className?: string;
@@ -82,7 +79,7 @@ function buttonClasses({ color, outline, plain }: Style, className?: string) {
 }
 const ButtonRoot = slot("button", "cursor-default");
 // Button on top of BaseUI's Button, which tracks hover, press and
-// focus-visible. With `href` it renders a Next.js Link instead. Loading is drawn
+// focus-visible. With `href` it renders a React Router Link instead. Loading is drawn
 // here rather than with BaseUI's isLoading, which collapses the content to 0px.
 export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   { color, outline, plain, className, children, loading = false, ...props },

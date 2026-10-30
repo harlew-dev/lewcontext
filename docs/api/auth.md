@@ -38,13 +38,14 @@ Stored in `auth_attempts`, in 15-minute fixed windows. Successful attempts count
 | `ip:<digest of connection IP>` | 60 | `limitAuth` on register and login |
 | `account:<digest of email>` | 10 | `accountLimit` in register and login |
 
-Forwarded-IP headers are ignored, so everyone behind the local Next proxy shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
+Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's dev proxy) shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
 
 ## Transport and headers
 
 - **API:** `Cache-Control: no-store`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
 - **Limits:** request bodies 16 KiB, headers 16 KiB, 10 s per request context, and server read/write timeouts.
-- **Web:** a per-request CSP nonce for scripts (`src/proxy.ts`), inline CSS allowed because Styletron needs it, self-hosted fonts, HSTS when `APP_ENV=production`.
+- **Web** (`internal/web`): a CSP per HTML file whose `script-src` allows only this origin plus the SHA-256 hashes of that file's own inline scripts (computed at startup; never `'unsafe-inline'` scripts), inline CSS allowed because Styletron needs it, self-hosted fonts, `frame-ancestors 'none'`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, and HSTS when `APP_ENV=production`. The app shell is `no-store`; hashed assets are cached for a year.
+- **Signed-in pages:** `GET /app` and `/app/*` without a valid session (missing, unknown, idle or expired) get a `302` to `/auth/login?next=<path>` before any HTML is sent.
 - **Production:** HTTPS (`APP_ORIGIN`) and verified database TLS (`sslmode=verify-full`) are required.
 
 ## Workspaces and roles

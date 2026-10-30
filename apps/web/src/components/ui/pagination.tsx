@@ -5,9 +5,6 @@ import {
 } from "@heroicons/react/16/solid";
 import { cx } from "@/lib/cx";
 import { Button } from "./button";
-// Link options shared by every page link; `shallow` keeps getServerSideProps
-// from re-running when the page fetches its own data.
-type PageLinkProps = { shallow?: boolean; scroll?: boolean };
 export function Pagination({
   "aria-label": ariaLabel = "Page navigation",
   className,
@@ -26,15 +23,14 @@ export function PaginationPrevious({
   href = null,
   className,
   children = "Previous",
-  ...link
-}: PageLinkProps & {
+}: {
   href?: string | null;
   className?: string;
   children?: ReactNode;
 }) {
   return (
     <span className={cx(className, "grow basis-0")}>
-      <PageStep href={href} label="Previous page" link={link}>
+      <PageStep href={href} label="Previous page">
         <ArrowLongLeftIcon />
         {children}
       </PageStep>
@@ -45,15 +41,14 @@ export function PaginationNext({
   href = null,
   className,
   children = "Next",
-  ...link
-}: PageLinkProps & {
+}: {
   href?: string | null;
   className?: string;
   children?: ReactNode;
 }) {
   return (
     <span className={cx(className, "flex grow basis-0 justify-end")}>
-      <PageStep href={href} label="Next page" link={link}>
+      <PageStep href={href} label="Next page">
         {children}
         <ArrowLongRightIcon />
       </PageStep>
@@ -63,12 +58,10 @@ export function PaginationNext({
 function PageStep({
   href,
   label,
-  link,
   children,
 }: {
   href: string | null;
   label: string;
-  link: PageLinkProps;
   children: ReactNode;
 }) {
   return href === null ? (
@@ -76,7 +69,7 @@ function PageStep({
       {children}
     </Button>
   ) : (
-    <Button plain href={href} aria-label={label} {...link}>
+    <Button plain href={href} aria-label={label}>
       {children}
     </Button>
   );
@@ -97,8 +90,7 @@ export function PaginationPage({
   className,
   current = false,
   children,
-  ...link
-}: PageLinkProps & {
+}: {
   href: string;
   className?: string;
   current?: boolean;
@@ -115,7 +107,6 @@ export function PaginationPage({
         "min-w-9 before:absolute before:-inset-px before:rounded-lg",
         current && "before:bg-zinc-950/5 dark:before:bg-white/10",
       )}
-      {...link}
     >
       <span className="-mx-0.5">{children}</span>
     </Button>

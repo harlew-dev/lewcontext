@@ -27,8 +27,6 @@ type PaginatedTableProps<T> = {
   href: (page: number) => string;
   // Shown when nothing matches at all.
   empty: ReactNode;
-  // Navigate with Next.js shallow routing, for pages that fetch their own data.
-  shallow?: boolean;
   className?: string;
 };
 // A table of one API page with a page selector below it. Loading shows a
@@ -42,7 +40,6 @@ export function PaginatedTable<T>({
   rowKey,
   href,
   empty,
-  shallow,
   className,
 }: PaginatedTableProps<T>) {
   if (!page)
@@ -73,18 +70,11 @@ export function PaginatedTable<T>({
           title={`There’s nothing on page ${page.pages.current}`}
           description={`${label} end at page ${page.pages.total}.`}
           action={
-            <Button href={href(page.pages.total)} shallow={shallow}>
-              Go to last page
-            </Button>
+            <Button href={href(page.pages.total)}>Go to last page</Button>
           }
         />
       )}
-      <PageSelector
-        pages={page.pages}
-        label={label}
-        href={href}
-        shallow={shallow}
-      />
+      <PageSelector pages={page.pages} label={label} href={href} />
     </div>
   );
 }
@@ -92,21 +82,13 @@ function PageSelector({
   pages,
   label,
   href,
-  shallow,
-}: { pages: Pages } & Pick<
-  PaginatedTableProps<unknown>,
-  "label" | "href" | "shallow"
->) {
+}: { pages: Pages } & Pick<PaginatedTableProps<unknown>, "label" | "href">) {
   if (pages.total < 2) return null;
   // From past the end, "Previous" goes to the last page.
   const previous = Math.min(pages.current - 1, pages.total);
-  const link = { shallow };
   return (
     <Pagination aria-label={`${label} pages`} className="mt-6">
-      <PaginationPrevious
-        href={previous >= 1 ? href(previous) : null}
-        {...link}
-      />
+      <PaginationPrevious href={previous >= 1 ? href(previous) : null} />
       <PaginationList>
         {pageRange(pages).map((item, index) =>
           item === "gap" ? (
@@ -116,7 +98,6 @@ function PageSelector({
               key={item}
               href={href(item)}
               current={item === pages.current}
-              {...link}
             >
               {item}
             </PaginationPage>
@@ -125,7 +106,6 @@ function PageSelector({
       </PaginationList>
       <PaginationNext
         href={pages.current < pages.total ? href(pages.current + 1) : null}
-        {...link}
       />
     </Pagination>
   );

@@ -8,6 +8,8 @@ import {
   url,
   type Pages,
 } from "./pagination";
+const query = (init: Record<string, string> | string = {}) =>
+  new URLSearchParams(init);
 const pages = (current: number, total: number): Pages => ({
   current,
   total,
@@ -16,23 +18,23 @@ const pages = (current: number, total: number): Pages => ({
 });
 describe("page", () => {
   it("reads positive page numbers and falls back to page 1", () => {
-    expect(page({ page: "3" })).toBe(3);
-    expect(page({ page: "10000" })).toBe(10000);
+    expect(page(query({ page: "3" }))).toBe(3);
+    expect(page(query({ page: "10000" }))).toBe(10000);
     for (const value of ["0", "-1", "+2", " 2", "1e3", "abc", "10001", ""])
-      expect(page({ page: value })).toBe(1);
-    expect(page({ page: ["2", "3"] })).toBe(1);
-    expect(page({})).toBe(1);
+      expect(page(query({ page: value }))).toBe(1);
+    expect(page(query("page=2&page=3"))).toBe(1);
+    expect(page(query())).toBe(1);
   });
 });
 describe("sort", () => {
   const fields = ["name", "updated"] as const;
   it("accepts allowed fields in either direction", () => {
-    expect(sort({ sort: "name" }, fields, "-updated")).toBe("name");
-    expect(sort({ sort: "-name" }, fields, "-updated")).toBe("-name");
+    expect(sort(query({ sort: "name" }), fields, "-updated")).toBe("name");
+    expect(sort(query({ sort: "-name" }), fields, "-updated")).toBe("-name");
   });
   it("falls back for anything else", () => {
     for (const value of ["user_id", "--name", "name;", "", "Name"])
-      expect(sort({ sort: value }, fields, "-updated")).toBe("-updated");
+      expect(sort(query({ sort: value }), fields, "-updated")).toBe("-updated");
   });
   it("reports and toggles direction", () => {
     expect(sortDirection("name", "name")).toBe("ascending");
@@ -54,10 +56,7 @@ describe("url", () => {
     ).toBe("/api/projects?q=50%25+%26+more&status=In+progress&page=2");
   });
   it("round-trips through page()", () => {
-    const query = Object.fromEntries(
-      new URLSearchParams(url("/x", { page: 7 }).split("?")[1]),
-    );
-    expect(page(query)).toBe(7);
+    expect(page(query(url("/x", { page: 7 }).split("?")[1]))).toBe(7);
   });
 });
 describe("pageRange", () => {

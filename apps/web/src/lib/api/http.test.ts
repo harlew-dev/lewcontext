@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./http";
-import { browserHttp, serverHttp } from "./http";
+import { browserHttp } from "./http";
 import { path } from "./paths";
 afterEach(() => vi.unstubAllGlobals());
 function stubFetch(response: Response) {
@@ -56,18 +56,5 @@ describe("browser transport", () => {
       status: 502,
       message: "Unable to connect. Please try again.",
     });
-  });
-});
-describe("server transport", () => {
-  it("calls the fixed API URL and forwards only the request cookie", async () => {
-    const fetch = stubFetch(new Response("{}", { status: 200 }));
-    await serverHttp("http://127.0.0.1:8080", "forma_session=abc").get(
-      path("/api/auth/me"),
-    );
-    const [url, options] = fetch.mock.calls[0];
-    expect(url).toBe("http://127.0.0.1:8080/api/auth/me");
-    expect([...options.headers.keys()]).toEqual(["cookie"]);
-    expect(options.headers.get("cookie")).toBe("forma_session=abc");
-    expect(options.credentials).toBeUndefined();
   });
 });

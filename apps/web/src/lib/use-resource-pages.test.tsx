@@ -8,15 +8,16 @@ import type { Page } from "./pagination";
 import { SessionProvider } from "./session";
 import type { Session } from "./types";
 import { useResourcePages } from "./use-resource-pages";
-const router = vi.hoisted(() => ({
-  asPath: "/app/settings",
-  replace: vi.fn(),
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
+  useNavigate: () => navigate,
+  useLocation: () => ({ pathname: "/app/settings", search: "" }),
 }));
-vi.mock("next/router", () => ({ useRouter: () => router }));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  router.replace.mockReset();
+  navigate.mockReset();
 });
 const session: Session = {
   user: { id: "usr_00000000000001", name: "Ada", email: "", createdAt: "" },
@@ -50,7 +51,7 @@ function page(current: number, ...items: number[]): Page<Workspace> {
   };
 }
 const pathFor = (n: number) => paths.workspaces.index({ page: n, perPage: 2 });
-const initial = { path: pathFor(1), data: page(1, 1, 2), error: null };
+const first = page(1, 1, 2);
 // Answers each page by URL; `fail` makes page 2 fail with that status until
 // `recover()`.
 const outage = { status: 0 };
@@ -73,9 +74,9 @@ function stubFetch(fail = 0) {
   return fetch;
 }
 describe("useResourcePages()", () => {
-  it("starts from the server-rendered page", () => {
+  it("starts from a given first page", () => {
     stubFetch();
-    const { result } = renderHook(() => useResourcePages(pathFor, initial), {
+    const { result } = renderHook(() => useResourcePages(pathFor, first), {
       wrapper,
     });
     expect(result.current.items.map((w) => w.name)).toEqual([
@@ -87,7 +88,7 @@ describe("useResourcePages()", () => {
   });
   it("loads the next page, without repeats, and stops at the last", async () => {
     const fetch = stubFetch();
-    const { result } = renderHook(() => useResourcePages(pathFor, initial), {
+    const { result } = renderHook(() => useResourcePages(pathFor, first), {
       wrapper,
     });
     act(() => result.current.loadMore());
@@ -102,7 +103,7 @@ describe("useResourcePages()", () => {
   });
   it("keeps loaded items when a page fails, and retries", async () => {
     stubFetch(503);
-    const { result } = renderHook(() => useResourcePages(pathFor, initial), {
+    const { result } = renderHook(() => useResourcePages(pathFor, first), {
       wrapper,
     });
     act(() => result.current.loadMore());
@@ -115,13 +116,14 @@ describe("useResourcePages()", () => {
   });
   it("sends an expired session to login", async () => {
     stubFetch(401);
-    const { result } = renderHook(() => useResourcePages(pathFor, initial), {
+    const { result } = renderHook(() => useResourcePages(pathFor, first), {
       wrapper,
     });
     act(() => result.current.loadMore());
     await waitFor(() =>
-      expect(router.replace).toHaveBeenCalledWith(
+      expect(navigate).toHaveBeenCalledWith(
         "/auth/login?next=%2Fapp%2Fsettings",
+        { replace: true },
       ),
     );
   });

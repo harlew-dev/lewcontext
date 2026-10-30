@@ -56,7 +56,6 @@ export function ProjectTableHead({
               : undefined
           }
           sort={sort && sortDirection(sort, field)}
-          shallow
         >
           {label}
         </TableHeader>

@@ -12,15 +12,9 @@ import { SessionProvider } from "@/lib/session";
 import type { Session } from "@/lib/types";
 import { WorkspaceProvider } from "@/lib/workspace";
 import type { Role, Workspace } from "@/types/workspaces";
-const router = vi.hoisted(() => ({
-  asPath: "/app/wsp_2yEHYLwiwPVhLW/settings",
-  replace: vi.fn(),
-}));
-vi.mock("next/router", () => ({ useRouter: () => router }));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  router.replace.mockReset();
 });
 const session: Session = {
   user: { id: "usr_00000000000001", name: "Ada", email: "", createdAt: "" },
@@ -36,16 +30,15 @@ function renderAs(role: Role) {
     createdAt: "",
     updatedAt: "",
   };
-  const workspaces = { path: "/api/workspaces", data: null, error: null };
+  const first = {
+    data: [workspace],
+    pages: { current: 1, total: 1, perPage: 20, items: 1 },
+  };
   return render(
     <SWRConfig value={{ provider: () => new Map() }}>
       <SessionProvider session={session}>
-        <WorkspaceProvider workspace={workspace} workspaces={workspaces}>
-          <WorkspaceSettings
-            session={session}
-            workspace={workspace}
-            workspaces={workspaces}
-          />
+        <WorkspaceProvider workspace={workspace} first={first}>
+          <WorkspaceSettings />
         </WorkspaceProvider>
       </SessionProvider>
     </SWRConfig>,
@@ -74,7 +67,6 @@ describe("workspace settings", () => {
     )!;
     expect(url).toBe("/api/workspaces/wsp_2yEHYLwiwPVhLW");
     expect(JSON.parse(init.body)).toEqual({ name: "Acme Inc" });
-    expect(router.replace).toHaveBeenCalled();
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
   it("shows members the name without a form", () => {

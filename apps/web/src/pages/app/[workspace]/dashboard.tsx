@@ -1,7 +1,4 @@
-import type { GetServerSidePropsContext } from "next";
 import { PlusIcon } from "@heroicons/react/16/solid";
-import { appLayout } from "@/components/layout/application-layout";
-import { ServiceUnavailable } from "@/components/layout/status-page";
 import { ProjectDialog } from "@/components/app/projects/project-dialog";
 import { ProjectNotices } from "@/components/app/projects/project-notices";
 import {
@@ -21,18 +18,11 @@ import { Table, TableBody, TableHead } from "@/components/ui/table";
 import type { Page } from "@/lib/pagination";
 import { paths } from "@/lib/api";
 import { routes } from "@/lib/routes";
-import { appProps, initial } from "@/lib/server";
 import { useSession } from "@/lib/session";
-import type { AppPageProps, Initial } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
 import { statuses, type Project } from "@/types/projects";
 type Status = Project["status"];
-type DashboardProps = {
-  recent: Initial<Page<Project>>;
-  counts: Initial<Page<Project>>[];
-};
-const failure = "We couldn’t load your projects. Please try again.";
 // The five most recently updated projects; the page's item count is the total.
 function recentPath(workspace: string) {
   return paths.projects(workspace).index({ perPage: 5 });
@@ -41,24 +31,10 @@ function recentPath(workspace: string) {
 function countPath(workspace: string, status: Status) {
   return paths.projects(workspace).index({ status, perPage: 1 });
 }
-export function getServerSideProps(context: GetServerSidePropsContext) {
-  return appProps(context, async (api, { id }) => {
-    const [recent, ...counts] = await Promise.all([
-      initial(api, recentPath(id), failure),
-      ...statuses.map((status) => initial(api, countPath(id, status), failure)),
-    ]);
-    return { recent, counts };
-  });
-}
-export default function Dashboard(props: AppPageProps<DashboardProps>) {
-  if ("unavailable" in props) return <ServiceUnavailable />;
-  return <DashboardContent {...props} />;
-}
-Dashboard.getLayout = appLayout;
-function DashboardContent({ recent, counts }: DashboardProps) {
+export default function Dashboard() {
   const session = useSession();
   const workspace = useWorkspace();
-  const list = useResource(recentPath(workspace.id), recent);
+  const list = useResource(recentPath(workspace.id));
   const editor = useProjectEditor();
   const total = list.data?.pages.items;
   return (
@@ -80,14 +56,7 @@ function DashboardContent({ recent, counts }: DashboardProps) {
         <div className="mt-4 grid gap-8 sm:grid-cols-2 xl:grid-cols-4">
           <Stat title="Total projects" value={total} />
           {statuses.map((status) => (
-            <StatusStat
-              key={status}
-              status={status}
-              total={total}
-              initial={counts.find(
-                (c) => c.path === countPath(workspace.id, status),
-              )}
-            />
+            <StatusStat key={status} status={status} total={total} />
           ))}
         </div>
       )}
@@ -136,17 +105,9 @@ function RecentProjects({
     </Table>
   );
 }
-function StatusStat({
-  status,
-  total,
-  initial,
-}: {
-  status: Status;
-  total: number;
-  initial?: Initial<Page<Project>>;
-}) {
+function StatusStat({ status, total }: { status: Status; total: number }) {
   const workspace = useWorkspace();
-  const count = useResource(countPath(workspace.id, status), initial);
+  const count = useResource(countPath(workspace.id, status));
   return (
     <Stat
       title={status}
