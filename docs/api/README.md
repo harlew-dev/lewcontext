@@ -36,7 +36,8 @@ security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
 ```
 
 - Responses are JSON. Errors are `{"error": "message"}` with a generic message; details go to `slog` only (`internalError`).
-- Request bodies: `decode()` caps them at 16 KiB, rejects unknown fields and requires exactly one JSON object.
+- Request bodies: `decode()` caps them at 16 KiB, rejects unknown fields and requires exactly one JSON object. `decodeValid(w, r, validProject, message)` decodes and validates in one step (400, or 422 with the message).
+- The session cookie: `s.sessionDigest(r)` is what the `sessions` table stores for it (logout, revoking other sessions, a password change); `s.sessionToken(r)` is the raw, well-formed cookie.
 - The signed-in session is `current(r)` inside handlers, and the workspace in the path `currentWorkspace(r)`.
 - Routes are grouped with `group(mux, prefix, middleware…)` in `routes.go`; `net/http` has no groups, so the helper prefixes each pattern and wraps its handler.
 

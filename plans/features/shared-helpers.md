@@ -1,6 +1,6 @@
 # Shared helpers (reducing repeated code)
 
-Status: **decided 2026-10-30; steps 1–2 of 4 done (web helpers, web test helpers).** Build before [events](events.md) step 2.
+Status: **decided 2026-10-30; steps 1–3 of 4 done (web helpers, web test helpers, API helpers).** Build before [events](events.md) step 2.
 
 ## Why
 

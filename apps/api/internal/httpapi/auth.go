@@ -157,10 +157,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.Us
 		internalError(w, err)
 		return
 	}
-	old := ""
-	if cookie, err := r.Cookie(auth.CookieName(s.Config.Production)); err == nil {
-		old = auth.Digest(cookie.Value)
-	}
+	old := s.sessionDigest(r)
 	signedIn := time.Now()
 	expires := signedIn.Add(auth.SessionLifetime)
 	if err = s.Store.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires, e); err != nil {
@@ -175,8 +172,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt, "signedInAt": session.CreatedAt})
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie(auth.CookieName(s.Config.Production))
-	if err := s.Store.DeleteSession(r.Context(), current(r).User, auth.Digest(cookie.Value)); err != nil {
+	if err := s.Store.DeleteSession(r.Context(), current(r).User, s.sessionDigest(r)); err != nil {
 		internalError(w, err)
 		return
 	}
@@ -187,8 +183,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 func (s *Server) revokeOthers(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie(auth.CookieName(s.Config.Production))
-	if err := s.Store.DeleteOtherSessions(r.Context(), current(r).User, auth.Digest(cookie.Value)); err != nil {
+	if err := s.Store.DeleteOtherSessions(r.Context(), current(r).User, s.sessionDigest(r)); err != nil {
 		internalError(w, err)
 		return
 	}

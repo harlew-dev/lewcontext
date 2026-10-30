@@ -77,11 +77,31 @@ var errNoSession = errors.New("no session cookie")
 // returns errNoSession without a cookie, and sql.ErrNoRows when the session is
 // unknown, expired or idle.
 func (s *Server) session(r *http.Request) (store.Session, error) {
-	cookie, err := r.Cookie(auth.CookieName(s.Config.Production))
-	if err != nil || len(cookie.Value) != 43 {
+	token, ok := s.sessionToken(r)
+	if !ok {
 		return store.Session{}, errNoSession
 	}
-	return s.Store.Session(r.Context(), auth.Digest(cookie.Value))
+	return s.Store.Session(r.Context(), auth.Digest(token))
+}
+
+// sessionToken is the request's session cookie, if it has a well-formed one
+// (43 base64url characters).
+func (s *Server) sessionToken(r *http.Request) (string, bool) {
+	cookie, err := r.Cookie(auth.CookieName(s.Config.Production))
+	if err != nil || len(cookie.Value) != 43 {
+		return "", false
+	}
+	return cookie.Value, true
+}
+
+// sessionDigest is what the sessions table stores for the request's session
+// cookie, or "" without one.
+func (s *Server) sessionDigest(r *http.Request) string {
+	token, ok := s.sessionToken(r)
+	if !ok {
+		return ""
+	}
+	return auth.Digest(token)
 }
 func (s *Server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

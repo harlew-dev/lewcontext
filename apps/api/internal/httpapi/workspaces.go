@@ -8,6 +8,8 @@ import (
 	"unicode/utf8"
 )
 
+const invalidWorkspace = "Use a workspace name of 1–80 characters."
+
 // validWorkspace trims the name and requires 1–80 characters without control
 // characters, matching the column's CHECK.
 func validWorkspace(in *store.WorkspaceInput) bool {
@@ -37,12 +39,8 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, currentWorkspace(r))
 }
 func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
-	var in store.WorkspaceInput
-	if !decode(w, r, &in) {
-		return
-	}
-	if !validWorkspace(&in) {
-		fail(w, 422, "Use a workspace name of 1–80 characters.")
+	in, ok := decodeValid(w, r, validWorkspace, invalidWorkspace)
+	if !ok {
 		return
 	}
 	workspace, err := s.Store.CreateWorkspace(r.Context(), current(r).User.ID, in)
@@ -53,12 +51,8 @@ func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 201, workspace)
 }
 func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request) {
-	var in store.WorkspaceInput
-	if !decode(w, r, &in) {
-		return
-	}
-	if !validWorkspace(&in) {
-		fail(w, 422, "Use a workspace name of 1–80 characters.")
+	in, ok := decodeValid(w, r, validWorkspace, invalidWorkspace)
+	if !ok {
 		return
 	}
 	current := currentWorkspace(r)

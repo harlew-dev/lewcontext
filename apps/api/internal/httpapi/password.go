@@ -83,8 +83,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	if !s.accountLimit(w, r, user.Email) {
 		return
 	}
-	cookie, _ := r.Cookie(auth.CookieName(s.Config.Production))
-	err := s.Store.ChangePassword(r.Context(), user, auth.Digest(cookie.Value), func(hash string) (string, error) {
+	err := s.Store.ChangePassword(r.Context(), user, s.sessionDigest(r), func(hash string) (string, error) {
 		if !auth.CheckPassword(in.CurrentPassword, hash) {
 			return "", errWrongPassword
 		}

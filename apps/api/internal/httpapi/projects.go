@@ -19,6 +19,8 @@ var (
 // maxSearchLength bounds the project search term in Unicode characters.
 const maxSearchLength = 100
 
+const invalidProject = "Check the project name, description, status, and color."
+
 func validProject(in *store.ProjectInput) bool {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Description = strings.TrimSpace(in.Description)
@@ -105,12 +107,8 @@ func (s *Server) project(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, p)
 }
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
-	var in store.ProjectInput
-	if !decode(w, r, &in) {
-		return
-	}
-	if !validProject(&in) {
-		fail(w, 422, "Check the project name, description, status, and color.")
+	in, ok := decodeValid(w, r, validProject, invalidProject)
+	if !ok {
 		return
 	}
 	p, err := s.Store.CreateProject(r.Context(), currentWorkspace(r), in)
@@ -126,12 +124,8 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "Project not found.")
 		return
 	}
-	var in store.ProjectInput
-	if !decode(w, r, &in) {
-		return
-	}
-	if !validProject(&in) {
-		fail(w, 422, "Check the project name, description, status, and color.")
+	in, ok := decodeValid(w, r, validProject, invalidProject)
+	if !ok {
 		return
 	}
 	p, err := s.Store.UpdateProject(r.Context(), currentWorkspace(r), id, in)

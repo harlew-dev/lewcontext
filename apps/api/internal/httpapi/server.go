@@ -45,6 +45,21 @@ func internalError(w http.ResponseWriter, err error) {
 	slog.Error("request failed", "error", err)
 	fail(w, 500, "Something went wrong. Please try again.")
 }
+
+// decodeValid decodes the body into a T and checks it with valid (which may
+// also normalise it, e.g. trim), answering 400 or 422 with message when either
+// fails.
+func decodeValid[T any](w http.ResponseWriter, r *http.Request, valid func(*T) bool, message string) (T, bool) {
+	var in T
+	if !decode(w, r, &in) {
+		return in, false
+	}
+	if !valid(&in) {
+		fail(w, 422, message)
+		return in, false
+	}
+	return in, true
+}
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	d := json.NewDecoder(r.Body)
