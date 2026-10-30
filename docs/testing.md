@@ -26,7 +26,7 @@ How to set up a local environment and check the app by hand. Automated tests are
 2. Create a project. The submit button shows a spinner and blocks duplicate submits, and the new project shows first.
 3. On Projects, search by name or description, filter by status, sort by clicking column headers, and page through results (`make seed only=volume` gives enough data). The URL keeps the state; reload and back/forward restore it.
 4. Click a row to open the project page, edit it, then reload. The change persists.
-5. Open Account & security, sign out other sessions, then sign out of this browser.
+5. Open Account & security from the account menu, sign out other sessions, then sign out of this browser.
 6. Register another account. It starts empty and can't see the demo account's projects (`/app/projects/<their id>` is a 404).
 7. At a 390px viewport, navigation, search, paging (Previous/Next) and editing remain usable.
 

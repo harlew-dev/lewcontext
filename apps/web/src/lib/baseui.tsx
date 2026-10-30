@@ -25,8 +25,14 @@ function dataAttributes(state: State, ignore: string[] = []) {
   const attributes: Record<string, string> = {};
   for (const [prop, attribute] of Object.entries(stateAttributes))
     if (state[prop] && !ignore.includes(prop)) attributes[attribute] = "";
-  // Modal and Drawer report $isVisible=false while entering and leaving.
-  if (state.$isVisible === false) attributes["data-closed"] = "";
+  // Modal and Drawer report $isVisible=false before entering, and keep it true
+  // with $isOpen=false while leaving (they unmount 500 ms later). Both are
+  // the closed state, so data-closed transitions run in and out.
+  if (
+    state.$isVisible === false ||
+    (state.$isVisible === true && state.$isOpen === false)
+  )
+    attributes["data-closed"] = "";
   return attributes;
 }
 // Builds a BaseUI override component that renders `tag` with Tailwind classes.
@@ -69,3 +75,23 @@ export const transparentSurface = {
     borderBottomRightRadius: 0,
   },
 };
+// Popovers (Dropdown, Listbox). BaseUI fades a popover by animating its
+// Body's opacity, but an ancestor with opacity below 1 switches off a child's
+// backdrop-blur, so the frosted panel turned see-through the moment it
+// started to close. Instead the Body stays opaque (it still slides), Inner
+// marks the closed state with data-closed, and the panel fades itself with
+// `popoverPanel`.
+const PopoverInner = slot("div", "", {
+  props: (state) =>
+    state.$isAnimating && state.$isOpen ? {} : { "data-closed": "" },
+});
+export const popoverOverrides = {
+  Body: { style: { ...transparentSurface.style, opacity: 1 } },
+  Inner: { component: PopoverInner },
+};
+// Classes for the panel inside a popover: fades in and out with it.
+export const popoverPanel =
+  "transition-opacity duration-100 ease-out in-data-closed:opacity-0 in-data-closed:ease-in motion-reduce:transition-none";
+// How long a popover takes to close (pass as animateOutTime); without it
+// BaseUI removes it at once.
+export const popoverExit = 100;

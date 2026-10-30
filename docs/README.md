@@ -38,5 +38,6 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 4. Handlers and validation in `httpapi`, route in `routes.go` behind `requireSession` → [api/endpoints.md](api/endpoints.md)
 5. Lists use `Paginate[T]` → [api/pagination.md](api/pagination.md)
 6. Integration tests including cross-user access → [api/testing.md](api/testing.md)
-7. Types in `src/types/`, routes in `lib/routes.ts`, pages under `pages/app/` → [ui/pages.md](ui/pages.md)
-8. Update [api/endpoints.md](api/endpoints.md) and any doc whose summary changed.
+7. Types in `src/types/`, a client in `src/lib/api/<resource>.ts` → [ui/api.md](ui/api.md)
+8. Page routes in `lib/routes.ts`, pages under `pages/app/` → [ui/pages.md](ui/pages.md)
+9. Update [api/endpoints.md](api/endpoints.md) and any doc whose summary changed.

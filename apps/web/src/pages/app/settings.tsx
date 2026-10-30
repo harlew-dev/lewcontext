@@ -12,16 +12,18 @@ import { Divider } from "@/components/ui/divider";
 import { Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
-import { request, errorMessage } from "@/lib/api";
-import { apiRoutes } from "@/lib/routes";
-import type { AppPageProps, SessionProps } from "@/lib/types";
+import { useApi } from "@/lib/api";
+import { useSession } from "@/lib/session";
+import type { AppPageProps } from "@/lib/types";
+import { useActionError } from "@/lib/use-action-error";
 export { sessionProps as getServerSideProps } from "@/lib/server";
 export default function Settings(props: AppPageProps) {
   if ("unavailable" in props) return <ServiceUnavailable />;
-  return <AccountSettings {...props} />;
+  return <AccountSettings />;
 }
 Settings.getLayout = appLayout;
-function AccountSettings({ session }: SessionProps) {
+function AccountSettings() {
+  const session = useSession();
   return (
     <div className="mx-auto max-w-4xl">
       <Heading>Account & security</Heading>
@@ -58,7 +60,7 @@ function AccountSettings({ session }: SessionProps) {
         title="Sign-in sessions"
         description="You’re signed out automatically after 30 minutes of inactivity."
       >
-        <SessionControls session={session} />
+        <SessionControls />
       </SettingsSection>
     </div>
   );
@@ -82,23 +84,21 @@ function SettingsSection({
     </section>
   );
 }
-function SessionControls({ session }: SessionProps) {
+function SessionControls() {
+  const api = useApi();
+  const session = useSession();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const error = useActionError();
   const [done, setDone] = useState(false);
   async function revokeOthers() {
     setBusy(true);
-    setError("");
-    setDone(false);
     try {
-      await request(
-        apiRoutes.sessions,
-        { method: "DELETE" },
-        session.csrfToken,
-      );
+      await api.sessions().destroyOthers();
+      error.clear();
       setDone(true);
     } catch (e) {
-      setError(errorMessage(e));
+      error.fail(e);
+      setDone(false);
     } finally {
       setBusy(false);
     }
@@ -125,7 +125,11 @@ function SessionControls({ session }: SessionProps) {
       <Button outline loading={busy} onClick={revokeOthers}>
         Sign out other sessions
       </Button>
-      {error && <Notice variant="error">{error}</Notice>}
+      {error.message && (
+        <Notice key={error.key} variant="error">
+          {error.message}
+        </Notice>
+      )}
       {done && (
         <Notice variant="success">
           All other sessions have been signed out.

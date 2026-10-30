@@ -4,6 +4,7 @@ import {
   forwardRef,
   isValidElement,
   useContext,
+  useState,
   type ComponentPropsWithoutRef,
   type ElementType,
   type KeyboardEvent,
@@ -12,8 +13,10 @@ import {
   type ReactNode,
 } from "react";
 import { PLACEMENT, StatefulPopover } from "baseui/popover";
-import { transparentSurface } from "@/lib/baseui";
+import { useReducedMotion } from "motion/react";
+import { popoverExit, popoverOverrides, popoverPanel } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
+import { usePopoverScrollLock } from "@/lib/scroll-lock";
 import { Button } from "./button";
 import { Link } from "./link";
 const placements = {
@@ -42,6 +45,9 @@ export function Dropdown({ children }: { children: ReactNode }) {
     ReactElement,
     ReactElement<Pick<DropdownMenuProps, "anchor">>,
   ];
+  const reducedMotion = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  usePopoverScrollLock(open);
   if (!trigger || !menu) return null;
   return (
     <StatefulPopover
@@ -49,10 +55,13 @@ export function Dropdown({ children }: { children: ReactNode }) {
       triggerType="click"
       placement={placements[menu.props.anchor ?? "bottom"]}
       popoverMargin={8}
+      animateOutTime={reducedMotion ? 0 : popoverExit}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
       focusLock
       autoFocus
       returnFocus
-      overrides={{ Body: transparentSurface, Inner: transparentSurface }}
+      overrides={popoverOverrides}
       content={({ close }) => (
         <DropdownContext.Provider value={{ close }}>
           {menu}
@@ -102,10 +111,12 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
       // item is highlighted until the pointer or arrow keys move to one.
       tabIndex={-1}
       data-autofocus
+      data-popover-panel
       onKeyDown={moveFocus}
       className={cx(
         className,
         "isolate w-max rounded-xl p-1",
+        popoverPanel,
         "outline outline-transparent focus:outline-hidden",
         "overflow-y-auto",
         "bg-white/75 backdrop-blur-xl dark:bg-zinc-800/75",

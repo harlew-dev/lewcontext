@@ -18,11 +18,13 @@ import { Divider } from "@/components/ui/divider";
 import { ListSkeleton } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
-import { url, type Page } from "@/lib/pagination";
-import { apiRoutes, routes } from "@/lib/routes";
+import type { Page } from "@/lib/pagination";
+import { paths } from "@/lib/api";
+import { routes } from "@/lib/routes";
 import { appProps, initial } from "@/lib/server";
+import { useSession } from "@/lib/session";
 import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
-import { useApi } from "@/lib/use-api";
+import { useResource } from "@/lib/use-resource";
 import { statuses, type Project } from "@/types/projects";
 type Status = Project["status"];
 type DashboardProps = SessionProps & {
@@ -31,18 +33,16 @@ type DashboardProps = SessionProps & {
 };
 const failure = "We couldn’t load your projects. Please try again.";
 // The five most recently updated projects; the page's item count is the total.
-const recentPath = url(apiRoutes.projects, { perPage: 5 });
+const recentPath = paths.projects.index({ perPage: 5 });
 // A one-row page per status, read for its item count.
 function countPath(status: Status) {
-  return url(apiRoutes.projects, { status, perPage: 1 });
+  return paths.projects.index({ status, perPage: 1 });
 }
 export function getServerSideProps(context: GetServerSidePropsContext) {
-  return appProps(context, async (get) => {
+  return appProps(context, async (api) => {
     const [recent, ...counts] = await Promise.all([
-      initial<Page<Project>>(get, recentPath, failure),
-      ...statuses.map((status) =>
-        initial<Page<Project>>(get, countPath(status), failure),
-      ),
+      initial(api, recentPath, failure),
+      ...statuses.map((status) => initial(api, countPath(status), failure)),
     ]);
     return { recent, counts };
   });
@@ -52,8 +52,9 @@ export default function Dashboard(props: AppPageProps<DashboardProps>) {
   return <DashboardContent {...props} />;
 }
 Dashboard.getLayout = appLayout;
-function DashboardContent({ session, recent, counts }: DashboardProps) {
-  const list = useApi(recentPath, session.user.id, recent);
+function DashboardContent({ recent, counts }: DashboardProps) {
+  const session = useSession();
+  const list = useResource(recentPath, recent);
   const editor = useProjectEditor();
   const total = list.data?.pages.items;
   return (
@@ -79,7 +80,6 @@ function DashboardContent({ session, recent, counts }: DashboardProps) {
               key={status}
               status={status}
               total={total}
-              userId={session.user.id}
               initial={counts.find((c) => c.path === countPath(status))}
             />
           ))}
@@ -102,7 +102,7 @@ function DashboardContent({ session, recent, counts }: DashboardProps) {
         loading={list.loading}
         onCreate={() => editor.setDialog("new")}
       />
-      <ProjectDialog editor={editor} csrfToken={session.csrfToken} />
+      <ProjectDialog editor={editor} />
     </>
   );
 }
@@ -133,15 +133,13 @@ function RecentProjects({
 function StatusStat({
   status,
   total,
-  userId,
   initial,
 }: {
   status: Status;
   total: number;
-  userId: number;
   initial?: Initial<Page<Project>>;
 }) {
-  const count = useApi(countPath(status), userId, initial);
+  const count = useResource(countPath(status), initial);
   return (
     <Stat
       title={status}

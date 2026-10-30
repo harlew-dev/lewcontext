@@ -7,8 +7,8 @@ import { MotionConfig } from "motion/react";
 import type { Client, Server } from "styletron-engine-atomic";
 import { styletron } from "@/lib/styletron";
 import { theme } from "@/lib/theme";
-import { request } from "@/lib/api";
 import type { NextPageWithLayout } from "@/lib/page";
+import { SessionProvider } from "@/lib/session";
 import { RouteProgress } from "@/components/ui/route-progress";
 import "@/styles/globals.css";
 export default function App({
@@ -22,7 +22,6 @@ export default function App({
       <BaseProvider theme={theme}>
         <SWRConfig
           value={{
-            fetcher: request,
             errorRetryCount: 2,
             revalidateOnFocus: true,
           }}
@@ -41,7 +40,9 @@ export default function App({
           </Head>
           <RouteProgress />
           <MotionConfig reducedMotion="user">
-            {getLayout(<Component {...pageProps} />, pageProps)}
+            <SessionProvider session={pageProps.session ?? null}>
+              {getLayout(<Component {...pageProps} />, pageProps)}
+            </SessionProvider>
           </MotionConfig>
         </SWRConfig>
       </BaseProvider>

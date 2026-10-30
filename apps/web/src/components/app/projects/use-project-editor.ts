@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { apiRoutes } from "@/lib/routes";
+import { paths } from "@/lib/api";
 import type { Project } from "@/types/projects";
 export type ProjectEditor = ReturnType<typeof useProjectEditor>;
 // Create/edit dialog state and success notice for project pages. After a save
@@ -24,11 +24,11 @@ export function useProjectEditor(
   }
   return { dialog, setDialog, notice, setNotice, saved };
 }
-// SWR keys are [path, userId]; project paths start with /api/projects.
+// SWR keys are [path, userId].
 function isProjectKey(key: unknown): boolean {
   return (
     Array.isArray(key) &&
     typeof key[0] === "string" &&
-    key[0].startsWith(apiRoutes.projects)
+    paths.projects.matches(key[0])
   );
 }

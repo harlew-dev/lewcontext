@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Drawer } from "baseui/drawer";
 import { slot } from "@/lib/baseui";
+import { useScrollLock } from "@/lib/scroll-lock";
 import { NavbarItem } from "@/components/ui/navbar";
 import { SidebarCloseContext } from "@/components/ui/sidebar-context";
 function OpenMenuIcon() {
@@ -19,14 +20,17 @@ function CloseMenuIcon() {
 }
 // The mobile sidebar is a BaseUI Drawer (focus lock, Escape, backdrop click)
 // styled as a slide-over panel.
-const DrawerRoot = slot("div", "fixed inset-0 lg:hidden");
+const DrawerRoot = slot(
+  "div",
+  "fixed inset-0 data-closed:pointer-events-none lg:hidden",
+);
 const DrawerBackdrop = slot(
   "div",
-  "fixed inset-0 bg-black/30 transition duration-300 ease-out data-closed:opacity-0",
+  "fixed inset-0 bg-black/30 transition duration-300 ease-out data-closed:opacity-0 motion-reduce:transition-none",
 );
 const DrawerContainer = slot(
   "div",
-  "fixed inset-y-0 w-full max-w-80 p-2 transition duration-300 ease-in-out data-closed:-translate-x-full",
+  "fixed inset-y-0 w-full max-w-80 p-2 transition duration-300 ease-in-out data-closed:-translate-x-full motion-reduce:transition-none",
   { props: () => ({ role: "dialog", "aria-label": "Navigation" }) },
 );
 const DrawerPanel = slot(
@@ -43,6 +47,7 @@ function MobileSidebar({
   close: () => void;
   children: ReactNode;
 }) {
+  useScrollLock(open);
   return (
     <Drawer
       isOpen={open}

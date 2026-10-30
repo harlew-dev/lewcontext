@@ -20,8 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Textarea } from "@/components/ui/textarea";
 import { cx } from "@/lib/cx";
-import { request, errorMessage } from "@/lib/api";
-import { apiRoutes } from "@/lib/routes";
+import { useApi } from "@/lib/api";
+import { useActionError } from "@/lib/use-action-error";
 import {
   statuses,
   colors,
@@ -38,13 +38,7 @@ const emptyProject: ProjectInput = {
 };
 // Create/edit dialog driven by the page's project editor. The last target is
 // kept while the dialog animates out so its content doesn't change mid-exit.
-export function ProjectDialog({
-  editor,
-  csrfToken,
-}: {
-  editor: ProjectEditor;
-  csrfToken: string;
-}) {
+export function ProjectDialog({ editor }: { editor: ProjectEditor }) {
   const [target, setTarget] = useState<Project | "new">("new");
   if (editor.dialog && editor.dialog !== target) setTarget(editor.dialog);
   const key = target === "new" ? "new" : target.id;
@@ -53,7 +47,6 @@ export function ProjectDialog({
       key={key}
       open={editor.dialog !== null}
       project={target === "new" ? undefined : target}
-      csrfToken={csrfToken}
       onClose={() => editor.setDialog(null)}
       onSaved={editor.saved}
     />
@@ -62,41 +55,31 @@ export function ProjectDialog({
 function ProjectForm({
   open,
   project,
-  csrfToken,
   onClose,
   onSaved,
 }: {
   open: boolean;
   project?: Project;
-  csrfToken: string;
   onClose: () => void;
   onSaved: (project: Project) => void;
 }) {
+  const api = useApi();
   const [form, setForm] = useState<ProjectInput>(project ?? emptyProject);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const error = useActionError();
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError("");
     try {
-      const saved = await request<Project>(
-        project ? apiRoutes.project(project.id) : apiRoutes.projects,
-        {
-          method: project ? "PATCH" : "POST",
-          body: JSON.stringify({
-            name: form.name,
-            description: form.description,
-            status: form.status,
-            color: form.color,
-          }),
-        },
-        csrfToken,
-      );
+      const projects = api.projects();
+      const saved = project
+        ? await projects.update(project.id, form)
+        : await projects.create(form);
+      error.clear();
       onSaved(saved);
       onClose();
     } catch (e) {
-      setError(errorMessage(e));
+      error.fail(e);
     } finally {
       setSaving(false);
     }
@@ -111,9 +94,9 @@ function ProjectForm({
             : "Every good idea starts somewhere. Give yours a home."}
         </DialogDescription>
         <DialogBody>
-          {error && (
-            <Notice variant="error" className="mb-6">
-              {error}
+          {error.message && (
+            <Notice key={error.key} variant="error" className="mb-6">
+              {error.message}
             </Notice>
           )}
           <FieldGroup>

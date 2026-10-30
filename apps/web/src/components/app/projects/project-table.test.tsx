@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
 import { sortable, type Project } from "@/types/projects";
-import { projectQuery, projectsApiPath, projectsPath } from "./project-query";
+import { paths } from "@/lib/api";
+import { indexQuery, projectQuery, projectsPath } from "./project-query";
 import {
   ProjectEmptyState,
   ProjectRow,
@@ -97,7 +98,15 @@ describe("project query", () => {
     expect(projectsPath(query)).toBe(
       "/app/projects?q=web&status=Planned&sort=name&page=2",
     );
-    expect(projectsApiPath(projectQuery({}))).toBe("/api/projects");
+    expect(indexQuery(query)).toEqual({
+      page: 2,
+      q: "web",
+      status: "Planned",
+      sort: "name",
+    });
+    expect(paths.projects.index(indexQuery(projectQuery({})))).toBe(
+      "/api/projects",
+    );
   });
   it("mirrors the API's sort allowlist", () => {
     const go = readFileSync(

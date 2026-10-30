@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { GetServerSidePropsContext } from "next";
+import { useRouter } from "next/router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
@@ -7,15 +9,22 @@ import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
-import { apiRoutes, routes } from "@/lib/routes";
+import { useApi } from "@/lib/api";
+import { authPath, routes } from "@/lib/routes";
+import { guestProps } from "@/lib/server";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
-// Request rendering supplies a fresh CSP nonce and per-request Styletron styles.
-export const getServerSideProps = async () => ({ props: {} });
+// Signed-in visitors go on to ?next= or the dashboard. Request rendering also
+// supplies a fresh CSP nonce and per-request Styletron styles.
+export function getServerSideProps(context: GetServerSidePropsContext) {
+  return guestProps(context, { redirectSignedIn: true });
+}
 export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { busy, error, submit } = useAuthSubmit(apiRoutes.register);
+  const api = useApi();
+  const router = useRouter();
+  const { busy, error, submit } = useAuthSubmit(api.auth().register);
   return (
     <AuthLayout>
       <form
@@ -24,7 +33,11 @@ export default function Register() {
       >
         <Logo />
         <Heading>Create your account</Heading>
-        {error && <Notice variant="error">{error}</Notice>}
+        {error.message && (
+          <Notice key={error.key} variant="error">
+            {error.message}
+          </Notice>
+        )}
         <Field disabled={busy}>
           <Label>Email</Label>
           <Input
@@ -69,7 +82,7 @@ export default function Register() {
         </Button>
         <Text>
           Already have an account?{" "}
-          <TextLink href={routes.login}>
+          <TextLink href={authPath(routes.login, router.query.next)}>
             <Strong>Sign in</Strong>
           </TextLink>
         </Text>

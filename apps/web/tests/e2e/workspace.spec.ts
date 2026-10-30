@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 const email = `e2e-${Date.now()}@forma.test`;
+const returnEmail = `e2e-${Date.now()}-next@forma.test`;
 const password = "A thoughtful test passphrase!";
 test.afterAll(() => {
   // Only remove the uniquely named account created by this test. Cascades remove its projects/sessions.
@@ -12,7 +13,7 @@ test.afterAll(() => {
         "-v",
         "ON_ERROR_STOP=1",
         "-c",
-        `DELETE FROM users WHERE email='${email}'`,
+        `DELETE FROM users WHERE email IN ('${email}', '${returnEmail}')`,
       ],
       { stdio: "ignore" },
     );
@@ -23,9 +24,9 @@ test("register, create, loading, filter, edit, paginate, SSR, security, mobile, 
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
-  await expect(page).toHaveURL("/auth/login");
+  await expect(page).toHaveURL("/auth/login?next=%2Fapp%2Fdashboard");
   await page.getByRole("link", { name: "Sign up" }).click();
-  await expect(page).toHaveURL("/auth/register");
+  await expect(page).toHaveURL("/auth/register?next=%2Fapp%2Fdashboard");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Full name").fill("Taylor Example");
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -94,9 +95,18 @@ test("register, create, loading, filter, edit, paginate, SSR, security, mobile, 
   await page
     .getByRole("searchbox", { name: "Search projects" })
     .fill("not-a-match");
+  await expect(page).toHaveURL("/app/projects?q=not-a-match");
   await expect(page.getByText("No matching projects")).toBeVisible();
   await page.getByRole("searchbox", { name: "Search projects" }).fill("");
-  await page.route("**/api/projects", (route) =>
+  // Search applies after a 300 ms pause; wait for the full list to be current,
+  // or Refresh would reload the "not-a-match" search instead.
+  await expect(page).toHaveURL("/app/projects");
+  await expect(
+    page.getByRole("link", { name: "Launch the good stuff" }).first(),
+  ).toBeVisible();
+  // Any project list request, with or without a query string.
+  const projectLists = /\/api\/projects(\?.*)?$/;
+  await page.route(projectLists, (route) =>
     route.fulfill({
       status: 503,
       contentType: "application/json",
@@ -112,7 +122,7 @@ test("register, create, loading, filter, edit, paginate, SSR, security, mobile, 
   await expect(
     page.getByRole("link", { name: "Launch the good stuff" }).first(),
   ).toBeVisible();
-  await page.unroute("**/api/projects");
+  await page.unroute(projectLists);
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(
     page
@@ -120,7 +130,8 @@ test("register, create, loading, filter, edit, paginate, SSR, security, mobile, 
       .filter({ hasText: "Temporary service interruption" }),
   ).toHaveCount(0);
   await paginate(page);
-  await page.getByRole("link", { name: "Account & security" }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Account & security" }).click();
   await page.getByRole("button", { name: "Sign out other sessions" }).click();
   await expect(
     page.getByText("All other sessions have been signed out."),
@@ -175,7 +186,37 @@ test("root and pre-nesting URLs redirect to the nested pages", async ({
     expect(response.headers()["location"]).toBe(to);
   }
   const dashboard = await request.get("/app/dashboard", { maxRedirects: 0 });
-  expect(dashboard.headers()["location"]).toBe("/auth/login");
+  expect(dashboard.headers()["location"]).toBe(
+    "/auth/login?next=%2Fapp%2Fdashboard",
+  );
+});
+test("signing in returns to the page that needed it, and only to our pages", async ({
+  page,
+}) => {
+  const next = "next=%2Fapp%2Fprojects%3Fstatus%3DPlanned";
+  await page.goto("/app/projects?status=Planned");
+  await expect(page).toHaveURL(`/auth/login?${next}`);
+  await page.getByRole("link", { name: "Sign up" }).click();
+  await expect(page).toHaveURL(`/auth/register?${next}`);
+  await page.getByLabel("Email").fill(returnEmail);
+  await page.getByLabel("Full name").fill("Robin Example");
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL("/app/projects?status=Planned");
+  // Signed in, the auth pages move straight on.
+  await page.goto("/auth/login");
+  await expect(page).toHaveURL("/app/dashboard");
+  await page.goto("/auth/register?next=%2Fapp%2Fsettings");
+  await expect(page).toHaveURL("/app/settings");
+  await page.goto("/auth/login?next=https%3A%2F%2Fexample.com");
+  await expect(page).toHaveURL("/app/dashboard");
+  // Another site in ?next= falls back to the dashboard after signing in.
+  await page.context().clearCookies();
+  await page.goto("/auth/login?next=%2F%2Fexample.com");
+  await page.getByLabel("Email").fill(returnEmail);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL("/app/dashboard");
 });
 test("unauthenticated API requests are rejected", async ({ request }) => {
   const response = await request.get("/api/projects");

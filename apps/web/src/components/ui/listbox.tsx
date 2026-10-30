@@ -1,15 +1,24 @@
 import {
   Children,
   isValidElement,
+  useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 import { Select, type Option } from "baseui/select";
-import { slot, transparentSurface } from "@/lib/baseui";
+import { useReducedMotion } from "motion/react";
+import {
+  popoverExit,
+  popoverOverrides,
+  popoverPanel,
+  slot,
+} from "@/lib/baseui";
 import { cx } from "@/lib/cx";
+import { usePopoverScrollLock } from "@/lib/scroll-lock";
 import { useField } from "./fieldset";
 // Listbox styles on BaseUI's Select, which provides the combobox
-// keyboard handling, popover positioning and option highlighting.
+// keyboard handling, popover positioning and option highlighting. The open
+// panel covers the button with the selected option over it (alignSelection).
 const ListboxRoot = slot("div", "relative block w-full");
 const ListboxButton = slot(
   "div",
@@ -38,6 +47,7 @@ const ListboxValueContainer = slot(
 const ListboxValue = slot(
   "div",
   "flex min-w-0 items-center *:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 sm:*:data-[slot=icon]:size-4 *:data-[slot=icon]:text-zinc-500 dark:*:data-[slot=icon]:text-zinc-400",
+  { props: () => ({ "data-listbox-value": "" }) },
 );
 const ListboxPlaceholder = slot("span", "block truncate text-zinc-500");
 // Non-searchable BaseUI selects focus this element; give it combobox semantics.
@@ -79,18 +89,30 @@ function ChevronUpDown() {
     </svg>
   );
 }
+// At least as wide as the button plus the check mark's gutter, which sits to
+// the left of the button so the option text lines up with the button text.
 const ListboxPanel = slot(
   "div",
   [
-    "mt-1 isolate min-w-max scroll-py-1 rounded-xl p-1 select-none",
+    "isolate w-max scroll-py-1 rounded-xl p-1 select-none",
+    "min-w-[calc(var(--button-width)+1.75rem)] sm:min-w-[calc(var(--button-width)+1.5rem)] max-w-[calc(100vw-2rem)]",
+    popoverPanel,
     "outline outline-transparent focus:outline-hidden",
     "overflow-y-auto overscroll-contain",
     "bg-white/75 backdrop-blur-xl dark:bg-zinc-800/75",
     "shadow-lg ring-1 ring-zinc-950/10 dark:ring-white/10 dark:ring-inset",
   ].join(" "),
-  { props: (state) => ({ style: { width: state.$width as number } }) },
+  {
+    props: (state) => ({
+      "data-popover-panel": "",
+      style: { "--button-width": `${state.$width as number}px` },
+    }),
+  },
 );
-const ListboxList = slot("ul", "max-h-80 focus:outline-hidden");
+const ListboxList = slot(
+  "ul",
+  "max-h-[min(20rem,calc(100dvh-2rem))] focus:outline-hidden",
+);
 const ListboxOptionItem = slot(
   "li",
   [
@@ -126,12 +148,65 @@ function ListboxOptionContent({
           />
         </svg>
       )}
-      <span className="col-start-2 flex min-w-0 items-center *:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 sm:*:data-[slot=icon]:size-4 *:data-[slot=icon]:text-zinc-500 group-data-focus/option:*:data-[slot=icon]:text-white dark:*:data-[slot=icon]:text-zinc-400">
+      <span
+        data-listbox-label
+        className="col-start-2 flex min-w-0 items-center *:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 sm:*:data-[slot=icon]:size-4 *:data-[slot=icon]:text-zinc-500 group-data-focus/option:*:data-[slot=icon]:text-white dark:*:data-[slot=icon]:text-zinc-400"
+      >
         {children}
       </span>
     </>
   );
 }
+// The part of popper.js's update data that alignSelection uses.
+type Box = { top: number; left: number };
+type PopperData = {
+  instance: { reference: Element; popper: Element };
+  offsets: { reference: Box; popper: Box };
+};
+// How close the open panel may come to the viewport's edges.
+const viewportPadding = 16;
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+// A popper.js modifier, run after BaseUI's placement on every update: moves
+// the open panel so the selected option sits over the button, its text in
+// line with the button's text (like Headless UI's "selection" anchor), while
+// keeping the panel inside the viewport.
+function alignSelection(data: PopperData): PopperData {
+  const { reference, popper } = data.instance;
+  const selected = popper.querySelector('[aria-selected="true"]');
+  const label = selected?.querySelector("[data-listbox-label]");
+  const value = reference.querySelector("[data-listbox-value]");
+  if (!selected || !label || !value) return data;
+  const button = reference.getBoundingClientRect();
+  const panel = popper.getBoundingClientRect();
+  const option = selected.getBoundingClientRect();
+  // Where the selected option and its text sit inside the panel.
+  const optionCentre = option.top - panel.top + option.height / 2;
+  const labelLeft = label.getBoundingClientRect().left - panel.left;
+  const top = button.top + button.height / 2 - optionCentre;
+  const left = value.getBoundingClientRect().left - labelLeft;
+  const viewport = document.documentElement;
+  const maxTop = viewport.clientHeight - viewportPadding - panel.height;
+  const maxLeft = viewport.clientWidth - viewportPadding - panel.width;
+  // popper.js offsets are relative to the layer, not the viewport.
+  data.offsets.popper.top =
+    data.offsets.reference.top -
+    button.top +
+    clamp(top, viewportPadding, maxTop);
+  data.offsets.popper.left =
+    data.offsets.reference.left -
+    button.left +
+    clamp(left, viewportPadding, maxLeft);
+  return data;
+}
+const popperOptions = {
+  modifiers: {
+    // The panel covers the button, so it never needs to flip above it.
+    flip: { enabled: false },
+    alignSelection: { enabled: true, order: 860, fn: alignSelection },
+  },
+};
 type ListboxOptionProps<T extends string> = { value: T; children: ReactNode };
 type ListboxProps<T extends string> = {
   value: T;
@@ -154,6 +229,11 @@ export function Listbox<T extends string>({
   "aria-label": ariaLabel,
 }: ListboxProps<T>) {
   const field = useField();
+  const reducedMotion = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  // Nothing scrolls while open, as with a native select: the panel covers
+  // the button, so scrolling would pull them apart.
+  usePopoverScrollLock(open);
   const options: Option[] = Children.toArray(children)
     .filter(isValidElement<ListboxOptionProps<T>>)
     .map((option) => ({
@@ -164,6 +244,8 @@ export function Listbox<T extends string>({
     option?.label as ReactNode;
   return (
     <Select
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
       options={options}
       value={options.filter((option) => option.id === value)}
       onChange={({ value: selected }) => {
@@ -191,7 +273,9 @@ export function Listbox<T extends string>({
         SelectArrow: { component: ChevronUpDown },
         Popover: {
           props: {
-            overrides: { Body: transparentSurface, Inner: transparentSurface },
+            animateOutTime: reducedMotion ? 0 : popoverExit,
+            popperOptions,
+            overrides: popoverOverrides,
           },
         },
         DropdownContainer: { component: ListboxPanel },

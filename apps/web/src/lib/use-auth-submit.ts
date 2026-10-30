@@ -1,22 +1,23 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
-import { request, errorMessage } from "./api";
-import { routes } from "./routes";
-// Shared by the sign-in and registration pages: posts the credentials, then
-// opens the dashboard; keeps the form disabled while the request is pending.
-export function useAuthSubmit(endpoint: string) {
+import { returnPath, routes } from "./routes";
+import { useActionError } from "./use-action-error";
+// Shared by the sign-in and registration pages: sends the form with `signIn`
+// (api.auth().login or .register), then opens ?next= or the dashboard; keeps
+// the form disabled while the request is pending. A failed attempt's error
+// stays until the next attempt fails or the page changes.
+export function useAuthSubmit<B>(signIn: (body: B) => Promise<unknown>) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  async function submit(event: FormEvent, body: Record<string, string>) {
+  const error = useActionError();
+  async function submit(event: FormEvent, body: B) {
     event.preventDefault();
-    setError("");
     setBusy(true);
     try {
-      await request(endpoint, { method: "POST", body: JSON.stringify(body) });
-      await router.push(routes.dashboard);
+      await signIn(body);
+      await router.push(returnPath(router.query.next) ?? routes.dashboard);
     } catch (e) {
-      setError(errorMessage(e));
+      error.fail(e);
       setBusy(false);
     }
   }

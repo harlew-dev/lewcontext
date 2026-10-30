@@ -21,21 +21,22 @@ import { Heading, Subheading } from "@/components/ui/heading";
 import { Link } from "@/components/ui/link";
 import { Text } from "@/components/ui/text";
 import { parseId } from "@/lib/ids";
-import { apiRoutes, routes } from "@/lib/routes";
+import { paths } from "@/lib/api";
+import { routes } from "@/lib/routes";
 import { appProps, initial } from "@/lib/server";
 import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
-import { useApi } from "@/lib/use-api";
+import { useResource } from "@/lib/use-resource";
 import type { Project } from "@/types/projects";
 type ProjectProps = SessionProps & { id: number; project: Initial<Project> };
 export async function getServerSideProps(context: GetServerSidePropsContext) {
   // Only exact, positive IDs reach the API; anything else is a 404 page.
   const id = parseId(context.params?.id);
   if (id === null) return { notFound: true as const };
-  return appProps(context, async (get) => ({
+  return appProps(context, async (api) => ({
     id,
-    project: await initial<Project>(
-      get,
-      apiRoutes.project(id),
+    project: await initial(
+      api,
+      paths.projects.show(id),
       "We couldn’t load this project. Please try again.",
     ),
   }));
@@ -45,16 +46,8 @@ export default function ProjectPage(props: AppPageProps<ProjectProps>) {
   return <ProjectContent {...props} />;
 }
 ProjectPage.getLayout = appLayout;
-function ProjectContent({
-  session,
-  id,
-  project: initialProject,
-}: ProjectProps) {
-  const project = useApi(
-    apiRoutes.project(id),
-    session.user.id,
-    initialProject,
-  );
+function ProjectContent({ id, project: initialProject }: ProjectProps) {
+  const project = useResource(paths.projects.show(id), initialProject);
   const editor = useProjectEditor();
   return (
     <>
@@ -78,7 +71,7 @@ function ProjectContent({
       ) : (
         project.loading && <ListSkeleton label="Loading project" rows={1} />
       )}
-      <ProjectDialog editor={editor} csrfToken={session.csrfToken} />
+      <ProjectDialog editor={editor} />
     </>
   );
 }

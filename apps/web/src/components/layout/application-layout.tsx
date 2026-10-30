@@ -45,9 +45,11 @@ import {
   SidebarSection,
   SidebarSpacer,
 } from "@/components/ui/sidebar";
-import { request, errorMessage } from "@/lib/api";
-import { apiRoutes, navigation, routes } from "@/lib/routes";
-import type { AppPageProps, Session, User } from "@/lib/types";
+import { useApi } from "@/lib/api";
+import { navigation, routes } from "@/lib/routes";
+import { useSession } from "@/lib/session";
+import { useActionError } from "@/lib/use-action-error";
+import type { AppPageProps, User } from "@/lib/types";
 import { SidebarLayout } from "./sidebar-layout";
 function initialsOf(user: User) {
   return user.name
@@ -160,29 +162,20 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 // Signed-in chrome for every /app page: the sidebar layout with Forma's
 // navigation, account menu, sign-out and the getting-started dialog.
-export function ApplicationLayout({
-  session,
-  children,
-}: {
-  session: Session;
-  children: ReactNode;
-}) {
+export function ApplicationLayout({ children }: { children: ReactNode }) {
+  const api = useApi();
+  const session = useSession();
   const router = useRouter();
-  const [error, setError] = useState("");
+  const error = useActionError();
   const [help, setHelp] = useState(false);
   const currentPath = useCurrentPath();
   const initials = initialsOf(session.user);
   async function signOut() {
-    setError("");
     try {
-      await request(
-        apiRoutes.logout,
-        { method: "POST", body: "{}" },
-        session.csrfToken,
-      );
+      await api.auth().logout();
       await router.push(routes.login);
     } catch (e) {
-      setError(errorMessage(e));
+      error.fail(e);
     }
   }
   const accountMenu = (anchor: DropdownMenuProps["anchor"]) => (
@@ -265,9 +258,9 @@ export function ApplicationLayout({
         </Sidebar>
       }
     >
-      {error && (
-        <Notice variant="error" className="mb-6">
-          {error}
+      {error.message && (
+        <Notice key={error.key} variant="error" className="mb-6">
+          {error.message}
         </Notice>
       )}
       {children}
@@ -279,5 +272,5 @@ export function ApplicationLayout({
 // which preserves sidebar state and lets the current-page indicator animate.
 export function appLayout(page: ReactElement, props: AppPageProps) {
   if ("unavailable" in props) return page;
-  return <ApplicationLayout session={props.session}>{page}</ApplicationLayout>;
+  return <ApplicationLayout>{page}</ApplicationLayout>;
 }

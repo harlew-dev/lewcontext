@@ -17,6 +17,8 @@ export type Initial<T> = {
   error: string | null;
 };
 export type SessionProps = { session: Session };
+// Props of a guest page: the session when the visitor is signed in.
+export type GuestProps = { session: Session | null };
 // Props of a signed-in page: the session plus its own server-rendered data,
 // or `unavailable` when the session service can't be reached.
 export type AppPageProps<P = object> =

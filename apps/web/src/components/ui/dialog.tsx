@@ -8,6 +8,7 @@ import {
 import { Modal } from "baseui/modal";
 import { slot } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
+import { useScrollLock } from "@/lib/scroll-lock";
 import { Text } from "./text";
 const sizes = {
   xs: "sm:max-w-xs",
@@ -24,7 +25,7 @@ const sizes = {
 // so the backdrop is the Root and the centring grid is the DialogContainer.
 const DialogBackdrop = slot(
   "div",
-  "fixed inset-0 w-screen overflow-y-auto bg-zinc-950/25 pt-6 transition duration-100 focus:outline-0 data-closed:opacity-0 sm:pt-0 dark:bg-zinc-950/50",
+  "fixed inset-0 w-screen overflow-y-auto bg-zinc-950/25 pt-6 transition duration-150 ease-out focus:outline-0 data-closed:pointer-events-none data-closed:opacity-0 data-closed:ease-in motion-reduce:transition-none sm:pt-0 dark:bg-zinc-950/50",
 );
 const DialogGrid = slot(
   "div",
@@ -34,7 +35,7 @@ const DialogPanel = slot(
   "div",
   [
     "row-start-2 w-full min-w-0 rounded-t-3xl bg-white p-(--gutter) shadow-lg ring-1 ring-zinc-950/10 [--gutter:--spacing(8)] sm:mb-auto sm:rounded-2xl dark:bg-zinc-900 dark:ring-white/10 forced-colors:outline",
-    "transition duration-100 will-change-transform data-closed:translate-y-12 data-closed:opacity-0 sm:data-closed:translate-y-0 sm:data-closed:scale-95",
+    "transition duration-150 ease-out will-change-transform data-closed:translate-y-12 data-closed:opacity-0 data-closed:ease-in motion-reduce:transition-none sm:data-closed:translate-y-0 sm:data-closed:scale-95",
     "focus:outline-hidden",
   ].join(" "),
 );
@@ -50,7 +51,8 @@ type DialogProps = {
   children: ReactNode;
 };
 // Dialog on BaseUI's Modal (focus lock, Escape, backdrop click,
-// scroll lock, enter/leave transitions via data-closed).
+// enter/leave transitions via data-closed). useScrollLock hides the page's
+// scrollbar without shifting the layout.
 export function Dialog({
   open,
   onClose,
@@ -59,6 +61,7 @@ export function Dialog({
   children,
 }: DialogProps) {
   const id = useId();
+  useScrollLock(open);
   const ids = { titleId: `${id}-title`, descriptionId: `${id}-description` };
   return (
     <Modal

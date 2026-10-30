@@ -29,8 +29,9 @@ The API doesn't publish its sort keys. A Vitest test reads the Go allowlist and 
 ## URL state
 
 ```ts
-const query = projectQuery(router.query);      // normalise: bad values → defaults
-const list = useApi(projectsApiPath(query), session.user.id, props.projects);
+const query = projectQuery(router.query);      // URL state; bad values → defaults
+// indexQuery() turns it into the typed ProjectIndexQuery ("all" statuses → no filter)
+const list = useResource(paths.projects.index(indexQuery(query)), props.projects);
 router.push(projectsPath({ ...query, page: 1, status }), undefined, { shallow: true, scroll: false });
 ```
 

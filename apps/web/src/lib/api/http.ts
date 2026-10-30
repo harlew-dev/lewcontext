@@ -1,3 +1,4 @@
+import type { ApiPath } from "./paths";
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -6,19 +7,45 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export async function request<T>(
+export function errorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Something went wrong. Please try again.";
+}
+export type Method = "POST" | "PATCH" | "DELETE";
+// How resource files reach the API; the browser and the server differ only here.
+export type Http = {
+  get<T>(path: ApiPath<T>): Promise<T>;
+  send<T>(method: Method, path: string, body?: unknown): Promise<T>;
+};
+type Transport = {
+  base: string;
+  headers: Record<string, string>;
+  credentials?: RequestCredentials;
+  timeout: number;
+};
+function http(transport: Transport): Http {
+  const call = <T>(method: string, path: string, body?: unknown) =>
+    request<T>(transport, method, path, body);
+  return {
+    get: (path) => call("GET", path),
+    send: (method, path, body) => call(method, path, body),
+  };
+}
+async function request<T>(
+  { base, headers, credentials, timeout }: Transport,
+  method: string,
   path: string,
-  options: RequestInit = {},
-  csrfToken?: string,
+  body?: unknown,
 ): Promise<T> {
-  const headers = new Headers(options.headers);
-  if (options.body) headers.set("Content-Type", "application/json");
-  if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
-  const response = await fetch(path, {
-    ...options,
-    headers,
-    credentials: "same-origin",
-    signal: options.signal || AbortSignal.timeout(12000),
+  const init = new Headers(headers);
+  if (body !== undefined) init.set("Content-Type", "application/json");
+  const response = await fetch(base + path, {
+    method,
+    headers: init,
+    credentials,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeout),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
@@ -30,8 +57,18 @@ export async function request<T>(
   if (response.status === 204) return undefined as T;
   return response.json();
 }
-export function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Something went wrong. Please try again.";
+// Browser requests go through the same-origin /api proxy with the session
+// cookie; mutations add the session's CSRF token when one is given.
+export function browserHttp(csrfToken?: string): Http {
+  return http({
+    base: "",
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+    credentials: "same-origin",
+    timeout: 12000,
+  });
+}
+// Server rendering calls the fixed private API URL and forwards only the
+// incoming request's cookie. Create one per request; never share it.
+export function serverHttp(base: string, cookie: string): Http {
+  return http({ base, headers: { cookie }, timeout: 8000 });
 }

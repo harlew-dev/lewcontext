@@ -17,6 +17,15 @@ BaseUI provides behaviour (focus, keyboard, overlays) for Button, Input, Textare
 - Style BaseUI by replacing its override slots with `slot()` from `lib/baseui.tsx`. It renders your element with Tailwind classes and maps BaseUI state props to data attributes: `data-hover`, `data-active`, `data-focus`, `data-disabled`, `data-invalid`, `data-open`, `data-selected`, `data-loading` and `data-closed`.
 - Plain links and buttons get the same attributes from `useInteractive` (`lib/interactive.ts`), via `Link` and `Clickable`.
 - Don't use `style` overrides, except `transparentSurface` to neutralise a BaseUI surface.
+- **Overlays animate in and out.**
+  - `Dialog` and the mobile sidebar transition on `data-closed`, which `slot()` also sets while a Modal or Drawer is leaving (`$isOpen` false). Closed overlays get `data-closed:pointer-events-none`, since BaseUI keeps them mounted for 500 ms.
+  - Popovers (`Dropdown`, `Listbox`) use `popoverOverrides`, `popoverPanel` on the panel, and `animateOutTime={popoverExit}` (0 with reduced motion). The panel fades itself, not BaseUI's Body: an ancestor with opacity below 1 turns off `backdrop-blur`.
+- **Open overlays stop the page scrolling.** `Dialog` and the mobile sidebar call `useScrollLock(open)`, and open popovers (`Dropdown`, `Listbox`) call `usePopoverScrollLock(open)` (`lib/scroll-lock.ts`), so a menu can't drift from its trigger as the page scrolls.
+  - The lock hides the page scrollbar and pads `<html>` by its width so nothing shifts (as Catalyst/Headless UI do).
+  - It keeps the page's scroll position, because focus moving into an overlay can otherwise scroll the page to the top.
+  - It counts holders, so a listbox inside a dialog doesn't unlock the page early.
+  - The popover version also blocks wheel and touch scrolling outside the panel (`data-popover-panel`), including in a dialog's own scrolling content.
+- **`Listbox` opens over its button** with the selected option on top of it and the option text in line with the button text (Headless UI's "selection" anchor). This is a popper.js modifier (`alignSelection`), and the panel is kept 16px inside the viewport.
 - Classes target the attributes: `data-hover:bg-zinc-950/5 data-focus:outline-2 data-disabled:opacity-50`.
 
 ## Component APIs (`components/ui`)
@@ -45,4 +54,4 @@ Files are kebab-case and export a family of named components. Keep these props s
 
 ## Feature components (`components/app/projects`)
 
-These are shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow`, `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `formatDate`, `ProjectDialog`, `ProjectNotices`, `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath` / `projectsApiPath`.
+These are shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow`, `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `formatDate`, `ProjectDialog`, `ProjectNotices`, `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath` / `indexQuery`.

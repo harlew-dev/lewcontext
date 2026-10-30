@@ -1,6 +1,7 @@
 import type { ParsedUrlQuery } from "querystring";
 import { page, param, sort, url } from "@/lib/pagination";
-import { apiRoutes, routes } from "@/lib/routes";
+import type { ProjectIndexQuery } from "@/lib/api";
+import { routes } from "@/lib/routes";
 import {
   defaultSort,
   sortable,
@@ -44,7 +45,13 @@ function queryParams({ page, q, status, sort }: ProjectQuery) {
 export function projectsPath(query: ProjectQuery): string {
   return url(routes.projects, queryParams(query));
 }
-// The API URL for a query; also the page's SWR key.
-export function projectsApiPath(query: ProjectQuery): string {
-  return url(apiRoutes.projects, queryParams(query));
+// The API query for the page state ("all" statuses means no filter); pass it
+// to api.projects().index() or paths.projects.index().
+export function indexQuery({
+  page,
+  q,
+  status,
+  sort,
+}: ProjectQuery): ProjectIndexQuery {
+  return { page, q, sort, status: status === "all" ? undefined : status };
 }

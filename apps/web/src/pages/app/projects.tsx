@@ -9,7 +9,7 @@ import { ProjectNotices } from "@/components/app/projects/project-notices";
 import {
   cleanSearch,
   projectQuery,
-  projectsApiPath,
+  indexQuery,
   projectsPath,
 } from "@/components/app/projects/project-query";
 import {
@@ -25,10 +25,11 @@ import { Input, InputGroup } from "@/components/ui/input";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { Text } from "@/components/ui/text";
+import { paths } from "@/lib/api";
 import type { Page } from "@/lib/pagination";
 import { appProps, initial } from "@/lib/server";
 import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
-import { useApi } from "@/lib/use-api";
+import { useResource } from "@/lib/use-resource";
 import {
   statuses,
   type Project,
@@ -37,11 +38,11 @@ import {
 } from "@/types/projects";
 type ProjectsProps = SessionProps & { projects: Initial<Page<Project>> };
 export function getServerSideProps(context: GetServerSidePropsContext) {
-  const path = projectsApiPath(projectQuery(context.query));
-  return appProps(context, async (get) => ({
-    projects: await initial<Page<Project>>(
-      get,
-      path,
+  const query = indexQuery(projectQuery(context.query));
+  return appProps(context, async (api) => ({
+    projects: await initial(
+      api,
+      paths.projects.index(query),
       "We couldn’t load your projects. Please try again.",
     ),
   }));
@@ -51,10 +52,10 @@ export default function Projects(props: AppPageProps<ProjectsProps>) {
   return <ProjectsContent {...props} />;
 }
 Projects.getLayout = appLayout;
-function ProjectsContent({ session, projects }: ProjectsProps) {
+function ProjectsContent({ projects }: ProjectsProps) {
   const router = useRouter();
   const query = projectQuery(router.query);
-  const list = useApi(projectsApiPath(query), session.user.id, projects);
+  const list = useResource(paths.projects.index(indexQuery(query)), projects);
   // Search, filter and sort changes start again from the first page. Paging
   // fetches through SWR, so getServerSideProps doesn't need to run again.
   function navigate(change: Partial<ProjectQuery>, replace = false) {
@@ -131,7 +132,7 @@ function ProjectsContent({ session, projects }: ProjectsProps) {
         }
         shallow
       />
-      <ProjectDialog editor={editor} csrfToken={session.csrfToken} />
+      <ProjectDialog editor={editor} />
     </>
   );
 }
