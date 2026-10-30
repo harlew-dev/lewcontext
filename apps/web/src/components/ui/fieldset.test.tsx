@@ -1,8 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { Description, ErrorMessage, Field, Label } from "./fieldset";
 import { Input } from "./input";
-afterEach(cleanup);
 describe("Field", () => {
   it("labels the BaseUI input and links its description and error", () => {
     render(

@@ -1,28 +1,14 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Toaster } from "@/components/ui/toast";
 import WorkspaceSettings from "@/pages/app/[workspace]/settings";
 import { SessionProvider } from "@/lib/session";
-import type { Session } from "@/lib/types";
 import { WorkspaceProvider } from "@/lib/workspace";
+import { stubApi } from "@/test/api";
+import { testSession } from "@/test/session";
 import type { Role, Workspace } from "@/types/workspaces";
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
-const session: Session = {
-  user: { id: "usr_00000000000001", name: "Ada", email: "", createdAt: "" },
-  csrfToken: "csrf",
-  expiresAt: "",
-  signedInAt: "",
-};
+const session = testSession();
 function renderAs(role: Role) {
   const workspace: Workspace = {
     id: "wsp_2yEHYLwiwPVhLW",
@@ -48,12 +34,7 @@ function renderAs(role: Role) {
 }
 describe("workspace settings", () => {
   it("lets owners and admins rename the workspace", async () => {
-    const fetch = vi
-      .fn()
-      .mockImplementation(
-        async () => new Response(JSON.stringify({}), { status: 200 }),
-      );
-    vi.stubGlobal("fetch", fetch);
+    const api = stubApi({ "*": { body: {} } });
     renderAs("admin");
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
@@ -64,11 +45,9 @@ describe("workspace settings", () => {
     await waitFor(() =>
       expect(screen.getByText("Workspace renamed.")).toBeInTheDocument(),
     );
-    const [url, init] = fetch.mock.calls.find(
-      ([, init]) => init?.method === "PATCH",
-    )!;
-    expect(url).toBe("/api/workspaces/wsp_2yEHYLwiwPVhLW");
-    expect(JSON.parse(init.body)).toEqual({ name: "Acme Inc" });
+    const [rename] = api.sent("PATCH");
+    expect(rename.url).toBe("/api/workspaces/wsp_2yEHYLwiwPVhLW");
+    expect(rename.body).toEqual({ name: "Acme Inc" });
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
   it("shows members the name without a form", () => {

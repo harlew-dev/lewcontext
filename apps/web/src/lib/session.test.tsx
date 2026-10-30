@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { stubApi } from "@/test/api";
+import { testSession } from "@/test/session";
 import { useApi } from "./api";
 import {
   SessionProvider,
@@ -10,33 +12,16 @@ import {
   useSession,
 } from "./session";
 import type { Session } from "./types";
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
-const session: Session = {
-  user: {
-    id: "usr_00000000000007",
-    name: "Ada Lovelace",
-    email: "ada@forma.test",
-    createdAt: "",
-  },
+const session = testSession({
   csrfToken: "csrf-7",
-  expiresAt: "",
-  signedInAt: "",
-};
+  user: { id: "usr_00000000000007" },
+});
 function provide(value: Session | null) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <SessionProvider session={value}>{children}</SessionProvider>;
   };
 }
-function stubFetch() {
-  const fetch = vi
-    .fn()
-    .mockImplementation(async () => new Response("{}", { status: 200 }));
-  vi.stubGlobal("fetch", fetch);
-  return fetch;
-}
+const stubFetch = () => stubApi({ "*": { body: {} } });
 describe("useSession()", () => {
   it("returns the signed-in session", () => {
     const { result } = renderHook(useSession, { wrapper: provide(session) });
@@ -63,16 +48,16 @@ describe("useIsGuest() and useOptionalSession()", () => {
 });
 describe("useApi()", () => {
   it("sends the session's CSRF token with mutations", async () => {
-    const fetch = stubFetch();
+    const api = stubFetch();
     const { result } = renderHook(useApi, { wrapper: provide(session) });
     await result.current.sessions().destroyOthers();
-    expect(fetch.mock.calls[0][1].headers.get("X-CSRF-Token")).toBe("csrf-7");
+    expect(api.sent()[0].csrf).toBe("csrf-7");
   });
   it("sends no token when signed out", async () => {
-    const fetch = stubFetch();
+    const api = stubFetch();
     const { result } = renderHook(useApi, { wrapper: provide(null) });
     await result.current.auth().login({ email: "a@b.test", password: "x" });
-    expect(fetch.mock.calls[0][1].headers.has("X-CSRF-Token")).toBe(false);
+    expect(api.sent()[0].csrf).toBeNull();
   });
   it("keeps the same client until the session changes", () => {
     let value: Session | null = session;
@@ -91,14 +76,14 @@ describe("useApi()", () => {
 describe("useRenewSession()", () => {
   const rotated: Session = { ...session, csrfToken: "csrf-8" };
   it("replaces the session, so mutations send the new CSRF token", async () => {
-    const fetch = stubFetch();
+    const api = stubFetch();
     const { result } = renderHook(
       () => ({ api: useApi(), renew: useRenewSession() }),
       { wrapper: provide(session) },
     );
     act(() => result.current.renew(rotated));
     await result.current.api.sessions().destroyOthers();
-    expect(fetch.mock.calls[0][1].headers.get("X-CSRF-Token")).toBe("csrf-8");
+    expect(api.sent()[0].csrf).toBe("csrf-8");
   });
   it("gives way to a session the loader provides later", () => {
     let value: Session = session;

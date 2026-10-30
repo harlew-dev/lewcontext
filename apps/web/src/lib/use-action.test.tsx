@@ -1,15 +1,8 @@
-import {
-  act,
-  cleanup,
-  render,
-  renderHook,
-  screen,
-} from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, render, renderHook, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { ApiError } from "./api";
 import { useAction } from "./use-action";
-afterEach(cleanup);
 // An action that waits until the test settles it.
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};

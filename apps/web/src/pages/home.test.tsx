@@ -1,17 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { stubApi } from "@/test/api";
 import Home from "./home";
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
-function stubMe(status: number) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response("{}", { status })),
-  );
-}
+const stubMe = (status: number) =>
+  stubApi({ "GET /api/auth/me": { status, body: {} } });
 describe("homepage", () => {
   it("offers to log in when signed out", async () => {
     stubMe(401);

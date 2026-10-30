@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { testSession } from "@/test/session";
 import type { Workspace } from "@/types/workspaces";
 import { paths } from "./api";
 import type { Page } from "./pagination";
 import { SessionProvider } from "./session";
-import type { Session } from "./types";
 import { useResourcePages } from "./use-resource-pages";
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock("react-router", async (importOriginal) => ({
@@ -15,16 +15,9 @@ vi.mock("react-router", async (importOriginal) => ({
   useLocation: () => ({ pathname: "/app/settings", search: "" }),
 }));
 afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
   navigate.mockReset();
 });
-const session: Session = {
-  user: { id: "usr_00000000000001", name: "Ada", email: "", createdAt: "" },
-  csrfToken: "csrf",
-  expiresAt: "",
-  signedInAt: "",
-};
+const session = testSession();
 // A fresh cache per test, like a fresh page load.
 function wrapper({ children }: { children: ReactNode }) {
   return (

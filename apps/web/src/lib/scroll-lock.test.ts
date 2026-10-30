@@ -1,5 +1,5 @@
-import { cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useScrollLock } from "./scroll-lock";
 const html = document.documentElement;
 beforeEach(() => {
@@ -12,10 +12,6 @@ beforeEach(() => {
     value: 1265,
     configurable: true,
   });
-});
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
 });
 describe("useScrollLock()", () => {
   it("hides the scrollbar and pads the page by its width", () => {

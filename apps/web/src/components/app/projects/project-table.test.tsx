@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
 import { sortable, type Project } from "@/types/projects";
 import { paths } from "@/lib/api";
@@ -14,7 +14,6 @@ import {
   ProjectRow,
   ProjectTableHead,
 } from "./project-table";
-afterEach(cleanup);
 const workspace: Workspace = {
   id: "wsp_2yEHYLwiwPVhLW",
   name: "Acme",

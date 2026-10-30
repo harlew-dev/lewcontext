@@ -1,10 +1,9 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { Page } from "@/lib/pagination";
 import { PaginatedTable } from "./paginated-table";
 import { TableCell, TableHeader, TableRow } from "./table";
-afterEach(cleanup);
 type Item = { id: number; name: string };
 function result(current: number, total: number, data: Item[]): Page<Item> {
   return {

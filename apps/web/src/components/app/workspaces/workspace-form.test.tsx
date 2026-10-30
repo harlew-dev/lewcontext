@@ -1,17 +1,12 @@
 import type { ReactNode } from "react";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import { SessionProvider } from "@/lib/session";
-import type { Session } from "@/lib/types";
+import { gate, stubApi } from "@/test/api";
+import { testSession } from "@/test/session";
 import { WorkspaceNameField, useCreateWorkspace } from "./workspace-form";
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock("react-router", async (importOriginal) => ({
@@ -20,16 +15,9 @@ vi.mock("react-router", async (importOriginal) => ({
   useLocation: () => ({ pathname: "/app/onboarding", search: "" }),
 }));
 afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
   navigate.mockReset();
 });
-const session: Session = {
-  user: { id: "usr_00000000000001", name: "Ada", email: "", createdAt: "" },
-  csrfToken: "csrf",
-  expiresAt: "",
-  signedInAt: "",
-};
+const session = testSession();
 function wrapper({ children }: { children: ReactNode }) {
   return (
     <SWRConfig value={{ provider: () => new Map() }}>
@@ -42,11 +30,7 @@ function CreateForm() {
   const create = useCreateWorkspace();
   return (
     <form onSubmit={create.submit}>
-      {create.error.message && (
-        <Notice key={create.error.key} variant="error">
-          {create.error.message}
-        </Notice>
-      )}
+      <ErrorNotice error={create.error} />
       <WorkspaceNameField
         value={create.name}
         onChange={create.setName}
@@ -60,18 +44,15 @@ function CreateForm() {
 }
 // Holds the POST until `release`, then answers with `status`.
 function stubCreate(status: number) {
-  let release = () => {};
-  const gate = new Promise<void>((resolve) => (release = resolve));
-  const fetch = vi.fn().mockImplementation(async () => {
-    await gate;
-    const body =
-      status === 201
-        ? { id: "wsp_2yEHYLwiwPVhLW", name: "Acme", role: "owner" }
-        : { error: "Use a workspace name of 1–80 characters." };
-    return new Response(JSON.stringify(body), { status });
+  const held = gate();
+  const body =
+    status === 201
+      ? { id: "wsp_2yEHYLwiwPVhLW", name: "Acme", role: "owner" }
+      : { error: "Use a workspace name of 1–80 characters." };
+  const api = stubApi({
+    "POST /api/workspaces": { status, body, gate: held.promise },
   });
-  vi.stubGlobal("fetch", fetch);
-  return { fetch, release: () => release() };
+  return { api, release: held.release };
 }
 const submit = () => screen.getByRole("button", { name: "Create workspace" });
 const name = () => screen.getByLabelText("Workspace name");
@@ -87,7 +68,7 @@ describe("creating a workspace", () => {
     expect(submit()).toBeEnabled();
   });
   it("sends the trimmed name once, then opens the new workspace", async () => {
-    const { fetch, release } = stubCreate(201);
+    const { api, release } = stubCreate(201);
     render(<CreateForm />, { wrapper });
     fireEvent.change(name(), { target: { value: " Acme " } });
     fireEvent.click(submit());
@@ -101,11 +82,9 @@ describe("creating a workspace", () => {
         "/app/wsp_2yEHYLwiwPVhLW/dashboard",
       ),
     );
-    const creates = fetch.mock.calls.filter(
-      ([, init]) => init?.method === "POST",
-    );
+    const creates = api.sent("POST");
     expect(creates).toHaveLength(1);
-    expect(JSON.parse(creates[0][1].body)).toEqual({ name: "Acme" });
+    expect(creates[0].body).toEqual({ name: "Acme" });
   });
   it("shows the API's error and lets the user try again", async () => {
     const { release } = stubCreate(422);

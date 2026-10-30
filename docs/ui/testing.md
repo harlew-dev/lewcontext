@@ -14,6 +14,19 @@ cd apps/web && npm audit
 ## Vitest + React Testing Library
 
 - Files sit next to the code as `*.test.ts(x)` and run in jsdom (`vitest.config.ts`, setup in `tests/setup.ts`). Vitest runs from `apps/web`. It has its own config, without the React Router Vite plugin.
+- **Shared setup:** `tests/setup.ts` runs `cleanup()` and `vi.unstubAllGlobals()` after every test, so test files don't repeat them.
+- **Faking the API:** `stubApi` from `src/test/api.ts` answers `fetch` from a table of `"METHOD url"` keys (the exact URL, then the path without its query, then `"*"`) and records what was sent:
+
+  ```ts
+  const api = stubApi({
+    "POST /api/auth/password/verify": { status: 204 },
+    "PUT /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
+    "*": { body: {} },
+  });
+  api.sent("PUT"); // [{ method, url, body, csrf }]
+  ```
+
+  A list of replies is used in order and its last one repeats; anything unmatched gets a 404 naming the missing stub. A reply can hold its response until a `gate()` is released (to check pending states) or fail as if the network were down (`network: true`). `testSession(overrides)` from `src/test/session.ts` is a signed-in session to pass to `SessionProvider`. Only `lib/api/http.test.ts` (the transport, with raw `Response`s) and `lib/use-resource-pages.test.tsx` (an outage that changes mid-test) stub `fetch` themselves.
 - **Routing in tests:** components that render links need a router: `render(ui, { wrapper: MemoryRouter })`. Hooks that navigate are tested by mocking `useNavigate`/`useLocation` with `vi.mock("react-router", async (importOriginal) => ({ ...(await importOriginal()), useNavigate: () => navigate }))`.
 - **Query by role and accessible name** (`getByRole("link", { name: "Page 2" })`), and assert on behaviour: links, `aria-current`, `aria-sort`, `aria-busy`, disabled state, callbacks. Don't write tests that only mirror styling.
 - **Pure helpers get table-style tests:** `lib/pagination.test.ts`, `lib/ids.test.ts` (`parsePublicId`). The API client has `lib/api/http.test.ts` (the transport: CSRF, credentials, errors) and `lib/api/index.test.ts` (paths, methods and bodies, plus `@ts-expect-error` checks that wrong queries and paths fail to type-check). `lib/routes.test.ts` covers the workspace route builders and which `?next=` values are accepted; `lib/session.test.tsx` and `lib/use-resource.test.tsx` cover the session hooks, that `useApi()` sends the CSRF token only when signed in, and that the SWR cache is kept per user. `lib/loaders.test.ts` covers the route loaders: the signed-in layout's session and workspaces, 401 → login with `next`, no workspace → onboarding, an unreachable API, signed-in visitors leaving login for an allowed `next`, and `/app` and onboarding redirects. `pages/home.test.tsx` covers the homepage's "Log in" / "Dashboard" button. `lib/use-resource-pages.test.tsx` covers the infinite list: a given page 1, loading more without repeats, stopping at the end, keeping items on failure with retry, and 401 → login.

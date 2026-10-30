@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "./http";
 import { browserHttp } from "./http";
 import { path } from "./paths";
-afterEach(() => vi.unstubAllGlobals());
 function stubFetch(response: Response) {
   const fetch = vi.fn().mockResolvedValue(response);
   vi.stubGlobal("fetch", fetch);

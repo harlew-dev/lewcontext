@@ -1,6 +1,6 @@
 # Shared helpers (reducing repeated code)
 
-Status: **decided 2026-10-30; step 1 of 4 done (web helpers).** Build before [events](events.md) step 2.
+Status: **decided 2026-10-30; steps 1–2 of 4 done (web helpers, web test helpers).** Build before [events](events.md) step 2.
 
 ## Why
 
@@ -89,7 +89,7 @@ const api = stubApi({
 api.sent("PUT");   // [{ url, body, csrf }]
 ```
 
-plus `testSession(overrides)`. This is the router-style stub `settings.test.tsx` already has, generalised, with support for a held response (`gate`) that the pending-state tests use. Tests with special needs (the pagination outage) keep theirs.
+plus `testSession(overrides)`, and (added while building) `cleanup()` / `vi.unstubAllGlobals()` once in `tests/setup.ts` instead of an `afterEach` in 16 files. This is the router-style stub `settings.test.tsx` already has, generalised, with support for a held response (`gate`) that the pending-state tests use. Tests with special needs (the pagination outage) keep theirs.
 
 ### 5. A form-in-dialog component: not doing (Q2)
 
