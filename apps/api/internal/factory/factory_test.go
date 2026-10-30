@@ -113,6 +113,10 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := AuthAttempts.Create(ctx, db, f, 3); err != nil {
 		t.Fatal(err)
 	}
+	event, err := Events.State(func(e *Event) { e.UserID = user.ID }).CreateOne(ctx, db, f)
+	if err != nil || event.PublicID == "" {
+		t.Fatalf("event: %+v (%v)", event, err)
+	}
 }
 func TestCreateInsertsInBatches(t *testing.T) {
 	db := dbtest.Open(t)

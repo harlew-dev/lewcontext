@@ -41,6 +41,10 @@ Stored in `auth_attempts`, in 15-minute fixed windows. Successful attempts count
 
 Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's dev proxy) shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
 
+## Audit trail
+
+Sign-ups, login attempts (with the email typed and the connection IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, and the first refusal of each rate-limit window are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+
 ## Transport and headers
 
 - **API:** `Cache-Control: no-store`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.

@@ -3,6 +3,8 @@ package httpapi
 import (
 	"errors"
 	"forma/api/internal/auth"
+	"forma/api/internal/events"
+	"forma/api/internal/store"
 	"net/http"
 )
 
@@ -44,11 +46,22 @@ func (s *Server) verifyPassword(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	if !auth.CheckPassword(in.Password, hash) {
+	ok := auth.CheckPassword(in.Password, hash)
+	if err := s.recordPasswordCheck(r, user, ok, events.PasswordStepVerify); err != nil {
+		internalError(w, err)
+		return
+	}
+	if !ok {
 		failField(w, 422, "password", wrongCurrentPassword)
 		return
 	}
 	w.WriteHeader(204)
+}
+
+// recordPasswordCheck records auth.password_checked.
+func (s *Server) recordPasswordCheck(r *http.Request, user store.User, ok bool, step string) error {
+	e := events.PasswordChecked{User: user.PublicID, OK: ok, Step: step}
+	return s.Store.Record(r.Context(), e, store.EventScope{UserID: user.ID})
 }
 
 // changePassword saves the new password, signs out every session of the
@@ -70,7 +83,8 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	if !s.accountLimit(w, r, user.Email) {
 		return
 	}
-	err := s.Store.ChangePassword(r.Context(), user.ID, func(hash string) (string, error) {
+	cookie, _ := r.Cookie(auth.CookieName(s.Config.Production))
+	err := s.Store.ChangePassword(r.Context(), user, auth.Digest(cookie.Value), func(hash string) (string, error) {
 		if !auth.CheckPassword(in.CurrentPassword, hash) {
 			return "", errWrongPassword
 		}
@@ -79,6 +93,14 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		}
 		return auth.HashPassword(in.NewPassword)
 	})
+	// The check passed unless the current password was wrong; record it once
+	// the change has committed or rolled back.
+	if err == nil || errors.Is(err, errWrongPassword) || errors.Is(err, errSamePassword) {
+		if recordErr := s.recordPasswordCheck(r, user, !errors.Is(err, errWrongPassword), events.PasswordStepUpdate); recordErr != nil {
+			internalError(w, recordErr)
+			return
+		}
+	}
 	switch {
 	case errors.Is(err, errWrongPassword):
 		failField(w, 422, "currentPassword", wrongCurrentPassword)
@@ -87,6 +109,6 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		internalError(w, err)
 	default:
-		s.startSession(w, r, user, 200)
+		s.startSession(w, r, user, 200, nil)
 	}
 }

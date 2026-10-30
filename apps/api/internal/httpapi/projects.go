@@ -113,7 +113,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "Check the project name, description, status, and color.")
 		return
 	}
-	p, err := s.Store.CreateProject(r.Context(), currentWorkspace(r).ID, in)
+	p, err := s.Store.CreateProject(r.Context(), currentWorkspace(r), in)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -134,7 +134,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "Check the project name, description, status, and color.")
 		return
 	}
-	p, err := s.Store.UpdateProject(r.Context(), currentWorkspace(r).ID, id, in)
+	p, err := s.Store.UpdateProject(r.Context(), currentWorkspace(r), id, in)
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Project not found.")
 		return

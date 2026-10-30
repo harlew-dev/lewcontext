@@ -12,11 +12,12 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `workspace_user` | Memberships: user, workspace, `role` (`owner`, `admin`, `member`); unique per pair | unexported `membership` |
 | `projects` | Projects in a workspace (`ON DELETE CASCADE`) | `Project` |
 | `auth_attempts` | Rate-limit counters | unexported `authAttempt` |
+| `events` | What happened: name, actor, user, workspace, `jsonb` payload, user agent ([events.md](events.md)) | unexported `eventRecord` |
 | `bun_migrations`, `bun_migration_locks` | Migration history | (Bun) |
 
 ## Public IDs
 
-`users`, `workspaces` and `projects` have `public_id text NOT NULL UNIQUE DEFAULT public_id('usr' | 'wsp' | 'prj')`, with a `CHECK` on the format. The plpgsql `public_id(prefix)` function (migration 001) turns bytes from the built-in `gen_random_uuid()` into 14 base62 characters, skipping the UUID's fixed version/variant bytes and bytes ≥ 248 so every character is equally likely (about 83 random bits). No extension is needed.
+`users`, `workspaces`, `projects` and `events` have `public_id text NOT NULL UNIQUE DEFAULT public_id('usr' | 'wsp' | 'prj' | 'evt')`, with a `CHECK` on the format. The plpgsql `public_id(prefix)` function (migration 001) turns bytes from the built-in `gen_random_uuid()` into 14 base62 characters, skipping the UUID's fixed version/variant bytes and bytes ≥ 248 so every character is equally likely (about 83 random bits). No extension is needed.
 
 - Every insert gets one, from the API, factories or seeders. Models map it as `PublicID string` with `bun:",nullzero"`, so Bun sends `DEFAULT`, and read it back with `Returning("*")`. Go never generates IDs.
 - JSON uses the public ID as `"id"`; the bigint `id` is `json:"-"` and stays internal (keys, joins, sort tie-breaks).
@@ -31,7 +32,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 
 ## Migrations
 
-- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_auth_attempts`.
+- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_auth_attempts`, `007_create_events`.
 - **Squashed while in development.** There is no database whose data must be kept, so a table changes by **editing its create migration**, not by adding an alter migration. Then rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed`. Once a database holds data that must be kept, migrations become append-only again.
 - **`make migrate-fresh`** lists the tables and row counts it would drop. `CONFIRM=1` drops the current schema (`DROP SCHEMA … CASCADE`), recreates it and migrates. It is refused when `APP_ENV=production`. Only run it on the local development database. Other checkouts sharing that database need it too after pulling a schema change: Bun only runs migrations it hasn't recorded, so an edited file won't re-run.
 - **Running:** `make migrate` applies pending files, each in its own transaction, as one group, holding a PostgreSQL advisory lock. `make migrate-status` lists them. The API never migrates on startup.

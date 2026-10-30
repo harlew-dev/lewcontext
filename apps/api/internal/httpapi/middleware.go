@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"forma/api/internal/auth"
+	"forma/api/internal/events"
 	"forma/api/internal/store"
 	"log/slog"
 	"mime"
@@ -19,6 +20,22 @@ type sessionKey struct{}
 type workspaceKey struct{}
 
 func current(r *http.Request) store.Session { return r.Context().Value(sessionKey{}).(store.Session) }
+
+// optionalSession is the request's session on routes that may run without
+// one (the rate limiters).
+func optionalSession(r *http.Request) (store.Session, bool) {
+	session, ok := r.Context().Value(sessionKey{}).(store.Session)
+	return session, ok
+}
+
+// clientIP is the connection's address. Forwarded headers are not trusted.
+func clientIP(r *http.Request) string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
 
 // currentWorkspace is the workspace in the path, set by requireWorkspace.
 func currentWorkspace(r *http.Request) store.Workspace {
@@ -48,6 +65,7 @@ func (s *Server) security(next http.Handler) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
+		ctx = events.WithUserAgent(ctx, r.UserAgent())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -84,7 +102,8 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 			fail(w, 403, "Invalid CSRF token. Refresh and try again.")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
+		ctx := context.WithValue(r.Context(), sessionKey{}, session)
+		next.ServeHTTP(w, r.WithContext(events.WithActor(ctx, session.User.ID)))
 	})
 }
 
@@ -146,18 +165,7 @@ func requireRole(min string, next http.Handler) http.Handler {
 }
 func (s *Server) limitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
-		allowed, err := s.Store.AllowAuth(r.Context(), "ip:"+auth.Digest(ip), 60)
-		if err != nil {
-			internalError(w, err)
-			return
-		}
-		if !allowed {
-			w.Header().Set("Retry-After", "900")
-			fail(w, 429, "Too many attempts. Try again in 15 minutes.")
+		if !s.allowAuth(w, r, "ip", "ip:"+auth.Digest(clientIP(r)), 60) {
 			return
 		}
 		select {

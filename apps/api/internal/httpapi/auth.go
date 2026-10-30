@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"forma/api/internal/auth"
+	"forma/api/internal/events"
 	"forma/api/internal/store"
 	"github.com/jackc/pgx/v5/pgconn"
 	"net/http"
@@ -38,7 +39,22 @@ func strongPassword(password string) bool {
 	return utf8.RuneCountInString(password) >= 12
 }
 func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email string) bool {
-	allowed, err := s.Store.AllowAuth(r.Context(), "account:"+auth.Digest(email), 10)
+	return s.allowAuth(w, r, "account", "account:"+auth.Digest(email), 10)
+}
+
+// allowAuth counts an attempt against a rate limit and answers 429 when it is
+// used up. The first refusal in a window records auth.rate_limited; the ones
+// after it don't, so a flood writes one event.
+func (s *Server) allowAuth(w http.ResponseWriter, r *http.Request, scope, key string, limit int) bool {
+	allowed, firstRefusal, err := s.Store.AllowAuth(r.Context(), key, limit)
+	if err == nil && firstRefusal {
+		e := events.RateLimited{Scope: scope}
+		var subject store.EventScope
+		if session, ok := optionalSession(r); ok {
+			e.User, subject.UserID = session.User.PublicID, session.User.ID
+		}
+		err = s.Store.Record(r.Context(), e, subject)
+	}
 	if err != nil {
 		internalError(w, err)
 		return false
@@ -77,7 +93,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	s.startSession(w, r, user, 201)
+	s.startSession(w, r, user, 201, nil)
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in credentials
@@ -96,20 +112,41 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	known := err == nil
+	if !known {
 		hash = s.dummyHash
 	}
 	valid := auth.CheckPassword(in.Password, hash)
-	if !valid || err != nil {
+	if err := s.recordLoginAttempt(r, in.Email, user, known, valid); err != nil {
+		internalError(w, err)
+		return
+	}
+	if !valid || !known {
 		fail(w, 401, "Email or password is incorrect.")
 		return
 	}
-	s.startSession(w, r, user, 200)
+	s.startSession(w, r, user, 200, events.LoggedIn{User: user.PublicID})
+}
+
+// recordLoginAttempt records auth.login_attempted for every result, so the
+// write takes the same time whether or not the account exists.
+func (s *Server) recordLoginAttempt(r *http.Request, email string, user store.User, known, valid bool) error {
+	e := events.LoginAttempted{Email: email, IP: clientIP(r), Result: events.LoginUnknownAccount}
+	var subject store.EventScope
+	if known {
+		e.User, subject.UserID = user.PublicID, user.ID
+		e.Result = events.LoginWrongPassword
+		if valid {
+			e.Result = events.LoginSucceeded
+		}
+	}
+	return s.Store.Record(r.Context(), e, subject)
 }
 
 // startSession signs u in on this browser, replacing the session its cookie
-// carried, and responds with the new session in the shape of /api/auth/me.
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.User, status int) {
+// carried, records e (if any) with the new session, and responds with the
+// session in the shape of /api/auth/me.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.User, status int, e events.Event) {
 	token, err := auth.Token()
 	if err != nil {
 		internalError(w, err)
@@ -126,7 +163,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.Us
 	}
 	signedIn := time.Now()
 	expires := signedIn.Add(auth.SessionLifetime)
-	if err = s.Store.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires); err != nil {
+	if err = s.Store.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires, e); err != nil {
 		internalError(w, err)
 		return
 	}
@@ -139,7 +176,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(auth.CookieName(s.Config.Production))
-	if err := s.Store.DeleteSession(r.Context(), auth.Digest(cookie.Value)); err != nil {
+	if err := s.Store.DeleteSession(r.Context(), current(r).User, auth.Digest(cookie.Value)); err != nil {
 		internalError(w, err)
 		return
 	}
@@ -151,7 +188,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) revokeOthers(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(auth.CookieName(s.Config.Production))
-	if err := s.Store.DeleteOtherSessions(r.Context(), current(r).User.ID, auth.Digest(cookie.Value)); err != nil {
+	if err := s.Store.DeleteOtherSessions(r.Context(), current(r).User, auth.Digest(cookie.Value)); err != nil {
 		internalError(w, err)
 		return
 	}

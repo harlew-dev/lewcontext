@@ -15,6 +15,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/web` | Serving the embedded web build: prerendered pages, the SPA fallback, assets, page security headers and CSP hashes |
 | `internal/store` | Bun models and every query, scoped by the user's workspace membership |
 | `internal/auth` | Argon2id passwords, random tokens, digests, cookies |
+| `internal/events` | Event types and the request's actor and user agent ([events.md](events.md)); `internal/store` records them |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
 | `migrations` | SQL migration pairs, embedded into the binaries |

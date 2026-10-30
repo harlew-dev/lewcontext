@@ -42,12 +42,15 @@ type response struct {
 	CSRF string     `json:"csrfToken"`
 }
 
+const testUserAgent = "forma-integration-test/1.0"
+
 func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	r.Header.Set("Origin", "http://localhost:3000")
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-CSRF-Token", csrf)
+	r.Header.Set("User-Agent", testUserAgent)
 	r.RemoteAddr = "127.0.0.1:1234"
 	if cookie != nil {
 		r.AddCookie(cookie)

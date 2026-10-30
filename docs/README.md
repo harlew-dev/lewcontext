@@ -9,6 +9,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [api/README.md](api/README.md) | need the package layout, request flow, how Go serves the web app, or environment variables |
 | [api/endpoints.md](api/endpoints.md) | call or add an endpoint |
 | [api/auth.md](api/auth.md) | touch sign-in, sessions, CSRF, rate limits or security headers |
+| [api/events.md](api/events.md) | record something that happened (the `events` audit trail), or add an event type |
 | [api/pagination.md](api/pagination.md) | list, search or sort a resource |
 | [api/database.md](api/database.md) | write a query, add a migration or a table |
 | [api/seeding.md](api/seeding.md) | need fake data: factories, seeders, `make seed` |
@@ -35,9 +36,10 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 1. Migration (`make migration name=create_tasks`) → [api/database.md](api/database.md)
 2. Store model (public ID if users open or search its records) and queries scoped by `workspace_id` → [api/database.md](api/database.md)
 3. Factory (required for every table) and seeder if useful → [api/seeding.md](api/seeding.md)
-4. Handlers and validation in `httpapi`, route on the `ws` group in `routes.go` (session + membership, `requireRole` where needed) → [api/endpoints.md](api/endpoints.md)
-5. Lists use `Paginate[T]` → [api/pagination.md](api/pagination.md)
-6. Integration tests including non-members, other workspaces and refused roles → [api/testing.md](api/testing.md)
-7. Types in `src/types/`, a client in `src/lib/api/<resource>.ts` → [ui/api.md](ui/api.md)
-8. Page routes in `lib/routes.ts` (and `returnRoutes`), pages under `pages/app/[workspace]/`, registered in `src/routes.ts` inside the app layout → [ui/pages.md](ui/pages.md)
-9. Update [api/endpoints.md](api/endpoints.md) and any doc whose summary changed.
+4. Record `<resource>.created` / `.updated` events in the store methods, in their transaction → [api/events.md](api/events.md)
+5. Handlers and validation in `httpapi`, route on the `ws` group in `routes.go` (session + membership, `requireRole` where needed) → [api/endpoints.md](api/endpoints.md)
+6. Lists use `Paginate[T]` → [api/pagination.md](api/pagination.md)
+7. Integration tests including non-members, other workspaces and refused roles → [api/testing.md](api/testing.md)
+8. Types in `src/types/`, a client in `src/lib/api/<resource>.ts` → [ui/api.md](ui/api.md)
+9. Page routes in `lib/routes.ts` (and `returnRoutes`), pages under `pages/app/[workspace]/`, registered in `src/routes.ts` inside the app layout → [ui/pages.md](ui/pages.md)
+10. Update [api/endpoints.md](api/endpoints.md) and any doc whose summary changed.

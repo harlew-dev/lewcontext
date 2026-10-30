@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"forma/api/internal/events"
 	"github.com/uptrace/bun"
 )
 
@@ -51,22 +52,41 @@ func (s *Store) CreateWorkspace(ctx context.Context, userID int64, in WorkspaceI
 			return err
 		}
 		m := membership{UserID: userID, WorkspaceID: w.ID, Role: RoleOwner}
-		_, err := tx.NewInsert().Model(&m).Exec(ctx)
-		return err
+		if _, err := tx.NewInsert().Model(&m).Exec(ctx); err != nil {
+			return err
+		}
+		e := events.WorkspaceCreated{Workspace: w.PublicID, Name: w.Name}
+		return record(ctx, tx, e, EventScope{ActorID: userID, WorkspaceID: w.ID})
 	})
 	w.Role = RoleOwner
 	return w, err
 }
 
-// RenameWorkspace updates a workspace's name. Callers check the member's role
-// first; the returned workspace has no Role.
+// RenameWorkspace updates a workspace's name and records workspace.renamed
+// when it changed. Callers check the member's role first; the returned
+// workspace has no Role.
 func (s *Store) RenameWorkspace(ctx context.Context, id int64, in WorkspaceInput) (Workspace, error) {
 	w := Workspace{Name: in.Name}
-	err := s.DB.NewUpdate().Model(&w).
-		Column("name").
-		Set("updated_at = now()").
-		Where("id = ?", id).
-		Returning("*").
-		Scan(ctx)
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var before string
+		if err := tx.NewSelect().Model((*Workspace)(nil)).Column("name").Where("id = ?", id).For("UPDATE").Scan(ctx, &before); err != nil {
+			return err
+		}
+		err := tx.NewUpdate().Model(&w).
+			Column("name").
+			Set("updated_at = now()").
+			Where("id = ?", id).
+			Returning("*").
+			Scan(ctx)
+		if err != nil {
+			return err
+		}
+		changes := events.Changes{}
+		changes.Add("name", before, w.Name)
+		if len(changes) == 0 {
+			return nil
+		}
+		return record(ctx, tx, events.WorkspaceRenamed{Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: id})
+	})
 	return w, err
 }

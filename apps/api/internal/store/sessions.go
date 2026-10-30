@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"forma/api/internal/events"
 	"github.com/uptrace/bun"
 	"time"
 )
@@ -22,7 +23,9 @@ type authAttempt struct {
 	ResetsAt      time.Time `bun:",notnull"`
 }
 
-func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, oldHash string, expiry time.Time) error {
+// CreateSession starts a session for the user, replacing the one oldHash
+// identifies, and records e (such as auth.logged_in) with it when e isn't nil.
+func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, oldHash string, expiry time.Time, e events.Event) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Serialize session creation per account so the cap survives concurrent logins.
 		if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", userID).For("UPDATE").Exec(ctx); err != nil {
@@ -42,8 +45,10 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, old
 			return err
 		}
 		session := sessionRecord{TokenHash: hash, UserID: userID, CSRFToken: csrf, ExpiresAt: expiry}
-		_, err := tx.NewInsert().Model(&session).Exec(ctx)
-		return err
+		if _, err := tx.NewInsert().Model(&session).Exec(ctx); err != nil || e == nil {
+			return err
+		}
+		return record(ctx, tx, e, EventScope{ActorID: userID, UserID: userID})
 	})
 }
 
@@ -62,26 +67,53 @@ func (s *Store) Session(ctx context.Context, hash string) (Session, error) {
 		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt)
 	return session, err
 }
-func (s *Store) DeleteSession(ctx context.Context, hash string) error {
-	_, err := s.DB.NewDelete().Model((*sessionRecord)(nil)).Where("token_hash = ?", hash).Exec(ctx)
-	return err
-}
-func (s *Store) DeleteOtherSessions(ctx context.Context, userID int64, hash string) error {
-	_, err := s.DB.NewDelete().Model((*sessionRecord)(nil)).Where("user_id = ? AND token_hash <> ?", userID, hash).Exec(ctx)
-	return err
+
+// deleteSessions deletes the sessions matching where and counts them.
+func deleteSessions(ctx context.Context, db bun.IDB, where string, args ...any) (int, error) {
+	result, err := db.NewDelete().Model((*sessionRecord)(nil)).Where(where, args...).Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n, err := result.RowsAffected()
+	return int(n), err
 }
 
-// Persistent limits work across restarts and multiple API processes. No proxy header is trusted.
-func (s *Store) AllowAuth(ctx context.Context, key string, limit int) (bool, error) {
+// DeleteSession signs the user's session out and records auth.logged_out.
+func (s *Store) DeleteSession(ctx context.Context, u User, hash string) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := deleteSessions(ctx, tx, "token_hash = ?", hash); err != nil {
+			return err
+		}
+		return record(ctx, tx, events.LoggedOut{User: u.PublicID}, EventScope{UserID: u.ID})
+	})
+}
+
+// DeleteOtherSessions signs out every session of the user's except hash and
+// records auth.other_sessions_revoked.
+func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		count, err := deleteSessions(ctx, tx, "user_id = ? AND token_hash <> ?", u.ID, hash)
+		if err != nil {
+			return err
+		}
+		return record(ctx, tx, events.OtherSessionsRevoked{User: u.PublicID, Count: count}, EventScope{UserID: u.ID})
+	})
+}
+
+// AllowAuth counts an attempt against key's limit. Limits persist across
+// restarts and multiple API processes; no proxy header is trusted. firstRefusal
+// is true for the one request in a window that first goes over the limit, so
+// callers can record it once however many follow.
+func (s *Store) AllowAuth(ctx context.Context, key string, limit int) (allowed, firstRefusal bool, err error) {
 	attempt := authAttempt{Key: key, Attempts: 1}
-	err := s.DB.NewInsert().Model(&attempt).
+	err = s.DB.NewInsert().Model(&attempt).
 		Value("resets_at", "now() + interval '15 minutes'").
 		On("CONFLICT (key) DO UPDATE").
 		Set("attempts = CASE WHEN a.resets_at <= now() THEN 1 ELSE a.attempts + 1 END").
 		Set("resets_at = CASE WHEN a.resets_at <= now() THEN now() + interval '15 minutes' ELSE a.resets_at END").
 		Returning("attempts").
 		Scan(ctx)
-	return attempt.Attempts <= limit, err
+	return attempt.Attempts <= limit, attempt.Attempts == limit+1, err
 }
 func (s *Store) Cleanup(ctx context.Context) error {
 	if _, err := s.DB.NewDelete().Model((*authAttempt)(nil)).Where("resets_at <= now()").Exec(ctx); err != nil {

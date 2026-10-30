@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"forma/api/internal/events"
+	"github.com/uptrace/bun"
 	"strings"
 )
 
@@ -73,20 +75,58 @@ func (s *Store) Project(ctx context.Context, workspaceID int64, publicID string)
 		Scan(ctx)
 	return p, err
 }
-func (s *Store) CreateProject(ctx context.Context, workspaceID int64, in ProjectInput) (Project, error) {
-	p := Project{WorkspaceID: workspaceID, Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
-	_, err := s.DB.NewInsert().Model(&p).Returning("*").Exec(ctx)
+
+// CreateProject creates a project in the workspace and records project.created.
+func (s *Store) CreateProject(ctx context.Context, w Workspace, in ProjectInput) (Project, error) {
+	p := Project{WorkspaceID: w.ID, Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewInsert().Model(&p).Returning("*").Exec(ctx); err != nil {
+			return err
+		}
+		e := events.ProjectCreated{Project: p.PublicID, Workspace: w.PublicID, Name: p.Name, Description: p.Description, Status: p.Status, Color: p.Color}
+		return record(ctx, tx, e, EventScope{WorkspaceID: w.ID})
+	})
 	return p, err
 }
 
-// UpdateProject returns sql.ErrNoRows when the project does not exist or belongs to another workspace.
-func (s *Store) UpdateProject(ctx context.Context, workspaceID int64, publicID string, in ProjectInput) (Project, error) {
+// UpdateProject saves the project's fields and records project.updated with
+// the fields that changed, if any. It returns sql.ErrNoRows when the project
+// does not exist or belongs to another workspace.
+func (s *Store) UpdateProject(ctx context.Context, w Workspace, publicID string, in ProjectInput) (Project, error) {
 	p := Project{Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
-	err := s.DB.NewUpdate().Model(&p).
-		Column("name", "description", "status", "color").
-		Set("updated_at = now()").
-		Where("public_id = ? AND workspace_id = ?", publicID, workspaceID).
-		Returning("*").
-		Scan(ctx)
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var before Project
+		err := tx.NewSelect().Model(&before).
+			Where("p.public_id = ? AND p.workspace_id = ?", publicID, w.ID).
+			For("UPDATE").
+			Scan(ctx)
+		if err != nil {
+			return err
+		}
+		err = tx.NewUpdate().Model(&p).
+			Column("name", "description", "status", "color").
+			Set("updated_at = now()").
+			Where("id = ?", before.ID).
+			Returning("*").
+			Scan(ctx)
+		if err != nil {
+			return err
+		}
+		changes := projectChanges(before, p)
+		if len(changes) == 0 {
+			return nil
+		}
+		return record(ctx, tx, events.ProjectUpdated{Project: p.PublicID, Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: w.ID})
+	})
 	return p, err
+}
+
+// projectChanges lists the editable fields that differ between before and after.
+func projectChanges(before, after Project) events.Changes {
+	changes := events.Changes{}
+	changes.Add("name", before.Name, after.Name)
+	changes.Add("description", before.Description, after.Description)
+	changes.Add("status", before.Status, after.Status)
+	changes.Add("color", before.Color, after.Color)
+	return changes
 }

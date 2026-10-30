@@ -1,6 +1,6 @@
 # Domain events, listeners and pruning
 
-Status: **decided 2026-10-30; not started.** Build after [change-password.md](change-password.md), together with [prune.md](prune.md).
+Status: **step 1 of 3 implemented 2026-10-30** (recording events; see [docs/api/events.md](../../docs/api/events.md)). Next: listeners and the worker, then [prune.md](prune.md).
 
 ## Why
 
@@ -69,7 +69,7 @@ With no listeners registered (v1), events are only inserted and there are no del
 
 ### Tables
 
-Squashed migrations: new create migrations `007_create_events` and `008_create_event_deliveries`, with factories (`TestEveryTableHasAFactory`). Then `make migrate-fresh CONFIRM=1 && make seed` locally.
+Squashed migrations: new create migrations `007_create_events` (step 1, done) and `008_create_event_deliveries` (step 2), with factories (`TestEveryTableHasAFactory`). Then `make migrate-fresh CONFIRM=1 && make seed` locally.
 
 ```sql
 CREATE TABLE events (
@@ -113,16 +113,17 @@ The `user_id` and `workspace_id` columns are what a later activity page would fi
 type ProjectUpdated struct {
 	Project   string            `json:"project"`   // prj_ public ID
 	Workspace string            `json:"workspace"` // wsp_
-	Changes   map[string]Change `json:"changes"`   // only fields that changed
+	Changes   Changes `json:"changes"`   // only fields that changed
 }
 type Change struct {
-	From any `json:"from"`
-	To   any `json:"to"`
+	From string `json:"from"`
+	To   string `json:"to"`
 }
-func (ProjectUpdated) Name() string { return "project.updated" }
+func (ProjectUpdated) EventName() string { return "project.updated" }
 ```
 
-- One struct per event type, grouped by area (`auth.go`, `workspaces.go`, `projects.go`), each with `Name()`. Listeners get typed fields, not a `map[string]any`.
+- Built as: the interface method is `EventName()` (not `Name()`, which clashes with payload fields called `Name`), and payload keys are camelCase like API responses (`otherSessionsRevoked`).
+- One struct per event type, grouped by area (`auth.go`, `workspaces.go`, `projects.go`), each with `EventName()`. Listeners get typed fields, not a `map[string]any`.
 - **Payloads use public IDs** only. Internal IDs live in the table's foreign-key columns and are never in the JSON, so a payload can later go out as a webhook unchanged (AGENTS: never expose bigint IDs).
 - **Never in a payload or column:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens.
 - **Personal data, stored on purpose:** the email and IP on `auth.login_attempted` (below), and the account's own name and email on `auth.registered`. Pruning is what limits how long they're kept.
@@ -138,8 +139,8 @@ func (ProjectUpdated) Name() string { return "project.updated" }
 | `auth.logged_out` | user | `logout` |
 | `auth.other_sessions_revoked` | user, `count` of sessions removed | `revokeOthers` |
 | `auth.password_checked` | user, `ok`, `step`: `verify` / `update` | change password, both endpoints |
-| `auth.password_changed` | user, `other_sessions_revoked` count | change password, in `UpdatePassword`'s transaction |
-| `workspace.created` | workspace, name, owner | `CreateWorkspace` |
+| `auth.password_changed` | user, `otherSessionsRevoked` count | change password, in `ChangePassword`'s transaction |
+| `workspace.created` | workspace, name (the owner is the event's actor) | `CreateWorkspace` |
 | `workspace.renamed` | workspace, `changes.name` from/to | `RenameWorkspace` |
 | `project.created` | project, workspace, name, description, status, color | `CreateProject` |
 | `project.updated` | project, workspace, `changes` per field (from/to) | `UpdateProject` |
@@ -170,7 +171,7 @@ func record(ctx context.Context, db bun.IDB, e events.Event, scope events.Scope)
 
 - Store methods that change data call `record(ctx, tx, …)` inside their transaction. Methods that weren't transactions (`CreateProject`, `RenameWorkspace`, `UpdateProject`) become one.
 - Events without a data change (`auth.login_attempted`, `auth.rate_limited`, `auth.password_checked`) are recorded on their own with `s.Store.Record(ctx, e)`.
-- `record` also inserts one `event_deliveries` row per registered listener for that event name.
+- Step 2: `record` also inserts one `event_deliveries` row per registered listener for that event name.
 
 ### Listeners
 

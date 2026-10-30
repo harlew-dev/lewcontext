@@ -2,12 +2,20 @@ package store
 
 import (
 	"context"
+	"forma/api/internal/events"
 	"github.com/uptrace/bun"
 )
 
+// CreateUser creates an account and records auth.registered.
 func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User, error) {
 	a := account{User: User{Name: name, Email: email}, PasswordHash: hash}
-	_, err := s.DB.NewInsert().Model(&a).Returning("*").Exec(ctx)
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewInsert().Model(&a).Returning("*").Exec(ctx); err != nil {
+			return err
+		}
+		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email}
+		return record(ctx, tx, e, EventScope{ActorID: a.ID, UserID: a.ID})
+	})
 	return a.User, err
 }
 
@@ -25,23 +33,31 @@ func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) 
 	return hash, err
 }
 
-// ChangePassword replaces the user's password hash and deletes every session
-// of theirs, in one transaction with the user row locked. replace receives the
-// current hash and returns the new one; an error from it changes nothing.
-func (s *Store) ChangePassword(ctx context.Context, userID int64, replace func(current string) (string, error)) error {
+// ChangePassword replaces the user's password hash, deletes every session of
+// theirs (sessionHash is the one making the change) and records
+// auth.password_changed, in one transaction with the user row locked.
+// replace receives the current hash and returns the new one; an error from it
+// changes nothing.
+func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, replace func(current string) (string, error)) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var current string
-		if err := tx.NewSelect().Model((*account)(nil)).Column("password_hash").Where("id = ?", userID).For("UPDATE").Scan(ctx, &current); err != nil {
+		if err := tx.NewSelect().Model((*account)(nil)).Column("password_hash").Where("id = ?", u.ID).For("UPDATE").Scan(ctx, &current); err != nil {
 			return err
 		}
 		hash, err := replace(current)
 		if err != nil {
 			return err
 		}
-		if _, err := tx.NewUpdate().Model((*account)(nil)).Set("password_hash = ?", hash).Where("id = ?", userID).Exec(ctx); err != nil {
+		if _, err := tx.NewUpdate().Model((*account)(nil)).Set("password_hash = ?", hash).Where("id = ?", u.ID).Exec(ctx); err != nil {
 			return err
 		}
-		_, err = tx.NewDelete().Model((*sessionRecord)(nil)).Where("user_id = ?", userID).Exec(ctx)
-		return err
+		others, err := deleteSessions(ctx, tx, "user_id = ? AND token_hash <> ?", u.ID, sessionHash)
+		if err != nil {
+			return err
+		}
+		if _, err := deleteSessions(ctx, tx, "token_hash = ?", sessionHash); err != nil {
+			return err
+		}
+		return record(ctx, tx, events.PasswordChanged{User: u.PublicID, OtherSessionsRevoked: others}, EventScope{UserID: u.ID})
 	})
 }
