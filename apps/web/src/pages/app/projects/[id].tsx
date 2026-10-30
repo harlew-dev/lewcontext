@@ -20,19 +20,16 @@ import { ListSkeleton } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Link } from "@/components/ui/link";
 import { Text } from "@/components/ui/text";
+import { parseId } from "@/lib/ids";
 import { apiRoutes, routes } from "@/lib/routes";
 import { appProps, initial } from "@/lib/server";
 import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
 import { useApi } from "@/lib/use-api";
 import type { Project } from "@/types/projects";
 type ProjectProps = SessionProps & { id: number; project: Initial<Project> };
-// Only plain positive IDs reach the API; anything else is a 404 page.
-function projectIdParam(value: string | string[] | undefined) {
-  if (typeof value !== "string" || !/^[1-9]\d{0,14}$/.test(value)) return null;
-  return Number(value);
-}
 export async function getServerSideProps(context: GetServerSidePropsContext) {
-  const id = projectIdParam(context.params?.id);
+  // Only exact, positive IDs reach the API; anything else is a 404 page.
+  const id = parseId(context.params?.id);
   if (id === null) return { notFound: true as const };
   return appProps(context, async (get) => ({
     id,
