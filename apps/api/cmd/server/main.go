@@ -5,6 +5,7 @@ import (
 	"errors"
 	"forma/api/internal/config"
 	"forma/api/internal/database"
+	"forma/api/internal/events"
 	"forma/api/internal/httpapi"
 	"forma/api/internal/store"
 	"forma/api/internal/web"
@@ -36,7 +37,10 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	repository := &store.Store{DB: db}
+	// Listeners register on the bus here, before anything records an event:
+	//   events.Listen(bus, "mail.password_changed", mail.PasswordChanged)
+	bus := events.NewBus()
+	repository := &store.Store{DB: db, Listeners: bus}
 	api, err := httpapi.New(repository, c)
 	if err != nil {
 		return err
@@ -49,6 +53,13 @@ func run() error {
 	go func() {
 		slog.Info("listening", "address", c.Address, "pages", api.Pages != nil)
 		failures <- server.ListenAndServe()
+	}()
+	// Delivers recorded events to their listeners until shutdown.
+	worker := &events.Worker{Bus: bus, Queue: repository}
+	delivering := make(chan struct{})
+	go func() {
+		defer close(delivering)
+		worker.Run(ctx)
 	}()
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
@@ -64,7 +75,14 @@ func run() error {
 		case <-ctx.Done():
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			return server.Shutdown(shutdown)
+			err := server.Shutdown(shutdown)
+			// Let the worker finish its batch; anything unfinished is
+			// retried when its lease ends.
+			select {
+			case <-delivering:
+			case <-shutdown.Done():
+			}
+			return err
 		case err := <-failures:
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil

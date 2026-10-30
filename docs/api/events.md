@@ -1,14 +1,15 @@
 # Events
 
-Code: `internal/events` (event types, request metadata), `internal/store/events.go` (`record`, `Record`, `EventScope`). Plan: [plans/features/events.md](../../plans/features/events.md).
+Code: `internal/events` (event types, request metadata, `Bus`, `Listen`, `Worker`), `internal/store/events.go` (`record`, `Record`, `EventScope`), `internal/store/deliveries.go` (the delivery queue). Plan: [plans/features/events.md](../../plans/features/events.md).
 
-The API records what happens (sign-ins, password changes, workspaces and projects created or changed) as rows in the `events` table. For now the table is an **audit trail**: nothing reads it yet. Listeners that react to events (emails, webhooks) come next, delivered from the same table.
+The API records what happens (sign-ins, password changes, workspaces and projects created or changed) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. No listeners are registered yet.
 
 ## How an event is recorded
 
 - **Same transaction as the change.** Store methods that change data call `record(ctx, tx, event, scope)` inside their transaction, so a change and its event are saved together or not at all. A change that fails leaves no event; an event that can't be written undoes its change.
 - **Events without a data change** (a login attempt, a rate limit reached, a password check) are written on their own with `s.Store.Record(ctx, event, scope)`. If that write fails, the request fails with 500.
 - **No table locks.** Recording is an ordinary insert.
+- **Queued with it.** `record` also inserts one `event_deliveries` row per listener of that event (`Store.Listeners`, the server's bus), in the same transaction.
 
 ## Rows
 
@@ -48,7 +49,34 @@ The API records what happens (sign-ins, password changes, workspaces and project
 - **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted`, and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `auth.rate_limited`, so a flood writes one row.
-- Project and workspace names and descriptions stay in the log after they change. Nothing deletes events yet (pruning is planned).
+- Project and workspace names and descriptions stay in the log after they change. Nothing deletes events yet (pruning is planned). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
+
+## Listeners
+
+```go
+// cmd/server/main.go, before anything records an event:
+events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.PasswordChanged, d events.Delivered) error {
+	// e is the decoded payload; d.EventID (evt_…) identifies the event.
+	return nil
+})
+```
+
+- **Typed:** `Listen[E]` decodes the stored payload into `E`, so a listener only ever gets its own event type.
+- **Named:** the name (1–100 characters, unique) is stored with each delivery. Renaming a listener makes it a new one; deliveries queued for the old name are marked failed ("no listener").
+- **Registered in one place**, `cmd/server`, so a search shows everything that reacts to an event.
+- **Write listeners to run more than once.** Delivery is at least once: if a server stops after a listener ran but before it was marked delivered, it runs again. Key side effects on `d.EventID` (e.g. "email for `evt_…` already sent").
+- **Respect `ctx`.** Each run has a 30 s timeout; a listener that ignores its context can't be stopped.
+- **No ordering.** Events are claimed roughly oldest first, but retries and concurrent workers mean a listener may see a later event before an earlier one.
+
+## Delivery (`events.Worker`)
+
+The server runs one worker (`cmd/server`); every server process runs its own, sharing the queue.
+
+1. **Claim:** a single statement takes up to 10 due deliveries with `FOR UPDATE SKIP LOCKED` (other workers skip those rows instead of waiting), adds 1 to `attempts`, and pushes `next_attempt_at` 5 minutes ahead as a **lease**. The row locks end with the statement, so listeners run with no lock or transaction held.
+2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure.
+3. **Record:** success sets `delivered_at`. A failure sets `last_error` (cut to 500 characters) and retries after 1 s, 10 s, 1 min, 10 min, then 1 h; the attempt after that marks it `failed_at` and logs an error. One listener failing doesn't affect others on the same event.
+4. **Poll:** when a claim comes back empty, the worker waits 1 s. A full batch is followed straight away by the next.
+5. **Shutdown:** the worker stops claiming and finishes its batch within the server's 10 s grace period. A delivery cut off by a crash is claimed again when its lease ends.
 
 ## Adding an event
 

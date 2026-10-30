@@ -6,7 +6,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 
 | Package | Owns |
 | --- | --- |
-| `cmd/server` | Startup (with the embedded web build when there is one), HTTP server timeouts, 15-minute cleanup of expired sessions and limits, graceful shutdown |
+| `cmd/server` | Startup (with the embedded web build when there is one), event listeners and the delivery worker, HTTP server timeouts, 15-minute cleanup of expired sessions and limits, graceful shutdown |
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `internal/config` | Environment loading and validation |
@@ -15,7 +15,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/web` | Serving the embedded web build: prerendered pages, the SPA fallback, assets, page security headers and CSP hashes |
 | `internal/store` | Bun models and every query, scoped by the user's workspace membership |
 | `internal/auth` | Argon2id passwords, random tokens, digests, cookies |
-| `internal/events` | Event types and the request's actor and user agent ([events.md](events.md)); `internal/store` records them |
+| `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
 | `migrations` | SQL migration pairs, embedded into the binaries |

@@ -8,7 +8,13 @@ import (
 // Store models keep the internal bigint ID out of JSON: responses identify
 // records only by their public ID (usr_…, wsp_…, prj_…), which PostgreSQL
 // generates as a column default.
-type Store struct{ DB *bun.DB }
+type Store struct {
+	DB *bun.DB
+	// Listeners names the listeners of each event, so recording an event
+	// queues a delivery to each (the server sets it to its events.Bus). Nil
+	// queues none.
+	Listeners interface{ ListenersFor(event string) []string }
+}
 type User struct {
 	bun.BaseModel `bun:"table:users,alias:u"`
 	ID            int64     `bun:",pk,autoincrement" json:"-"`

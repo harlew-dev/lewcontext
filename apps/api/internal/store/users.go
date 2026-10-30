@@ -14,7 +14,7 @@ func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User,
 			return err
 		}
 		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email}
-		return record(ctx, tx, e, EventScope{ActorID: a.ID, UserID: a.ID})
+		return s.record(ctx, tx, e, EventScope{ActorID: a.ID, UserID: a.ID})
 	})
 	return a.User, err
 }
@@ -58,6 +58,6 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 		if _, err := deleteSessions(ctx, tx, "token_hash = ?", sessionHash); err != nil {
 			return err
 		}
-		return record(ctx, tx, events.PasswordChanged{User: u.PublicID, OtherSessionsRevoked: others}, EventScope{UserID: u.ID})
+		return s.record(ctx, tx, events.PasswordChanged{User: u.PublicID, OtherSessionsRevoked: others}, EventScope{UserID: u.ID})
 	})
 }

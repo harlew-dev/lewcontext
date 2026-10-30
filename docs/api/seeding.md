@@ -34,6 +34,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `Projects` | `Project` | Valid name, description, status and color; created in the last 90 days. Needs `WorkspaceID`; use `ProjectsIn` |
 | `AuthAttempts` | `AuthAttempt` | Counter in the current 15-minute window, keyed like the IP limiter |
 | `Events` | `Event` | `auth.rate_limited` events from the last 90 days (no other records needed); set `UserID`/`WorkspaceID` with a state. Seeders don't create events: fake history would be misleading |
+| `EventDeliveries` | `EventDelivery` | A pending delivery, due now. Needs `EventID`; use `DeliveryOf(eventID, listener)` |
 
 ```go
 f := factory.TestFaker(t) // or factory.NewFaker() outside tests

@@ -56,7 +56,7 @@ func (s *Store) CreateWorkspace(ctx context.Context, userID int64, in WorkspaceI
 			return err
 		}
 		e := events.WorkspaceCreated{Workspace: w.PublicID, Name: w.Name}
-		return record(ctx, tx, e, EventScope{ActorID: userID, WorkspaceID: w.ID})
+		return s.record(ctx, tx, e, EventScope{ActorID: userID, WorkspaceID: w.ID})
 	})
 	w.Role = RoleOwner
 	return w, err
@@ -86,7 +86,7 @@ func (s *Store) RenameWorkspace(ctx context.Context, id int64, in WorkspaceInput
 		if len(changes) == 0 {
 			return nil
 		}
-		return record(ctx, tx, events.WorkspaceRenamed{Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: id})
+		return s.record(ctx, tx, events.WorkspaceRenamed{Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: id})
 	})
 	return w, err
 }

@@ -1,6 +1,6 @@
 # Domain events, listeners and pruning
 
-Status: **step 1 of 3 implemented 2026-10-30** (recording events; see [docs/api/events.md](../../docs/api/events.md)). Next: listeners and the worker, then [prune.md](prune.md).
+Status: **steps 1–2 of 3 implemented 2026-10-30** (recording events; listeners and the worker; see [docs/api/events.md](../../docs/api/events.md)). Next: [prune.md](prune.md).
 
 ## Why
 
@@ -40,12 +40,14 @@ worker (goroutine in the server, every second or on NOTIFY)
   claim:   UPDATE event_deliveries SET next_attempt_at = now() + '5 minutes', attempts = attempts + 1
            WHERE (event_id, listener) IN (
              SELECT … WHERE pending AND next_attempt_at <= now()
-             ORDER BY event_id LIMIT 50 FOR UPDATE SKIP LOCKED)
+             ORDER BY next_attempt_at, event_id LIMIT 10 FOR UPDATE SKIP LOCKED)
            RETURNING …                            ← short transaction, commits straight away
   run each listener (30 s timeout each), outside any transaction
   success: SET delivered_at = now()
   failure: SET next_attempt_at = now() + backoff, last_error = …
 ```
+
+Built as (step 2): batches of **10**, whose listeners run **concurrently**, each with the 30 s timeout. Run one after another, 50 listeners at up to 30 s each could outlast the 5-minute lease and let another worker claim the same rows. Waking is by polling only (1 s); `NOTIFY` is left out until latency matters.
 
 ### Locks: rows, not tables
 
@@ -69,7 +71,7 @@ With no listeners registered (v1), events are only inserted and there are no del
 
 ### Tables
 
-Squashed migrations: new create migrations `007_create_events` (step 1, done) and `008_create_event_deliveries` (step 2), with factories (`TestEveryTableHasAFactory`). Then `make migrate-fresh CONFIRM=1 && make seed` locally.
+Squashed migrations: new create migrations `007_create_events` (step 1) and `008_create_event_deliveries` (step 2), both done, with factories (`TestEveryTableHasAFactory`). Then `make migrate-fresh CONFIRM=1 && make seed` locally.
 
 ```sql
 CREATE TABLE events (
@@ -171,7 +173,7 @@ func record(ctx context.Context, db bun.IDB, e events.Event, scope events.Scope)
 
 - Store methods that change data call `record(ctx, tx, …)` inside their transaction. Methods that weren't transactions (`CreateProject`, `RenameWorkspace`, `UpdateProject`) become one.
 - Events without a data change (`auth.login_attempted`, `auth.rate_limited`, `auth.password_checked`) are recorded on their own with `s.Store.Record(ctx, e)`.
-- Step 2: `record` also inserts one `event_deliveries` row per registered listener for that event name.
+- `record` also inserts one `event_deliveries` row per registered listener for that event name (step 2).
 
 ### Listeners
 

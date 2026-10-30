@@ -84,7 +84,7 @@ func (s *Store) CreateProject(ctx context.Context, w Workspace, in ProjectInput)
 			return err
 		}
 		e := events.ProjectCreated{Project: p.PublicID, Workspace: w.PublicID, Name: p.Name, Description: p.Description, Status: p.Status, Color: p.Color}
-		return record(ctx, tx, e, EventScope{WorkspaceID: w.ID})
+		return s.record(ctx, tx, e, EventScope{WorkspaceID: w.ID})
 	})
 	return p, err
 }
@@ -116,7 +116,7 @@ func (s *Store) UpdateProject(ctx context.Context, w Workspace, publicID string,
 		if len(changes) == 0 {
 			return nil
 		}
-		return record(ctx, tx, events.ProjectUpdated{Project: p.PublicID, Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: w.ID})
+		return s.record(ctx, tx, events.ProjectUpdated{Project: p.PublicID, Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: w.ID})
 	})
 	return p, err
 }

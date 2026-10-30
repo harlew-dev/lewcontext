@@ -29,9 +29,10 @@ type eventRecord struct {
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
-// record writes e. Store methods that change data call it inside their
-// transaction, so the change and its event are saved together or not at all.
-func record(ctx context.Context, db bun.IDB, e events.Event, scope EventScope) error {
+// record writes e, and queues a delivery to each of its listeners. Store
+// methods that change data call it inside their transaction, so the change,
+// its event and its deliveries are saved together or not at all.
+func (s *Store) record(ctx context.Context, db bun.IDB, e events.Event, scope EventScope) error {
 	payload, err := json.Marshal(e)
 	if err != nil {
 		return err
@@ -47,12 +48,16 @@ func record(ctx context.Context, db bun.IDB, e events.Event, scope EventScope) e
 		Payload:     payload,
 		UserAgent:   events.UserAgent(ctx),
 	}
-	_, err = db.NewInsert().Model(&row).Exec(ctx)
-	return err
+	if _, err = db.NewInsert().Model(&row).Returning("id").Exec(ctx); err != nil {
+		return err
+	}
+	return s.queueDeliveries(ctx, db, row.ID, row.Name)
 }
 
 // Record writes an event that has no data change of its own, such as a login
 // attempt or a rate limit being reached.
 func (s *Store) Record(ctx context.Context, e events.Event, scope EventScope) error {
-	return record(ctx, s.DB, e, scope)
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		return s.record(ctx, tx, e, scope)
+	})
 }

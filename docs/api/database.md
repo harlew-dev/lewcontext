@@ -13,6 +13,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `projects` | Projects in a workspace (`ON DELETE CASCADE`) | `Project` |
 | `auth_attempts` | Rate-limit counters | unexported `authAttempt` |
 | `events` | What happened: name, actor, user, workspace, `jsonb` payload, user agent ([events.md](events.md)) | unexported `eventRecord` |
+| `event_deliveries` | One row per event and listener: attempts, `next_attempt_at` (also the claim lease), `delivered_at`, `failed_at`, `last_error` | unexported `deliveryRecord` |
 | `bun_migrations`, `bun_migration_locks` | Migration history | (Bun) |
 
 ## Public IDs
@@ -32,7 +33,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 
 ## Migrations
 
-- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_auth_attempts`, `007_create_events`.
+- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_auth_attempts`, `007_create_events`, `008_create_event_deliveries`.
 - **Squashed while in development.** There is no database whose data must be kept, so a table changes by **editing its create migration**, not by adding an alter migration. Then rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed`. Once a database holds data that must be kept, migrations become append-only again.
 - **`make migrate-fresh`** lists the tables and row counts it would drop. `CONFIRM=1` drops the current schema (`DROP SCHEMA … CASCADE`), recreates it and migrates. It is refused when `APP_ENV=production`. Only run it on the local development database. Other checkouts sharing that database need it too after pulling a schema change: Bun only runs migrations it hasn't recorded, so an edited file won't re-run.
 - **Running:** `make migrate` applies pending files, each in its own transaction, as one group, holding a PostgreSQL advisory lock. `make migrate-status` lists them. The API never migrates on startup.

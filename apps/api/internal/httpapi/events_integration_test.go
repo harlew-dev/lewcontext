@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"forma/api/internal/events"
 	"forma/api/internal/factory"
 	"forma/api/internal/store"
 	"github.com/uptrace/bun"
@@ -318,5 +319,42 @@ func TestChangeAndEventSavedTogether(t *testing.T) {
 	var name string
 	if err := db.QueryRowContext(ctx, "SELECT name FROM workspaces WHERE id = ?", owned.ID).Scan(&name); err != nil || name != owned.Name {
 		t.Fatalf("workspace renamed to %q (%v)", name, err)
+	}
+}
+
+// A change made through the API reaches a typed listener through the worker,
+// exactly once.
+func TestListenerReceivesEventsFromTheAPI(t *testing.T) {
+	s, db := integrationServer(t)
+	h := s.Routes()
+	bus := events.NewBus()
+	var received []events.ProjectCreated
+	var meta events.Delivered
+	events.Listen(bus, "test.projects", func(_ context.Context, e events.ProjectCreated, d events.Delivered) error {
+		received, meta = append(received, e), d
+		return nil
+	})
+	s.Store.Listeners = bus
+	session := signedIn(t, db, factory.TestFaker(t))
+	workspace := ownedWorkspace(t, db, factory.TestFaker(t), session.UserID)
+	var project store.Project
+	body := `{"name":"Launch","description":"","status":"Planned","color":"violet"}`
+	_ = json.Unmarshal(call(t, h, "POST", workspacePath(workspace.PublicID, "/projects"), body, session.CSRFToken, session.Cookie(), 201).Body.Bytes(), &project)
+
+	worker := &events.Worker{Bus: bus, Queue: s.Store}
+	if n, err := worker.RunOnce(context.Background()); n != 1 || err != nil {
+		t.Fatalf("RunOnce: %d, %v", n, err)
+	}
+	if len(received) != 1 || received[0].Project != project.PublicID || received[0].Workspace != workspace.PublicID || received[0].Name != "Launch" ||
+		!validPublicID("evt", meta.EventID) || meta.Attempt != 1 {
+		t.Fatalf("listener got %+v %+v", received, meta)
+	}
+	// Delivered once: nothing is left to claim.
+	if n, err := worker.RunOnce(context.Background()); n != 0 || err != nil {
+		t.Fatalf("second RunOnce: %d, %v", n, err)
+	}
+	var deliveredAt sql.NullTime
+	if err := db.QueryRowContext(context.Background(), "SELECT delivered_at FROM event_deliveries WHERE listener = 'test.projects'").Scan(&deliveredAt); err != nil || !deliveredAt.Valid {
+		t.Fatalf("delivery not marked delivered: %v (%v)", deliveredAt, err)
 	}
 }

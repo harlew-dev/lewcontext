@@ -48,7 +48,7 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, old
 		if _, err := tx.NewInsert().Model(&session).Exec(ctx); err != nil || e == nil {
 			return err
 		}
-		return record(ctx, tx, e, EventScope{ActorID: userID, UserID: userID})
+		return s.record(ctx, tx, e, EventScope{ActorID: userID, UserID: userID})
 	})
 }
 
@@ -84,7 +84,7 @@ func (s *Store) DeleteSession(ctx context.Context, u User, hash string) error {
 		if _, err := deleteSessions(ctx, tx, "token_hash = ?", hash); err != nil {
 			return err
 		}
-		return record(ctx, tx, events.LoggedOut{User: u.PublicID}, EventScope{UserID: u.ID})
+		return s.record(ctx, tx, events.LoggedOut{User: u.PublicID}, EventScope{UserID: u.ID})
 	})
 }
 
@@ -96,7 +96,7 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 		if err != nil {
 			return err
 		}
-		return record(ctx, tx, events.OtherSessionsRevoked{User: u.PublicID, Count: count}, EventScope{UserID: u.ID})
+		return s.record(ctx, tx, events.OtherSessionsRevoked{User: u.PublicID, Count: count}, EventScope{UserID: u.ID})
 	})
 }
 

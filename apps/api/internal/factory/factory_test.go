@@ -117,6 +117,9 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if err != nil || event.PublicID == "" {
 		t.Fatalf("event: %+v (%v)", event, err)
 	}
+	if _, err := DeliveryOf(event.ID, "test.listener").CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
 }
 func TestCreateInsertsInBatches(t *testing.T) {
 	db := dbtest.Open(t)
