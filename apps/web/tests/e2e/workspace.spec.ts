@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 const email = `e2e-${Date.now()}@forma.test`;
 const password = "A thoughtful test passphrase!";
@@ -17,7 +17,7 @@ test.afterAll(() => {
       { stdio: "ignore" },
     );
 });
-test("register, create, loading, filter, edit, SSR, security, mobile, logout, and login", async ({
+test("register, create, loading, filter, edit, paginate, SSR, security, mobile, logout, and login", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -59,14 +59,24 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
   ).toBeVisible();
   await page.unroute("**/api/projects");
   await page
-    .getByRole("button", { name: "Edit Launch the good stuff" })
+    .getByRole("link", { name: "Launch the good stuff" })
+    .first()
     .click();
+  await expect(page).toHaveURL(/\/app\/projects\/\d+$/);
+  await page.getByRole("button", { name: "Edit project" }).click();
   await dialog.getByRole("combobox").click();
   await page.getByRole("option", { name: "Completed", exact: true }).click();
   await dialog.getByRole("button", { name: "Save changes" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Project updated" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Launch the good stuff" }),
+  ).toBeVisible();
+  expect((await page.request.get("/app/projects/999999999")).status()).toBe(
+    404,
+  );
+  await page.goto("/app/dashboard");
   const html = await (await page.request.get("/app/dashboard")).text();
   expect(html).toContain("Launch the good stuff");
   expect(html).toContain("_styletron_hydrate_");
@@ -82,10 +92,10 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
   await page.getByRole("combobox", { name: /Filter by status/ }).click();
   await page.getByRole("option", { name: "All statuses" }).click();
   await page
-    .getByRole("textbox", { name: "Search projects" })
+    .getByRole("searchbox", { name: "Search projects" })
     .fill("not-a-match");
   await expect(page.getByText("No matching projects")).toBeVisible();
-  await page.getByRole("textbox", { name: "Search projects" }).fill("");
+  await page.getByRole("searchbox", { name: "Search projects" }).fill("");
   await page.route("**/api/projects", (route) =>
     route.fulfill({
       status: 503,
@@ -100,7 +110,7 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
       .filter({ hasText: "Temporary service interruption" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Edit Launch the good stuff" }),
+    page.getByRole("link", { name: "Launch the good stuff" }).first(),
   ).toBeVisible();
   await page.unroute("**/api/projects");
   await page.getByRole("button", { name: "Try again" }).click();
@@ -109,6 +119,7 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
       .getByRole("alert")
       .filter({ hasText: "Temporary service interruption" }),
   ).toHaveCount(0);
+  await paginate(page);
   await page.getByRole("link", { name: "Account & security" }).click();
   await page.getByRole("button", { name: "Sign out other sessions" }).click();
   await expect(
@@ -170,3 +181,76 @@ test("unauthenticated API requests are rejected", async ({ request }) => {
   const response = await request.get("/api/projects");
   expect(response.status()).toBe(401);
 });
+// Paging, sorting and searching run in the API: create a second page of
+// projects through it, then check the URL drives what the table shows.
+async function paginate(page: Page) {
+  const me = await (await page.request.get("/api/auth/me")).json();
+  const headers = {
+    Origin: new URL(page.url()).origin,
+    "Content-Type": "application/json",
+    "X-CSRF-Token": me.csrfToken,
+  };
+  for (let i = 0; i < 22; i++) {
+    const response = await page.request.post("/api/projects", {
+      headers,
+      data: {
+        name: `Bulk ${String(i).padStart(2, "0")}`,
+        description: "",
+        status: "Planned",
+        color: "blue",
+      },
+    });
+    expect(response.status()).toBe(201);
+  }
+  await page.goto("/app/projects");
+  await expect(page.getByText("23 projects in your workspace")).toBeVisible();
+  const rows = page.locator("tbody tr");
+  await expect(rows).toHaveCount(20);
+  await expect(rows.first()).toContainText("Bulk 21");
+  const pages = page.getByRole("navigation", { name: "Projects pages" });
+  await pages.getByRole("link", { name: "Next page" }).click();
+  await expect(page).toHaveURL("/app/projects?page=2");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.last()).toContainText("Launch the good stuff");
+  await expect(pages.getByRole("link", { name: "Page 2" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  // Sorting starts again from page 1; a second click reverses it.
+  await page.getByRole("link", { name: "Project", exact: true }).click();
+  await expect(page).toHaveURL("/app/projects?sort=name");
+  await expect(rows.first()).toContainText("Bulk 00");
+  await expect(
+    page.getByRole("columnheader", { name: "Project" }),
+  ).toHaveAttribute("aria-sort", "ascending");
+  await page.getByRole("link", { name: "Project", exact: true }).click();
+  await expect(page).toHaveURL("/app/projects?sort=-name");
+  await expect(rows.first()).toContainText("Launch the good stuff");
+  await page.goBack();
+  await expect(page).toHaveURL("/app/projects?sort=name");
+  await expect(rows.first()).toContainText("Bulk 00");
+  // The server searches every page, not only the loaded one.
+  await page.getByRole("searchbox", { name: "Search projects" }).fill("launch");
+  await expect(page).toHaveURL("/app/projects?q=launch&sort=name");
+  await expect(rows).toHaveCount(1);
+  await expect(page.getByText("1 matching project")).toBeVisible();
+  await page.getByRole("searchbox", { name: "Search projects" }).fill("");
+  await expect(page).toHaveURL("/app/projects?sort=name");
+  // A URL renders the same page on the server.
+  const html = await (await page.request.get("/app/projects?page=2")).text();
+  expect(html).toContain("Launch the good stuff");
+  expect(html).not.toContain("Bulk 21");
+  await page.goto("/app/projects?page=9");
+  await expect(page.getByText("There’s nothing on page 9")).toBeVisible();
+  await page.getByRole("link", { name: "Go to last page" }).click();
+  await expect(page).toHaveURL("/app/projects?page=2");
+  await expect(rows).toHaveCount(3);
+  // A project created from page 2 shows first on page 1.
+  await page.getByRole("button", { name: "New project" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Project name", { exact: true }).fill("Fresh idea");
+  await dialog.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL("/app/projects");
+  await expect(rows.first()).toContainText("Fresh idea");
+  await expect(page.getByText("24 projects in your workspace")).toBeVisible();
+}

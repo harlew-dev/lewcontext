@@ -22,35 +22,40 @@ import { Textarea } from "@/components/ui/textarea";
 import { cx } from "@/lib/cx";
 import { request, errorMessage } from "@/lib/api";
 import { apiRoutes } from "@/lib/routes";
-import { statuses, colors, type Project, type ProjectInput } from "@/lib/types";
+import {
+  statuses,
+  colors,
+  type Project,
+  type ProjectInput,
+} from "@/types/projects";
 import { projectColors } from "./project-colors";
-import type { ProjectsState } from "./use-projects";
+import type { ProjectEditor } from "./use-project-editor";
 const emptyProject: ProjectInput = {
   name: "",
   description: "",
   status: "Planned",
   color: "violet",
 };
-// Create/edit dialog driven by the page's project state. The last target is
+// Create/edit dialog driven by the page's project editor. The last target is
 // kept while the dialog animates out so its content doesn't change mid-exit.
 export function ProjectDialog({
-  state,
+  editor,
   csrfToken,
 }: {
-  state: ProjectsState;
+  editor: ProjectEditor;
   csrfToken: string;
 }) {
   const [target, setTarget] = useState<Project | "new">("new");
-  if (state.dialog && state.dialog !== target) setTarget(state.dialog);
+  if (editor.dialog && editor.dialog !== target) setTarget(editor.dialog);
   const key = target === "new" ? "new" : target.id;
   return (
     <ProjectForm
       key={key}
-      open={state.dialog !== null}
+      open={editor.dialog !== null}
       project={target === "new" ? undefined : target}
       csrfToken={csrfToken}
-      onClose={() => state.setDialog(null)}
-      onSaved={state.saved}
+      onClose={() => editor.setDialog(null)}
+      onSaved={editor.saved}
     />
   );
 }
@@ -65,7 +70,7 @@ function ProjectForm({
   project?: Project;
   csrfToken: string;
   onClose: () => void;
-  onSaved: (project: Project) => Promise<void>;
+  onSaved: (project: Project) => void;
 }) {
   const [form, setForm] = useState<ProjectInput>(project ?? emptyProject);
   const [saving, setSaving] = useState(false);
@@ -76,7 +81,7 @@ function ProjectForm({
     setError("");
     try {
       const saved = await request<Project>(
-        project ? `${apiRoutes.projects}/${project.id}` : apiRoutes.projects,
+        project ? apiRoutes.project(project.id) : apiRoutes.projects,
         {
           method: project ? "PATCH" : "POST",
           body: JSON.stringify({
@@ -88,7 +93,7 @@ function ProjectForm({
         },
         csrfToken,
       );
-      await onSaved(saved);
+      onSaved(saved);
       onClose();
     } catch (e) {
       setError(errorMessage(e));

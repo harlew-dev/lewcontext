@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/sidebar";
 import { request, errorMessage } from "@/lib/api";
 import { apiRoutes, navigation, routes } from "@/lib/routes";
-import type { Session, User, WorkspacePageProps } from "@/lib/types";
+import type { AppPageProps, Session, User } from "@/lib/types";
 import { SidebarLayout } from "./sidebar-layout";
 function initialsOf(user: User) {
   return user.name
@@ -222,7 +222,9 @@ export function ApplicationLayout({
                 <SidebarItem
                   key={href}
                   href={href}
-                  current={currentPath === href}
+                  current={
+                    currentPath === href || currentPath.startsWith(`${href}/`)
+                  }
                 >
                   <Icon />
                   <SidebarLabel>{label}</SidebarLabel>
@@ -275,7 +277,7 @@ export function ApplicationLayout({
 }
 // getLayout for signed-in pages: _app keeps this layout mounted between pages,
 // which preserves sidebar state and lets the current-page indicator animate.
-export function appLayout(page: ReactElement, props: WorkspacePageProps) {
+export function appLayout(page: ReactElement, props: AppPageProps) {
   if ("unavailable" in props) return page;
   return <ApplicationLayout session={props.session}>{page}</ApplicationLayout>;
 }

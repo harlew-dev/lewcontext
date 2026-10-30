@@ -8,6 +8,7 @@ import {
 export const routes = {
   dashboard: "/app/dashboard",
   projects: "/app/projects",
+  project: (id: number) => `/app/projects/${id}`,
   settings: "/app/settings",
   login: "/auth/login",
   register: "/auth/register",
@@ -24,4 +25,5 @@ export const apiRoutes = {
   logout: "/api/auth/logout",
   sessions: "/api/auth/sessions",
   projects: "/api/projects",
+  project: (id: number) => `/api/projects/${id}`,
 } as const;

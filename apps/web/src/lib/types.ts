@@ -10,24 +10,14 @@ export type Session = {
   expiresAt: string;
   signedInAt: string;
 };
-export const statuses = ["In progress", "Planned", "Completed"] as const;
-export const colors = ["violet", "blue", "amber", "emerald", "rose"] as const;
-export type Project = {
-  id: number;
-  name: string;
-  description: string;
-  status: (typeof statuses)[number];
-  color: (typeof colors)[number];
-  createdAt: string;
-  updatedAt: string;
+// Data the server rendered for one API path, or why it couldn't.
+export type Initial<T> = {
+  path: string;
+  data: T | null;
+  error: string | null;
 };
-export type ProjectInput = Pick<
-  Project,
-  "name" | "description" | "status" | "color"
->;
-export type WorkspaceProps = {
-  session: Session;
-  initialProjects: Project[] | null;
-  initialError: string | null;
-};
-export type WorkspacePageProps = WorkspaceProps | { unavailable: true };
+export type SessionProps = { session: Session };
+// Props of a signed-in page: the session plus its own server-rendered data,
+// or `unavailable` when the session service can't be reached.
+export type AppPageProps<P = object> =
+  (SessionProps & P) | { unavailable: true };

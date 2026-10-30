@@ -14,14 +14,14 @@ import { Heading, Subheading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
 import { request, errorMessage } from "@/lib/api";
 import { apiRoutes } from "@/lib/routes";
-import type { WorkspacePageProps, WorkspaceProps } from "@/lib/types";
-export { workspaceProps as getServerSideProps } from "@/lib/server";
-export default function Settings(props: WorkspacePageProps) {
+import type { AppPageProps, SessionProps } from "@/lib/types";
+export { sessionProps as getServerSideProps } from "@/lib/server";
+export default function Settings(props: AppPageProps) {
   if ("unavailable" in props) return <ServiceUnavailable />;
   return <AccountSettings {...props} />;
 }
 Settings.getLayout = appLayout;
-function AccountSettings({ session }: WorkspaceProps) {
+function AccountSettings({ session }: SessionProps) {
   return (
     <div className="mx-auto max-w-4xl">
       <Heading>Account & security</Heading>
@@ -82,7 +82,7 @@ function SettingsSection({
     </section>
   );
 }
-function SessionControls({ session }: Pick<WorkspaceProps, "session">) {
+function SessionControls({ session }: SessionProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);

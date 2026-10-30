@@ -1,7 +1,15 @@
-import { fireEvent, render, screen, cleanup } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectTable } from "./project-table";
-import type { Project } from "@/lib/types";
+import { Table, TableBody, TableHead } from "@/components/ui/table";
+import { sortable, type Project } from "@/types/projects";
+import { projectQuery, projectsApiPath, projectsPath } from "./project-query";
+import {
+  ProjectEmptyState,
+  ProjectRow,
+  ProjectTableHead,
+} from "./project-table";
 afterEach(cleanup);
 const project: Project = {
   id: 1,
@@ -12,35 +20,95 @@ const project: Project = {
   createdAt: "2026-10-01T12:00:00Z",
   updatedAt: "2026-10-02T12:00:00Z",
 };
-describe("ProjectTable", () => {
-  it("renders API data and opens the selected project", () => {
-    const onEdit = vi.fn();
+describe("project table", () => {
+  it("renders API data with rows linking to the project", () => {
     render(
-      <ProjectTable projects={[project]} onEdit={onEdit} onCreate={vi.fn()} />,
+      <Table>
+        <TableBody>
+          <ProjectRow project={project} />
+        </TableBody>
+      </Table>,
     );
     expect(screen.getByText("Talk to our customers")).toBeInTheDocument();
     expect(screen.getByText("Planned")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Research sprint Talk/ }),
+    for (const link of screen.getAllByRole("link", { name: "Research sprint" }))
+      expect(link).toHaveAttribute("href", "/app/projects/1");
+  });
+  it("links headers to the next sort and reports the current one", () => {
+    render(
+      <Table>
+        <TableHead>
+          <ProjectTableHead
+            sort="name"
+            sortHref={(sort) => `/x?sort=${sort}`}
+          />
+        </TableHead>
+      </Table>,
     );
-    expect(onEdit).toHaveBeenCalledWith(project);
+    expect(screen.getByRole("link", { name: "Project" })).toHaveAttribute(
+      "href",
+      "/x?sort=-name",
+    );
+    expect(screen.getByRole("link", { name: "Last updated" })).toHaveAttribute(
+      "href",
+      "/x?sort=-updated",
+    );
+    expect(
+      screen.getByRole("columnheader", { name: "Project" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    expect(
+      screen.getByRole("columnheader", { name: "Status" }),
+    ).toHaveAttribute("aria-sort", "none");
   });
   it("explains an empty search result", () => {
-    render(
-      <ProjectTable
-        projects={[]}
-        onEdit={vi.fn()}
-        onCreate={vi.fn()}
-        filtered
-      />,
-    );
+    render(<ProjectEmptyState filtered onCreate={vi.fn()} />);
     expect(screen.getByText("No matching projects")).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
   it("offers to create the first project in an empty workspace", () => {
     const onCreate = vi.fn();
-    render(<ProjectTable projects={[]} onEdit={vi.fn()} onCreate={onCreate} />);
+    render(<ProjectEmptyState onCreate={onCreate} />);
     fireEvent.click(screen.getByRole("button", { name: "Create a project" }));
     expect(onCreate).toHaveBeenCalled();
+  });
+});
+describe("project query", () => {
+  it("normalises URL values the API would reject", () => {
+    expect(
+      projectQuery({
+        page: "0",
+        q: `  launch\u0000 ${"x".repeat(200)}`,
+        status: "Archived",
+        sort: "user_id",
+      }),
+    ).toEqual({
+      page: 1,
+      q: `launch ${"x".repeat(93)}`,
+      status: "all",
+      sort: "-updated",
+    });
+  });
+  it("builds page and API URLs without defaults", () => {
+    const query = projectQuery({
+      q: "web",
+      status: "Planned",
+      sort: "name",
+      page: "2",
+    });
+    expect(projectsPath(query)).toBe(
+      "/app/projects?q=web&status=Planned&sort=name&page=2",
+    );
+    expect(projectsApiPath(projectQuery({}))).toBe("/api/projects");
+  });
+  it("mirrors the API's sort allowlist", () => {
+    const go = readFileSync(
+      // Vitest runs from apps/web.
+      resolve(process.cwd(), "../api/internal/store/projects.go"),
+      "utf8",
+    );
+    const map = go.match(/var projectSorts = map\[string\]string\{([^}]*)\}/);
+    const keys = [...(map?.[1] ?? "").matchAll(/"(-?\w+)":/g)].map((m) => m[1]);
+    expect(keys.sort()).toEqual(
+      sortable.flatMap((field) => [field, `-${field}`]).sort(),
+    );
   });
 });

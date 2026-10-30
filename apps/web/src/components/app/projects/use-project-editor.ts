@@ -1,50 +1,34 @@
 import { useState } from "react";
-import { useRouter } from "next/router";
-import useSWR from "swr";
-import { ApiError, request } from "@/lib/api";
-import { apiRoutes, routes } from "@/lib/routes";
-import type { Project, WorkspaceProps } from "@/lib/types";
-export type ProjectsState = ReturnType<typeof useProjects>;
-export function useProjects(props: WorkspaceProps) {
-  const router = useRouter();
+import { useSWRConfig } from "swr";
+import { apiRoutes } from "@/lib/routes";
+import type { Project } from "@/types/projects";
+export type ProjectEditor = ReturnType<typeof useProjectEditor>;
+// Create/edit dialog state and success notice for project pages. After a save
+// every cached project list and project revalidates, since the change can
+// move it between pages, filters and counts.
+export function useProjectEditor(
+  onSaved?: (project: Project, created: boolean) => void,
+) {
+  const { mutate } = useSWRConfig();
   const [dialog, setDialog] = useState<Project | "new" | null>(null);
   const [notice, setNotice] = useState("");
-  const { data, error, isLoading, isValidating, mutate } = useSWR<Project[]>(
-    [apiRoutes.projects, props.session.user.id],
-    ([path]: [string, number]) => request<Project[]>(path),
-    {
-      fallbackData: props.initialProjects ?? undefined,
-      onError: (error) => {
-        if (error instanceof ApiError && error.status === 401)
-          void router.replace(routes.login);
-      },
-    },
-  );
-  async function saved(project: Project) {
-    await mutate(
-      (current) => [
-        project,
-        ...(current || []).filter((p) => p.id !== project.id),
-      ],
-      { revalidate: false },
-    );
+  function saved(project: Project) {
+    const created = dialog === "new";
     setNotice(
-      dialog === "new"
+      created
         ? "Project created. A good start."
         : "Project updated. Keep it moving.",
     );
-    void mutate();
+    onSaved?.(project, created);
+    void mutate(isProjectKey);
   }
-  return {
-    projects: data || [],
-    error: error ? error.message : !data ? props.initialError : null,
-    loading: isLoading && !data,
-    refreshing: isValidating,
-    dialog,
-    setDialog,
-    notice,
-    setNotice,
-    saved,
-    refresh: () => void mutate(),
-  };
+  return { dialog, setDialog, notice, setNotice, saved };
+}
+// SWR keys are [path, userId]; project paths start with /api/projects.
+function isProjectKey(key: unknown): boolean {
+  return (
+    Array.isArray(key) &&
+    typeof key[0] === "string" &&
+    key[0].startsWith(apiRoutes.projects)
+  );
 }

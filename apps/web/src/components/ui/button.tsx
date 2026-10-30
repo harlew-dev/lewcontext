@@ -58,7 +58,11 @@ type ButtonElementProps = Omit<
 type LinkElementProps = {
   href: string;
   "aria-label"?: string;
+  "aria-current"?: "page";
   onClick?: () => void;
+  // Next.js Link options, e.g. for query-only navigations such as pagination.
+  shallow?: boolean;
+  scroll?: boolean;
 };
 export type ButtonProps = Style & {
   className?: string;

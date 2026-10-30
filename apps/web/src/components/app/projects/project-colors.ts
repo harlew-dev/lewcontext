@@ -1,4 +1,4 @@
-import type { Project } from "@/lib/types";
+import type { Project } from "@/types/projects";
 // Project colour classes, shared by the table's avatars and the dialog's swatches.
 // Full class strings so Tailwind can detect them.
 export const projectColors: Record<Project["color"], string> = {

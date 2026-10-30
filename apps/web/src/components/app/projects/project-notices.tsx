@@ -1,21 +1,29 @@
 import { Notice } from "@/components/ui/feedback";
-import type { ProjectsState } from "./use-projects";
+import type { ProjectEditor } from "./use-project-editor";
 // Mutation success and load-failure messages for project pages.
-export function ProjectNotices({ state }: { state: ProjectsState }) {
+export function ProjectNotices({
+  editor,
+  error,
+  onRetry,
+}: {
+  editor: ProjectEditor;
+  error: string | null;
+  onRetry: () => void;
+}) {
   return (
     <>
-      {state.notice && (
+      {editor.notice && (
         <Notice
           variant="success"
           className="mt-6"
-          onDismiss={() => state.setNotice("")}
+          onDismiss={() => editor.setNotice("")}
         >
-          {state.notice}
+          {editor.notice}
         </Notice>
       )}
-      {state.error && (
-        <Notice variant="error" className="mt-6" onRetry={state.refresh}>
-          {state.error}
+      {error && (
+        <Notice variant="error" className="mt-6" onRetry={onRetry}>
+          {error}
         </Notice>
       )}
     </>
