@@ -3,9 +3,9 @@ package factory
 import (
 	"context"
 	"fmt"
-	"forma/api/internal/auth"
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"net/http"
 	"time"
 )

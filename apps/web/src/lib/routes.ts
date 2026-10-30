@@ -42,7 +42,7 @@ const returnRoutes = [
   new RegExp(`^/app/${wsp}/projects/${prj}$`),
   new RegExp(`^/app/${wsp}/settings$`),
 ];
-const origin = "http://forma.invalid";
+const origin = "http://lewcontext.invalid";
 // A same-site path and query from ?next=, or null. It must start with "/";
 // protocol-relative URLs (including "/\host") change the origin and are
 // rejected; parsing also resolves "..", so "/app/../auth/login" can't pass.

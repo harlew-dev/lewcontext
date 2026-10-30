@@ -15,7 +15,7 @@ A skipped integration test is not database verification. Set `TEST_DATABASE_URL`
 
 ## Integration tests
 
-- `dbtest.Open(t)` creates a unique `forma_test_<timestamp>` schema, pins `search_path` to it, and drops only that schema at cleanup. Existing data is never touched.
+- `dbtest.Open(t)` creates a unique `lewcontext_test_<timestamp>` schema, pins `search_path` to it, and drops only that schema at cleanup. Existing data is never touched.
 - `integrationServer(t)` (in `httpapi`) migrates the schema (and checks a second migrate is a no-op), then returns a `*Server` and the DB.
 - `call(t, handler, method, path, body, csrf, cookie, wantStatus)` sends a request with the trusted Origin and JSON content type, and fails on an unexpected status.
 - `signedIn(t, db, faker)` returns a fake user's `factory.Session`. Use `session.UserID`, `session.Cookie()` and `session.CSRFToken`.

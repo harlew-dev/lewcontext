@@ -1,7 +1,7 @@
 import { useState } from "react";
 // Where this device remembers that the desktop sidebar is hidden. Docked is
 // the default, so only "hidden" is stored.
-export const sidebarStorageKey = "forma:sidebar";
+export const sidebarStorageKey = "lewcontext:sidebar";
 // Read while rendering, so the first paint already has the remembered state:
 // the app layout renders only in the browser (never prerendered, so nothing
 // to hydrate), and no effect flips it after mount, which would flash the

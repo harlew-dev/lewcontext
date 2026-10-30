@@ -3,9 +3,9 @@ package database_test
 import (
 	"context"
 	"errors"
-	"forma/api/internal/database"
-	"forma/api/internal/database/dbtest"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/database/dbtest"
 	"testing"
 )
 

@@ -9,7 +9,7 @@ export function testSession(
     user: {
       id: "usr_00000000000001",
       name: "Ada Lovelace",
-      email: "ada@forma.test",
+      email: "ada@lewcontext.test",
       createdAt: "2026-10-30T00:00:00Z",
       ...user,
     },

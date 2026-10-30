@@ -11,8 +11,8 @@ export default function Home() {
   const signedIn = useSignedIn();
   return (
     <StatusPage
-      title="Your work, in good shape."
-      description="A little clarity for your next big thing. Your projects, together in one thoughtful workspace."
+      title="Context for AI agents."
+      description="Built from the documents you already have: a structured, project-specific wiki your agents can search and reason over."
       action={
         signedIn ? (
           <Button href={routes.app}>Dashboard</Button>

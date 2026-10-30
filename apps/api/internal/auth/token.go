@@ -24,9 +24,9 @@ func Digest(token string) string {
 }
 func CookieName(production bool) string {
 	if production {
-		return "__Host-forma_session"
+		return "__Host-lewcontext_session"
 	}
-	return "forma_session"
+	return "lewcontext_session"
 }
 func Cookie(token string, production bool) *http.Cookie {
 	return &http.Cookie{Name: CookieName(production), Value: token, Path: "/", HttpOnly: true, Secure: production, SameSite: http.SameSiteLaxMode, MaxAge: int(SessionLifetime.Seconds()), Expires: time.Now().Add(SessionLifetime)}

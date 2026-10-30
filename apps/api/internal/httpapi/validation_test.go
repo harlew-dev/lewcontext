@@ -1,9 +1,9 @@
 package httpapi
 
 import (
-	"forma/api/internal/config"
-	"forma/api/internal/factory"
-	"forma/api/internal/store"
+	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"

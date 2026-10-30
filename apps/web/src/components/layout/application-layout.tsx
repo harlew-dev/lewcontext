@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
 import { errorMessage, useApi } from "@/lib/api";
+import { appName } from "@/lib/app";
 import { navigation, routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useWorkspace, useWorkspaceList } from "@/lib/workspace";
@@ -212,7 +213,7 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     <Dialog open={open} onClose={onClose}>
       <DialogTitle>Make yourself at home.</DialogTitle>
       <DialogDescription>
-        Forma keeps your projects together in workspaces you can share.
+        {appName} keeps your projects together in workspaces you can share.
       </DialogDescription>
       <DialogBody>
         <ol className="list-decimal space-y-2 pl-5 text-base/6 text-zinc-700 sm:text-sm/6 dark:text-zinc-300">
@@ -227,7 +228,7 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
     </Dialog>
   );
 }
-// Signed-in chrome for /app pages (pages/app/layout.tsx): the sidebar layout with Forma's
+// Signed-in chrome for /app pages (pages/app/layout.tsx): the sidebar layout with the app's
 // navigation, account menu, sign-out and the getting-started dialog.
 export function ApplicationLayout({ children }: { children: ReactNode }) {
   const api = useApi();

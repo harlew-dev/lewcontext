@@ -1,13 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 const stamp = Date.now();
-const email = `e2e-${stamp}@forma.test`;
-const returnEmail = `e2e-${stamp}-next@forma.test`;
-const scrollEmail = `e2e-${stamp}-scroll@forma.test`;
-const memberEmail = `e2e-${stamp}-member@forma.test`;
-const ownerEmail = `e2e-${stamp}-owner@forma.test`;
-const passwordEmail = `e2e-${stamp}-password@forma.test`;
-const sidebarEmail = `e2e-${stamp}-sidebar@forma.test`;
+const email = `e2e-${stamp}@lewcontext.test`;
+const returnEmail = `e2e-${stamp}-next@lewcontext.test`;
+const scrollEmail = `e2e-${stamp}-scroll@lewcontext.test`;
+const memberEmail = `e2e-${stamp}-member@lewcontext.test`;
+const ownerEmail = `e2e-${stamp}-owner@lewcontext.test`;
+const passwordEmail = `e2e-${stamp}-password@lewcontext.test`;
+const sidebarEmail = `e2e-${stamp}-sidebar@lewcontext.test`;
 const emails = [
   email,
   returnEmail,
@@ -89,7 +89,7 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   });
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Your work, in good shape." }),
+    page.getByRole("heading", { name: "Context for AI agents." }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Log in" })).toHaveAttribute(
     "href",
@@ -289,9 +289,10 @@ test("/ is the prerendered homepage, /app needs a session, and the pre-workspace
   const root = await request.get("/", { maxRedirects: 0 });
   expect(root.status()).toBe(200);
   const html = await root.text();
-  expect(html).toContain("<title>Forma — Your work, in good shape.</title>");
+  const appName = process.env.APP_NAME || "lewcontext";
+  expect(html).toContain(`<title>${appName} — Context for AI agents</title>`);
   expect(html).toContain('<meta name="description"');
-  expect(html).toContain("Your work, in good shape.");
+  expect(html).toContain("Context for AI agents.");
   expect(html).toContain('href="/auth/login"');
   expect(html).toContain("_styletron_hydrate_");
   // Signed-out visitors get no app HTML, only a redirect to login.

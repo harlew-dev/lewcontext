@@ -12,15 +12,16 @@ import { MotionConfig } from "motion/react";
 import { SWRConfig } from "swr";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { RouteProgress } from "@/components/ui/route-progress";
+import { appName } from "@/lib/app";
 import { theme } from "@/lib/theme";
 import type { Route } from "./+types/root";
 import "@/styles/globals.css";
 export const meta: Route.MetaFunction = () => [
-  { title: "Forma — Your work, in good shape." },
+  { title: `${appName} — Context for AI agents` },
   {
     name: "description",
     content:
-      "A little clarity for your next big thing. Your projects, together in one thoughtful workspace.",
+      "Context for AI agents, built from the documents you already have: a structured, project-specific wiki your agents can search and reason over.",
   },
 ];
 export const links: Route.LinksFunction = () => [

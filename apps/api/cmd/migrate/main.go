@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"forma/api/internal/config"
-	"forma/api/internal/database"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/database"
 	"log"
 	"os"
 	"time"

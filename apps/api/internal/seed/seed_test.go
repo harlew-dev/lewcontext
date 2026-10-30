@@ -2,10 +2,10 @@ package seed
 
 import (
 	"context"
-	"forma/api/internal/database"
-	"forma/api/internal/database/dbtest"
-	"forma/api/internal/factory"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/database/dbtest"
+	"lewcontext/api/internal/factory"
 	"strings"
 	"testing"
 )

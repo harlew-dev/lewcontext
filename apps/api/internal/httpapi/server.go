@@ -3,10 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"forma/api/internal/auth"
-	"forma/api/internal/config"
-	"forma/api/internal/store"
 	"io"
+	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
 )

@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"forma/api/internal/auth"
-	"forma/api/internal/config"
-	"forma/api/internal/database"
-	"forma/api/internal/database/dbtest"
-	"forma/api/internal/factory"
-	"forma/api/internal/store"
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/database/dbtest"
+	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -37,7 +37,7 @@ type response struct {
 	CSRF string     `json:"csrfToken"`
 }
 
-const testUserAgent = "forma-integration-test/1.0"
+const testUserAgent = "lewcontext-integration-test/1.0"
 
 func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
 	t.Helper()

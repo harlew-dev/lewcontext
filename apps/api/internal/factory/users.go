@@ -2,9 +2,9 @@ package factory
 
 import (
 	"fmt"
-	"forma/api/internal/auth"
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"strings"
 	"sync"
 	"time"

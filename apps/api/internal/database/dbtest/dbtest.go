@@ -4,8 +4,8 @@ package dbtest
 import (
 	"context"
 	"fmt"
-	"forma/api/internal/database"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
 	"net/url"
 	"os"
 	"testing"
@@ -25,7 +25,7 @@ func Open(t *testing.T) *bun.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema := fmt.Sprintf("forma_test_%d", time.Now().UnixNano())
+	schema := fmt.Sprintf("lewcontext_test_%d", time.Now().UnixNano())
 	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA ?", bun.Ident(schema)); err != nil {
 		t.Fatal(err)
 	}

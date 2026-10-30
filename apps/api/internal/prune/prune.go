@@ -8,7 +8,7 @@ package prune
 import (
 	"context"
 	"fmt"
-	"forma/api/internal/store"
+	"lewcontext/api/internal/store"
 	"regexp"
 	"slices"
 	"strconv"

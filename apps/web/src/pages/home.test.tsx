@@ -10,7 +10,7 @@ describe("homepage", () => {
     stubMe(401);
     render(<Home />, { wrapper: MemoryRouter });
     expect(screen.getByRole("heading")).toHaveTextContent(
-      "Your work, in good shape.",
+      "Context for AI agents.",
     );
     expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute(
       "href",

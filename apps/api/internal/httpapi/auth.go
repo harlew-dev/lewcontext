@@ -3,10 +3,10 @@ package httpapi
 import (
 	"database/sql"
 	"errors"
-	"forma/api/internal/auth"
-	"forma/api/internal/events"
-	"forma/api/internal/store"
 	"github.com/jackc/pgx/v5/pgconn"
+	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/store"
 	"net/http"
 	"net/mail"
 	"strings"

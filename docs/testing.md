@@ -52,7 +52,7 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Configuration
 
-`make` loads `.env` for its subprocesses, and its values win over variables set on the command line. If you run Go or npm commands directly, export the variables yourself (`scripts/dev.sh` does). Vite doesn't read the root `.env` from `apps/web`; its dev proxy uses `API_URL` (default `http://127.0.0.1:8080`). Keep `APP_ORIGIN=http://localhost:3000`: Vite forwards the browser's Origin unchanged, and `make serve` listens on :3000. Restart the servers after changing configuration.
+`make` loads `.env` for its subprocesses, and its values win over variables set on the command line. If you run Go or npm commands directly, export the variables yourself (`scripts/dev.sh` does). Vite doesn't read the root `.env` from `apps/web`; its dev proxy uses `API_URL` (default `http://127.0.0.1:8080`), and `APP_NAME` (default `lewcontext`) is baked into the web build as the product name in page titles, the logo and app copy, so rebuild after changing it. Keep `APP_ORIGIN=http://localhost:3000`: Vite forwards the browser's Origin unchanged, and `make serve` listens on :3000. Restart the servers after changing configuration.
 
 ## Before claiming a change works
 

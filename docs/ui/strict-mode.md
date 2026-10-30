@@ -1,6 +1,6 @@
 # React StrictMode
 
-`<StrictMode>` is a React component that renders nothing itself and switches on extra checks for everything inside it, **in development only**. Forma wraps the whole app in it in `apps/web/src/entry.client.tsx`:
+`<StrictMode>` is a React component that renders nothing itself and switches on extra checks for everything inside it, **in development only**. lewcontext wraps the whole app in it in `apps/web/src/entry.client.tsx`:
 
 ```tsx
 <StrictMode>

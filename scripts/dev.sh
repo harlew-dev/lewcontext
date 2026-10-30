@@ -47,7 +47,7 @@ api=$!
 (cd apps/web && exec npm run dev) > >(label "[web]") 2>&1 &
 web=$!
 
-echo "Forma dev: http://localhost:3000 (API on $API_ADDR). Ctrl-C stops both."
+echo "${APP_NAME:-lewcontext} dev: http://localhost:3000 (API on $API_ADDR). Ctrl-C stops both."
 while kill -0 "$api" 2>/dev/null && kill -0 "$web" 2>/dev/null; do
   sleep 1
 done

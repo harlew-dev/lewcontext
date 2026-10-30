@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"forma/api/internal/events"
-	"forma/api/internal/factory"
-	"forma/api/internal/store"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/store"
 	"strings"
 	"testing"
 )

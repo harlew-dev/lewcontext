@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"errors"
-	"forma/api/internal/auth"
-	"forma/api/internal/events"
-	"forma/api/internal/store"
+	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/store"
 	"net/http"
 )
 

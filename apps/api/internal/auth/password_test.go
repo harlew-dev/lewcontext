@@ -36,7 +36,7 @@ func TestTokenAndCookie(t *testing.T) {
 		t.Fatal("unsafe token")
 	}
 	cookie := Cookie(a, true)
-	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Name != "__Host-forma_session" || cookie.Path != "/" || cookie.Domain != "" || cookie.MaxAge != 86400 {
+	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Name != "__Host-lewcontext_session" || cookie.Path != "/" || cookie.Domain != "" || cookie.MaxAge != 86400 {
 		t.Fatalf("unsafe cookie: %+v", cookie)
 	}
 	if Cookie(a, false).Secure {

@@ -20,7 +20,7 @@ const (
 
 func build() fstest.MapFS {
 	return fstest.MapFS{
-		"index.html": {Data: []byte(`<!DOCTYPE html><html><head><title>Forma</title></head><body><h1>Your work</h1>` +
+		"index.html": {Data: []byte(`<!DOCTYPE html><html><head><title>lewcontext</title></head><body><h1>Your work</h1>` +
 			`<script src="/assets/entry.client-abc.js" type="module"></script>` +
 			`<script>` + homeScript + `</script><script type="module" async="">` + moduleScript + `</script></body></html>`)},
 		"__spa-fallback.html": {Data: []byte(`<!DOCTYPE html><html><body><main></main>` +

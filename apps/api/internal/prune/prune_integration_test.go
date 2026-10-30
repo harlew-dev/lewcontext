@@ -2,10 +2,10 @@ package prune
 
 import (
 	"context"
-	"forma/api/internal/database"
-	"forma/api/internal/database/dbtest"
-	"forma/api/internal/factory"
-	"forma/api/internal/store"
+	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/database/dbtest"
+	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/store"
 	"strings"
 	"testing"
 	"time"

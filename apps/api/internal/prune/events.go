@@ -1,6 +1,6 @@
 package prune
 
-import "forma/api/internal/store"
+import "lewcontext/api/internal/store"
 
 func init() {
 	register(Pruner{

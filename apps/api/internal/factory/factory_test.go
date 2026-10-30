@@ -2,9 +2,9 @@ package factory
 
 import (
 	"context"
-	"forma/api/internal/database"
-	"forma/api/internal/database/dbtest"
 	"github.com/brianvoe/gofakeit/v7"
+	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/database/dbtest"
 	"net/mail"
 	"slices"
 	"strings"

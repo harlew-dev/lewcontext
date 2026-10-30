@@ -3,9 +3,9 @@ package database
 import (
 	"context"
 	"errors"
-	"forma/api/migrations"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/migrate"
+	"lewcontext/api/migrations"
 )
 
 const migrationLockID = 104209

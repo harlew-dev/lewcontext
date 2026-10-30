@@ -7,16 +7,17 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: forma
+          POSTGRES_USER: lewcontext
           POSTGRES_PASSWORD: test-only-password
-          POSTGRES_DB: forma_test
+          POSTGRES_DB: lewcontext_test
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://forma:test-only-password@127.0.0.1:5432/forma_test?sslmode=disable
-      TEST_DATABASE_URL: postgresql://forma:test-only-password@127.0.0.1:5432/forma_test?sslmode=disable
+      DATABASE_URL: postgresql://lewcontext:test-only-password@127.0.0.1:5432/lewcontext_test?sslmode=disable
+      TEST_DATABASE_URL: postgresql://lewcontext:test-only-password@127.0.0.1:5432/lewcontext_test?sslmode=disable
       APP_ORIGIN: http://localhost:3000
       APP_ENV: development
+      APP_NAME: lewcontext
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -35,13 +36,13 @@ jobs:
       # As make serve: the binary built above serves the API and the embedded web app on :3000.
       - name: Start application
         run: |
-          API_ADDR=127.0.0.1:3000 ./bin/api > /tmp/forma-api.log 2>&1 &
+          API_ADDR=127.0.0.1:3000 ./bin/api > /tmp/lewcontext-api.log 2>&1 &
           for attempt in $(seq 1 30); do curl -sf http://localhost:3000/auth/login > /dev/null && exit 0; sleep 2; done
-          echo 'The app did not start on :3000'; cat /tmp/forma-api.log; exit 1
+          echo 'The app did not start on :3000'; cat /tmp/lewcontext-api.log; exit 1
       - name: Browser tests
         run: |
           export CHROMIUM_PATH=$(node -e "console.log(require('./apps/web/node_modules/playwright').chromium.executablePath())")
           make test-e2e
       - name: Logs on failure
         if: failure()
-        run: cat /tmp/forma-api.log || true
+        run: cat /tmp/lewcontext-api.log || true

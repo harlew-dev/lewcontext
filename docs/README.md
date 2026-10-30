@@ -1,4 +1,4 @@
-# Forma docs
+# lewcontext docs
 
 Short summaries of how the system works. Start with the project rules in [`AGENTS.md`](../AGENTS.md), then read the doc for the area you're changing.
 
