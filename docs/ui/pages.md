@@ -97,7 +97,7 @@ BaseUI styles itself with Styletron. `src/entry.server.tsx` runs only at build t
 
 ## Signed-out pages
 
-`pages/auth/*` export `clientLoader` → `guestLoader(request)`, wrap their content in `AuthLayout` and submit with `useAuthSubmit(api.auth().login)` (or `.register` with `routes.onboarding` as the destination, with `const api = useApi()`), which disables the form while pending and opens `?next=` or `/app` on success.
+`pages/auth/*` export `clientLoader` → `guestLoader(request)`, wrap their content in `AuthLayout` and submit with `useAuthSubmit(api.auth().login)` (or `.register` with `routes.onboarding` as the destination, with `const api = useApi()`), which runs through `useAction` (loading until the next page has loaded, `error` for `<ErrorNotice>`) and opens `?next=` or `/app` on success.
 
 ## Status pages
 

@@ -8,43 +8,43 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
 import { Input } from "@/components/ui/input";
 import { useApi } from "@/lib/api";
 import { routes } from "@/lib/routes";
-import { useActionError } from "@/lib/use-action-error";
+import { useAction } from "@/lib/use-action";
 import { useRefreshWorkspaces } from "@/lib/workspace";
 import { maxWorkspaceName, workspaceName } from "@/types/workspaces";
 // Creating a workspace, from onboarding or the switcher's dialog: sends the
 // name, refreshes the switcher's list and opens the new workspace. The form
-// stays disabled until the new workspace's page has loaded; then `onOpened`
-// runs (the dialog closes).
+// stays loading until the new workspace's page has loaded (the action awaits
+// the navigation); then `onOpened` runs (the dialog closes).
 export function useCreateWorkspace(onOpened?: () => void) {
   const api = useApi();
   const navigate = useNavigate();
   const refresh = useRefreshWorkspaces();
   const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
-  const error = useActionError();
+  const create = useAction(async (clean: string) => {
+    const workspace = await api.workspaces().create({ name: clean });
+    refresh();
+    await navigate(routes.dashboard(workspace.id));
+    onOpened?.();
+  });
   const valid = workspaceName(name) !== null;
   async function submit(event: FormEvent) {
     event.preventDefault();
     const clean = workspaceName(name);
-    if (clean === null || saving) return;
-    setSaving(true);
-    try {
-      const workspace = await api.workspaces().create({ name: clean });
-      error.clear();
-      refresh();
-      await navigate(routes.dashboard(workspace.id));
-      onOpened?.();
-    } catch (e) {
-      error.fail(e);
-      setSaving(false);
-    }
+    if (clean !== null) await create.run(clean);
   }
-  return { name, setName, saving, valid, error, submit };
+  return {
+    name,
+    setName,
+    loading: create.loading,
+    valid,
+    error: create.error,
+    submit,
+  };
 }
 export type WorkspaceCreator = ReturnType<typeof useCreateWorkspace>;
 // The workspace name input, shared by creating and renaming.
@@ -103,32 +103,28 @@ function CreateWorkspaceForm({
 }) {
   const create = useCreateWorkspace(onClose);
   return (
-    <Dialog open={open} onClose={() => !create.saving && onClose()}>
+    <Dialog open={open} onClose={() => !create.loading && onClose()}>
       <form onSubmit={create.submit}>
         <DialogTitle>New workspace</DialogTitle>
         <DialogDescription>
           A fresh space for another team or another big idea.
         </DialogDescription>
         <DialogBody>
-          {create.error.message && (
-            <Notice key={create.error.key} variant="error" className="mb-6">
-              {create.error.message}
-            </Notice>
-          )}
+          <ErrorNotice error={create.error} className="mb-6" />
           <WorkspaceNameField
             autoFocus
             value={create.name}
             onChange={create.setName}
-            disabled={create.saving}
+            disabled={create.loading}
           />
         </DialogBody>
         <DialogActions>
-          <Button plain onClick={onClose} disabled={create.saving}>
+          <Button plain onClick={onClose} disabled={create.loading}>
             Cancel
           </Button>
           <Button
             type="submit"
-            loading={create.saving}
+            loading={create.loading}
             disabled={!create.valid}
           >
             Create workspace

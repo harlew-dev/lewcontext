@@ -31,15 +31,3 @@ export function ProjectAvatar({
     />
   );
 }
-// Dates are shown in UTC so server and browser render the same text.
-export function formatDate(
-  value: string,
-  style: "short" | "long" = "short",
-): string {
-  return new Date(value).toLocaleDateString(
-    "en-US",
-    style === "short"
-      ? { month: "short", day: "numeric", timeZone: "UTC" }
-      : { dateStyle: "long", timeZone: "UTC" },
-  );
-}

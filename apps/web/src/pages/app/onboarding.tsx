@@ -6,7 +6,7 @@ import {
   useCreateWorkspace,
 } from "@/components/app/workspaces/workspace-form";
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text } from "@/components/ui/text";
@@ -44,22 +44,18 @@ function NewWorkspace() {
               more later.
             </Text>
           </div>
-          {create.error.message && (
-            <Notice key={create.error.key} variant="error">
-              {create.error.message}
-            </Notice>
-          )}
+          <ErrorNotice error={create.error} />
           <WorkspaceNameField
             label="Name"
             autoFocus
             value={create.name}
             onChange={create.setName}
-            disabled={create.saving}
+            disabled={create.loading}
           />
           <Button
             type="submit"
             className="w-full"
-            loading={create.saving}
+            loading={create.loading}
             disabled={!create.valid}
           >
             Create workspace

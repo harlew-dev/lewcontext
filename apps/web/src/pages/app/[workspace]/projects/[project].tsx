@@ -3,7 +3,6 @@ import { ChevronLeftIcon, PencilSquareIcon } from "@heroicons/react/16/solid";
 import {
   ProjectAvatar,
   ProjectStatusBadge,
-  formatDate,
 } from "@/components/app/projects/project-display";
 import { ProjectDialog } from "@/components/app/projects/project-dialog";
 import { ProjectNotices } from "@/components/app/projects/project-notices";
@@ -22,6 +21,7 @@ import { parsePublicId } from "@/lib/ids";
 import { paths } from "@/lib/api";
 import { routes } from "@/lib/routes";
 import { useResource } from "@/lib/use-resource";
+import { formatDate } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 import type { Project } from "@/types/projects";
 // Only well-formed project IDs reach the API; anything else, and a project

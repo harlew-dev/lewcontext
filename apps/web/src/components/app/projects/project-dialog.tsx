@@ -8,7 +8,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import {
   Field,
   FieldGroup,
@@ -21,7 +21,7 @@ import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Textarea } from "@/components/ui/textarea";
 import { cx } from "@/lib/cx";
 import { useApi } from "@/lib/api";
-import { useActionError } from "@/lib/use-action-error";
+import { useAction } from "@/lib/use-action";
 import { useWorkspace } from "@/lib/workspace";
 import {
   statuses,
@@ -67,27 +67,21 @@ function ProjectForm({
   const api = useApi();
   const workspace = useWorkspace();
   const [form, setForm] = useState<ProjectInput>(project ?? emptyProject);
-  const [saving, setSaving] = useState(false);
-  const error = useActionError();
+  const save = useAction((input: ProjectInput) => {
+    const projects = api.projects(workspace.id);
+    return project
+      ? projects.update(project.id, input)
+      : projects.create(input);
+  });
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setSaving(true);
-    try {
-      const projects = api.projects(workspace.id);
-      const saved = project
-        ? await projects.update(project.id, form)
-        : await projects.create(form);
-      error.clear();
-      onSaved(saved);
-      onClose();
-    } catch (e) {
-      error.fail(e);
-    } finally {
-      setSaving(false);
-    }
+    const result = await save.run(form);
+    if (!result.ok) return;
+    onSaved(result.value);
+    onClose();
   }
   return (
-    <Dialog open={open} onClose={() => !saving && onClose()}>
+    <Dialog open={open} onClose={() => !save.loading && onClose()}>
       <form onSubmit={submit}>
         <DialogTitle>{project ? "Edit project" : "New project"}</DialogTitle>
         <DialogDescription>
@@ -96,13 +90,9 @@ function ProjectForm({
             : "Every good idea starts somewhere. Give yours a home."}
         </DialogDescription>
         <DialogBody>
-          {error.message && (
-            <Notice key={error.key} variant="error" className="mb-6">
-              {error.message}
-            </Notice>
-          )}
+          <ErrorNotice error={save.error} className="mb-6" />
           <FieldGroup>
-            <Field disabled={saving}>
+            <Field disabled={save.loading}>
               <Label>Project name</Label>
               <Input
                 autoFocus
@@ -115,7 +105,7 @@ function ProjectForm({
                 }
               />
             </Field>
-            <Field disabled={saving}>
+            <Field disabled={save.loading}>
               <Label>Description</Label>
               <Textarea
                 rows={3}
@@ -127,7 +117,7 @@ function ProjectForm({
                 }
               />
             </Field>
-            <Field disabled={saving}>
+            <Field disabled={save.loading}>
               <Label>Status</Label>
               <Listbox
                 value={form.status}
@@ -140,7 +130,7 @@ function ProjectForm({
                 ))}
               </Listbox>
             </Field>
-            <Fieldset disabled={saving}>
+            <Fieldset disabled={save.loading}>
               <Legend>Color</Legend>
               <div data-slot="control" className="flex gap-3">
                 {colors.map((color) => (
@@ -156,10 +146,14 @@ function ProjectForm({
           </FieldGroup>
         </DialogBody>
         <DialogActions>
-          <Button plain onClick={onClose} disabled={saving}>
+          <Button plain onClick={onClose} disabled={save.loading}>
             Cancel
           </Button>
-          <Button type="submit" loading={saving} disabled={!form.name.trim()}>
+          <Button
+            type="submit"
+            loading={save.loading}
+            disabled={!form.name.trim()}
+          >
             {project ? "Save changes" : "Create project"}
           </Button>
         </DialogActions>

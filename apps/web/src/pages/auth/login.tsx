@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const api = useApi();
   const [search] = useSearchParams();
-  const { busy, error, submit } = useAuthSubmit(api.auth().login);
+  const { loading, error, submit } = useAuthSubmit(api.auth().login);
   return (
     <AuthLayout>
       <form
@@ -31,12 +31,8 @@ export default function Login() {
       >
         <Logo />
         <Heading>Sign in to your account</Heading>
-        {error.message && (
-          <Notice key={error.key} variant="error">
-            {error.message}
-          </Notice>
-        )}
-        <Field disabled={busy}>
+        <ErrorNotice error={error} />
+        <Field disabled={loading}>
           <Label>Email</Label>
           <Input
             type="email"
@@ -48,7 +44,7 @@ export default function Login() {
             onChange={(e) => setEmail(e.currentTarget.value)}
           />
         </Field>
-        <Field disabled={busy}>
+        <Field disabled={loading}>
           <Label>Password</Label>
           <Input
             type="password"
@@ -60,7 +56,7 @@ export default function Login() {
             onChange={(e) => setPassword(e.currentTarget.value)}
           />
         </Field>
-        <Button type="submit" className="w-full" loading={busy}>
+        <Button type="submit" className="w-full" loading={loading}>
           Sign in
         </Button>
         <Text>

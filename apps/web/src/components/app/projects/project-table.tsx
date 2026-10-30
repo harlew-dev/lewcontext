@@ -7,13 +7,10 @@ import {
   type SortDirection,
 } from "@/lib/pagination";
 import { routes } from "@/lib/routes";
+import { formatDate } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 import type { Project, ProjectSort, ProjectSortField } from "@/types/projects";
-import {
-  ProjectAvatar,
-  ProjectStatusBadge,
-  formatDate,
-} from "./project-display";
+import { ProjectAvatar, ProjectStatusBadge } from "./project-display";
 // Project table columns. Dates sort newest first on the first click.
 const columns: {
   field: ProjectSortField;

@@ -39,7 +39,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
 | `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
-| `feedback.tsx` | `Notice variant` (`error` alert, `success` status), `onRetry`, `onDismiss` · `EmptyState title description action` · `ListSkeleton label rows` |
+| `feedback.tsx` | `Notice variant` (`error` alert, `success` status), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |
 | `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled`, `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors) |
 | `input.tsx` / `textarea.tsx` | `Input`, `InputGroup` (leading icon) · `Textarea` |
@@ -60,14 +60,14 @@ Files are kebab-case and export a family of named components. Keep these props s
 `toast.success(message)` and `toast.error(message)` (`components/ui/toast.tsx`) show a short-lived message in a stack at the bottom right (across the bottom on phones).
 
 - **Successes** of any action are toasts: "Workspace renamed.", "Project created.", "All other sessions have been signed out."
-- **Errors** stay inline when the action is a form (`Notice variant="error"` beside its fields), and load failures keep their `Notice` with Retry. An action that is only a button, with no fields (sign out, sign out other sessions), reports its error as `toast.error`.
+- **Errors** stay inline when the action is a form (`<ErrorNotice error={action.error}>` beside its fields, see [api.md](api.md#changing-data)), and load failures keep their `Notice` with Retry. An action that is only a button, with no fields (sign out, sign out other sessions), reports its error as `toast.error`.
 - A toast hides after 5 seconds, paused while it's hovered or focused. Pass `{ duration }` in milliseconds to change that, or `Infinity` to keep it until dismissed.
 - It's BaseUI's `toaster` (timer, stacking) with its slots replaced by `slot()`: a zinc panel with the `Notice` variant's icon and role (`messageVariants` in `feedback.tsx`, so the two stay alike), fading and sliding on `data-closed`. BaseUI's close icon can't be reached by keyboard, so the toast renders our `DismissButton` instead.
 - `<Toaster />` is mounted by `pages/app/layout.tsx` and onboarding only, so signing out unmounts it and any open toasts. Calling `toast` where no `Toaster` is mounted throws in development (in tests, render a `<Toaster />`).
 
 ## Feature components (`components/app/<feature>`)
 
-- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `formatDate`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
+- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
 - **`workspaces`**, shared by onboarding, the switcher and workspace settings: `WorkspaceAvatar` (the name's first letter), `WorkspaceNameField`, `useCreateWorkspace` and `CreateWorkspaceDialog`.
 
 The workspace switcher (`WorkspaceDropdown` in `application-layout.tsx`) shows the current workspace and lists every workspace newest first, loading more as the list scrolls ([pagination.md](pagination.md#infinite-lists)).

@@ -4,7 +4,7 @@ import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Divider } from "@/components/ui/divider";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { SettingsSection } from "@/components/ui/settings-section";
 import { Strong, Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { useApi } from "@/lib/api";
-import { useActionError } from "@/lib/use-action-error";
+import { useAction } from "@/lib/use-action";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
 import { canManage, workspaceName, type Role } from "@/types/workspaces";
 const roleBadges: Record<Role, { label: string; color: BadgeColor }> = {
@@ -69,24 +69,17 @@ function RenameForm() {
   const workspace = useWorkspace();
   const refresh = useRefreshWorkspaces();
   const [name, setName] = useState(workspace.name);
-  const [saving, setSaving] = useState(false);
-  const error = useActionError();
+  const rename = useAction((clean: string) =>
+    api.workspaces().update(workspace.id, { name: clean }),
+  );
   const clean = workspaceName(name);
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (clean === null || saving) return;
-    setSaving(true);
-    try {
-      await api.workspaces().update(workspace.id, { name: clean });
-      error.clear();
-      refresh(workspace.id);
-      setName(clean);
-      toast.success("Workspace renamed.");
-    } catch (e) {
-      error.fail(e);
-    } finally {
-      setSaving(false);
-    }
+    if (clean === null) return;
+    if (!(await rename.run(clean)).ok) return;
+    refresh(workspace.id);
+    setName(clean);
+    toast.success("Workspace renamed.");
   }
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -94,20 +87,16 @@ function RenameForm() {
         label="Name"
         value={name}
         onChange={setName}
-        disabled={saving}
+        disabled={rename.loading}
       />
       <Button
         type="submit"
-        loading={saving}
+        loading={rename.loading}
         disabled={clean === null || clean === workspace.name}
       >
         Save
       </Button>
-      {error.message && (
-        <Notice key={error.key} variant="error">
-          {error.message}
-        </Notice>
-      )}
+      <ErrorNotice error={rename.error} />
     </form>
   );
 }

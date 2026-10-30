@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/feedback";
+import { ErrorNotice } from "@/components/ui/feedback";
 import { Description, Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ export default function Register() {
   const api = useApi();
   const [search] = useSearchParams();
   // A new account has no workspace yet, so it always starts at onboarding.
-  const { busy, error, submit } = useAuthSubmit(
+  const { loading, error, submit } = useAuthSubmit(
     api.auth().register,
     routes.onboarding,
   );
@@ -36,12 +36,8 @@ export default function Register() {
       >
         <Logo />
         <Heading>Create your account</Heading>
-        {error.message && (
-          <Notice key={error.key} variant="error">
-            {error.message}
-          </Notice>
-        )}
-        <Field disabled={busy}>
+        <ErrorNotice error={error} />
+        <Field disabled={loading}>
           <Label>Email</Label>
           <Input
             type="email"
@@ -53,7 +49,7 @@ export default function Register() {
             onChange={(e) => setEmail(e.currentTarget.value)}
           />
         </Field>
-        <Field disabled={busy}>
+        <Field disabled={loading}>
           <Label>Full name</Label>
           <Input
             name="name"
@@ -64,7 +60,7 @@ export default function Register() {
             onChange={(e) => setName(e.currentTarget.value)}
           />
         </Field>
-        <Field disabled={busy}>
+        <Field disabled={loading}>
           <Label>Password</Label>
           <Description>
             Use at least 12 characters. A passphrase works well.
@@ -80,7 +76,7 @@ export default function Register() {
             onChange={(e) => setPassword(e.currentTarget.value)}
           />
         </Field>
-        <Button type="submit" className="w-full" loading={busy}>
+        <Button type="submit" className="w-full" loading={loading}>
           Create account
         </Button>
         <Text>

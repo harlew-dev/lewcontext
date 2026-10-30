@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { FolderPlusIcon } from "@heroicons/react/24/outline";
 import { cx } from "@/lib/cx";
+import type { ActionError } from "@/lib/use-action-error";
 import { Button } from "./button";
 import { Subheading } from "./heading";
 import { Text } from "./text";
@@ -73,6 +74,22 @@ export function Notice({
       )}
       {onDismiss && <DismissButton onClick={onDismiss} />}
     </div>
+  );
+}
+// The last failure of a form or action (useAction's `error`), or nothing.
+// Keyed by the failure, so the same message failing twice is announced twice.
+export function ErrorNotice({
+  error,
+  className,
+}: {
+  error: ActionError;
+  className?: string;
+}) {
+  if (!error.message) return null;
+  return (
+    <Notice key={error.key} variant="error" className={className}>
+      {error.message}
+    </Notice>
   );
 }
 export function EmptyState({

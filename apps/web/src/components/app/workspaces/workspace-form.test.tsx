@@ -50,9 +50,9 @@ function CreateForm() {
       <WorkspaceNameField
         value={create.name}
         onChange={create.setName}
-        disabled={create.saving}
+        disabled={create.loading}
       />
-      <Button type="submit" loading={create.saving} disabled={!create.valid}>
+      <Button type="submit" loading={create.loading} disabled={!create.valid}>
         Create workspace
       </Button>
     </form>
