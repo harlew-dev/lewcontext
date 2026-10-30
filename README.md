@@ -1,6 +1,6 @@
 # Forma
 
-A working project workspace with a Go API, PostgreSQL, and a server-rendered React frontend styled with **Tailwind CSS** and using **Uber Base Web (BaseUI)** for interactive controls. The restrained sidebar, typography, tables, forms, and dialogs are inspired by [Catalyst](https://catalyst.tailwindui.com/); no proprietary Catalyst source is included.
+A working project workspace with a Go API, PostgreSQL, and a server-rendered React frontend built with Tailwind (sidebar layout, auth layout, buttons, fields, listbox, dialog, dropdown, table) on **Uber Base Web (BaseUI)** for behaviour, with light and dark mode.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ make web
 
 Open **http://localhost:3000**. Use this exact host (not `127.0.0.1`) because the default allowed origin is `http://localhost:3000`.
 
-Sign in with **hello@forma.test** and the `DEMO_PASSWORD` in `.env` (default local example: **DemoWorkspace2026!**). Or choose **Create an account** for your own empty workspace. The seed runs only when explicitly invoked, refuses production, and leaves an existing demo account unchanged.
+Sign in with **hello@forma.test** and the `DEMO_PASSWORD` in `.env` (default local example: **DemoWorkspace2026!**). Or choose **Sign up** for your own empty workspace. The seed runs only when explicitly invoked, refuses production, and leaves an existing demo account unchanged.
 
 The dashboard shows real database data. Create/edit projects, change their status, search/filter them, refresh, manage other sessions, and sign out. Reloading a page preserves data. Every account can access only its own projects.
 
@@ -54,11 +54,13 @@ The browser test uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` for an
 - `apps/api/internal/httpapi/routes.go`: all API routes and authentication requirements.
 - `apps/api/internal/{auth,config,database,httpapi,store}`: cryptography, validated config, Bun connection and migrator, HTTP boundary, Bun models and queries.
 - `apps/api/migrations`: embedded Bun SQL migrations (`.tx.up.sql` / `.tx.down.sql` pairs).
-- `apps/web/src/pages`: Next.js Pages Router pages, nested as `auth/` (`/auth/login`) and `app/` (`/app/dashboard`, `/app/projects`, `/app/settings`). Each page holds its own unique content; protected pages use request-time SSR. `/` and the old `/login`, `/projects`, `/settings` URLs redirect (see `next.config.mjs`).
+- `apps/web/src/pages`: Next.js Pages Router pages, nested as `auth/` (`/auth/login`, `/auth/register`) and `app/` (`/app/dashboard`, `/app/projects`, `/app/settings`). Each page holds its own unique content; protected pages use request-time SSR. `/` and the old `/login`, `/projects`, `/settings` URLs redirect (see `next.config.mjs`).
 - `apps/web/src/lib/routes.ts`: navigation and API route definitions.
-- `apps/web/src/components/{ui,layout,app/projects}`: reused UI only — Tailwind/BaseUI primitives, app chrome, and project UI shared by the dashboard and projects pages.
-- `apps/web/src/lib`: typed API client, SSR loader, theme, Styletron setup, domain types.
-- `apps/web/src/styles`: Tailwind entry (`globals.css`), design tokens (`theme.css`), element defaults (`base.css`) and custom utilities (`utilities.css`); no copied proprietary kit.
+- `apps/web/src/components/ui`: Tailwind components in kebab-case files (`button.tsx`, `input.tsx`, `fieldset.tsx`, `listbox.tsx`, `dialog.tsx`, `dropdown.tsx`, `sidebar.tsx`, `navbar.tsx`, `table.tsx`, …), BaseUI underneath where there is behaviour.
+- `apps/web/src/components/layout`: `sidebar-layout.tsx`, `auth-layout.tsx`, `application-layout.tsx` (Forma's sidebar, navbar and account menu) and the status page.
+- `apps/web/src/components/app/projects`: project UI reused by the dashboard and projects pages.
+- `apps/web/src/lib`: typed API client, SSR loader, BaseUI theme and `slot()` override helper, interaction-state hook, Styletron setup, domain types.
+- `apps/web/src/styles`: Tailwind entry (`globals.css`, also loads Inter), font setting (`theme.css`) and element defaults (`base.css`). Colours and spacing are Tailwind's defaults.
 - `docs`: setup, API/security contracts, and test instructions.
 
 Browser requests go to the same-origin `/api/*` proxy; Go listens on loopback `:8080`. SSR forwards only the requesting browser's cookies to that fixed backend URL. Authenticated HTML and API responses are not cacheable. Styletron styles are collected per SSR request and hydrated on the client. SWR caches are keyed by user ID to prevent data carrying across account changes.

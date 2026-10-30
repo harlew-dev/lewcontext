@@ -1,11 +1,12 @@
-import { StatusPage } from "@/components/ui/Feedback";
-import { TextLink } from "@/components/ui/TextLink";
+import { StatusPage } from "@/components/layout/status-page";
+import { Button } from "@/components/ui/button";
 import { routes } from "@/lib/routes";
 export default function NotFound() {
   return (
-    <StatusPage eyebrow="A SMALL DETOUR" title="This page has wandered off.">
-      <p>Let’s get you back to your workspace.</p>
-      <TextLink href={routes.dashboard}>Back to overview →</TextLink>
-    </StatusPage>
+    <StatusPage
+      title="This page has wandered off."
+      description="Let’s get you back to your workspace."
+      action={<Button href={routes.dashboard}>Back to overview</Button>}
+    />
   );
 }

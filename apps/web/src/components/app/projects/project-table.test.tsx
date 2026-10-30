@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectTable } from "./ProjectTable";
+import { ProjectTable } from "./project-table";
 import type { Project } from "@/lib/types";
 afterEach(cleanup);
 const project: Project = {
@@ -36,5 +36,11 @@ describe("ProjectTable", () => {
     );
     expect(screen.getByText("No matching projects")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+  it("offers to create the first project in an empty workspace", () => {
+    const onCreate = vi.fn();
+    render(<ProjectTable projects={[]} onEdit={vi.fn()} onCreate={onCreate} />);
+    fireEvent.click(screen.getByRole("button", { name: "Create a project" }));
+    expect(onCreate).toHaveBeenCalled();
   });
 });

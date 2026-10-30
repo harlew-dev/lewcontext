@@ -1,18 +1,8 @@
 import { createTheme } from "baseui";
+// BaseUI's own styling is mostly replaced by Tailwind override slots; these
+// primitives cover anything it still draws itself (font, focus, fallbacks).
 export const theme = createTheme({
-  colors: {
-    buttonPrimaryFill: "#202024",
-    buttonPrimaryHover: "#36363c",
-    buttonPrimaryActive: "#18181b",
-    inputFill: "#ffffff",
-    inputFillActive: "#ffffff",
-    inputBorder: "#e4e4e7",
-    inputBorderActive: "#8b7ac6",
-    contentPrimary: "#242428",
-  },
-  borders: {
-    buttonBorderRadius: "7px",
-    inputBorderRadius: "7px",
-    surfaceBorderRadius: "12px",
-  },
+  primaryFontFamily: '"Inter Variable", ui-sans-serif, system-ui, sans-serif',
+  primary: "#18181b",
+  accent: "#3b82f6",
 });

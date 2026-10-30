@@ -14,7 +14,7 @@ Authentication attempts are limited in PostgreSQL: 10 per normalized account / 1
 
 Every project query includes the authenticated `user_id`; users never supply that ID. Other users' project IDs return 404 for mutations. Queries use bound parameters. HTTP bodies and headers have size limits; HTTP and query contexts have timeouts; backend failures log details server-side and return a generic message. Avoid logging passwords, cookies, or CSRF tokens.
 
-Next proxies only to the configured fixed API origin. API listeners default to loopback. Authenticated HTML/API responses are no-store. The frontend serves a per-request CSP nonce for scripts, blocks objects/framing, and limits connections to the same origin (WebSocket support only in development). Inline CSS is permitted because Styletron and BaseUI use it. HSTS is enabled when APP_ENV=production. TLS is provided by deployment infrastructure; production config requires HTTPS and database `sslmode=verify-full`.
+Next proxies only to the configured fixed API origin. API listeners default to loopback. Authenticated HTML/API responses are no-store. The frontend serves a per-request CSP nonce for scripts, blocks objects/framing, and limits connections to the same origin (WebSocket support only in development). Inline CSS is permitted because Styletron and BaseUI use it. Fonts are self-hosted (Inter via Fontsource), so no third-party font origin is allowed. HSTS is enabled when APP_ENV=production. TLS is provided by deployment infrastructure; production config requires HTTPS and database `sslmode=verify-full`.
 
 ## Endpoints
 

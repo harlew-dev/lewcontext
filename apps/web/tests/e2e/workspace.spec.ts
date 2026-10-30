@@ -24,21 +24,23 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page).toHaveURL("/auth/login");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("Your name").fill("Taylor Example");
-  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("link", { name: "Sign up" }).click();
+  await expect(page).toHaveURL("/auth/register");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Full name").fill("Taylor Example");
   await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Create your workspace" }).click();
+  await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL("/app/dashboard");
   await expect(
     page.getByRole("heading", { name: "Welcome back, Taylor." }),
   ).toBeVisible();
   await expect(page.getByText("Room for your next big thing")).toBeVisible();
   await page.getByRole("button", { name: "New project" }).click();
-  await page
+  const dialog = page.getByRole("dialog");
+  await dialog
     .getByLabel("Project name", { exact: true })
     .fill("Launch the good stuff");
-  await page
+  await dialog
     .getByLabel("Description")
     .fill("A real project stored in PostgreSQL.");
   let release: () => void = () => {};
@@ -49,12 +51,8 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
     if (route.request().method() === "POST") await gate;
     await route.continue();
   });
-  await page
-    .getByRole("button", { name: "Create project", exact: true })
-    .click();
-  await expect(
-    page.getByRole("dialog").locator('button[type="submit"]'),
-  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Create project" }).click();
+  await expect(dialog.locator('button[type="submit"]')).toBeDisabled();
   release();
   await expect(
     page.getByRole("status").filter({ hasText: "Project created" }),
@@ -63,20 +61,12 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
   await page
     .getByRole("button", { name: "Edit Launch the good stuff" })
     .click();
-  await page.getByRole("combobox").click();
+  await dialog.getByRole("combobox").click();
   await page.getByRole("option", { name: "Completed", exact: true }).click();
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await dialog.getByRole("button", { name: "Save changes" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Project updated" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Planned", exact: true }).click();
-  await expect(page.getByText("No matching projects")).toBeVisible();
-  await page.getByRole("button", { name: /All projects/ }).click();
-  await page
-    .getByRole("textbox", { name: "Search projects" })
-    .fill("not-a-match");
-  await expect(page.getByText("No matching projects")).toBeVisible();
-  await page.getByRole("textbox", { name: "Search projects" }).fill("");
   const html = await (await page.request.get("/app/dashboard")).text();
   expect(html).toContain("Launch the good stuff");
   expect(html).toContain("_styletron_hydrate_");
@@ -85,9 +75,17 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
   expect(response.headers()["cache-control"]).toContain("no-store");
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page).toHaveURL("/app/projects");
-  await expect(
-    page.getByRole("heading", { name: "Your projects." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await page.getByRole("combobox", { name: /Filter by status/ }).click();
+  await page.getByRole("option", { name: "Planned", exact: true }).click();
+  await expect(page.getByText("No matching projects")).toBeVisible();
+  await page.getByRole("combobox", { name: /Filter by status/ }).click();
+  await page.getByRole("option", { name: "All statuses" }).click();
+  await page
+    .getByRole("textbox", { name: "Search projects" })
+    .fill("not-a-match");
+  await expect(page.getByText("No matching projects")).toBeVisible();
+  await page.getByRole("textbox", { name: "Search projects" }).fill("");
   await page.route("**/api/projects", (route) =>
     route.fulfill({
       status: 503,
@@ -117,7 +115,7 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
     page.getByText("All other sessions have been signed out."),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/app/dashboard");
   await expect(
     page.getByRole("heading", { name: "Welcome back, Taylor." }),
   ).toBeVisible();
@@ -126,18 +124,26 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBeTruthy();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Navigation" }).getByRole("link", {
+      name: "Projects",
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/auth/login");
-  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Email").fill(email);
   await page
     .getByLabel("Password", { exact: true })
     .fill("A wrong password long enough");
-  await page.getByRole("button", { name: "Sign in to your workspace" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "Email or password" }),
   ).toHaveText("Email or password is incorrect.");
   await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Sign in to your workspace" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(
     page.getByRole("heading", { name: "Welcome back, Taylor." }),
   ).toBeVisible();

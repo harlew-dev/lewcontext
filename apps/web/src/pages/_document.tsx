@@ -38,7 +38,10 @@ export default class AppDocument extends Document<Props> {
   }
   render() {
     return (
-      <Html lang="en">
+      <Html
+        lang="en"
+        className="text-zinc-950 antialiased lg:bg-zinc-100 dark:bg-zinc-900 dark:text-white dark:lg:bg-zinc-950"
+      >
         <Head nonce={this.props.nonce}>
           {this.props.sheets.map((sheet, i) => (
             <style

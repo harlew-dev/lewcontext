@@ -1,11 +1,17 @@
 import { useState, type ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
-import { ShieldCheck, KeyRound, Monitor } from "lucide-react";
-import { AppShell } from "@/components/layout/AppShell";
-import { PageHeading, SectionHeading } from "@/components/ui/Typography";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Notice, ServiceUnavailable } from "@/components/ui/Feedback";
+import { appLayout } from "@/components/layout/application-layout";
+import { ServiceUnavailable } from "@/components/layout/status-page";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DescriptionDetails,
+  DescriptionList,
+  DescriptionTerm,
+} from "@/components/ui/description-list";
+import { Divider } from "@/components/ui/divider";
+import { Notice } from "@/components/ui/feedback";
+import { Heading, Subheading } from "@/components/ui/heading";
+import { Text } from "@/components/ui/text";
 import { request, errorMessage } from "@/lib/api";
 import { apiRoutes } from "@/lib/routes";
 import type { WorkspacePageProps, WorkspaceProps } from "@/lib/types";
@@ -14,11 +20,73 @@ export default function Settings(props: WorkspacePageProps) {
   if ("unavailable" in props) return <ServiceUnavailable />;
   return <AccountSettings {...props} />;
 }
+Settings.getLayout = appLayout;
 function AccountSettings({ session }: WorkspaceProps) {
+  return (
+    <div className="mx-auto max-w-4xl">
+      <Heading>Account & security</Heading>
+      <Divider className="my-10 mt-6" />
+      <SettingsSection
+        title="Profile"
+        description="The name and email address on your account."
+      >
+        <DescriptionList>
+          <DescriptionTerm>Name</DescriptionTerm>
+          <DescriptionDetails>{session.user.name}</DescriptionDetails>
+          <DescriptionTerm>Email address</DescriptionTerm>
+          <DescriptionDetails>{session.user.email}</DescriptionDetails>
+          <DescriptionTerm>Member since</DescriptionTerm>
+          <DescriptionDetails>
+            {new Date(session.user.createdAt).toLocaleDateString("en-US", {
+              dateStyle: "long",
+              timeZone: "UTC",
+            })}
+          </DescriptionDetails>
+        </DescriptionList>
+      </SettingsSection>
+      <Divider className="my-10" soft />
+      <SettingsSection
+        title="Password"
+        description="Your password is stored with a one-way, salted hash."
+      >
+        <div>
+          <Badge color="lime">Protected</Badge>
+        </div>
+      </SettingsSection>
+      <Divider className="my-10" soft />
+      <SettingsSection
+        title="Sign-in sessions"
+        description="You’re signed out automatically after 30 minutes of inactivity."
+      >
+        <SessionControls session={session} />
+      </SettingsSection>
+    </div>
+  );
+}
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+      <div className="space-y-1">
+        <Subheading>{title}</Subheading>
+        <Text>{description}</Text>
+      </div>
+      {children}
+    </section>
+  );
+}
+function SessionControls({ session }: Pick<WorkspaceProps, "session">) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
-  async function revoke() {
+  async function revokeOthers() {
     setBusy(true);
     setError("");
     setDone(false);
@@ -36,135 +104,33 @@ function AccountSettings({ session }: WorkspaceProps) {
     }
   }
   return (
-    <AppShell session={session} title="Account & security">
-      <PageHeading
-        eyebrow="YOUR SPACE, YOUR CONTROL"
-        title="Make yourself at home."
-        description="Your profile and the small details that keep your workspace safe."
-      />
-      <SettingsSection
-        title="Your profile"
-        description="A familiar face in your workspace."
-      >
-        <DetailsList
-          items={[
-            { label: "Name", value: session.user.name },
-            { label: "Email address", value: session.user.email },
-            {
-              label: "Member since",
-              value: new Date(session.user.createdAt).toLocaleDateString(
-                "en-US",
-                { dateStyle: "long", timeZone: "UTC" },
-              ),
-            },
-          ]}
-        />
-      </SettingsSection>
-      <SettingsSection
-        title="Account security"
-        description="A little peace of mind, built in."
-      >
-        <SecurityRow
-          icon={KeyRound}
-          title="Password protected"
-          description="Your password is stored with a one-way, salted hash."
-          badge={<Badge variant="completed">Protected</Badge>}
-        />
-        <SecurityRow
-          icon={ShieldCheck}
-          title="Private sessions"
-          description="You’re automatically signed out after 30 minutes of inactivity."
-        />
-      </SettingsSection>
-      <SettingsSection
-        title="Your sign-in sessions"
-        description="Stay in control of where you’re signed in."
-      >
-        <SecurityRow
-          icon={Monitor}
-          title="This browser"
-          description={`Signed in ${new Date(session.signedInAt).toLocaleString(
-            "en-US",
-            { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" },
-          )} UTC`}
-          badge={<Badge variant="progress">Current session</Badge>}
-        />
-        <div className="flex items-center justify-between gap-5 border-t border-line pt-5 max-sm:flex-col max-sm:items-start">
-          <p className="text-small leading-[1.6] text-muted">
-            Signed in somewhere else? You can end all other sessions here.
-          </p>
-          <Button kind="secondary" isLoading={busy} onClick={revoke}>
-            Sign out other sessions
-          </Button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-base/6 font-medium text-zinc-950 sm:text-sm/6 dark:text-white">
+            This browser
+          </div>
+          <Text>
+            Signed in{" "}
+            {new Date(session.signedInAt).toLocaleString("en-US", {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: "UTC",
+            })}{" "}
+            UTC
+          </Text>
         </div>
-        {error && <Notice variant="error">{error}</Notice>}
-        {done && (
-          <Notice variant="success" className="mt-4.5">
-            All other sessions have been signed out.
-          </Notice>
-        )}
-      </SettingsSection>
-    </AppShell>
-  );
-}
-function SettingsSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="mt-8.75 max-w-[850px] border-t border-line pt-6.25 max-sm:mt-6.75 max-sm:pt-5">
-      <SectionHeading title={title} description={description} />
-      {children}
-    </section>
-  );
-}
-function DetailsList({
-  items,
-}: {
-  items: { label: string; value: ReactNode }[];
-}) {
-  return (
-    <dl className="mt-6.25">
-      {items.map(({ label, value }) => (
-        <div
-          key={label}
-          className="grid grid-cols-[180px_1fr] py-3.75 text-body max-sm:grid-cols-[110px_1fr] max-sm:text-small"
-        >
-          <dt className="text-muted">{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-function SecurityRow({
-  icon: Icon,
-  title,
-  description,
-  badge,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: ReactNode;
-  badge?: ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-4 py-5 max-sm:flex-wrap max-sm:gap-2.5">
-      <span className="rounded-lg bg-mauve-100 p-3 text-accent max-sm:p-2.25">
-        <Icon size={20} />
-      </span>
-      <div>
-        <h3 className="max-sm:text-small">{title}</h3>
-        <p className="mt-1.75 text-small leading-[1.6] text-muted max-sm:max-w-[220px] max-sm:text-label">
-          {description}
-        </p>
+        <Badge color="purple">Current session</Badge>
       </div>
-      {badge && <div className="ml-auto max-sm:ml-11.25">{badge}</div>}
+      <Button outline loading={busy} onClick={revokeOthers}>
+        Sign out other sessions
+      </Button>
+      {error && <Notice variant="error">{error}</Notice>}
+      {done && (
+        <Notice variant="success">
+          All other sessions have been signed out.
+        </Notice>
+      )}
     </div>
   );
 }

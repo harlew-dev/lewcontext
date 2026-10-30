@@ -3,17 +3,20 @@ import Head from "next/head";
 import { Provider as StyletronProvider } from "styletron-react";
 import { BaseProvider } from "baseui";
 import { SWRConfig } from "swr";
+import { MotionConfig } from "motion/react";
 import type { Client, Server } from "styletron-engine-atomic";
 import { styletron } from "@/lib/styletron";
 import { theme } from "@/lib/theme";
 import { request } from "@/lib/api";
-import { RouteProgress } from "@/components/ui/RouteProgress";
+import type { NextPageWithLayout } from "@/lib/page";
+import { RouteProgress } from "@/components/ui/route-progress";
 import "@/styles/globals.css";
 export default function App({
   Component,
   pageProps,
   engine,
-}: AppProps & { engine?: Client | Server }) {
+}: AppProps & { engine?: Client | Server; Component: NextPageWithLayout }) {
+  const getLayout = Component.getLayout ?? ((page) => page);
   return (
     <StyletronProvider value={engine || styletron}>
       <BaseProvider theme={theme}>
@@ -37,7 +40,9 @@ export default function App({
             <link rel="icon" href="/favicon.svg" />
           </Head>
           <RouteProgress />
-          <Component {...pageProps} />
+          <MotionConfig reducedMotion="user">
+            {getLayout(<Component {...pageProps} />, pageProps)}
+          </MotionConfig>
         </SWRConfig>
       </BaseProvider>
     </StyletronProvider>
