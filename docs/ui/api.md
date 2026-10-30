@@ -3,12 +3,13 @@
 All API calls go through the typed client in `src/lib/api/`, with one file per resource. Nothing else calls `fetch` or builds `/api/...` paths.
 
 ```ts
-const api = useApi();                                  // in a component body
-api.projects().index({ status: "Planned", page: 2 })   // Promise<Page<Project>>
-api.projects().show(42)                                // Promise<Project>
-api.projects().create(input)                           // input: ProjectInput
-api.projects().update(42, input)
-paths.projects.show(42)                                // ApiPath<Project>: "/api/projects/42"
+const api = useApi();                                    // in a component body
+const { id: ws } = useWorkspace();                       // projects belong to a workspace
+api.projects(ws).index({ status: "Planned", page: 2 })   // Promise<Page<Project>>
+api.projects(ws).show("prj_j292s2S2j7Qx4B")              // Promise<Project>
+api.projects(ws).create(input)                           // input: ProjectInput
+api.workspaces().create({ name: "Acme" })                // Promise<Workspace>, you're the owner
+paths.projects(ws).show(id)                              // ApiPath<Project>: "/api/workspaces/wsp_…/projects/prj_…"
 ```
 
 ## Conventions
@@ -21,20 +22,21 @@ paths.projects.show(42)                                // ApiPath<Project>: "/ap
 | `update(id, input)` | `PATCH /api/<resource>/{id}` | `T` |
 | `destroy(id)` | `DELETE /api/<resource>/{id}` | `void` |
 
-- `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths.
-- Resources implement only what the API supports. Projects have `destroy` commented out until `DELETE /api/projects/{id}` exists.
+- `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths. **Workspace resources take the workspace ID explicitly**, both in `paths.projects(ws)` and `api.projects(ws)`, so the same paths work in components, SWR keys and `getServerSideProps`.
+- Resources implement only what the API supports. Projects have `destroy` commented out until a delete endpoint exists.
 - **`index()` takes a typed query object** (`ProjectIndexQuery`: `page`, `perPage`, `q`, `status`, `sort`). Unknown keys and values the API would reject are type errors. Defaults are left out, so each query has one path.
 - **Bodies contain only the editable fields** (`create`/`update` pick them from the input), because the API rejects unknown fields.
 
 | Resource | Methods |
 | --- | --- |
-| `projects()` | `index`, `show`, `create`, `update` (`destroy` commented out) |
+| `workspaces()` | `index({ page, perPage })`, `show(id)`, `create({ name })`, `update(id, { name })` (owners and admins) |
+| `projects(workspace)` | `index`, `show`, `create`, `update` (`destroy` commented out) |
 | `auth()` | `me`, `login(credentials)`, `register(registration)`, `logout()` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
 ## Calling the API: `useApi()`
 
-- **`const api = useApi()`** in a component body, then `await api.projects().create(input)` in handlers. It is a hook, so it can't be called in a handler, a condition or at module level.
+- **`const api = useApi()`** in a component body, then `await api.projects(workspace.id).create(input)` in handlers. It is a hook, so it can't be called in a handler, a condition or at module level.
 - **CSRF is automatic.** `useApi()` reads the session's token from the session context ([pages.md](pages.md#the-session)) and sends it as `X-CSRF-Token` on mutations. Signed out (login, register), it sends none. The client is rebuilt only when the token changes. Never put the token in a URL or localStorage.
 - **Browser calls** go through the same-origin `/api` proxy with the session cookie and a 12 s timeout.
 - **Outside components** you only need `paths` (module constants, SWR keys, server loaders). There is no browser-side `api()` function: a module-level client would have to hold a token, and on the server module state is shared between users.
@@ -44,7 +46,7 @@ paths.projects.show(42)                                // ApiPath<Project>: "/ap
 `paths` returns `ApiPath<T>`: a string that also carries its response type (only at compile time). Anything that loads a path infers its type from it, so nobody writes `<Page<Project>>` by hand and a path can't be paired with the wrong type.
 
 ```ts
-const list = useResource(paths.projects.index(query), props.projects); // list.data: Page<Project>
+const list = useResource(paths.projects(ws).index(query), props.projects); // list.data: Page<Project>
 await api.get(path); // load any typed path
 ```
 
@@ -72,15 +74,16 @@ list.refresh()   // Retry, refresh, or after a mutation
 `serverApi(context)` (`lib/server.ts`) builds the same client on a server transport: the fixed `API_URL`, only the incoming cookie, an 8 s timeout, and a new instance per request. `appProps` hands it to the page's loader ([pages.md](pages.md)):
 
 ```ts
-appProps(context, async (api) => ({
-  projects: await initial(api, paths.projects.index(query), "We couldn’t load your projects."),
+appProps(context, async (api, workspace) => ({
+  projects: await initial(api, paths.projects(workspace.id).index(query), "We couldn’t load your projects."),
 }));
 ```
 
 ## Changing data
 
 - Disable duplicate submits with `<Button loading={saving}>`. Show API errors (`ApiError`, `errorMessage(e)`) in the form with `Notice variant="error"`.
-- **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects.matches()` (lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
+- **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects(workspace.id).matches()` (that workspace's lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
+- **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function so the switcher reloads, and rerun the page's props (`router.push` to the new workspace, or `router.replace(router.asPath)`).
 - Success messages use `Notice variant="success"` (announced as status).
 
 ## Adding a resource
@@ -91,4 +94,4 @@ appProps(context, async (api) => ({
 
 ## IDs
 
-IDs are JSON numbers, so the frontend can represent them exactly only up to `Number.MAX_SAFE_INTEGER`. Parse IDs from URLs with `parseId()` (`lib/ids.ts`). If IDs ever exceed 2⁵³, the API would need to send them as strings.
+IDs are public ID strings (`usr_…`, `wsp_…`, `prj_…`; [../api/database.md](../api/database.md#public-ids)), typed as `string` in `src/types`. Parse them from URLs with `parsePublicId(prefix, value)` (`lib/ids.ts`), which matches the API's check.

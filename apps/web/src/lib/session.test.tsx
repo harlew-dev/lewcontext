@@ -14,7 +14,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const session: Session = {
-  user: { id: 7, name: "Ada Lovelace", email: "ada@forma.test", createdAt: "" },
+  user: {
+    id: "usr_00000000000007",
+    name: "Ada Lovelace",
+    email: "ada@forma.test",
+    createdAt: "",
+  },
   csrfToken: "csrf-7",
   expiresAt: "",
   signedInAt: "",
@@ -34,7 +39,7 @@ function stubFetch() {
 describe("useSession()", () => {
   it("returns the signed-in session", () => {
     const { result } = renderHook(useSession, { wrapper: provide(session) });
-    expect(result.current.user.id).toBe(7);
+    expect(result.current.user.id).toBe("usr_00000000000007");
   });
   it("throws on a signed-out page", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});

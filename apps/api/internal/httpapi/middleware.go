@@ -14,8 +14,14 @@ import (
 )
 
 type sessionKey struct{}
+type workspaceKey struct{}
 
 func current(r *http.Request) store.Session { return r.Context().Value(sessionKey{}).(store.Session) }
+
+// currentWorkspace is the workspace in the path, set by requireWorkspace.
+func currentWorkspace(r *http.Request) store.Workspace {
+	return r.Context().Value(workspaceKey{}).(store.Workspace)
+}
 func unsafeMethod(method string) bool {
 	return method != "GET" && method != "HEAD" && method != "OPTIONS"
 }
@@ -64,6 +70,41 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
+	})
+}
+
+// requireWorkspace runs after requireSession. It loads the {workspace} in the
+// path through the signed-in user's membership; a malformed ID, a missing
+// workspace and someone else's workspace all get the same 404.
+func (s *Server) requireWorkspace(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("workspace")
+		if !validPublicID("wsp", id) {
+			fail(w, 404, "Workspace not found.")
+			return
+		}
+		workspace, err := s.Store.MemberWorkspace(r.Context(), current(r).User.ID, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			fail(w, 404, "Workspace not found.")
+			return
+		}
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), workspaceKey{}, workspace)))
+	})
+}
+
+// requireRole runs after requireWorkspace and refuses members whose role is
+// below min.
+func requireRole(min string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !store.RoleAtLeast(currentWorkspace(r).Role, min) {
+			fail(w, 403, "You don’t have permission to do that in this workspace.")
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 func (s *Server) limitAuth(next http.Handler) http.Handler {

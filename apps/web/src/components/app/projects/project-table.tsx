@@ -7,6 +7,7 @@ import {
   type SortDirection,
 } from "@/lib/pagination";
 import { routes } from "@/lib/routes";
+import { useWorkspace } from "@/lib/workspace";
 import type { Project, ProjectSort, ProjectSortField } from "@/types/projects";
 import {
   ProjectAvatar,
@@ -63,10 +64,14 @@ export function ProjectTableHead({
     </TableRow>
   );
 }
-// A row that links to the project's page.
+// A row that links to the project's page in the current workspace.
 export function ProjectRow({ project }: { project: Project }) {
+  const workspace = useWorkspace();
   return (
-    <TableRow href={routes.project(project.id)} title={project.name}>
+    <TableRow
+      href={routes.project(workspace.id, project.id)}
+      title={project.name}
+    >
       <TableCell>
         <div className="flex max-w-xs items-center gap-3 sm:max-w-md">
           <ProjectAvatar project={project} className="size-8" />

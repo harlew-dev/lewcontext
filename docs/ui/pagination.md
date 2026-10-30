@@ -31,8 +31,8 @@ The API doesn't publish its sort keys. A Vitest test reads the Go allowlist and 
 ```ts
 const query = projectQuery(router.query);      // URL state; bad values → defaults
 // indexQuery() turns it into the typed ProjectIndexQuery ("all" statuses → no filter)
-const list = useResource(paths.projects.index(indexQuery(query)), props.projects);
-router.push(projectsPath({ ...query, page: 1, status }), undefined, { shallow: true, scroll: false });
+const list = useResource(paths.projects(workspace.id).index(indexQuery(query)), props.projects);
+router.push(projectsPath(workspace.id, { ...query, page: 1, status }), undefined, { shallow: true, scroll: false });
 ```
 
 - **Shallow routing** changes the URL without rerunning `getServerSideProps`, and SWR fetches the new key. The first render is server-rendered from the same URL.
@@ -46,10 +46,10 @@ router.push(projectsPath({ ...query, page: 1, status }), undefined, { shallow: t
   page={list.data}
   loading={list.loading}
   label="Projects"
-  head={<ProjectTableHead sort={query.sort} sortHref={(sort) => projectsPath({ ...query, page: 1, sort })} />}
+  head={<ProjectTableHead sort={query.sort} sortHref={(sort) => projectsPath(workspace.id, { ...query, page: 1, sort })} />}
   row={(project) => <ProjectRow project={project} />}
   rowKey={(project) => project.id}
-  href={(page) => projectsPath({ ...query, page })}
+  href={(page) => projectsPath(workspace.id, { ...query, page })}
   empty={<ProjectEmptyState filtered={filtered} onCreate={…} />}
   shallow
 />
@@ -59,6 +59,24 @@ router.push(projectsPath({ ...query, page: 1, status }), undefined, { shallow: t
 - **Empty and past the end:** `empty` when nothing matches. A page past the end shows "There’s nothing on page N" and a "Go to last page" link.
 - **Selector:** below the table when there is more than one page. Previous and Next are disabled at the ends. Page numbers are hidden on small screens.
 - **Errors** stay with the page's `Notice` (with Retry), not inside the table.
+
+## Infinite lists
+
+Lists shown in a menu (the workspace switcher) load a page at a time as they scroll, instead of a page selector. `useResourcePages(pathFor, initial)` (`lib/use-resource-pages.ts`) wraps SWR's `useSWRInfinite`:
+
+```ts
+const workspacePage = (page: number) => paths.workspaces.index({ page }); // a module constant
+const list = useResourcePages(workspacePage, props.workspaces); // page 1 from the server
+list.items        // every loaded page, de-duplicated by id (offset pages shift when records are added)
+list.hasMore      // the last loaded page isn't the last page
+list.loadMore()   // load the next page (ignored while one is loading, at the end, or after an error)
+list.loadingMore  // → a skeleton row
+list.error        // keeps the loaded items → a "Couldn’t load more · Retry" item calling list.retry()
+```
+
+- **Keys** are `[path, userId]` per page, like `useResource`, and stop after the last page. Page 1 revalidates with the list (mount, focus, refresh), so new records show up.
+- **Loading more:** an `IntersectionObserver` on an element after the last item (root: the scrolling list) calls `loadMore()`. A focusable "Show more" item does the same for keyboards and browsers without the observer. Nothing extra renders when everything fits on page 1.
+- **Refreshing from elsewhere:** `useRefreshPages(pathFor)` returns a function that revalidates the whole list (`unstable_serialize` of the same keys), e.g. after creating or renaming a workspace (`useRefreshWorkspaces()`).
 
 ## Building blocks (Catalyst style)
 

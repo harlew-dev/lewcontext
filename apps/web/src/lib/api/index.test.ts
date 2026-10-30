@@ -24,13 +24,14 @@ const input = {
 function api(csrfToken?: string) {
   return client(browserHttp(csrfToken));
 }
-describe("paths.projects", () => {
-  const routes = paths.projects;
+const ws = "wsp_2yEHYLwiwPVhLW";
+const prj = "prj_j292s2S2j7Qx4B";
+const base = `/api/workspaces/${ws}/projects`;
+describe("paths.projects(workspace)", () => {
+  const routes = paths.projects(ws);
   it("builds index paths without defaults", () => {
-    expect(routes.index()).toBe("/api/projects");
-    expect(routes.index({ page: 1, sort: "-updated", q: "" })).toBe(
-      "/api/projects",
-    );
+    expect(routes.index()).toBe(base);
+    expect(routes.index({ page: 1, sort: "-updated", q: "" })).toBe(base);
     expect(
       routes.index({
         page: 2,
@@ -38,29 +39,24 @@ describe("paths.projects", () => {
         status: "In progress",
         sort: "name",
       }),
-    ).toBe(
-      "/api/projects?page=2&q=50%25+%26+more&status=In+progress&sort=name",
-    );
-    expect(routes.index({ perPage: 5 })).toBe("/api/projects?perPage=5");
+    ).toBe(`${base}?page=2&q=50%25+%26+more&status=In+progress&sort=name`);
+    expect(routes.index({ perPage: 5 })).toBe(`${base}?perPage=5`);
   });
-  it("builds record paths and recognises project keys", () => {
-    expect(routes.show(42)).toBe("/api/projects/42");
-    expect(routes.update(42)).toBe("/api/projects/42");
-    expect(routes.create()).toBe("/api/projects");
-    for (const key of [
-      "/api/projects",
-      "/api/projects?page=2",
-      "/api/projects/4",
-    ])
+  it("builds record paths and recognises only this workspace's keys", () => {
+    expect(routes.show(prj)).toBe(`${base}/${prj}`);
+    expect(routes.update(prj)).toBe(`${base}/${prj}`);
+    expect(routes.create()).toBe(base);
+    for (const key of [base, `${base}?page=2`, `${base}/${prj}`])
       expect(routes.matches(key)).toBe(true);
-    for (const key of ["/api/projectsx", "/api/auth/me"])
+    const other = paths.projects("wsp_00000000000000").index();
+    for (const key of [`${base}x`, "/api/auth/me", other])
       expect(routes.matches(key)).toBe(false);
   });
   it("types paths with their responses", () => {
     const page: ApiPath<Page<Project>> = routes.index();
-    const project: ApiPath<Project> = routes.show(1);
+    const project: ApiPath<Project> = routes.show(prj);
     // @ts-expect-error a project path doesn't load a page
-    const wrong: ApiPath<Page<Project>> = routes.show(1);
+    const wrong: ApiPath<Page<Project>> = routes.show(prj);
     expect([page, project, wrong]).toHaveLength(3);
   });
   it("accepts only the API's query parameters", () => {
@@ -68,33 +64,67 @@ describe("paths.projects", () => {
     routes.index({ status: "Archived" });
     // @ts-expect-error not a sort the API accepts
     routes.index({ sort: "user_id" });
-    // @ts-expect-error the owner always comes from the session
-    routes.index({ owner: 3 });
+    // @ts-expect-error the workspace always comes from the path
+    routes.index({ workspace: 3 });
   });
 });
-describe("projects()", () => {
+describe("paths.workspaces", () => {
+  it("pages the list, leaving out page 1", () => {
+    expect(paths.workspaces.index()).toBe("/api/workspaces");
+    expect(paths.workspaces.index({ page: 1 })).toBe("/api/workspaces");
+    expect(paths.workspaces.index({ page: 3, perPage: 1 })).toBe(
+      "/api/workspaces?page=3&perPage=1",
+    );
+    expect(paths.workspaces.show(ws)).toBe(`/api/workspaces/${ws}`);
+    // @ts-expect-error the list has no search
+    paths.workspaces.index({ q: "Acme" });
+  });
+});
+describe("projects(workspace)", () => {
   it("creates with the session's CSRF token and only the editable fields", async () => {
-    const fetch = stubFetch({ id: 9 }, 201);
-    const project = { ...input, id: 9, createdAt: "", updatedAt: "" };
-    await api("csrf").projects().create(project);
+    const fetch = stubFetch({ id: prj }, 201);
+    const project = { ...input, id: prj, createdAt: "", updatedAt: "" };
+    await api("csrf").projects(ws).create(project);
     const [url, options] = fetch.mock.calls[0];
-    expect([url, options.method]).toEqual(["/api/projects", "POST"]);
+    expect([url, options.method]).toEqual([base, "POST"]);
     expect(options.headers.get("X-CSRF-Token")).toBe("csrf");
     expect(JSON.parse(options.body)).toEqual(input);
   });
   it("updates, shows and lists", async () => {
     const fetch = stubFetch();
-    const projects = api("csrf").projects();
-    await projects.update(4, input);
-    await projects.show(4);
+    const projects = api("csrf").projects(ws);
+    await projects.update(prj, input);
+    await projects.show(prj);
     await projects.index({ status: "Completed" });
     expect(
       fetch.mock.calls.map(([url, options]) => `${options.method} ${url}`),
     ).toEqual([
-      "PATCH /api/projects/4",
-      "GET /api/projects/4",
-      "GET /api/projects?status=Completed",
+      `PATCH ${base}/${prj}`,
+      `GET ${base}/${prj}`,
+      `GET ${base}?status=Completed`,
     ]);
+  });
+});
+describe("workspaces()", () => {
+  it("creates, renames, shows and lists, sending only the name", async () => {
+    const fetch = stubFetch({ id: ws });
+    const workspaces = api("csrf").workspaces();
+    await workspaces.create({ name: "Acme" });
+    await workspaces.update(ws, { name: "Acme Inc" });
+    await workspaces.show(ws);
+    await workspaces.index({ page: 2 });
+    expect(
+      fetch.mock.calls.map(([url, options]) => `${options.method} ${url}`),
+    ).toEqual([
+      "POST /api/workspaces",
+      `PATCH /api/workspaces/${ws}`,
+      `GET /api/workspaces/${ws}`,
+      "GET /api/workspaces?page=2",
+    ]);
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      name: "Acme Inc",
+    });
+    expect(fetch.mock.calls[0][1].headers.get("X-CSRF-Token")).toBe("csrf");
   });
 });
 describe("auth() and sessions()", () => {

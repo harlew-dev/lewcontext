@@ -28,21 +28,22 @@ import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
 import type { Page } from "@/lib/pagination";
 import { appProps, initial } from "@/lib/server";
-import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
+import type { AppPageProps, Initial } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
+import { useWorkspace } from "@/lib/workspace";
 import {
   statuses,
   type Project,
   type ProjectQuery,
   type StatusFilter,
 } from "@/types/projects";
-type ProjectsProps = SessionProps & { projects: Initial<Page<Project>> };
+type ProjectsProps = { projects: Initial<Page<Project>> };
 export function getServerSideProps(context: GetServerSidePropsContext) {
   const query = indexQuery(projectQuery(context.query));
-  return appProps(context, async (api) => ({
+  return appProps(context, async (api, { id }) => ({
     projects: await initial(
       api,
-      paths.projects.index(query),
+      paths.projects(id).index(query),
       "We couldn’t load your projects. Please try again.",
     ),
   }));
@@ -54,12 +55,16 @@ export default function Projects(props: AppPageProps<ProjectsProps>) {
 Projects.getLayout = appLayout;
 function ProjectsContent({ projects }: ProjectsProps) {
   const router = useRouter();
+  const workspace = useWorkspace();
   const query = projectQuery(router.query);
-  const list = useResource(paths.projects.index(indexQuery(query)), projects);
+  const list = useResource(
+    paths.projects(workspace.id).index(indexQuery(query)),
+    projects,
+  );
   // Search, filter and sort changes start again from the first page. Paging
   // fetches through SWR, so getServerSideProps doesn't need to run again.
   function navigate(change: Partial<ProjectQuery>, replace = false) {
-    const path = projectsPath({ ...query, page: 1, ...change });
+    const path = projectsPath(workspace.id, { ...query, page: 1, ...change });
     const options = { shallow: true, scroll: false };
     if (replace) void router.replace(path, undefined, options);
     else void router.push(path, undefined, options);
@@ -77,7 +82,7 @@ function ProjectsContent({ projects }: ProjectsProps) {
           <Text className="mt-1">
             {list.data
               ? projectCount(list.data.pages.items, filtered)
-              : "Your workspace"}
+              : workspace.name}
           </Text>
           <div className="mt-4 flex max-w-xl gap-4">
             <div className="flex-1">
@@ -118,12 +123,14 @@ function ProjectsContent({ projects }: ProjectsProps) {
         head={
           <ProjectTableHead
             sort={query.sort}
-            sortHref={(sort) => projectsPath({ ...query, page: 1, sort })}
+            sortHref={(sort) =>
+              projectsPath(workspace.id, { ...query, page: 1, sort })
+            }
           />
         }
         row={(project) => <ProjectRow project={project} />}
         rowKey={(project) => project.id}
-        href={(page) => projectsPath({ ...query, page })}
+        href={(page) => projectsPath(workspace.id, { ...query, page })}
         empty={
           <ProjectEmptyState
             filtered={filtered}
@@ -140,7 +147,7 @@ function projectCount(items: number, filtered: boolean) {
   const projects = items === 1 ? "project" : "projects";
   return filtered
     ? `${items} matching ${projects}`
-    : `${items} ${projects} in your workspace`;
+    : `${items} ${projects} in this workspace`;
 }
 // Search box that updates the URL once typing pauses. It follows the URL when
 // that changes elsewhere (back/forward), without discarding text being typed.

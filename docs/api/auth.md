@@ -47,12 +47,28 @@ Forwarded-IP headers are ignored, so everyone behind the local Next proxy shares
 - **Web:** a per-request CSP nonce for scripts (`src/proxy.ts`), inline CSS allowed because Styletron needs it, self-hosted fonts, HSTS when `APP_ENV=production`.
 - **Production:** HTTPS (`APP_ORIGIN`) and verified database TLS (`sslmode=verify-full`) are required.
 
+## Workspaces and roles
+
+Data belongs to workspaces; users reach a workspace through a `workspace_user` row with a role.
+
+| Action | owner | admin | member |
+| --- | --- | --- | --- |
+| View the workspace and its projects | ✓ | ✓ | ✓ |
+| Create and edit projects | ✓ | ✓ | ✓ |
+| View workspace settings | ✓ | ✓ | ✓ (read-only) |
+| Rename the workspace | ✓ | ✓ | |
+
+- **`requireWorkspace`** (after `requireSession`) checks the `{workspace}` ID's shape, then loads it through the session user's membership in one query. A non-member, a missing workspace and a malformed ID all get the same 404, so workspace IDs can't be probed. The workspace and role go in the request context (`currentWorkspace(r)`).
+- **`requireRole(min, …)`** refuses lower roles with 403 (`store.RoleAtLeast`). The web app hides controls by role, but the API is what enforces it.
+- Creating a workspace makes the creator its `owner`, in the same transaction. Invites, member management, ownership transfer and deleting workspaces are not implemented.
+- Public IDs are unguessable (about 83 random bits), but access never depends on that: every workspace route checks membership.
+
 ## Protecting a new endpoint
 
-Wrap it in `requireSession` in `routes.go`. Then read the user from `current(r).User.ID`, never from the request, and pass it into every store query.
+Register workspace routes on the `ws` group in `routes.go`, which applies `requireSession` and `requireWorkspace`; add `requireRole` when only some roles may act. Account routes use `requireSession`. Read the user from `current(r).User.ID` and the workspace from `currentWorkspace(r).ID`, never from the request, and pass them into every store query.
 
 ## Not implemented
 
-Email verification, password recovery, MFA/passkeys and OIDC. Don't describe them as existing. Before public use you'd also need email delivery, observability, backups, abuse monitoring and load testing.
+Email verification, password recovery, MFA/passkeys, OIDC and workspace invites. Don't describe them as existing. Before public use you'd also need email delivery, observability, backups, abuse monitoring and load testing.
 
 References: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

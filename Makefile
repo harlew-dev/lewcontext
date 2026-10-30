@@ -5,9 +5,9 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
-.PHONY: help install migrate migrate-status migrate-rollback migration seed api web build test test-integration test-e2e check
+.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed api web build test test-integration test-e2e check
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migration seed api web build test test-integration test-e2e check'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed api web build test test-integration test-e2e check'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -18,6 +18,10 @@ migrate-status:
 # Previews the last migration group; CONFIRM=1 runs its destructive down SQL.
 migrate-rollback:
 	cd apps/api && go run ./cmd/migrate rollback $(if $(CONFIRM),-confirm)
+# Development only, while migrations are squashed: lists the tables it would drop;
+# CONFIRM=1 drops every table and migrates from scratch. Refused when APP_ENV=production.
+migrate-fresh:
+	cd apps/api && go run ./cmd/migrate fresh $(if $(CONFIRM),-confirm)
 migration:
 	@test -n "$(name)" || (echo 'Usage: make migration name=add_tasks'; exit 1)
 	cd apps/api && go run ./cmd/migrate create $(name)

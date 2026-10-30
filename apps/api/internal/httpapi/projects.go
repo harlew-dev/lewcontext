@@ -6,7 +6,6 @@ import (
 	"forma/api/internal/store"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -60,10 +59,10 @@ func validSearch(term string) bool {
 	return !strings.ContainsFunc(term, unicode.IsControl)
 }
 
-// projectID reads the {id} path value as a positive integer.
-func projectID(r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	return id, err == nil && id > 0
+// projectID reads the {project} path value, a prj_ public ID.
+func projectID(r *http.Request) (string, bool) {
+	id := r.PathValue("project")
+	return id, validPublicID("prj", id)
 }
 func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 	params, ok := queryParams(r, "page", "perPage", "q", "status", "sort")
@@ -81,7 +80,7 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Check the search, status, and sort.")
 		return
 	}
-	page, err := s.Store.ProjectPage(r.Context(), current(r).User.ID, filter, req)
+	page, err := s.Store.ProjectPage(r.Context(), currentWorkspace(r).ID, filter, req)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -91,10 +90,10 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 func (s *Server) project(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		fail(w, 400, "Invalid project ID.")
+		fail(w, 404, "Project not found.")
 		return
 	}
-	p, err := s.Store.Project(r.Context(), current(r).User.ID, id)
+	p, err := s.Store.Project(r.Context(), currentWorkspace(r).ID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Project not found.")
 		return
@@ -114,7 +113,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "Check the project name, description, status, and color.")
 		return
 	}
-	p, err := s.Store.CreateProject(r.Context(), current(r).User.ID, in)
+	p, err := s.Store.CreateProject(r.Context(), currentWorkspace(r).ID, in)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -124,7 +123,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		fail(w, 400, "Invalid project ID.")
+		fail(w, 404, "Project not found.")
 		return
 	}
 	var in store.ProjectInput
@@ -135,7 +134,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "Check the project name, description, status, and color.")
 		return
 	}
-	p, err := s.Store.UpdateProject(r.Context(), current(r).User.ID, id, in)
+	p, err := s.Store.UpdateProject(r.Context(), currentWorkspace(r).ID, id, in)
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Project not found.")
 		return

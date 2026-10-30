@@ -62,6 +62,32 @@ func TestStrictJSON(t *testing.T) {
 	}
 }
 
+func TestWorkspaceValidation(t *testing.T) {
+	good := store.WorkspaceInput{Name: "  Acme  "}
+	if !validWorkspace(&good) || good.Name != "Acme" {
+		t.Fatal("valid workspace rejected")
+	}
+	for _, name := range []string{"", "   ", strings.Repeat("é", 81), "tab\there"} {
+		in := store.WorkspaceInput{Name: name}
+		if validWorkspace(&in) {
+			t.Fatalf("invalid workspace name %q accepted", name)
+		}
+	}
+	if !validWorkspace(&store.WorkspaceInput{Name: strings.Repeat("é", 80)}) {
+		t.Fatal("80-character name rejected")
+	}
+}
+func TestRoleAtLeast(t *testing.T) {
+	for _, tc := range []struct {
+		role, min string
+		want      bool
+	}{{"owner", "admin", true}, {"admin", "admin", true}, {"member", "admin", false}, {"member", "member", true}, {"", "member", false}, {"root", "member", false}} {
+		if got := store.RoleAtLeast(tc.role, tc.min); got != tc.want {
+			t.Errorf("RoleAtLeast(%q, %q) = %v", tc.role, tc.min, got)
+		}
+	}
+}
+
 // Fake data has to be data the API would accept, or tests exercise states
 // real users can't reach.
 func TestFactoriesMatchValidation(t *testing.T) {
@@ -70,6 +96,17 @@ func TestFactoriesMatchValidation(t *testing.T) {
 		in := store.ProjectInput{Name: p.Name, Description: p.Description, Status: p.Status, Color: p.Color}
 		if !validProject(&in) || in.Name != p.Name || in.Description != p.Description {
 			t.Fatalf("fake project rejected or changed by validation: %+v", p)
+		}
+	}
+	for _, w := range factory.Workspaces.Make(f, 500) {
+		in := store.WorkspaceInput{Name: w.Name}
+		if !validWorkspace(&in) || in.Name != w.Name {
+			t.Fatalf("fake workspace rejected or changed by validation: %+v", w)
+		}
+	}
+	for _, m := range factory.WorkspaceUsers.Make(f, 50) {
+		if !store.RoleAtLeast(m.Role, store.RoleMember) {
+			t.Fatalf("fake membership has an unknown role: %+v", m)
 		}
 	}
 	for _, u := range factory.Users.Make(f, 500) {

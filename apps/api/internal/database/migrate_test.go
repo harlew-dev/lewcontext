@@ -2,15 +2,14 @@ package database_test
 
 import (
 	"context"
+	"errors"
 	"forma/api/internal/database"
 	"forma/api/internal/database/dbtest"
-	"forma/api/migrations"
 	"github.com/uptrace/bun"
-	"io/fs"
 	"testing"
 )
 
-var appTables = []string{"users", "sessions", "projects", "auth_attempts"}
+var appTables = []string{"users", "sessions", "workspaces", "workspace_user", "projects", "auth_attempts"}
 
 func tableExists(t *testing.T, db *bun.DB, table string) bool {
 	t.Helper()
@@ -24,7 +23,7 @@ func TestMigrateRollbackRoundTrip(t *testing.T) {
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	applied, err := database.Migrate(ctx, db)
-	if err != nil || len(applied.Migrations) != len(appTables) {
+	if err != nil || applied.IsZero() {
 		t.Fatalf("migrate: %s %v", applied, err)
 	}
 	rolled, err := database.Rollback(ctx, db)
@@ -49,46 +48,57 @@ func TestMigrateRollbackRoundTrip(t *testing.T) {
 		}
 	}
 }
-func TestMigrateAdoptsLegacyRunnerHistory(t *testing.T) {
+func TestPublicIDDefaults(t *testing.T) {
 	db := dbtest.Open(t)
 	ctx := context.Background()
-	// Recreate what the previous runner left behind, including real data. Its single
-	// 001_initial.up.sql held exactly the SQL of today's per-table up migrations.
-	statements := []string{"CREATE TABLE schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"}
-	ups, err := fs.Glob(migrations.Files, "00[1-4]_*.tx.up.sql")
-	if err != nil || len(ups) != len(appTables) {
-		t.Fatalf("initial migrations: %v %v", ups, err)
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
 	}
-	for _, file := range ups {
-		sql, err := migrations.Files.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		statements = append(statements, string(sql))
+	var total, distinct int
+	var formatted bool
+	err := db.NewRaw(`SELECT count(*), count(DISTINCT id), bool_and(id ~ '^prj_[0-9A-Za-z]{14}$')
+		FROM (SELECT public_id('prj') AS id FROM generate_series(1, 5000)) ids`).Scan(ctx, &total, &distinct, &formatted)
+	if err != nil || total != 5000 || distinct != 5000 || !formatted {
+		t.Fatalf("public_id: %d generated, %d distinct, formatted %v (%v)", total, distinct, formatted, err)
 	}
-	statements = append(statements,
-		"INSERT INTO schema_migrations(version) VALUES('001_initial.up.sql')",
-		"INSERT INTO users(name,email,password_hash) VALUES('Kept','kept@example.com','hash')",
-	)
-	for _, statement := range statements {
-		if _, err = db.ExecContext(ctx, statement); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := db.ExecContext(ctx, "INSERT INTO users(public_id, name, email, password_hash) VALUES('usr_short', 'A', 'a@example.com', 'x')"); err == nil {
+		t.Fatal("malformed public_id accepted")
 	}
-	for i := 0; i < 2; i++ {
-		if group, err := database.Migrate(ctx, db); err != nil || !group.IsZero() {
-			t.Fatalf("run %d: legacy migration re-applied: %s %v", i+1, group, err)
-		}
+}
+func TestFreshRebuildsTheSchema(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
 	}
-	status, err := database.Status(ctx, db)
-	if err != nil || len(status) != len(appTables) || len(status.Applied()) != len(appTables) || status.LastGroupID() != 1 {
-		t.Fatalf("legacy history not adopted: %s %v", status, err)
+	if _, err := db.ExecContext(ctx, "INSERT INTO users(name, email, password_hash) VALUES('Gone', 'gone@example.com', 'x')"); err != nil {
+		t.Fatal(err)
 	}
-	if tableExists(t, db, "schema_migrations") || !tableExists(t, db, "schema_migrations_legacy") {
-		t.Fatal("legacy table not renamed")
+	if _, err := database.Fresh(ctx, db, true); !errors.Is(err, database.ErrFreshInProduction) {
+		t.Fatalf("fresh ran in production: %v", err)
+	}
+	preview, err := database.FreshPreview(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]int64{}
+	for _, table := range preview {
+		rows[table.Name] = table.Rows
+	}
+	if rows["users"] != 1 || len(preview) < len(appTables) {
+		t.Fatalf("preview: %+v", preview)
+	}
+	group, err := database.Fresh(ctx, db, false)
+	if err != nil || group.IsZero() {
+		t.Fatalf("fresh: %s %v", group, err)
 	}
 	users, err := db.NewSelect().Table("users").Count(ctx)
-	if err != nil || users != 1 {
-		t.Fatalf("existing data changed: %d users (%v)", users, err)
+	if err != nil || users != 0 {
+		t.Fatalf("fresh kept %d users (%v)", users, err)
+	}
+	for _, table := range appTables {
+		if !tableExists(t, db, table) {
+			t.Fatalf("%s missing after fresh", table)
+		}
 	}
 }

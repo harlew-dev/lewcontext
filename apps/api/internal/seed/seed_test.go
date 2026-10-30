@@ -36,7 +36,8 @@ func run(t *testing.T, db *bun.DB, name string, o Options) string {
 func projectsOf(t *testing.T, db *bun.DB, email string) int {
 	t.Helper()
 	count, err := db.NewSelect().Model((*factory.Project)(nil)).
-		Join("JOIN users AS u ON u.id = p.user_id").
+		Join("JOIN workspace_user AS m ON m.workspace_id = p.workspace_id").
+		Join("JOIN users AS u ON u.id = m.user_id").
 		Where("u.email = ?", email).
 		Count(context.Background())
 	if err != nil {
@@ -53,14 +54,28 @@ func TestDemoRunsOnce(t *testing.T) {
 	if n := projectsOf(t, db, DemoEmail); n != len(demoProjects) {
 		t.Fatalf("demo projects: want %d got %d", len(demoProjects), n)
 	}
+	var names []string
+	err := db.NewSelect().Model((*factory.Workspace)(nil)).Column("w.name").
+		Join("JOIN workspace_user AS m ON m.workspace_id = w.id").
+		Join("JOIN users AS u ON u.id = m.user_id").
+		Where("u.email = ? AND m.role = 'owner'", DemoEmail).
+		Scan(context.Background(), &names)
+	if err != nil || len(names) != 1 || names[0] != DemoWorkspace {
+		t.Fatalf("demo workspace: %v (%v)", names, err)
+	}
 }
 func TestVolumeAddsToOneAccount(t *testing.T) {
 	db := migrated(t)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
-	users, err := factory.Users.Create(ctx, db, f, 2)
+	users, err := factory.Users.Create(ctx, db, f, 3)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, user := range users[:2] {
+		if _, err := factory.WorkspaceFor(ctx, db, f, user.ID); err != nil {
+			t.Fatal(err)
+		}
 	}
 	run(t, db, "volume", Options{Email: strings.ToUpper(users[0].Email), Count: 37})
 	if n := projectsOf(t, db, users[0].Email); n != 37 {
@@ -72,6 +87,9 @@ func TestVolumeAddsToOneAccount(t *testing.T) {
 	seeder, _ := Find("volume")
 	if _, err := seeder.Run(ctx, db, f, Options{Email: "nobody@example.test"}); err == nil {
 		t.Fatal("volume seeded an unknown account")
+	}
+	if _, err := seeder.Run(ctx, db, f, Options{Email: users[2].Email}); err == nil {
+		t.Fatal("volume seeded an account without a workspace")
 	}
 }
 func TestUsersCreatesAccountsWithProjects(t *testing.T) {
@@ -85,5 +103,9 @@ func TestUsersCreatesAccountsWithProjects(t *testing.T) {
 	projects, err := db.NewSelect().Model((*factory.Project)(nil)).Count(ctx)
 	if err != nil || projects > 12 {
 		t.Fatalf("want at most 12 projects got %d (%v)", projects, err)
+	}
+	owners, err := db.NewSelect().Model((*factory.WorkspaceUser)(nil)).Where("role = 'owner'").Count(ctx)
+	if err != nil || owners != 4 {
+		t.Fatalf("want a workspace per user, got %d owners (%v)", owners, err)
 	}
 }

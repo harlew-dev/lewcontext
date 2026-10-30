@@ -25,6 +25,7 @@ BaseUI provides behaviour (focus, keyboard, overlays) for Button, Input, Textare
   - It keeps the page's scroll position, because focus moving into an overlay can otherwise scroll the page to the top.
   - It counts holders, so a listbox inside a dialog doesn't unlock the page early.
   - The popover version also blocks wheel and touch scrolling outside the panel (`data-popover-panel`), including in a dialog's own scrolling content.
+- **Overlays give focus back to whatever opened them.** BaseUI's own `returnFocus` loses track (focus landed on "Skip to content"), so `Dialog` and `Dropdown` set `returnFocus={false}`, remember the opener (`focusedElement()`) and render `<ReturnFocus opener>` (`lib/return-focus.tsx`), which refocuses it when BaseUI removes the overlay. A `DropdownItem` closes its menu first and runs its `onClick` once focus is back on the trigger, so a dialog opened from a menu returns focus to the menu's button. `keepOpen` items ("Show more", "Retry") act inside the open menu.
 - **`Listbox` opens over its button** with the selected option on top of it and the option text in line with the button text (Headless UI's "selection" anchor). This is a popper.js modifier (`alignSelection`), and the panel is kept 16px inside the viewport.
 - Classes target the attributes: `data-hover:bg-zinc-950/5 data-focus:outline-2 data-disabled:opacity-50`.
 
@@ -43,7 +44,8 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `input.tsx` / `textarea.tsx` | `Input`, `InputGroup` (leading icon) · `Textarea` |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
-| `dropdown.tsx` | `Dropdown`, `DropdownButton`, `DropdownMenu`, `DropdownItem`, `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
+| `dropdown.tsx` | `Dropdown`, `DropdownButton`, `DropdownMenu`, `DropdownItem href keepOpen aria-current`, `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
+| `settings-section.tsx` | `SettingsSection title description` (account and workspace settings) |
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort shallow` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
@@ -52,6 +54,9 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
 | `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` |
 
-## Feature components (`components/app/projects`)
+## Feature components (`components/app/<feature>`)
 
-These are shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow`, `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `formatDate`, `ProjectDialog`, `ProjectNotices`, `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath` / `indexQuery`.
+- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `formatDate`, `ProjectDialog`, `ProjectNotices`, `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
+- **`workspaces`**, shared by onboarding, the switcher and workspace settings: `WorkspaceAvatar` (the name's first letter), `WorkspaceNameField`, `useCreateWorkspace` and `CreateWorkspaceDialog`.
+
+The workspace switcher (`WorkspaceDropdown` in `application-layout.tsx`) shows the current workspace and lists every workspace newest first, loading more as the list scrolls ([pagination.md](pagination.md#infinite-lists)).

@@ -7,12 +7,12 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | Package | Owns |
 | --- | --- |
 | `cmd/server` | Startup, HTTP server timeouts, 15-minute cleanup of expired sessions and limits, graceful shutdown |
-| `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migration` |
+| `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
 | `internal/httpapi` | Routes (`routes.go`), middleware, input validation, JSON responses |
-| `internal/store` | Bun models and every query, always scoped by user |
+| `internal/store` | Bun models and every query, scoped by the user's workspace membership |
 | `internal/auth` | Argon2id passwords, random tokens, digests, cookies |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
@@ -26,12 +26,15 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
   → mux (routes.go)
   → requireSession (cookie → session, CSRF on mutations) for private routes
-  → handler (parse + validate) → store (query scoped by user ID) → jsonResponse
+  → requireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
+  → requireRole (403 below the needed role) where only some roles may act
+  → handler (parse + validate) → store (query scoped by workspace ID) → jsonResponse
 ```
 
 - Responses are JSON. Errors are `{"error": "message"}` with a generic message; details go to `slog` only (`internalError`).
 - Request bodies: `decode()` caps them at 16 KiB, rejects unknown fields and requires exactly one JSON object.
-- The signed-in session is `current(r)` inside handlers.
+- The signed-in session is `current(r)` inside handlers, and the workspace in the path `currentWorkspace(r)`.
+- Routes are grouped with `group(mux, prefix, middleware…)` in `routes.go`; `net/http` has no groups, so the helper prefixes each pattern and wraps its handler.
 
 ## Environment
 

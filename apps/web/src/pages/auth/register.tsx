@@ -13,7 +13,7 @@ import { useApi } from "@/lib/api";
 import { authPath, routes } from "@/lib/routes";
 import { guestProps } from "@/lib/server";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
-// Signed-in visitors go on to ?next= or the dashboard. Request rendering also
+// Signed-in visitors go on to ?next= or /app. Request rendering also
 // supplies a fresh CSP nonce and per-request Styletron styles.
 export function getServerSideProps(context: GetServerSidePropsContext) {
   return guestProps(context, { redirectSignedIn: true });
@@ -24,7 +24,11 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const api = useApi();
   const router = useRouter();
-  const { busy, error, submit } = useAuthSubmit(api.auth().register);
+  // A new account has no workspace yet, so it always starts at onboarding.
+  const { busy, error, submit } = useAuthSubmit(
+    api.auth().register,
+    routes.onboarding,
+  );
   return (
     <AuthLayout>
       <form

@@ -1,0 +1,98 @@
+import { useRouter } from "next/router";
+import { AuthLayout } from "@/components/layout/auth-layout";
+import { ServiceUnavailable } from "@/components/layout/status-page";
+import {
+  WorkspaceNameField,
+  useCreateWorkspace,
+} from "@/components/app/workspaces/workspace-form";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/feedback";
+import { Heading } from "@/components/ui/heading";
+import { Logo } from "@/components/ui/logo";
+import { Strong, Text } from "@/components/ui/text";
+import { useApi } from "@/lib/api";
+import { routes } from "@/lib/routes";
+import { useSession } from "@/lib/session";
+import type { SessionProps } from "@/lib/types";
+import { useActionError } from "@/lib/use-action-error";
+// Signed in without a workspace yet: create the first one. Accounts that
+// already have one go on to /app.
+export { onboardingProps as getServerSideProps } from "@/lib/server";
+export default function Onboarding(
+  props: SessionProps | { unavailable: true },
+) {
+  if ("unavailable" in props) return <ServiceUnavailable />;
+  return <NewWorkspace />;
+}
+function NewWorkspace() {
+  const create = useCreateWorkspace();
+  return (
+    <AuthLayout>
+      <div className="grid w-full max-w-sm grid-cols-1 gap-8">
+        <form onSubmit={create.submit} className="grid grid-cols-1 gap-8">
+          <Logo />
+          <div className="space-y-2">
+            <Heading>New workspace</Heading>
+            <Text>
+              Projects live in a workspace. Name your first one — you can create
+              more later.
+            </Text>
+          </div>
+          {create.error.message && (
+            <Notice key={create.error.key} variant="error">
+              {create.error.message}
+            </Notice>
+          )}
+          <WorkspaceNameField
+            label="Name"
+            autoFocus
+            value={create.name}
+            onChange={create.setName}
+            disabled={create.saving}
+          />
+          <Button
+            type="submit"
+            className="w-full"
+            loading={create.saving}
+            disabled={!create.valid}
+          >
+            Create workspace
+          </Button>
+        </form>
+        <SignedInAs />
+      </div>
+    </AuthLayout>
+  );
+}
+// Who is signed in, with a way out for a shared computer or the wrong account.
+function SignedInAs() {
+  const api = useApi();
+  const session = useSession();
+  const router = useRouter();
+  const error = useActionError();
+  async function signOut() {
+    try {
+      await api.auth().logout();
+      await router.push(routes.login);
+    } catch (e) {
+      error.fail(e);
+    }
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <Text className="min-w-0 truncate">
+          Signed in as <Strong>{session.user.email}</Strong>
+        </Text>
+        <Button plain className="shrink-0" onClick={signOut}>
+          Sign out
+        </Button>
+      </div>
+      {error.message && (
+        <Notice key={error.key} variant="error">
+          {error.message}
+        </Notice>
+      )}
+    </div>
+  );
+}

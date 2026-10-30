@@ -9,6 +9,7 @@ import { styletron } from "@/lib/styletron";
 import { theme } from "@/lib/theme";
 import type { NextPageWithLayout } from "@/lib/page";
 import { SessionProvider } from "@/lib/session";
+import { WorkspaceProvider } from "@/lib/workspace";
 import { RouteProgress } from "@/components/ui/route-progress";
 import "@/styles/globals.css";
 export default function App({
@@ -41,7 +42,12 @@ export default function App({
           <RouteProgress />
           <MotionConfig reducedMotion="user">
             <SessionProvider session={pageProps.session ?? null}>
-              {getLayout(<Component {...pageProps} />, pageProps)}
+              <WorkspaceProvider
+                workspace={pageProps.workspace}
+                workspaces={pageProps.workspaces}
+              >
+                {getLayout(<Component {...pageProps} />, pageProps)}
+              </WorkspaceProvider>
             </SessionProvider>
           </MotionConfig>
         </SWRConfig>

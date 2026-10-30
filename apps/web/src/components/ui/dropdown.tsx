@@ -16,6 +16,7 @@ import { PLACEMENT, StatefulPopover } from "baseui/popover";
 import { useReducedMotion } from "motion/react";
 import { popoverExit, popoverOverrides, popoverPanel } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
+import { ReturnFocus, focusedElement } from "@/lib/return-focus";
 import { usePopoverScrollLock } from "@/lib/scroll-lock";
 import { Button } from "./button";
 import { Link } from "./link";
@@ -28,6 +29,8 @@ const placements = {
   "top end": PLACEMENT.topRight,
 };
 type Anchor = keyof typeof placements;
+// Long enough for the menu's exit animation and focus return.
+const afterClose = popoverExit + 50;
 const DropdownContext = createContext<{ close: () => void }>({
   close: () => {},
 });
@@ -47,6 +50,8 @@ export function Dropdown({ children }: { children: ReactNode }) {
   ];
   const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
+  // The trigger, focused when the menu opens; focus returns to it on close.
+  const [opener, setOpener] = useState<HTMLElement | null>(null);
   usePopoverScrollLock(open);
   if (!trigger || !menu) return null;
   return (
@@ -56,15 +61,19 @@ export function Dropdown({ children }: { children: ReactNode }) {
       placement={placements[menu.props.anchor ?? "bottom"]}
       popoverMargin={8}
       animateOutTime={reducedMotion ? 0 : popoverExit}
-      onOpen={() => setOpen(true)}
+      onOpen={() => {
+        setOpener(focusedElement());
+        setOpen(true);
+      }}
       onClose={() => setOpen(false)}
       focusLock
       autoFocus
-      returnFocus
+      returnFocus={false}
       overrides={popoverOverrides}
       content={({ close }) => (
         <DropdownContext.Provider value={{ close }}>
           {menu}
+          <ReturnFocus opener={opener} />
         </DropdownContext.Provider>
       )}
     >
@@ -141,14 +150,23 @@ const itemClasses = cx(
   "*:data-[slot=icon]:text-zinc-500 focus:*:data-[slot=icon]:text-white dark:*:data-[slot=icon]:text-zinc-400 dark:focus:*:data-[slot=icon]:text-white",
   "*:data-[slot=avatar]:mr-2.5 *:data-[slot=avatar]:-ml-1 *:data-[slot=avatar]:size-6 sm:*:data-[slot=avatar]:mr-2 sm:*:data-[slot=avatar]:size-5",
 );
+// Items close the menu when chosen, then act once it has closed and returned
+// focus to its trigger, so a dialog an item opens returns focus there too
+// (the item itself is gone by then). `keepOpen` items (e.g. "Show more") act
+// at once, inside the menu.
 type DropdownItemProps = {
   className?: string;
   children: ReactNode;
   onClick?: (event: MouseEvent<HTMLElement>) => void;
-} & ({ href: string } | { href?: never; disabled?: boolean });
+  "aria-current"?: "page";
+} & (
+  | { href: string; keepOpen?: never }
+  | { href?: never; disabled?: boolean; keepOpen?: boolean }
+);
 export function DropdownItem({
   className,
   onClick,
+  keepOpen = false,
   ...props
 }: DropdownItemProps) {
   const { close } = useContext(DropdownContext);
@@ -158,8 +176,9 @@ export function DropdownItem({
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) =>
       event.currentTarget.focus(),
     onClick: (event: MouseEvent<HTMLElement>) => {
-      onClick?.(event);
+      if (keepOpen) return onClick?.(event);
       close();
+      if (onClick) window.setTimeout(() => onClick(event), afterClose);
     },
   };
   if ("href" in props && props.href)

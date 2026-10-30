@@ -86,15 +86,29 @@ func TestEveryTableHasAFactory(t *testing.T) {
 		}
 	}
 	f := TestFaker(t)
-	user, err := Users.CreateOne(ctx, db, f)
+	users, err := Users.Create(ctx, db, f, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
+	user, other, third := users[0], users[1], users[2]
 	if _, err := SessionFor(ctx, db, f, user.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ProjectsFor(user.ID).Create(ctx, db, f, 3); err != nil {
+	workspace, err := WorkspaceFor(ctx, db, f, user.ID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := WorkspaceUsers.State(func(m *WorkspaceUser) { m.WorkspaceID = workspace.ID }).Sequence(func(i int, m *WorkspaceUser) {
+		m.UserID = []int64{other.ID, third.ID}[i]
+	}).Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	projects, err := ProjectsIn(workspace.ID).Create(ctx, db, f, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.PublicID == "" || workspace.PublicID == "" || projects[0].PublicID == "" {
+		t.Fatal("RETURNING did not fill public IDs")
 	}
 	if _, err := AuthAttempts.Create(ctx, db, f, 3); err != nil {
 		t.Fatal(err)
@@ -111,14 +125,18 @@ func TestCreateInsertsInBatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	projects, err := ProjectsFor(user.ID).Create(ctx, db, f, batchSize+7)
+	workspace, err := WorkspaceFor(ctx, db, f, user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projects[0].ID == 0 || projects[len(projects)-1].ID == 0 {
+	projects, err := ProjectsIn(workspace.ID).Create(ctx, db, f, batchSize+7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projects[0].ID == 0 || projects[len(projects)-1].PublicID == "" {
 		t.Fatal("RETURNING did not fill IDs across batches")
 	}
-	count, err := db.NewSelect().Model((*Project)(nil)).Where("user_id = ?", user.ID).Count(ctx)
+	count, err := db.NewSelect().Model((*Project)(nil)).Where("workspace_id = ?", workspace.ID).Count(ctx)
 	if err != nil || count != batchSize+7 {
 		t.Fatalf("want %d projects, got %d (%v)", batchSize+7, count, err)
 	}

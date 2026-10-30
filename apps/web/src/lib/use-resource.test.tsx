@@ -7,7 +7,7 @@ import { SessionProvider } from "./session";
 import type { Session } from "./types";
 import { useResource } from "./use-resource";
 const router = vi.hoisted(() => ({
-  asPath: "/app/projects?page=2",
+  asPath: "/app/wsp_00000000000001/projects?page=2",
   replace: vi.fn(),
 }));
 vi.mock("next/router", () => ({ useRouter: () => router }));
@@ -18,12 +18,18 @@ afterEach(() => {
 });
 function sessionFor(id: number): Session {
   return {
-    user: { id, name: "Ada", email: "ada@forma.test", createdAt: "" },
+    user: {
+      id: `usr_0000000000000${id}`,
+      name: "Ada",
+      email: "ada@forma.test",
+      createdAt: "",
+    },
     csrfToken: "csrf",
     expiresAt: "",
     signedInAt: "",
   };
 }
+const ws = "wsp_00000000000001";
 // One SWR cache shared by every render, like the app's.
 const cache = new Map();
 function provide(session: Session) {
@@ -48,7 +54,7 @@ function stubFetch(status = 200) {
 describe("useResource()", () => {
   it("keeps each user's data apart in the cache", async () => {
     const fetch = stubFetch();
-    const path = paths.projects.show(1);
+    const path = paths.projects(ws).show("prj_00000000000001");
     const first = renderHook(() => useResource(path), {
       wrapper: provide(sessionFor(1)),
     });
@@ -63,12 +69,15 @@ describe("useResource()", () => {
   });
   it("sends an expired session to login, returning to this page", async () => {
     stubFetch(401);
-    renderHook(() => useResource(paths.projects.show(2)), {
-      wrapper: provide(sessionFor(3)),
-    });
+    renderHook(
+      () => useResource(paths.projects(ws).show("prj_00000000000002")),
+      {
+        wrapper: provide(sessionFor(3)),
+      },
+    );
     await waitFor(() =>
       expect(router.replace).toHaveBeenCalledWith(
-        "/auth/login?next=%2Fapp%2Fprojects%3Fpage%3D2",
+        "/auth/login?next=%2Fapp%2Fwsp_00000000000001%2Fprojects%3Fpage%3D2",
       ),
     );
   });

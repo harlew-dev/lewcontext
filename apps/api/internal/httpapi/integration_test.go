@@ -14,6 +14,7 @@ import (
 	"github.com/uptrace/bun"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -73,6 +74,25 @@ func signedIn(t *testing.T, db bun.IDB, f *gofakeit.Faker) factory.Session {
 	}
 	return session
 }
+
+// ownedWorkspace creates a workspace owned by userID.
+func ownedWorkspace(t *testing.T, db bun.IDB, f *gofakeit.Faker, userID int64) factory.Workspace {
+	t.Helper()
+	workspace, err := factory.WorkspaceFor(context.Background(), db, f, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workspace
+}
+
+// workspacePath is a path inside a workspace, e.g. workspacePath(id, "/projects").
+func workspacePath(publicID, rest string) string {
+	return "/api/workspaces/" + publicID + rest
+}
+
+// numericID finds an "id" that is a number, i.e. a leaked internal ID.
+var numericID = regexp.MustCompile(`"id":\s*\d`)
+
 func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	s, db := integrationServer(t)
 	h := s.Routes()
@@ -94,44 +114,70 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 		t.Fatal("cookie flags missing")
 	}
 	var stored string
-	if err := db.QueryRowContext(ctx, "SELECT token_hash FROM sessions WHERE user_id=?", one.User.ID).Scan(&stored); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT s.token_hash FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.public_id=?", one.User.PublicID).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
 	if stored == cookie.Value || stored != auth.Digest(cookie.Value) {
 		t.Fatal("raw session stored")
 	}
-	call(t, h, "GET", "/api/auth/me", "", "", cookie, 200)
-	call(t, h, "GET", "/api/projects", "", "", nil, 401)
+	me := call(t, h, "GET", "/api/auth/me", "", "", cookie, 200)
+	if !strings.HasPrefix(one.User.PublicID, "usr_") || !strings.Contains(me.Body.String(), one.User.PublicID) || numericID.MatchString(me.Body.String()) {
+		t.Fatalf("user not identified by public ID: %s", me.Body.String())
+	}
+	// A new account starts with no workspace; onboarding creates the first.
+	empty := call(t, h, "GET", "/api/workspaces", "", "", cookie, 200)
+	if !strings.Contains(empty.Body.String(), `"data":[]`) || !strings.Contains(empty.Body.String(), `"items":0`) {
+		t.Fatalf("new account has workspaces: %s", empty.Body.String())
+	}
+	call(t, h, "POST", "/api/workspaces", `{"name":"Mine"}`, "", cookie, 403)
+	var workspace store.Workspace
+	_ = json.Unmarshal(call(t, h, "POST", "/api/workspaces", `{"name":"  Mine  "}`, one.CSRF, cookie, 201).Body.Bytes(), &workspace)
+	if !validPublicID("wsp", workspace.PublicID) || workspace.Name != "Mine" || workspace.Role != store.RoleOwner {
+		t.Fatalf("created workspace not returned: %+v", workspace)
+	}
+	projects := workspacePath(workspace.PublicID, "/projects")
+	otherProjects := workspacePath(ownedWorkspace(t, db, f, two.UserID).PublicID, "/projects")
+	call(t, h, "GET", projects, "", "", nil, 401)
 	body := `{"name":"Private project","description":"Owned by one","status":"Planned","color":"violet"}`
-	call(t, h, "POST", "/api/projects", body, "", cookie, 403)
-	created := call(t, h, "POST", "/api/projects", body, one.CSRF, cookie, 201)
+	call(t, h, "POST", projects, body, "", cookie, 403)
+	created := call(t, h, "POST", projects, body, one.CSRF, cookie, 201)
+	if numericID.MatchString(created.Body.String()) {
+		t.Fatalf("internal ID leaked: %s", created.Body.String())
+	}
 	var project store.Project
 	_ = json.Unmarshal(created.Body.Bytes(), &project)
-	if project.ID < 1 || project.Name != "Private project" || project.Status != "Planned" || project.CreatedAt.IsZero() || project.UpdatedAt.IsZero() {
+	if !validPublicID("prj", project.PublicID) || project.Name != "Private project" || project.Status != "Planned" || project.CreatedAt.IsZero() || project.UpdatedAt.IsZero() {
 		t.Fatalf("created project not returned: %+v", project)
 	}
 	var owned store.Page[store.Project]
-	_ = json.Unmarshal(call(t, h, "GET", "/api/projects", "", "", cookie, 200).Body.Bytes(), &owned)
-	if len(owned.Data) != 1 || owned.Data[0].ID != project.ID || owned.Data[0].Description != "Owned by one" || owned.Pages.Items != 1 {
+	_ = json.Unmarshal(call(t, h, "GET", projects, "", "", cookie, 200).Body.Bytes(), &owned)
+	if len(owned.Data) != 1 || owned.Data[0].PublicID != project.PublicID || owned.Data[0].Description != "Owned by one" || owned.Pages.Items != 1 {
 		t.Fatalf("owner list wrong: %+v", owned)
 	}
-	list := call(t, h, "GET", "/api/projects", "", "", otherCookie, 200)
+	// Another user can't reach the workspace at all, and their own is empty.
+	call(t, h, "GET", projects, "", "", otherCookie, 404)
+	call(t, h, "POST", projects, body, two.CSRFToken, otherCookie, 404)
+	list := call(t, h, "GET", otherProjects, "", "", otherCookie, 200)
 	if !strings.Contains(list.Body.String(), `"data":[]`) || !strings.Contains(list.Body.String(), `"items":0`) {
 		t.Fatalf("cross-user project leak: %s", list.Body.String())
 	}
-	path := fmt.Sprintf("/api/projects/%d", project.ID)
+	path := projects + "/" + project.PublicID
 	call(t, h, "GET", path, "", "", cookie, 200)
 	call(t, h, "GET", path, "", "", otherCookie, 404)
-	call(t, h, "GET", "/api/projects/nope", "", "", cookie, 400)
 	call(t, h, "PATCH", path, body, two.CSRFToken, otherCookie, 404)
+	// The project ID under the other user's own workspace is still not theirs.
+	call(t, h, "GET", otherProjects+"/"+project.PublicID, "", "", otherCookie, 404)
+	call(t, h, "PATCH", otherProjects+"/"+project.PublicID, body, two.CSRFToken, otherCookie, 404)
 	updated := strings.Replace(body, "Planned", "Completed", 1)
 	var saved store.Project
 	_ = json.Unmarshal(call(t, h, "PATCH", path, updated, one.CSRF, cookie, 200).Body.Bytes(), &saved)
-	if saved.ID != project.ID || saved.Status != "Completed" || !saved.CreatedAt.Equal(project.CreatedAt) || saved.UpdatedAt.Before(project.UpdatedAt) {
+	if saved.PublicID != project.PublicID || saved.Status != "Completed" || !saved.CreatedAt.Equal(project.CreatedAt) || saved.UpdatedAt.Before(project.UpdatedAt) {
 		t.Fatalf("updated project not returned: %+v", saved)
 	}
-	call(t, h, "PATCH", "/api/projects/999999", body, one.CSRF, cookie, 404)
-	call(t, h, "PATCH", "/api/projects/nope", body, one.CSRF, cookie, 400)
+	call(t, h, "PATCH", projects+"/prj_00000000000000", body, one.CSRF, cookie, 404)
+	// Old routes and numeric IDs are gone.
+	call(t, h, "GET", "/api/projects", "", "", cookie, 404)
+	call(t, h, "GET", projects+"/1", "", "", cookie, 404)
 	call(t, h, "POST", "/api/auth/login", `{"email":"one@example.com","password":"wrong password long"}`, "", nil, 401)
 	login := call(t, h, "POST", "/api/auth/login", `{"email":"one@example.com","password":"correct horse battery staple"}`, "", cookie, 200)
 	rotated := login.Result().Cookies()[0]

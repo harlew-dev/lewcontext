@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cx } from "@/lib/cx";
 import { useApi } from "@/lib/api";
 import { useActionError } from "@/lib/use-action-error";
+import { useWorkspace } from "@/lib/workspace";
 import {
   statuses,
   colors,
@@ -64,6 +65,7 @@ function ProjectForm({
   onSaved: (project: Project) => void;
 }) {
   const api = useApi();
+  const workspace = useWorkspace();
   const [form, setForm] = useState<ProjectInput>(project ?? emptyProject);
   const [saving, setSaving] = useState(false);
   const error = useActionError();
@@ -71,7 +73,7 @@ function ProjectForm({
     event.preventDefault();
     setSaving(true);
     try {
-      const projects = api.projects();
+      const projects = api.projects(workspace.id);
       const saved = project
         ? await projects.update(project.id, form)
         : await projects.create(form);

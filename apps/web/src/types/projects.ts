@@ -2,7 +2,7 @@ import type { Sort } from "@/lib/pagination";
 export const statuses = ["In progress", "Planned", "Completed"] as const;
 export const colors = ["violet", "blue", "amber", "emerald", "rose"] as const;
 export type Project = {
-  id: number;
+  id: string;
   name: string;
   description: string;
   status: (typeof statuses)[number];

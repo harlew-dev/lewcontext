@@ -58,8 +58,8 @@ func (s *Store) Session(ctx context.Context, hash string) (Session, error) {
 		With("active", active).
 		TableExpr("active AS a").
 		Join("JOIN users AS u ON u.id = a.user_id").
-		ColumnExpr("u.id, u.name, u.email, u.created_at, a.csrf_token, a.created_at, a.expires_at").
-		Scan(ctx, &session.User.ID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt)
+		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, a.csrf_token, a.created_at, a.expires_at").
+		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt)
 	return session, err
 }
 func (s *Store) DeleteSession(ctx context.Context, hash string) error {

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
 import { sortable, type Project } from "@/types/projects";
 import { paths } from "@/lib/api";
+import { WorkspaceProvider } from "@/lib/workspace";
+import type { Workspace } from "@/types/workspaces";
 import { indexQuery, projectQuery, projectsPath } from "./project-query";
 import {
   ProjectEmptyState,
@@ -12,8 +14,15 @@ import {
   ProjectTableHead,
 } from "./project-table";
 afterEach(cleanup);
+const workspace: Workspace = {
+  id: "wsp_2yEHYLwiwPVhLW",
+  name: "Acme",
+  role: "owner",
+  createdAt: "",
+  updatedAt: "",
+};
 const project: Project = {
-  id: 1,
+  id: "prj_j292s2S2j7Qx4B",
   name: "Research sprint",
   description: "Talk to our customers",
   status: "Planned",
@@ -24,16 +33,24 @@ const project: Project = {
 describe("project table", () => {
   it("renders API data with rows linking to the project", () => {
     render(
-      <Table>
-        <TableBody>
-          <ProjectRow project={project} />
-        </TableBody>
-      </Table>,
+      <WorkspaceProvider
+        workspace={workspace}
+        workspaces={{ path: "", data: null, error: null }}
+      >
+        <Table>
+          <TableBody>
+            <ProjectRow project={project} />
+          </TableBody>
+        </Table>
+      </WorkspaceProvider>,
     );
     expect(screen.getByText("Talk to our customers")).toBeInTheDocument();
     expect(screen.getByText("Planned")).toBeInTheDocument();
     for (const link of screen.getAllByRole("link", { name: "Research sprint" }))
-      expect(link).toHaveAttribute("href", "/app/projects/1");
+      expect(link).toHaveAttribute(
+        "href",
+        "/app/wsp_2yEHYLwiwPVhLW/projects/prj_j292s2S2j7Qx4B",
+      );
   });
   it("links headers to the next sort and reports the current one", () => {
     render(
@@ -95,8 +112,8 @@ describe("project query", () => {
       sort: "name",
       page: "2",
     });
-    expect(projectsPath(query)).toBe(
-      "/app/projects?q=web&status=Planned&sort=name&page=2",
+    expect(projectsPath(workspace.id, query)).toBe(
+      "/app/wsp_2yEHYLwiwPVhLW/projects?q=web&status=Planned&sort=name&page=2",
     );
     expect(indexQuery(query)).toEqual({
       page: 2,
@@ -104,9 +121,9 @@ describe("project query", () => {
       status: "Planned",
       sort: "name",
     });
-    expect(paths.projects.index(indexQuery(projectQuery({})))).toBe(
-      "/api/projects",
-    );
+    expect(
+      paths.projects(workspace.id).index(indexQuery(projectQuery({}))),
+    ).toBe("/api/workspaces/wsp_2yEHYLwiwPVhLW/projects");
   });
   it("mirrors the API's sort allowlist", () => {
     const go = readFileSync(

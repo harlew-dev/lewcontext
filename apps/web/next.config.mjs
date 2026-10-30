@@ -2,16 +2,9 @@
 const config = {
   poweredByHeader: false,
   reactStrictMode: true,
-  // "/" and the URLs from before pages were nested under auth/ and app/.
+  // "/" opens /app, which picks the newest workspace (pages/app/index.tsx).
   async redirects() {
-    return [
-      { source: "/", destination: "/app/dashboard", permanent: false },
-      { source: "/app", destination: "/app/dashboard", permanent: false },
-      { source: "/auth", destination: "/auth/login", permanent: false },
-      { source: "/login", destination: "/auth/login", permanent: false },
-      { source: "/projects", destination: "/app/projects", permanent: false },
-      { source: "/settings", destination: "/app/settings", permanent: false },
-    ];
+    return [{ source: "/", destination: "/app", permanent: false }];
   },
   async rewrites() {
     return [

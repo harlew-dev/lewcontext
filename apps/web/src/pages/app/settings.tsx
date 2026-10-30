@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { appLayout } from "@/components/layout/application-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/description-list";
 import { Divider } from "@/components/ui/divider";
 import { Notice } from "@/components/ui/feedback";
-import { Heading, Subheading } from "@/components/ui/heading";
+import { Heading } from "@/components/ui/heading";
+import { SettingsSection } from "@/components/ui/settings-section";
 import { Text } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -63,25 +64,6 @@ function AccountSettings() {
         <SessionControls />
       </SettingsSection>
     </div>
-  );
-}
-function SettingsSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
-      <div className="space-y-1">
-        <Subheading>{title}</Subheading>
-        <Text>{description}</Text>
-      </div>
-      {children}
-    </section>
   );
 }
 function SessionControls() {

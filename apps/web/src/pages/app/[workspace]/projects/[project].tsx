@@ -20,23 +20,24 @@ import { ListSkeleton } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Link } from "@/components/ui/link";
 import { Text } from "@/components/ui/text";
-import { parseId } from "@/lib/ids";
+import { parsePublicId } from "@/lib/ids";
 import { paths } from "@/lib/api";
 import { routes } from "@/lib/routes";
 import { appProps, initial } from "@/lib/server";
-import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
+import type { AppPageProps, Initial } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
+import { useWorkspace } from "@/lib/workspace";
 import type { Project } from "@/types/projects";
-type ProjectProps = SessionProps & { id: number; project: Initial<Project> };
+type ProjectProps = { id: string; project: Initial<Project> };
 export async function getServerSideProps(context: GetServerSidePropsContext) {
-  // Only exact, positive IDs reach the API; anything else is a 404 page.
-  const id = parseId(context.params?.id);
+  // Only well-formed project IDs reach the API; anything else is a 404 page.
+  const id = parsePublicId("prj", context.params?.project);
   if (id === null) return { notFound: true as const };
-  return appProps(context, async (api) => ({
+  return appProps(context, async (api, workspace) => ({
     id,
     project: await initial(
       api,
-      paths.projects.show(id),
+      paths.projects(workspace.id).show(id),
       "We couldn’t load this project. Please try again.",
     ),
   }));
@@ -47,12 +48,16 @@ export default function ProjectPage(props: AppPageProps<ProjectProps>) {
 }
 ProjectPage.getLayout = appLayout;
 function ProjectContent({ id, project: initialProject }: ProjectProps) {
-  const project = useResource(paths.projects.show(id), initialProject);
+  const workspace = useWorkspace();
+  const project = useResource(
+    paths.projects(workspace.id).show(id),
+    initialProject,
+  );
   const editor = useProjectEditor();
   return (
     <>
       <Link
-        href={routes.projects}
+        href={routes.projects(workspace.id)}
         className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
       >
         <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />

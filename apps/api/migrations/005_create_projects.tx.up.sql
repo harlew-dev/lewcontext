@@ -1,6 +1,7 @@
 CREATE TABLE projects (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- user_id bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ public_id text NOT NULL UNIQUE DEFAULT public_id('prj') CHECK (public_id ~ '^prj_[0-9A-Za-z]{14}$'),
+ workspace_id bigint NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
  name text NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
  description text NOT NULL DEFAULT '' CHECK (length(description) <= 500),
  status text NOT NULL DEFAULT 'In progress' CHECK (status IN ('In progress','Planned','Completed')),
@@ -8,4 +9,4 @@ CREATE TABLE projects (
  created_at timestamptz NOT NULL DEFAULT now(),
  updated_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX projects_user_updated_idx ON projects(user_id, updated_at DESC);
+CREATE INDEX projects_workspace_updated_idx ON projects(workspace_id, updated_at DESC);

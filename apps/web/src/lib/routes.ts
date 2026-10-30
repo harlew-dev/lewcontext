@@ -1,27 +1,45 @@
 import { HomeIcon, Square2StackIcon } from "@heroicons/react/20/solid";
+import { publicIdPattern } from "./ids";
 // Page URLs follow the file layout under src/pages (auth/* and app/*).
-// Redirects from "/" and the pre-nesting URLs are declared in next.config.mjs.
-// API paths live with their resource in lib/api/*.
+// Workspace pages live under /app/<wsp_…>; /app itself opens the newest
+// workspace (pages/app/index.tsx). The only config redirect is "/" → "/app"
+// (next.config.mjs). API paths live with their resource in lib/api/*.
 export const routes = {
-  dashboard: "/app/dashboard",
-  projects: "/app/projects",
-  project: (id: number) => `/app/projects/${id}`,
+  app: "/app",
+  onboarding: "/app/onboarding",
   settings: "/app/settings",
+  dashboard: (workspace: string) => `/app/${workspace}/dashboard`,
+  projects: (workspace: string) => `/app/${workspace}/projects`,
+  project: (workspace: string, project: string) =>
+    `/app/${workspace}/projects/${project}`,
+  workspaceSettings: (workspace: string) => `/app/${workspace}/settings`,
   login: "/auth/login",
   register: "/auth/register",
 } as const;
-// Sidebar items. Account & security is in the account menu instead.
-export const navigation = [
-  { label: "Overview", href: routes.dashboard, icon: HomeIcon },
-  { label: "Projects", href: routes.projects, icon: Square2StackIcon },
-];
+// Sidebar items for a workspace. Account & security is in the account menu
+// and workspace settings in the workspace menu instead.
+export function navigation(workspace: string) {
+  return [
+    { label: "Overview", href: routes.dashboard(workspace), icon: HomeIcon },
+    {
+      label: "Projects",
+      href: routes.projects(workspace),
+      icon: Square2StackIcon,
+    },
+  ];
+}
+const wsp = publicIdPattern("wsp");
+const prj = publicIdPattern("prj");
 // Signed-in pages a sign-in may return to (?next=), matched exactly. Add a
-// pattern for each new page under /app.
+// pattern for each new page under /app. Onboarding isn't one: /app sends
+// accounts without a workspace there anyway.
 const returnRoutes = [
-  /^\/app\/dashboard$/,
-  /^\/app\/projects$/,
-  /^\/app\/projects\/[1-9]\d*$/,
+  /^\/app$/,
   /^\/app\/settings$/,
+  new RegExp(`^/app/${wsp}/dashboard$`),
+  new RegExp(`^/app/${wsp}/projects$`),
+  new RegExp(`^/app/${wsp}/projects/${prj}$`),
+  new RegExp(`^/app/${wsp}/settings$`),
 ];
 const origin = "http://forma.invalid";
 // A same-site path and query from ?next=, or null. It must start with "/";

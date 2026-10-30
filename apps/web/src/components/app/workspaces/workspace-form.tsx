@@ -1,0 +1,140 @@
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/router";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Notice } from "@/components/ui/feedback";
+import { Field, Label } from "@/components/ui/fieldset";
+import { Input } from "@/components/ui/input";
+import { useApi } from "@/lib/api";
+import { routes } from "@/lib/routes";
+import { useActionError } from "@/lib/use-action-error";
+import { useRefreshWorkspaces } from "@/lib/workspace";
+import { maxWorkspaceName, workspaceName } from "@/types/workspaces";
+// Creating a workspace, from onboarding or the switcher's dialog: sends the
+// name, refreshes the switcher's list and opens the new workspace. The form
+// stays disabled until the new workspace's page has loaded; then `onOpened`
+// runs (the dialog closes).
+export function useCreateWorkspace(onOpened?: () => void) {
+  const api = useApi();
+  const router = useRouter();
+  const refresh = useRefreshWorkspaces();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const error = useActionError();
+  const valid = workspaceName(name) !== null;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const clean = workspaceName(name);
+    if (clean === null || saving) return;
+    setSaving(true);
+    try {
+      const workspace = await api.workspaces().create({ name: clean });
+      error.clear();
+      void refresh();
+      await router.push(routes.dashboard(workspace.id));
+      onOpened?.();
+    } catch (e) {
+      error.fail(e);
+      setSaving(false);
+    }
+  }
+  return { name, setName, saving, valid, error, submit };
+}
+export type WorkspaceCreator = ReturnType<typeof useCreateWorkspace>;
+// The workspace name input, shared by creating and renaming.
+export function WorkspaceNameField({
+  value,
+  onChange,
+  disabled,
+  autoFocus,
+  label = "Workspace name",
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  label?: string;
+}) {
+  return (
+    <Field disabled={disabled}>
+      <Label>{label}</Label>
+      <Input
+        name="workspace"
+        autoFocus={autoFocus}
+        required
+        maxLength={maxWorkspaceName}
+        autoComplete="off"
+        placeholder="e.g. Acme"
+        value={value}
+        onChange={(e) => onChange(e.currentTarget.value)}
+      />
+    </Field>
+  );
+}
+// The switcher's "New workspace…" dialog. Its form state starts fresh each
+// time it opens.
+export function CreateWorkspaceDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [opened, setOpened] = useState(0);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOpened(opened + 1);
+  }
+  return <CreateWorkspaceForm key={opened} open={open} onClose={onClose} />;
+}
+function CreateWorkspaceForm({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const create = useCreateWorkspace(onClose);
+  return (
+    <Dialog open={open} onClose={() => !create.saving && onClose()}>
+      <form onSubmit={create.submit}>
+        <DialogTitle>New workspace</DialogTitle>
+        <DialogDescription>
+          A fresh space for another team or another big idea.
+        </DialogDescription>
+        <DialogBody>
+          {create.error.message && (
+            <Notice key={create.error.key} variant="error" className="mb-6">
+              {create.error.message}
+            </Notice>
+          )}
+          <WorkspaceNameField
+            autoFocus
+            value={create.name}
+            onChange={create.setName}
+            disabled={create.saving}
+          />
+        </DialogBody>
+        <DialogActions>
+          <Button plain onClick={onClose} disabled={create.saving}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={create.saving}
+            disabled={!create.valid}
+          >
+            Create workspace
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+}

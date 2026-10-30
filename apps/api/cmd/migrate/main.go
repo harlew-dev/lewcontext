@@ -16,6 +16,8 @@ const usage = `usage: migrate [command]
   up                  apply pending migrations (default)
   status              list migrations and the group that applied each
   rollback [-confirm] undo the last group; without -confirm only shows what would run
+  fresh [-confirm]    drop every table in the schema and migrate from scratch (development
+                      only); without -confirm only lists what would be dropped
   create <name>       write an empty <timestamp>_<name>.tx.up.sql / .tx.down.sql pair`
 
 func main() {
@@ -50,6 +52,10 @@ func main() {
 		previewRollback(ctx, db)
 	case command == "rollback" && len(args) == 1 && args[0] == "-confirm":
 		rollback(ctx, db)
+	case command == "fresh" && len(args) == 0:
+		previewFresh(ctx, db, c.Production)
+	case command == "fresh" && len(args) == 1 && args[0] == "-confirm":
+		fresh(ctx, db, c.Production)
 	default:
 		log.Fatal(usage)
 	}
@@ -100,6 +106,30 @@ func rollback(ctx context.Context, db *bun.DB) {
 		return
 	}
 	log.Printf("Rolled back %s", group)
+}
+func previewFresh(ctx context.Context, db *bun.DB, production bool) {
+	if production {
+		log.Fatal(database.ErrFreshInProduction)
+	}
+	tables, err := database.FreshPreview(ctx, db)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(tables) == 0 {
+		log.Print("The schema is empty; re-run with -confirm to migrate it")
+		return
+	}
+	for _, t := range tables {
+		fmt.Printf("%-40s %d rows\n", t.Name, t.Rows)
+	}
+	log.Printf("Would drop these %d tables and all their rows, then migrate from scratch. Re-run with -confirm.", len(tables))
+}
+func fresh(ctx context.Context, db *bun.DB, production bool) {
+	group, err := database.Fresh(ctx, db, production)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Dropped the schema and applied %s", group)
 }
 func create(ctx context.Context, name string) {
 	files, err := database.CreateMigration(ctx, name)

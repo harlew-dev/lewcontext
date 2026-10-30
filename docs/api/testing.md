@@ -19,13 +19,15 @@ A skipped integration test is not database verification. Set `TEST_DATABASE_URL`
 - `integrationServer(t)` (in `httpapi`) migrates the schema (and checks a second migrate is a no-op), then returns a `*Server` and the DB.
 - `call(t, handler, method, path, body, csrf, cookie, wantStatus)` sends a request with the trusted Origin and JSON content type, and fails on an unexpected status.
 - `signedIn(t, db, faker)` returns a fake user's `factory.Session`. Use `session.UserID`, `session.Cookie()` and `session.CSRFToken`.
+- `ownedWorkspace(t, db, faker, userID)` creates a workspace the user owns; `workspacePath(workspace.PublicID, "/projects")` builds its API paths.
 
 ## Test data comes from factories
 
 ```go
 f := factory.TestFaker(t)
 session := signedIn(t, db, f)
-factory.ProjectsFor(session.UserID).Create(ctx, db, f, 45)
+workspace := ownedWorkspace(t, db, f, session.UserID)
+factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 ```
 
 - Set only the fields a test asserts on (with `State` or `Sequence`) and leave the rest random. See [seeding.md](seeding.md).
@@ -36,7 +38,7 @@ factory.ProjectsFor(session.UserID).Create(ctx, db, f, 45)
 ## What to cover
 
 - **Validation:** table-driven unit tests for parsing (e.g. `TestPageRequest`, `TestProjectFilter`).
-- **Security boundaries:** 401 without a session, 403 without CSRF or with a bad Origin, and another user's data returning 404 or empty results.
+- **Security boundaries:** 401 without a session, 403 without CSRF or with a bad Origin or too low a role, a non-member's 404 on every workspace route, another workspace's data returning 404 or empty results, and no numeric `id` in responses.
 - **Persistence:** results come back from the database, ordering is stable across pages, and filters combine.
 - Don't add tests that only mirror trivial code.
 
@@ -44,10 +46,11 @@ factory.ProjectsFor(session.UserID).Create(ctx, db, f, 45)
 
 | Test | Checks |
 | --- | --- |
-| `TestAuthenticationAndProjectIsolation` | Register, cookies, digests, CSRF, cross-user 404, rotation, logout, idle/expiry, session cap, account limit |
+| `TestAuthenticationAndProjectIsolation` | Register (no workspace yet), public IDs, cookies, digests, CSRF, creating a workspace, cross-user and cross-workspace 404, old routes gone, rotation, logout, idle/expiry, session cap, account limit |
+| `TestWorkspaceList`, `TestWorkspaceMembershipAndRoles` | Newest-first paging, list isolation, roles on rename, members on projects, outsiders and malformed IDs 404, name validation |
 | `TestAccountRateLimit`, `TestIPRateLimit` | 429 and `Retry-After` from pre-filled counters |
 | `TestProjectPagination` | Every sort across pages, past-the-end, filters, literal wildcards, isolation, bad parameters |
 | `TestEveryTableHasAFactory` | Each migrated table has a factory, and every factory inserts |
 | `TestFactoriesMatchValidation` | Fake values pass API validation |
-| `internal/database` tests | Migrations up/down, idempotency, adoption of legacy history |
-| `internal/seed` tests | Demo runs once; `volume` and `users` insert exactly what they say |
+| `internal/database` tests | Migrations up/down, idempotency, `public_id()` uniqueness and format, `Fresh` (refused in production, rebuilds the schema) |
+| `internal/seed` tests | Demo runs once with its Acme workspace; `volume` and `users` insert exactly what they say |

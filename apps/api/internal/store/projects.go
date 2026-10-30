@@ -40,14 +40,14 @@ type ProjectFilter struct {
 	Sort   string
 }
 
-// ProjectPage returns one page of the user's projects that match f.
-func (s *Store) ProjectPage(ctx context.Context, userID int64, f ProjectFilter, req PageRequest) (Page[Project], error) {
+// ProjectPage returns one page of the workspace's projects that match f.
+func (s *Store) ProjectPage(ctx context.Context, workspaceID int64, f ProjectFilter, req PageRequest) (Page[Project], error) {
 	order, ok := projectSorts[f.Sort]
 	if !ok {
 		order = projectSorts[DefaultProjectSort]
 	}
 	q := s.DB.NewSelect().Model((*Project)(nil)).
-		Where("p.user_id = ?", userID).
+		Where("p.workspace_id = ?", workspaceID).
 		OrderExpr(order)
 	if f.Search != "" {
 		pattern := containsPattern(f.Search)
@@ -65,27 +65,27 @@ func containsPattern(term string) string {
 	return "%" + escaped + "%"
 }
 
-// Project returns sql.ErrNoRows when the project does not exist or belongs to another user.
-func (s *Store) Project(ctx context.Context, userID, id int64) (Project, error) {
+// Project returns sql.ErrNoRows when the project does not exist or belongs to another workspace.
+func (s *Store) Project(ctx context.Context, workspaceID int64, publicID string) (Project, error) {
 	var p Project
 	err := s.DB.NewSelect().Model(&p).
-		Where("p.id = ? AND p.user_id = ?", id, userID).
+		Where("p.public_id = ? AND p.workspace_id = ?", publicID, workspaceID).
 		Scan(ctx)
 	return p, err
 }
-func (s *Store) CreateProject(ctx context.Context, userID int64, in ProjectInput) (Project, error) {
-	p := Project{UserID: userID, Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
+func (s *Store) CreateProject(ctx context.Context, workspaceID int64, in ProjectInput) (Project, error) {
+	p := Project{WorkspaceID: workspaceID, Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
 	_, err := s.DB.NewInsert().Model(&p).Returning("*").Exec(ctx)
 	return p, err
 }
 
-// UpdateProject returns sql.ErrNoRows when the project does not exist or belongs to another user.
-func (s *Store) UpdateProject(ctx context.Context, userID, id int64, in ProjectInput) (Project, error) {
+// UpdateProject returns sql.ErrNoRows when the project does not exist or belongs to another workspace.
+func (s *Store) UpdateProject(ctx context.Context, workspaceID int64, publicID string, in ProjectInput) (Project, error) {
 	p := Project{Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
 	err := s.DB.NewUpdate().Model(&p).
 		Column("name", "description", "status", "color").
 		Set("updated_at = now()").
-		Where("id = ? AND user_id = ?", id, userID).
+		Where("public_id = ? AND workspace_id = ?", publicID, workspaceID).
 		Returning("*").
 		Scan(ctx)
 	return p, err

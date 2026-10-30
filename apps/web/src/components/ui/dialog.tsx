@@ -2,12 +2,14 @@ import {
   createContext,
   useContext,
   useId,
+  useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 import { Modal } from "baseui/modal";
 import { slot } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
+import { ReturnFocus, focusedElement } from "@/lib/return-focus";
 import { useScrollLock } from "@/lib/scroll-lock";
 import { Text } from "./text";
 const sizes = {
@@ -50,6 +52,18 @@ type DialogProps = {
   className?: string;
   children: ReactNode;
 };
+// The element focused when the dialog opened, read while rendering, before
+// the dialog moves focus into itself.
+function useOpener(open: boolean) {
+  // A dialog can mount open (e.g. keyed to reset its form each time).
+  const [opener, setOpener] = useState(() => (open ? focusedElement() : null));
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOpener(focusedElement());
+  }
+  return opener;
+}
 // Dialog on BaseUI's Modal (focus lock, Escape, backdrop click,
 // enter/leave transitions via data-closed). useScrollLock hides the page's
 // scrollbar without shifting the layout.
@@ -62,6 +76,7 @@ export function Dialog({
 }: DialogProps) {
   const id = useId();
   useScrollLock(open);
+  const opener = useOpener(open);
   const ids = { titleId: `${id}-title`, descriptionId: `${id}-description` };
   return (
     <Modal
@@ -71,7 +86,7 @@ export function Dialog({
       animate
       autoFocus
       focusLock
-      returnFocus
+      returnFocus={false}
       role="dialog"
       overrides={{
         Root: { component: DialogBackdrop },
@@ -88,6 +103,7 @@ export function Dialog({
       }}
     >
       <DialogContext.Provider value={ids}>{children}</DialogContext.Provider>
+      <ReturnFocus opener={opener} />
     </Modal>
   );
 }

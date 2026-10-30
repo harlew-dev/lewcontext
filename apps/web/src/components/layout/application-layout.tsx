@@ -1,7 +1,14 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/router";
 import {
   ArrowRightStartOnRectangleIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   Cog8ToothIcon,
@@ -10,6 +17,8 @@ import {
   ShieldCheckIcon,
 } from "@heroicons/react/16/solid";
 import { QuestionMarkCircleIcon } from "@heroicons/react/20/solid";
+import { WorkspaceAvatar } from "@/components/app/workspaces/workspace-avatar";
+import { CreateWorkspaceDialog } from "@/components/app/workspaces/workspace-form";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +58,7 @@ import { useApi } from "@/lib/api";
 import { navigation, routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useActionError } from "@/lib/use-action-error";
+import { useWorkspace, useWorkspaceList } from "@/lib/workspace";
 import type { AppPageProps, User } from "@/lib/types";
 import { SidebarLayout } from "./sidebar-layout";
 function initialsOf(user: User) {
@@ -84,12 +94,10 @@ function AccountDropdownMenu({
     </DropdownMenu>
   );
 }
-const workspaceAvatar =
-  "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950";
-// Workspace switcher. Forma has one personal workspace per account, so
-// the menu lists it alone; switching and creating workspaces are placeholders
-// until the API supports them.
-function WorkspaceDropdown() {
+// Workspace switcher: the current workspace, its settings, every workspace
+// the member belongs to and "New workspace…".
+function WorkspaceDropdown({ onCreate }: { onCreate: () => void }) {
+  const workspace = useWorkspace();
   return (
     <Dropdown>
       <DropdownButton
@@ -97,27 +105,97 @@ function WorkspaceDropdown() {
         className="lg:mb-2.5"
         aria-label="Workspace menu"
       >
-        <Avatar square initials="F" className={workspaceAvatar} />
-        <SidebarLabel>Forma</SidebarLabel>
+        <WorkspaceAvatar workspace={workspace} />
+        <SidebarLabel>{workspace.name}</SidebarLabel>
         <ChevronDownIcon />
       </DropdownButton>
       <DropdownMenu className="min-w-80 lg:min-w-64" anchor="bottom start">
-        <DropdownItem href={routes.settings}>
+        <DropdownItem href={routes.workspaceSettings(workspace.id)}>
           <Cog8ToothIcon />
-          <DropdownLabel>Settings</DropdownLabel>
+          <DropdownLabel>Workspace settings</DropdownLabel>
         </DropdownItem>
         <DropdownDivider />
-        <DropdownItem href={routes.dashboard}>
-          <Avatar square initials="F" className={workspaceAvatar} />
-          <DropdownLabel>Personal workspace</DropdownLabel>
-        </DropdownItem>
+        <WorkspaceMenuList />
         <DropdownDivider />
-        <DropdownItem disabled>
+        <DropdownItem onClick={onCreate}>
           <PlusIcon />
           <DropdownLabel>New workspace…</DropdownLabel>
         </DropdownItem>
       </DropdownMenu>
     </Dropdown>
+  );
+}
+// The member's workspaces, newest first, scrolling inside the menu. Reaching
+// the end loads the next page; "Show more" does the same for keyboards and
+// browsers without IntersectionObserver.
+function WorkspaceMenuList() {
+  const current = useWorkspace();
+  const list = useWorkspaceList();
+  const end = useRef<HTMLDivElement>(null);
+  const { hasMore, loadMore } = list;
+  useEffect(() => {
+    const target = end.current;
+    if (!target || !hasMore || typeof IntersectionObserver === "undefined")
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { root: target.parentElement },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
+  const items = list.items.length ? list.items : [current];
+  return (
+    <div
+      aria-busy={list.loadingMore}
+      className="col-span-full grid max-h-72 grid-cols-[auto_1fr_1.5rem_0.5rem_auto] overflow-y-auto supports-[grid-template-columns:subgrid]:grid-cols-subgrid"
+    >
+      {items.map((workspace) => (
+        <DropdownItem
+          key={workspace.id}
+          href={routes.dashboard(workspace.id)}
+          aria-current={workspace.id === current.id ? "page" : undefined}
+        >
+          <WorkspaceAvatar workspace={workspace} />
+          <DropdownLabel className="truncate">{workspace.name}</DropdownLabel>
+          {workspace.id === current.id && (
+            <span className="col-start-5 row-start-1 flex justify-end">
+              <CheckIcon className="size-4" />
+            </span>
+          )}
+        </DropdownItem>
+      ))}
+      {list.loadingMore && <WorkspaceRowSkeleton />}
+      {list.error ? (
+        <DropdownItem keepOpen onClick={list.retry}>
+          <DropdownLabel>Couldn’t load more · Retry</DropdownLabel>
+        </DropdownItem>
+      ) : (
+        list.hasMore &&
+        !list.loadingMore && (
+          <DropdownItem keepOpen onClick={list.loadMore}>
+            <DropdownLabel className="text-zinc-500 dark:text-zinc-400">
+              Show more
+            </DropdownLabel>
+          </DropdownItem>
+        )
+      )}
+      <div ref={end} aria-hidden="true" className="col-span-full h-px" />
+    </div>
+  );
+}
+function WorkspaceRowSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading more workspaces"
+      className="col-span-full flex animate-pulse items-center gap-2.5 px-3.5 py-2.5 sm:px-3 sm:py-1.5"
+    >
+      <span className="size-6 rounded-md bg-zinc-950/5 sm:size-5 dark:bg-white/5" />
+      <span className="h-3.5 flex-1 rounded bg-zinc-950/5 dark:bg-white/5" />
+    </div>
   );
 }
 // The route being navigated to, or the current one when idle. Marking the
@@ -138,14 +216,14 @@ function useCurrentPath() {
       router.events.off("routeChangeError", stop);
     };
   }, [router.events]);
-  return pending ?? router.pathname;
+  return pending ?? router.asPath.split(/[?#]/)[0];
 }
 function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onClose={onClose}>
       <DialogTitle>Make yourself at home.</DialogTitle>
       <DialogDescription>
-        Forma keeps your projects together in a private workspace.
+        Forma keeps your projects together in workspaces you can share.
       </DialogDescription>
       <DialogBody>
         <ol className="list-decimal space-y-2 pl-5 text-base/6 text-zinc-700 sm:text-sm/6 dark:text-zinc-300">
@@ -165,9 +243,11 @@ function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 export function ApplicationLayout({ children }: { children: ReactNode }) {
   const api = useApi();
   const session = useSession();
+  const workspace = useWorkspace();
   const router = useRouter();
   const error = useActionError();
   const [help, setHelp] = useState(false);
+  const [creating, setCreating] = useState(false);
   const currentPath = useCurrentPath();
   const initials = initialsOf(session.user);
   async function signOut() {
@@ -207,11 +287,11 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       sidebar={
         <Sidebar>
           <SidebarHeader>
-            <WorkspaceDropdown />
+            <WorkspaceDropdown onCreate={() => setCreating(true)} />
           </SidebarHeader>
           <SidebarBody>
             <SidebarSection aria-label="Main navigation">
-              {navigation.map(({ label, href, icon: Icon }) => (
+              {navigation(workspace.id).map(({ label, href, icon: Icon }) => (
                 <SidebarItem
                   key={href}
                   href={href}
@@ -265,6 +345,10 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       )}
       {children}
       <HelpDialog open={help} onClose={() => setHelp(false)} />
+      <CreateWorkspaceDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+      />
     </SidebarLayout>
   );
 }

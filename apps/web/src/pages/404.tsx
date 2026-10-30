@@ -6,7 +6,7 @@ export default function NotFound() {
     <StatusPage
       title="This page has wandered off."
       description="Let’s get you back to your workspace."
-      action={<Button href={routes.dashboard}>Back to overview</Button>}
+      action={<Button href={routes.app}>Back to your workspace</Button>}
     />
   );
 }

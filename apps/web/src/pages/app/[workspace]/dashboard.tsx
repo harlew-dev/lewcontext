@@ -23,26 +23,29 @@ import { paths } from "@/lib/api";
 import { routes } from "@/lib/routes";
 import { appProps, initial } from "@/lib/server";
 import { useSession } from "@/lib/session";
-import type { AppPageProps, Initial, SessionProps } from "@/lib/types";
+import type { AppPageProps, Initial } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
+import { useWorkspace } from "@/lib/workspace";
 import { statuses, type Project } from "@/types/projects";
 type Status = Project["status"];
-type DashboardProps = SessionProps & {
+type DashboardProps = {
   recent: Initial<Page<Project>>;
   counts: Initial<Page<Project>>[];
 };
 const failure = "We couldn’t load your projects. Please try again.";
 // The five most recently updated projects; the page's item count is the total.
-const recentPath = paths.projects.index({ perPage: 5 });
+function recentPath(workspace: string) {
+  return paths.projects(workspace).index({ perPage: 5 });
+}
 // A one-row page per status, read for its item count.
-function countPath(status: Status) {
-  return paths.projects.index({ status, perPage: 1 });
+function countPath(workspace: string, status: Status) {
+  return paths.projects(workspace).index({ status, perPage: 1 });
 }
 export function getServerSideProps(context: GetServerSidePropsContext) {
-  return appProps(context, async (api) => {
+  return appProps(context, async (api, { id }) => {
     const [recent, ...counts] = await Promise.all([
-      initial(api, recentPath, failure),
-      ...statuses.map((status) => initial(api, countPath(status), failure)),
+      initial(api, recentPath(id), failure),
+      ...statuses.map((status) => initial(api, countPath(id, status), failure)),
     ]);
     return { recent, counts };
   });
@@ -54,7 +57,8 @@ export default function Dashboard(props: AppPageProps<DashboardProps>) {
 Dashboard.getLayout = appLayout;
 function DashboardContent({ recent, counts }: DashboardProps) {
   const session = useSession();
-  const list = useResource(recentPath, recent);
+  const workspace = useWorkspace();
+  const list = useResource(recentPath(workspace.id), recent);
   const editor = useProjectEditor();
   const total = list.data?.pages.items;
   return (
@@ -80,7 +84,9 @@ function DashboardContent({ recent, counts }: DashboardProps) {
               key={status}
               status={status}
               total={total}
-              initial={counts.find((c) => c.path === countPath(status))}
+              initial={counts.find(
+                (c) => c.path === countPath(workspace.id, status),
+              )}
             />
           ))}
         </div>
@@ -92,7 +98,7 @@ function DashboardContent({ recent, counts }: DashboardProps) {
             refreshing={list.refreshing}
             onRefresh={list.refresh}
           />
-          <Button plain href={routes.projects}>
+          <Button plain href={routes.projects(workspace.id)}>
             View all
           </Button>
         </div>
@@ -139,7 +145,8 @@ function StatusStat({
   total: number;
   initial?: Initial<Page<Project>>;
 }) {
-  const count = useResource(countPath(status), initial);
+  const workspace = useWorkspace();
+  const count = useResource(countPath(workspace.id, status), initial);
   return (
     <Stat
       title={status}
@@ -170,7 +177,7 @@ function Stat({
       </div>
       <div className="mt-3 text-sm/6 sm:text-xs/6">
         {total === undefined ? (
-          <span className="text-zinc-500">In your workspace</span>
+          <span className="text-zinc-500">In this workspace</span>
         ) : (
           <>
             <Badge color={color}>{share}%</Badge>{" "}
