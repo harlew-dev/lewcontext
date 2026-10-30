@@ -1,10 +1,10 @@
 import type { GetServerSidePropsContext, GetServerSidePropsResult } from "next";
-import type { Project, Session, WorkspaceProps } from "./types";
+import type { Project, Session, WorkspacePageProps } from "./types";
 import { apiRoutes, routes } from "./routes";
 const apiURL = process.env.API_URL || "http://127.0.0.1:8080";
 export async function workspaceProps(
   context: GetServerSidePropsContext,
-): Promise<GetServerSidePropsResult<WorkspaceProps | { unavailable: true }>> {
+): Promise<GetServerSidePropsResult<WorkspacePageProps>> {
   context.res.setHeader("Cache-Control", "private, no-store, max-age=0");
   const options = {
     headers: { cookie: context.req.headers.cookie || "" },

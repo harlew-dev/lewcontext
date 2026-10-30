@@ -1,12 +1,14 @@
 import { LayoutDashboard, FolderKanban, ShieldCheck } from "lucide-react";
+// Page URLs follow the file layout under src/pages (auth/* and app/*).
+// Redirects from "/" and the pre-nesting URLs are declared in next.config.mjs.
 export const routes = {
-  overview: "/",
-  projects: "/projects",
-  settings: "/settings",
-  login: "/login",
+  dashboard: "/app/dashboard",
+  projects: "/app/projects",
+  settings: "/app/settings",
+  login: "/auth/login",
 } as const;
 export const navigation = [
-  { label: "Overview", href: routes.overview, icon: LayoutDashboard },
+  { label: "Overview", href: routes.dashboard, icon: LayoutDashboard },
   { label: "Projects", href: routes.projects, icon: FolderKanban },
   { label: "Account & security", href: routes.settings, icon: ShieldCheck },
 ];

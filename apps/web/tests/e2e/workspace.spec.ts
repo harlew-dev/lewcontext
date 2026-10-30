@@ -23,12 +23,13 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
-  await expect(page).toHaveURL("/login");
+  await expect(page).toHaveURL("/auth/login");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Your name").fill("Taylor Example");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create your workspace" }).click();
+  await expect(page).toHaveURL("/app/dashboard");
   await expect(
     page.getByRole("heading", { name: "Welcome back, Taylor." }),
   ).toBeVisible();
@@ -76,13 +77,14 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
     .fill("not-a-match");
   await expect(page.getByText("No matching projects")).toBeVisible();
   await page.getByRole("textbox", { name: "Search projects" }).fill("");
-  const html = await (await page.request.get("/")).text();
+  const html = await (await page.request.get("/app/dashboard")).text();
   expect(html).toContain("Launch the good stuff");
   expect(html).toContain("_styletron_hydrate_");
-  const response = await page.request.get("/");
+  const response = await page.request.get("/app/dashboard");
   expect(response.headers()["content-security-policy"]).toContain("nonce-");
   expect(response.headers()["cache-control"]).toContain("no-store");
   await page.getByRole("link", { name: "Projects", exact: true }).click();
+  await expect(page).toHaveURL("/app/projects");
   await expect(
     page.getByRole("heading", { name: "Your projects." }),
   ).toBeVisible();
@@ -125,7 +127,7 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
     ),
   ).toBeTruthy();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await expect(page).toHaveURL("/login");
+  await expect(page).toHaveURL("/auth/login");
   await page.getByLabel("Email address").fill(email);
   await page
     .getByLabel("Password", { exact: true })
@@ -140,6 +142,23 @@ test("register, create, loading, filter, edit, SSR, security, mobile, logout, an
     page.getByRole("heading", { name: "Welcome back, Taylor." }),
   ).toBeVisible();
   expect(errors).toEqual([]);
+});
+test("root and pre-nesting URLs redirect to the nested pages", async ({
+  request,
+}) => {
+  const redirects = {
+    "/": "/app/dashboard",
+    "/login": "/auth/login",
+    "/projects": "/app/projects",
+    "/settings": "/app/settings",
+  };
+  for (const [from, to] of Object.entries(redirects)) {
+    const response = await request.get(from, { maxRedirects: 0 });
+    expect(response.status()).toBe(307);
+    expect(response.headers()["location"]).toBe(to);
+  }
+  const dashboard = await request.get("/app/dashboard", { maxRedirects: 0 });
+  expect(dashboard.headers()["location"]).toBe("/auth/login");
 });
 test("unauthenticated API requests are rejected", async ({ request }) => {
   const response = await request.get("/api/projects");

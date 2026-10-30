@@ -1,6 +1,6 @@
 # Forma
 
-A working project workspace with a Go API, PostgreSQL, and a server-rendered React frontend using **Uber Base Web (BaseUI)**. The restrained sidebar, typography, tables, forms, and dialogs are inspired by [Catalyst](https://catalyst.tailwindui.com/); no proprietary Catalyst source is included.
+A working project workspace with a Go API, PostgreSQL, and a server-rendered React frontend styled with **Tailwind CSS** and using **Uber Base Web (BaseUI)** for interactive controls. The restrained sidebar, typography, tables, forms, and dialogs are inspired by [Catalyst](https://catalyst.tailwindui.com/); no proprietary Catalyst source is included.
 
 ## Run locally
 
@@ -54,11 +54,11 @@ The browser test uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` for an
 - `apps/api/internal/httpapi/routes.go`: all API routes and authentication requirements.
 - `apps/api/internal/{auth,config,database,httpapi,store}`: cryptography, validated config, Bun connection and migrator, HTTP boundary, Bun models and queries.
 - `apps/api/migrations`: embedded Bun SQL migrations (`.tx.up.sql` / `.tx.down.sql` pairs).
-- `apps/web/src/pages`: thin Next.js Pages Router entrypoints; protected pages use request-time SSR.
+- `apps/web/src/pages`: Next.js Pages Router pages, nested as `auth/` (`/auth/login`) and `app/` (`/app/dashboard`, `/app/projects`, `/app/settings`). Each page holds its own unique content; protected pages use request-time SSR. `/` and the old `/login`, `/projects`, `/settings` URLs redirect (see `next.config.mjs`).
 - `apps/web/src/lib/routes.ts`: navigation and API route definitions.
-- `apps/web/src/components/{ui,layout,auth,dashboard,projects}`: reusable BaseUI primitives and feature components.
+- `apps/web/src/components/{ui,layout,app/projects}`: reused UI only — Tailwind/BaseUI primitives, app chrome, and project UI shared by the dashboard and projects pages.
 - `apps/web/src/lib`: typed API client, SSR loader, theme, Styletron setup, domain types.
-- `apps/web/src/styles`: styles separated by purpose; no generated utility framework or copied proprietary kit.
+- `apps/web/src/styles`: Tailwind entry (`globals.css`), design tokens (`theme.css`), element defaults (`base.css`) and custom utilities (`utilities.css`); no copied proprietary kit.
 - `docs`: setup, API/security contracts, and test instructions.
 
 Browser requests go to the same-origin `/api/*` proxy; Go listens on loopback `:8080`. SSR forwards only the requesting browser's cookies to that fixed backend URL. Authenticated HTML and API responses are not cacheable. Styletron styles are collected per SSR request and hydrated on the client. SWR caches are keyed by user ID to prevent data carrying across account changes.

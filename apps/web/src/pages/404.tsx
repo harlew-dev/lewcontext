@@ -1,13 +1,11 @@
-import Link from "next/link";
+import { StatusPage } from "@/components/ui/Feedback";
+import { TextLink } from "@/components/ui/TextLink";
+import { routes } from "@/lib/routes";
 export default function NotFound() {
   return (
-    <main className="service-unavailable">
-      <span className="eyebrow">A SMALL DETOUR</span>
-      <h1>This page has wandered off.</h1>
+    <StatusPage eyebrow="A SMALL DETOUR" title="This page has wandered off.">
       <p>Let’s get you back to your workspace.</p>
-      <Link className="text-link" href="/">
-        Back to overview →
-      </Link>
-    </main>
+      <TextLink href={routes.dashboard}>Back to overview →</TextLink>
+    </StatusPage>
   );
 }

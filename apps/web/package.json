@@ -10,8 +10,8 @@
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "format": "prettier --write src tests playwright.config.ts vitest.config.ts eslint.config.mjs next.config.mjs",
-    "format:check": "prettier --check src tests playwright.config.ts vitest.config.ts eslint.config.mjs next.config.mjs"
+    "format": "prettier --write src tests playwright.config.ts vitest.config.ts eslint.config.mjs next.config.mjs postcss.config.mjs",
+    "format:check": "prettier --check src tests playwright.config.ts vitest.config.ts eslint.config.mjs next.config.mjs postcss.config.mjs"
   },
   "dependencies": {
     "baseui": "18.2.0",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^24.0.0",
@@ -33,9 +34,10 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "16.4.3",
     "jsdom": "^26.1.0",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vitest": "5.0.5",
-    "prettier": "^3.6.2"
+    "vitest": "5.0.5"
   },
   "overrides": {
     "@types/react": "$@types/react",

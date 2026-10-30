@@ -30,3 +30,4 @@ export type WorkspaceProps = {
   initialProjects: Project[] | null;
   initialError: string | null;
 };
+export type WorkspacePageProps = WorkspaceProps | { unavailable: true };

@@ -9,12 +9,6 @@ import { theme } from "@/lib/theme";
 import { request } from "@/lib/api";
 import { RouteProgress } from "@/components/ui/RouteProgress";
 import "@/styles/globals.css";
-import "@/styles/layout.css";
-import "@/styles/dashboard.css";
-import "@/styles/projects.css";
-import "@/styles/components.css";
-import "@/styles/auth.css";
-import "@/styles/responsive.css";
 export default function App({
   Component,
   pageProps,

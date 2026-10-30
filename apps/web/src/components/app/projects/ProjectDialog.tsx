@@ -4,11 +4,13 @@ import { Select } from "baseui/select";
 import { FormControl } from "baseui/form-control";
 import { Plus, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Field, TextAreaField } from "@/components/ui/Field";
-import { ErrorNotice } from "@/components/ui/Feedback";
+import { Input, Textarea } from "@/components/ui/Form";
+import { Notice } from "@/components/ui/Feedback";
+import { cx } from "@/lib/cx";
 import { request, errorMessage } from "@/lib/api";
 import { apiRoutes } from "@/lib/routes";
 import { statuses, colors, type Project, type ProjectInput } from "@/lib/types";
+import { projectColors } from "./projectStyles";
 export function ProjectDialog({
   project,
   csrfToken,
@@ -70,13 +72,13 @@ export function ProjectDialog({
           {project ? "A little fine-tuning." : "Make something happen."}
         </ModalHeader>
         <ModalBody>
-          <p className="modal-description">
+          <p className="mb-5 text-body leading-[1.7] text-mauve-600">
             {project
               ? "Update the details and keep your project moving."
               : "Every good idea starts somewhere. Give yours a home."}
           </p>
-          {error && <ErrorNotice message={error} />}
-          <Field
+          {error && <Notice variant="error">{error}</Notice>}
+          <Input
             label="Project name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
@@ -86,11 +88,16 @@ export function ProjectDialog({
             autoFocus
             disabled={saving}
           />
-          <TextAreaField
+          <Textarea
+            id="project-description"
             disabled={saving}
             label="Description"
             value={form.description}
-            onChange={(description) => setForm({ ...form, description })}
+            onChange={(e) =>
+              setForm({ ...form, description: e.currentTarget.value })
+            }
+            maxLength={500}
+            placeholder="What are you working toward?"
           />
           <FormControl label="Status" htmlFor="project-status">
             <Select
@@ -113,13 +120,18 @@ export function ProjectDialog({
               }
             />
           </FormControl>
-          <fieldset className="color-picker">
-            <legend>Project color</legend>
+          <fieldset className="my-3.75 flex gap-2.5">
+            <legend className="mb-2.5 text-body">Project color</legend>
             {colors.map((color) => (
               <button
                 key={color}
                 type="button"
-                className={`color-choice color-${color} ${form.color === color ? "selected" : ""}`}
+                className={cx(
+                  "grid size-7.5 place-items-center rounded-full border-2 border-transparent",
+                  projectColors[color],
+                  form.color === color &&
+                    "outline-1 outline-offset-3 outline-current",
+                )}
                 aria-label={color}
                 aria-pressed={form.color === color}
                 disabled={saving}

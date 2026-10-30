@@ -16,6 +16,10 @@ export function RouteProgress() {
     };
   }, [router.events]);
   return loading ? (
-    <div role="status" aria-label="Loading page" className="route-progress" />
+    <div
+      role="status"
+      aria-label="Loading page"
+      className="fixed top-0 left-0 z-[9999] h-0.75 w-full bg-mauve-400"
+    />
   ) : null;
 }

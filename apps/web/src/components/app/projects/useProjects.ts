@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { ApiError, request } from "@/lib/api";
 import { apiRoutes, routes } from "@/lib/routes";
 import type { Project, WorkspaceProps } from "@/lib/types";
+export type ProjectsState = ReturnType<typeof useProjects>;
 export function useProjects(props: WorkspaceProps) {
   const router = useRouter();
   const [dialog, setDialog] = useState<Project | "new" | null>(null);
