@@ -25,6 +25,8 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [ui/pagination.md](ui/pagination.md) | build a paginated, searchable, sortable list |
 | [ui/design.md](ui/design.md) | build or style components |
 | [ui/testing.md](ui/testing.md) | write or run Vitest and Playwright tests |
+| [ui/base-ui.md](ui/base-ui.md) | use or customise a BaseUI component, or hit one of its known issues |
+| [ui/strict-mode.md](ui/strict-mode.md) | see something only under `make dev` (double renders, effects running twice) |
 
 ## Everything else
 

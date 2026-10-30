@@ -38,4 +38,4 @@ React 18, strict TypeScript, a single-page app on React Router v7 (framework mod
 
 ## More
 
-[pages.md](pages.md) · [api.md](api.md) · [pagination.md](pagination.md) · [design.md](design.md) · [testing.md](testing.md)
+[pages.md](pages.md) · [api.md](api.md) · [pagination.md](pagination.md) · [design.md](design.md) · [testing.md](testing.md) · [base-ui.md](base-ui.md) · [strict-mode.md](strict-mode.md)
