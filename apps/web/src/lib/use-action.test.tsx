@@ -1,5 +1,5 @@
 import { act, render, renderHook, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { ApiError } from "./api";
 import { useAction } from "./use-action";
@@ -14,20 +14,47 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 describe("useAction()", () => {
-  it("is loading while the action runs and resolves with its value", async () => {
+  it("is busy while the action runs and resolves with its value", async () => {
     const pending = deferred<string>();
     const { result } = renderHook(() => useAction(() => pending.promise));
     let run: Promise<unknown> = Promise.resolve();
     act(() => {
       run = result.current.run();
     });
-    expect(result.current.loading).toBe(true);
+    expect(result.current.busy).toBe(true);
     await act(async () => {
       pending.resolve("saved");
       await run;
     });
-    expect(result.current.loading).toBe(false);
+    expect(result.current.busy).toBe(false);
     await expect(run).resolves.toEqual({ ok: true, value: "saved" });
+  });
+  it("shows loading only once the action has run for 200 ms", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = deferred<void>();
+      const { result } = renderHook(() => useAction(() => pending.promise));
+      let run: Promise<unknown> = Promise.resolve();
+      act(() => {
+        run = result.current.run();
+      });
+      expect(result.current.loading).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(result.current.loading).toBe(true);
+      await act(async () => {
+        pending.resolve();
+        await run;
+      });
+      expect(result.current.loading).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(result.current.loading).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("ignores a second run while one is in flight", async () => {
     const pending = deferred<void>();
@@ -63,7 +90,7 @@ describe("useAction()", () => {
       await expect(result.current.run()).resolves.toEqual({ ok: false });
     });
     expect(result.current.error.message).toBe("Too many attempts.");
-    expect(result.current.loading).toBe(false);
+    expect(result.current.busy).toBe(false);
     fail = false;
     await act(async () => {
       await result.current.run();

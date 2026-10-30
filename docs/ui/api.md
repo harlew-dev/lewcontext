@@ -81,7 +81,16 @@ list.refresh()   // Retry, refresh, or after a mutation
   <Button type="submit" loading={save.loading}>Create project</Button>
   ```
 
-  `run` ignores calls while one is in flight (a double click submits once) and awaits everything the action awaits, so an action that ends with `navigate(...)` stays loading until the next page has loaded. A failure goes to `save.error` for `<ErrorNotice>`, unless `onError` handles it and returns `true`: an action that is only a button, with no fields (sign out other sessions), shows `toast.error(errorMessage(e))` there instead; and when the API names the field (`ApiError.field`, e.g. the change-password dialog's `currentPassword`), show the message on that field with `ErrorMessage`.
+  It has two pending flags:
+
+  | Flag | True | Use it for |
+  | --- | --- | --- |
+  | `busy` | At once, from `run` until the action settles | Logic: refusing to close a dialog mid-save (`onClose={() => !save.busy && onClose()}`, Cancel too) |
+  | `loading` | Once `busy` has lasted 200 ms, then for at least 400 ms (`useDelayedLoading`, `lib/use-delayed-loading.ts`) | What the user sees: `<Button loading>`, disabled fields |
+
+  So a quick request shows no spinner and doesn't grey out the form for a moment, and a slower one doesn't flash it for a few milliseconds. A double submit is refused regardless, as soon as `run` starts.
+
+  `run` ignores calls while one is in flight (a double click submits once) and awaits everything the action awaits, so an action that ends with `navigate(...)` stays busy (and loading) until the next page has loaded. A failure goes to `save.error` for `<ErrorNotice>`, unless `onError` handles it and returns `true`: an action that is only a button, with no fields (sign out other sessions), shows `toast.error(errorMessage(e))` there instead; and when the API names the field (`ApiError.field`, e.g. the change-password dialog's `currentPassword`), show the message on that field with `ErrorMessage`.
 - **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects(workspace.id).matches()` (that workspace's lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
 - **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function, with the workspace's ID after a rename, so the switcher and the current workspace reload.
 - **Success messages are toasts:** `toast.success("Workspace renamed.")` ([design.md](design.md#toasts)), not a `done` state and an inline Notice.

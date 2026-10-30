@@ -16,7 +16,7 @@ React 18, strict TypeScript, a single-page app on React Router v7 (framework mod
 | `components/layout/*` | Page chrome: `application-layout`, `sidebar-layout`, `auth-layout`, `status-page` |
 | `components/app/<feature>/*` | Feature UI shared by several pages (`projects`: table parts, dialog, editor hook, query helpers; `workspaces`: avatar, name field, create form and dialog) |
 | `lib/api/*` | The typed API client, one file per resource: `const api = useApi()`, `api.projects(ws).create()`, `paths.projects(ws).index()`, `api.workspaces().create()` ([api.md](api.md)) |
-| `lib/*` | Other non-visual helpers: `session` (`useSession`), `use-action` (`useAction` for mutations), `format` (`formatDate`, `formatDateTime`, in UTC), `workspace` (`useWorkspace`, `useWorkspaceList`), `loaders` (route loaders), `use-resource`, `use-resource-pages`, `pagination`, `ids`, `routes`, `return-focus`, `baseui`, `interactive`, `styletron` |
+| `lib/*` | Other non-visual helpers: `session` (`useSession`), `use-action` (`useAction` for mutations), `use-delayed-loading` (`useDelayedLoading`: show a loading state only after 200 ms), `format` (`formatDate`, `formatDateTime`, in UTC), `workspace` (`useWorkspace`, `useWorkspaceList`), `loaders` (route loaders), `use-resource`, `use-resource-pages`, `pagination`, `ids`, `routes`, `return-focus`, `baseui`, `interactive`, `styletron` |
 | `types/*` | Domain types and constants per resource (`types/projects.ts`, `types/workspaces.ts`) |
 | `styles/*` | `globals.css` imports `theme.css` (font) and `base.css` (element defaults) |
 

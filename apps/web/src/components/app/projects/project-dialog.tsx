@@ -80,8 +80,10 @@ function ProjectForm({
     onSaved(result.value);
     onClose();
   }
+  // Not while saving, even before the dialog shows it's loading.
+  const close = () => !save.busy && onClose();
   return (
-    <Dialog open={open} onClose={() => !save.loading && onClose()}>
+    <Dialog open={open} onClose={close}>
       <form onSubmit={submit}>
         <DialogTitle>{project ? "Edit project" : "New project"}</DialogTitle>
         <DialogDescription>
@@ -146,7 +148,7 @@ function ProjectForm({
           </FieldGroup>
         </DialogBody>
         <DialogActions>
-          <Button plain onClick={onClose} disabled={save.loading}>
+          <Button plain onClick={close} disabled={save.loading}>
             Cancel
           </Button>
           <Button

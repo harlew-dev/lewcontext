@@ -1,6 +1,6 @@
 # Delayed loading states
 
-Status: **planned**, not started.
+Status: **implemented 2026-10-30**, as planned with the recommended answers to the open questions: the hook is `useDelayedLoading`, 200 ms delay and 400 ms minimum, errors show at once, and fields stay editable until `loading`. `workspace-settings.test.tsx` needed no change (its disabled check is before submitting). The change-password dialog's Back button also checks `busy`.
 
 ## Why
 

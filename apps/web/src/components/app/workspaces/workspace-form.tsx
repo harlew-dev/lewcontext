@@ -40,6 +40,7 @@ export function useCreateWorkspace(onOpened?: () => void) {
   return {
     name,
     setName,
+    busy: create.busy,
     loading: create.loading,
     valid,
     error: create.error,
@@ -102,8 +103,10 @@ function CreateWorkspaceForm({
   onClose: () => void;
 }) {
   const create = useCreateWorkspace(onClose);
+  // Not while the workspace is being created, even before it shows loading.
+  const close = () => !create.busy && onClose();
   return (
-    <Dialog open={open} onClose={() => !create.loading && onClose()}>
+    <Dialog open={open} onClose={close}>
       <form onSubmit={create.submit}>
         <DialogTitle>New workspace</DialogTitle>
         <DialogDescription>
@@ -119,7 +122,7 @@ function CreateWorkspaceForm({
           />
         </DialogBody>
         <DialogActions>
-          <Button plain onClick={onClose} disabled={create.loading}>
+          <Button plain onClick={close} disabled={create.loading}>
             Cancel
           </Button>
           <Button

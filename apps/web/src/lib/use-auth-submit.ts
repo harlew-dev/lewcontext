@@ -5,7 +5,7 @@ import { useAction } from "./use-action";
 // Shared by the sign-in and registration pages: sends the form with `signIn`
 // (api.auth().login or .register), then opens `destination` when given (a new
 // account goes to onboarding), else ?next= or /app (the newest workspace). The
-// form stays loading until that page has loaded. A failed attempt's error
+// form stays busy (and loading) until that page has loaded. A failed attempt's error
 // stays until the next attempt fails or the page changes.
 export function useAuthSubmit<B>(
   signIn: (body: B) => Promise<unknown>,
@@ -21,5 +21,10 @@ export function useAuthSubmit<B>(
     event.preventDefault();
     await action.run(body);
   }
-  return { loading: action.loading, error: action.error, submit };
+  return {
+    busy: action.busy,
+    loading: action.loading,
+    error: action.error,
+    submit,
+  };
 }

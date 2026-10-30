@@ -134,6 +134,7 @@ function ChangePasswordDialog({
     () => api.auth().changePassword({ currentPassword, newPassword }),
     { onError: showOnField },
   );
+  const busy = verify.busy || change.busy;
   const loading = verify.loading || change.loading;
   const error = step === "current" ? verify.error : change.error;
   function clearPasswords() {
@@ -142,7 +143,7 @@ function ChangePasswordDialog({
     setConfirmation("");
   }
   function close() {
-    if (loading) return;
+    if (busy) return;
     clearPasswords();
     onClose();
   }
@@ -166,6 +167,7 @@ function ChangePasswordDialog({
     onClose();
   }
   function back() {
+    if (busy) return;
     verify.error.clear();
     change.error.clear();
     setFieldErrors({});

@@ -97,8 +97,8 @@ BaseUI styles itself with Styletron. `src/entry.server.tsx` runs only at build t
 
 ## Signed-out pages
 
-`pages/auth/*` export `clientLoader` → `guestLoader(request)`, wrap their content in `AuthLayout` and submit with `useAuthSubmit(api.auth().login)` (or `.register` with `routes.onboarding` as the destination, with `const api = useApi()`), which runs through `useAction` (loading until the next page has loaded, `error` for `<ErrorNotice>`) and opens `?next=` or `/app` on success.
+`pages/auth/*` export `clientLoader` → `guestLoader(request)`, wrap their content in `AuthLayout` and submit with `useAuthSubmit(api.auth().login)` (or `.register` with `routes.onboarding` as the destination, with `const api = useApi()`), which runs through `useAction` (busy, and loading after 200 ms, until the next page has loaded, `error` for `<ErrorNotice>`) and opens `?next=` or `/app` on success.
 
 ## Status pages
 
-`StatusPage` in `components/layout/status-page.tsx` renders `NotFound` ("This page has wandered off.", linking to `/app`) and `ServiceUnavailable` (retry). The root `ErrorBoundary` shows `NotFound` for a 404 route error and `ServiceUnavailable` otherwise. `RouteProgress` shows a top bar when a navigation waits more than 200 ms on a loader.
+`StatusPage` in `components/layout/status-page.tsx` renders `NotFound` ("This page has wandered off.", linking to `/app`) and `ServiceUnavailable` (retry). The root `ErrorBoundary` shows `NotFound` for a 404 route error and `ServiceUnavailable` otherwise. `RouteProgress` shows a top bar when a navigation waits more than 200 ms on a loader (`useDelayedLoading`, so it also stays at least 400 ms).

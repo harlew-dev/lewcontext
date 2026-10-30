@@ -1,18 +1,10 @@
-import { useEffect, useState } from "react";
 import { useNavigation } from "react-router";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 // Thin bar at the top of the viewport while a slow client-side navigation
-// waits for a route loader.
+// waits for a route loader. Only shown for navigations slower than 200 ms,
+// so quick page changes don't flash it.
 export function RouteProgress() {
-  const busy = useNavigation().state !== "idle";
-  const [loading, setLoading] = useState(false);
-  if (!busy && loading) setLoading(false);
-  useEffect(() => {
-    if (!busy) return;
-    // Only show the bar for navigations slower than this, so quick page
-    // changes don't flash it.
-    const timer = setTimeout(() => setLoading(true), 200);
-    return () => clearTimeout(timer);
-  }, [busy]);
+  const loading = useDelayedLoading(useNavigation().state !== "idle");
   return loading ? (
     <div
       role="status"
