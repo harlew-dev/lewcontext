@@ -3,6 +3,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    // The request body field the error is about, when the API names one.
+    public field?: string,
   ) {
     super(message);
   }
@@ -12,7 +14,7 @@ export function errorMessage(error: unknown): string {
     ? error.message
     : "Something went wrong. Please try again.";
 }
-export type Method = "POST" | "PATCH" | "DELETE";
+export type Method = "POST" | "PUT" | "PATCH" | "DELETE";
 // How resource files reach the API.
 export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;
@@ -52,6 +54,7 @@ async function request<T>(
     throw new ApiError(
       data.error || "Unable to connect. Please try again.",
       response.status,
+      typeof data.field === "string" ? data.field : undefined,
     );
   }
   if (response.status === 204) return undefined as T;

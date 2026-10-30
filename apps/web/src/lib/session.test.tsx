@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useApi } from "./api";
 import {
   SessionProvider,
   useIsGuest,
   useOptionalSession,
+  useRenewSession,
   useSession,
 } from "./session";
 import type { Session } from "./types";
@@ -85,5 +86,33 @@ describe("useApi()", () => {
     value = { ...session, csrfToken: "rotated" };
     rerender();
     expect(result.current).not.toBe(first);
+  });
+});
+describe("useRenewSession()", () => {
+  const rotated: Session = { ...session, csrfToken: "csrf-8" };
+  it("replaces the session, so mutations send the new CSRF token", async () => {
+    const fetch = stubFetch();
+    const { result } = renderHook(
+      () => ({ api: useApi(), renew: useRenewSession() }),
+      { wrapper: provide(session) },
+    );
+    act(() => result.current.renew(rotated));
+    await result.current.api.sessions().destroyOthers();
+    expect(fetch.mock.calls[0][1].headers.get("X-CSRF-Token")).toBe("csrf-8");
+  });
+  it("gives way to a session the loader provides later", () => {
+    let value: Session = session;
+    function Wrapper({ children }: { children: ReactNode }) {
+      return <SessionProvider session={value}>{children}</SessionProvider>;
+    }
+    const { result, rerender } = renderHook(
+      () => ({ session: useSession(), renew: useRenewSession() }),
+      { wrapper: Wrapper },
+    );
+    act(() => result.current.renew(rotated));
+    expect(result.current.session.csrfToken).toBe("csrf-8");
+    value = { ...session, csrfToken: "csrf-9" };
+    rerender();
+    expect(result.current.session.csrfToken).toBe("csrf-9");
   });
 });

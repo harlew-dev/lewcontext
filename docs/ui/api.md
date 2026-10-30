@@ -72,7 +72,7 @@ list.refresh()   // Retry, refresh, or after a mutation
 
 ## Changing data
 
-- Disable duplicate submits with `<Button loading={saving}>`. Show a form's API errors (`ApiError`, `errorMessage(e)`) in the form with `Notice variant="error"`. An action that is only a button, with no fields (sign out, sign out other sessions), reports its error with `toast.error(errorMessage(e))` instead.
+- Disable duplicate submits with `<Button loading={saving}>`. Show a form's API errors (`ApiError`, `errorMessage(e)`) in the form with `Notice variant="error"`. An action that is only a button, with no fields (sign out, sign out other sessions), reports its error with `toast.error(errorMessage(e))` instead. When the API names the field (`ApiError.field`, e.g. the change-password dialog's `currentPassword`), show the message on that field with `ErrorMessage`.
 - **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects(workspace.id).matches()` (that workspace's lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
 - **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function, with the workspace's ID after a rename, so the switcher and the current workspace reload.
 - **Success messages are toasts:** `toast.success("Workspace renamed.")` ([design.md](design.md#toasts)), not a `done` state and an inline Notice.

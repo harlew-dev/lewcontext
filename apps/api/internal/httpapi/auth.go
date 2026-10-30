@@ -26,7 +26,13 @@ func validCredentials(in *credentials) bool {
 	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 	in.Name = strings.TrimSpace(in.Name)
 	address, err := mail.ParseAddress(in.Email)
-	return err == nil && address.Address == in.Email && len(in.Email) <= 254 && in.Password != "" && len(in.Password) <= 128
+	return err == nil && address.Address == in.Email && len(in.Email) <= 254 && passwordInBounds(in.Password)
+}
+
+// passwordInBounds is the shape any password a request sends must have: not
+// empty and at most 128 bytes, which also caps the hashing work.
+func passwordInBounds(password string) bool {
+	return password != "" && len(password) <= 128
 }
 func strongPassword(password string) bool {
 	return utf8.RuneCountInString(password) >= 12
@@ -100,6 +106,9 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	s.startSession(w, r, user, 200)
 }
+
+// startSession signs u in on this browser, replacing the session its cookie
+// carried, and responds with the new session in the shape of /api/auth/me.
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.User, status int) {
 	token, err := auth.Token()
 	if err != nil {
@@ -115,12 +124,14 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.Us
 	if cookie, err := r.Cookie(auth.CookieName(s.Config.Production)); err == nil {
 		old = auth.Digest(cookie.Value)
 	}
-	if err = s.Store.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, time.Now().Add(auth.SessionLifetime)); err != nil {
+	signedIn := time.Now()
+	expires := signedIn.Add(auth.SessionLifetime)
+	if err = s.Store.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires); err != nil {
 		internalError(w, err)
 		return
 	}
 	http.SetCookie(w, auth.Cookie(token, s.Config.Production))
-	jsonResponse(w, status, map[string]any{"user": u, "csrfToken": csrf})
+	jsonResponse(w, status, map[string]any{"user": u, "csrfToken": csrf, "expiresAt": expires, "signedInAt": signedIn})
 }
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	session := current(r)

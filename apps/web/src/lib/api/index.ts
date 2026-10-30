@@ -9,7 +9,12 @@ export { ApiError, errorMessage } from "./http";
 export type { ApiPath } from "./paths";
 export type { ProjectIndexQuery } from "./projects";
 export type { WorkspaceIndexQuery } from "./workspaces";
-export type { Credentials, Registration, SignedIn } from "./auth";
+export type {
+  Credentials,
+  PasswordChange,
+  Registration,
+  SignedIn,
+} from "./auth";
 // Typed API paths, for SWR keys and module constants:
 //   paths.workspaces.index()   paths.projects(workspace).index({ page: 2 })
 export const paths = {

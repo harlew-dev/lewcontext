@@ -65,6 +65,7 @@ The layout route puts the loaded session in `SessionProvider` (`lib/session.tsx`
 | `useSession()` | `Session`; throws when signed out | Signed-in UI (the name, `signedInAt`) |
 | `useIsGuest()` | `true` when signed out | Guest UI under a `SessionProvider` |
 | `useOptionalSession()` | `Session \| null` | Hooks that work everywhere |
+| `useRenewSession()` | `(session) => void`: replaces the loaded session | After the API rotates the session (changing the password), so later requests send the new CSRF token |
 | `useWorkspace()` | `Workspace` with `role`; throws outside signed-in pages | Paths and links (`workspace.id`), the name, role checks (`canManage(role)`) |
 | `useWorkspaceList()` | All the member's workspaces, a page at a time | The switcher ([pagination.md](pagination.md#infinite-lists)) |
 | `useRefreshWorkspaces()` | `(id?) => void`: reloads the list, and `id`'s record | After creating or renaming a workspace |

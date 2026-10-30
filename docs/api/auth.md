@@ -8,6 +8,7 @@ Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `inte
 - Sign-up requires 12+ Unicode characters; every password is at most 128 UTF-8 bytes. Login only checks that cap, so seeded development accounts with a short `DEMO_PASSWORD` (`password`) can sign in. Emails are trimmed and lowercased; names are 1–80 characters.
 - Login against an unknown email still checks a dummy hash, and every failure gives the same message.
 - At most 4 password hashes run at once per process (503 when busy).
+- **Changing the password** (signed in) takes the current password twice: `POST /api/auth/password/verify` checks it so the web app can move on to the new one, and `PUT /api/auth/password` checks it again, because nothing remembers that the first check passed. The new password follows the sign-up rule and must differ from the current one. Verifying, saving the new hash and deleting **every** session of the user's run in one transaction with the user row locked; then this browser gets a new session (cookie and CSRF token), like login. A wrong current password is 422 with `field`, not 401, which the web app treats as an expired session.
 - Plaintext passwords are never logged or stored.
 
 ## Sessions
@@ -15,7 +16,7 @@ Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `inte
 - A session token is 32 random bytes (base64url, 43 characters). Only its SHA-256 digest is stored in `sessions`.
 - **Cookie:** `forma_session` locally, `__Host-forma_session` in production. HttpOnly, SameSite=Lax, Path=/, Secure in production.
 - **Expiry:** 30 minutes idle (every request refreshes it) and 24 hours absolute. Expired sessions answer 401.
-- **Login and register rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
+- **Login, register and a password change rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
 - Logout deletes the session. `DELETE /api/auth/sessions` deletes all others.
 - Session tokens never go in localStorage or URLs.
 
@@ -35,8 +36,8 @@ Stored in `auth_attempts`, in 15-minute fixed windows. Successful attempts count
 
 | Key | Limit | Where |
 | --- | --- | --- |
-| `ip:<digest of connection IP>` | 60 | `limitAuth` on register and login |
-| `account:<digest of email>` | 10 | `accountLimit` in register and login |
+| `ip:<digest of connection IP>` | 60 | `limitAuth` on register, login and both password endpoints |
+| `account:<digest of email>` | 10 | `accountLimit` in register, login and both password endpoints (the session user's email), so a stolen session can't guess the password faster than a login could |
 
 Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's dev proxy) shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
 

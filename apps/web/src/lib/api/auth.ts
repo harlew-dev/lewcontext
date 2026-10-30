@@ -10,7 +10,10 @@ export const authRoutes = {
   login: () => "/api/auth/login",
   register: () => "/api/auth/register",
   logout: () => "/api/auth/logout",
+  password: () => "/api/auth/password",
+  verifyPassword: () => "/api/auth/password/verify",
 };
+export type PasswordChange = { currentPassword: string; newPassword: string };
 export function auth(http: Http) {
   return {
     me: () => http.get(authRoutes.me()),
@@ -23,6 +26,16 @@ export function auth(http: Http) {
         password,
       }),
     logout: () => http.send<void>("POST", authRoutes.logout(), {}),
+    // Checks the current password; failures are an ApiError with field "password".
+    verifyPassword: (password: string) =>
+      http.send<void>("POST", authRoutes.verifyPassword(), { password }),
+    // Saves a new password. The API signs out every session and returns a new
+    // one for this browser (new cookie and CSRF token), for useRenewSession().
+    changePassword: ({ currentPassword, newPassword }: PasswordChange) =>
+      http.send<Session>("PUT", authRoutes.password(), {
+        currentPassword,
+        newPassword,
+      }),
   };
 }
 export const sessionRoutes = {

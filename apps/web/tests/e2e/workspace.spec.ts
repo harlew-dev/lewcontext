@@ -6,7 +6,15 @@ const returnEmail = `e2e-${stamp}-next@forma.test`;
 const scrollEmail = `e2e-${stamp}-scroll@forma.test`;
 const memberEmail = `e2e-${stamp}-member@forma.test`;
 const ownerEmail = `e2e-${stamp}-owner@forma.test`;
-const emails = [email, returnEmail, scrollEmail, memberEmail, ownerEmail];
+const passwordEmail = `e2e-${stamp}-password@forma.test`;
+const emails = [
+  email,
+  returnEmail,
+  scrollEmail,
+  memberEmail,
+  ownerEmail,
+  passwordEmail,
+];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
 // Runs SQL against the test database and returns its output; only for setup
@@ -449,6 +457,60 @@ test("other people's workspaces are not found until you're a member, then read-o
   await expect(page.getByText("Member", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByText("Shared plans")).toBeVisible();
+});
+test("change password: checks the current one twice and signs out other sessions", async ({
+  page,
+  browser,
+}) => {
+  await register(page, passwordEmail, "Pat Example");
+  await onboard(page, "Pat’s place");
+  // Another browser signed in to the same account.
+  const elsewhere = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  const signIn = await elsewhere.request.post("/api/auth/login", {
+    headers: { Origin: new URL(page.url()).origin },
+    data: { email: passwordEmail, password },
+  });
+  expect(signIn.status()).toBe(200);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Account & security" }).click();
+  await page.getByRole("button", { name: "Change password" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Current password").fill("not my password");
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Current password is incorrect.",
+  );
+  await dialog.getByLabel("Current password").fill(password);
+  await dialog.getByRole("button", { name: "Next" }).click();
+  const changed = "A different test passphrase!";
+  await dialog.getByLabel("New password", { exact: true }).fill(changed);
+  await dialog.getByLabel("Confirm new password").fill(changed);
+  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Password updated" }),
+  ).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  // The other browser was signed out; this one carries on with a new session.
+  expect((await elsewhere.request.get("/api/auth/me")).status()).toBe(401);
+  await elsewhere.close();
+  await page.getByRole("button", { name: "Sign out other sessions" }).click();
+  await expect(
+    page.getByText("All other sessions have been signed out."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page).toHaveURL("/auth/login");
+  await page.getByLabel("Email").fill(passwordEmail);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Email or password" }),
+  ).toBeVisible();
+  await page.getByLabel("Password", { exact: true }).fill(changed);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(workspaceUrl);
 });
 test("unauthenticated API requests are rejected", async ({ request }) => {
   for (const path of [

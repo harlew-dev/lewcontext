@@ -35,6 +35,12 @@ func jsonResponse(w http.ResponseWriter, status int, value any) {
 func fail(w http.ResponseWriter, status int, message string) {
 	jsonResponse(w, status, map[string]string{"error": message})
 }
+
+// failField is fail for an error about one field of the request body, so the
+// web app can show it next to that field.
+func failField(w http.ResponseWriter, status int, field, message string) {
+	jsonResponse(w, status, map[string]string{"error": message, "field": field})
+}
 func internalError(w http.ResponseWriter, err error) {
 	slog.Error("request failed", "error", err)
 	fail(w, 500, "Something went wrong. Please try again.")

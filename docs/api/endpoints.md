@@ -5,11 +5,13 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
 | GET | `/api/health` | Public | `{"status":"ok"}`, or 503 if the database is down |
-| POST | `/api/auth/register` | Origin, JSON, rate limit | 201 `{user, csrfToken}` and a new session cookie |
-| POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken}` and a rotated session cookie |
+| POST | `/api/auth/register` | Origin, JSON, rate limit | 201 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie |
+| POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie |
 | GET | `/api/auth/me` | Session | `{user, csrfToken, expiresAt, signedInAt}` |
 | POST | `/api/auth/logout` | Session, CSRF, Origin | 204; session revoked, cookie cleared |
 | DELETE | `/api/auth/sessions` | Session, CSRF, Origin | 204; every other session revoked |
+| POST | `/api/auth/password/verify` | Session, CSRF, Origin, rate limit | 204 if `{password}` is the current password; 422 with `field: "password"` if not |
+| PUT | `/api/auth/password` | Session, CSRF, Origin, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie; every earlier session revoked. 422 with `field` (`currentPassword` or `newPassword`) when refused |
 | GET | `/api/workspaces` | Session | One page of your workspaces with your role, newest first ([pagination.md](pagination.md)) |
 | POST | `/api/workspaces` | Session, CSRF, Origin | 201 with the created workspace; you are its `owner` |
 | GET | `/api/workspaces/{workspace}` | Member | The workspace with your role |
@@ -52,12 +54,12 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 | Code | Meaning |
 | --- | --- |
 | 400 | Malformed JSON or query parameters |
-| 401 | No session, expired session, or wrong credentials |
+| 401 | No session, expired session, or wrong sign-in credentials (a wrong *current* password while signed in is 422) |
 | 403 | Bad Origin or CSRF token, or a role that can't do this |
 | 404 | Not found, not yours, or a malformed ID |
 | 409 | Email already registered (generic message) |
 | 415 | Mutation without JSON content type |
-| 422 | Body failed validation |
+| 422 | Body failed validation. Errors about one field add `"field"`, e.g. `{"error": "Current password is incorrect.", "field": "currentPassword"}` |
 | 429 | Rate limited; `Retry-After: 900` |
 | 503 | Database unavailable, or sign-in concurrency full |
 
