@@ -5,7 +5,7 @@
 **Context for AI agents, built from the documents you already have.** lewcontext turns scattered, unstructured files into a structured, project-specific wiki that agents can search and reason over.
 
 > [!WARNING]
-> **Under development.** lewcontext is not ready for use yet. This README describes where it is headed: the retrieval and graph features are not built. What runs today is the application they will live in; see [The app](#the-app).
+> **Under development.** lewcontext is not ready for use yet. This README describes where it is headed: the retrieval and graph features are not built. What runs today is the application they will live in.
 
 ## Contents
 
