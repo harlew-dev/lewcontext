@@ -4,6 +4,8 @@
 
 This project replaces the previous project completely. The previous README was stale and was not used as project context. The current README documents the new application.
 
+Short summaries of how each part works (API, auth, pagination, database, seeding, pages, components, testing) are indexed in [`docs/README.md`](docs/README.md). Read the relevant doc before changing an area, and update it when what it summarises changes.
+
 - Backend: Go 1.26+, standard-library `net/http` method-aware routing, Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql` driver, PostgreSQL 15+.
 - Frontend: React 18, TypeScript in strict mode, Next.js Pages Router with request-time SSR, Tailwind CSS v4 on top of Uber Base Web (`baseui`) behaviour, SWR, Heroicons, `motion` (sliding sidebar indicator and hover background), Inter (self-hosted via Fontsource).
 - Component standard: `components/ui` holds the app's Tailwind components (restrained zinc styling, sidebar and auth layouts). Match the existing components' APIs, class patterns and data attributes when adding or changing one.
@@ -36,7 +38,7 @@ This project replaces the previous project completely. The previous README was s
 - Require session middleware on every private endpoint and scope SQL by the authenticated user ID. Never trust a request-supplied owner ID. Test cross-user access before adding resources.
 - Pass every value through Bun `?` placeholders (Bun escapes them into the query) and never build SQL text from input. Use bounded bodies/fields/headers, HTTP/query timeouts, generic public errors, and graceful shutdown. Do not enable wildcard credentialed CORS or trust forwarding headers blindly.
 - Keep per-request script CSP nonces and other security headers; inline CSS is required by Styletron. Production requires HTTPS and verified DB TLS. No demo seed in production.
-- See `docs/security.md` for limits. Do not claim email verification, password recovery, MFA, or OIDC exists until it is implemented and tested.
+- See `docs/api/auth.md` for limits. Do not claim email verification, password recovery, MFA, or OIDC exists until it is implemented and tested.
 
 ## Database and migrations
 
@@ -57,7 +59,7 @@ Before claiming completion, run relevant checks and report failures:
 - Set `TEST_DATABASE_URL` and run `make test-integration` for auth, SQL, migrations, middleware, or authorization changes. An unset variable skips integration tests in `make test`; do not report that as DB verification.
 - `make test-e2e` with the servers running for user flows; set the test DB URL so the unique test user is cleaned up. Default installed Chromium path can be changed with `CHROMIUM_PATH`.
 - `make build` when changing frontend/build integration or backend composition.
-- Check dependency audits for dependency/auth changes. Preserve lockfiles. Explain compatibility overrides in `docs/security.md`; do not suppress type errors with `any`/unsafe casts instead of fixing dependencies.
+- Check dependency audits for dependency/auth changes. Preserve lockfiles. Explain compatibility overrides in `docs/ui/README.md` (Dependencies); do not suppress type errors with `any`/unsafe casts instead of fixing dependencies.
 - Do not add tests that merely mirror trivial styling. Prefer behavior, security boundaries, and real persistence coverage.
 
 ## Working on this computer

@@ -1,43 +1,39 @@
 # Test environment
 
+How to set up a local environment and check the app by hand. Automated tests are covered in:
+
+- **[API tests](api/testing.md):** Go unit and PostgreSQL integration tests, factories in tests, `FAKER_SEED`.
+- **[UI tests](ui/testing.md):** Vitest, React Testing Library and Playwright end-to-end tests.
+
 ## Start from a clean checkout
 
 1. Install Go 1.26+, Node 24+, npm, PostgreSQL 15+, and Chromium for browser tests.
-2. Ensure the database is running. On Lewagent: `lewagent-services status`.
-3. Copy `.env.example` to `.env`. It contains the user-supplied local test DB URL: `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`.
-4. Run `make install`, `make migrate`, and optionally `make seed`.
+2. Make sure the database is running. On Lewagent: `lewagent-services status`.
+3. Copy `.env.example` to `.env`. It contains the local test DB URL: `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`.
+4. Run `make install`, `make migrate`, and optionally `make seed` (more fake data: [api/seeding.md](api/seeding.md)).
 5. Run `make api` and `make web` in separate terminals.
-6. Open `http://localhost:3000`, sign in with `hello@forma.test` / the configured `DEMO_PASSWORD`, or register a new account.
+6. Open `http://localhost:3000`, sign in with `hello@forma.test` and the configured `DEMO_PASSWORD`, or register a new account.
 
-`make` loads `.env` for its subprocesses. If running Go/Next commands directly, export these variables yourself. Next does not read the root `.env` from `apps/web`; the Make targets pass it through explicitly. Use `API_URL=http://127.0.0.1:8080` and `APP_ORIGIN=http://localhost:3000` locally. Restart both servers after changing configuration.
+`make` loads `.env` for its subprocesses, and its values win over variables set on the command line. If you run Go or Next commands directly, export the variables yourself. Next doesn't read the root `.env` from `apps/web`; the Make targets pass it through. Locally, use `API_URL=http://127.0.0.1:8080` and `APP_ORIGIN=http://localhost:3000`. Restart both servers after changing configuration.
 
-## Automated checks
+## Before claiming a change works
 
-- `make test`: Argon2id verification, salts, cookie flags, random tokens, input validation, CSRF origin rules, JSON parsing, frontend API responses, and project interactions. DB integration tests explicitly skip if `TEST_DATABASE_URL` is absent.
-- `TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable' make test-integration`: real SQL/migrations (including rollback and adoption of the previous runner's history)/auth/session/ownership tests. Creates a unique `forma_test_<timestamp>` schema, uses it exclusively, and drops only that schema at cleanup. Requires schema creation permissions in the **test** database. Runs the race detector.
-- Test data comes from `apps/api/internal/factory` (one factory per table, random gofakeit values; tests set only the fields they assert on). `TestEveryTableHasAFactory` fails when a migration adds a table without a factory, and every factory's output is inserted into the migrated schema, so new required columns need factory values too. A failing test logs its fake data seed; rerun with `FAKER_SEED=<seed>` to replay it.
-- `make check`: gofmt, Go vet, strict TypeScript, ESLint, formatting.
-- `make build`: backend compile and optimized Next build. No database connection is needed during build because private pages render on request.
-- `TEST_DATABASE_URL='...' make test-e2e`: tests against the **running** application. Default browser executable `/usr/bin/chromium`; override with `CHROMIUM_PATH`. Creates a unique `e2e-<timestamp>@forma.test` user, then deletes only that user with `psql` using the provided test DB URL. Cascading FKs remove its sessions/projects. Repeated runs use distinct accounts but may encounter the intentional 60 attempts per 15 minutes IP rate limit.
-- `cd apps/web && npm audit`: dependency audit including test tools.
-- `cd apps/api && go run golang.org/x/vuln/cmd/govulncheck@latest ./...`: Go dependency/stdlib vulnerability check.
+`make test`, `make check`, `make test-integration` (with `TEST_DATABASE_URL`) for anything touching SQL, auth, middleware or migrations, `make test-e2e` for user flows, and `make build` for build or composition changes. Report failures instead of skipping them.
 
 ## Manual demo
 
-1. Log in and inspect the overview metrics and six seeded projects.
-2. Create a project; verify the submit button shows a spinner and prevents duplicate submission.
-3. Filter by status and search by name or description. Check the empty-result state.
-4. Open the project, update its status, save, then reload. The database-backed change persists.
+1. Sign in and check the overview counts and recent projects.
+2. Create a project. The submit button shows a spinner and blocks duplicate submits, and the new project shows first.
+3. On Projects, search by name or description, filter by status, sort by clicking column headers, and page through results (`make seed only=volume` gives enough data). The URL keeps the state; reload and back/forward restore it.
+4. Click a row to open the project page, edit it, then reload. The change persists.
 5. Open Account & security, sign out other sessions, then sign out of this browser.
-6. Register another account. It starts empty and cannot view the demo account's projects.
-7. At a 390px viewport, navigation, search, project editing, and sign-out remain usable.
+6. Register another account. It starts empty and can't see the demo account's projects (`/app/projects/<their id>` is a 404).
+7. At a 390px viewport, navigation, search, paging (Previous/Next) and editing remain usable.
 
 ## Failure checks
 
-Stop only the API process you started. An authenticated page reload should return HTTP 503 with a retry screen. During client refresh the UI retains already-loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar; project fetching has skeletons, and mutations show spinners with disabled submission.
+Stop only the API process you started. A signed-in page reload should return HTTP 503 with a retry screen. During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
 
 ## Migration reversal
 
-Migrations run through Bun's migrator and are recorded in `bun_migrations`. Each `make migrate` that applies anything forms a group. `make migrate-rollback` shows the last group; `make migrate-rollback CONFIRM=1` runs its `.tx.down.sql` files. Each initial `.tx.down.sql` drops its table and **its application data**. Do not run a rollback without explicit authorization and a backup. Never edit an applied migration; create a new pair with `make migration name=<lowercase_name>`.
-
-Databases migrated by the previous runner keep their history: the first Bun migration command marks the matching migrations applied in `bun_migrations` as group 1 (its `001_initial.up.sql` became `001_create_users` through `004_create_auth_attempts` with unchanged SQL; see `legacyMigrations` in `internal/database/migrate.go`) and renames the old table to `schema_migrations_legacy` in one transaction. Branches still on the old runner will then fail `make migrate` against that database without changing it.
+See [api/database.md](api/database.md#migrations). Rolling back runs destructive down SQL: don't do it without explicit authorization and a backup.

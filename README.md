@@ -70,12 +70,12 @@ The browser test uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` for an
 - `apps/web/src/components/app/projects`: project UI reused by the dashboard and projects pages.
 - `apps/web/src/lib`: typed API client, SSR loader, BaseUI theme and `slot()` override helper, interaction-state hook, Styletron setup, domain types.
 - `apps/web/src/styles`: Tailwind entry (`globals.css`, also loads Inter), font setting (`theme.css`) and element defaults (`base.css`). Colours and spacing are Tailwind's defaults.
-- `docs`: setup, API/security contracts, and test instructions.
+- `docs`: how the system works, indexed in [docs/README.md](docs/README.md): `docs/api/*` (endpoints, auth, pagination, database, seeding, tests), `docs/ui/*` (pages, API use, pagination, design, tests) and `docs/testing.md` (environment and manual checks).
 
 Browser requests go to the same-origin `/api/*` proxy; Go listens on loopback `:8080`. SSR forwards only the requesting browser's cookies to that fixed backend URL. Authenticated HTML and API responses are not cacheable. Styletron styles are collected per SSR request and hydrated on the client. SWR caches are keyed by user ID to prevent data carrying across account changes.
 
 ## Security and deployment
 
-Passwords use Argon2id. Sessions use 256-bit opaque random tokens stored as SHA-256 digests, HttpOnly/SameSite cookies, 30-minute idle expiry, 24-hour absolute expiry, rotation at login, logout revocation, and a five-session account limit. Mutations require an exact trusted Origin, JSON content type, and an authenticated CSRF token. Auth endpoints have persistent IP/account rate limits and bounded hashing concurrency. See [security details and limits](docs/security.md).
+Passwords use Argon2id. Sessions use 256-bit opaque random tokens stored as SHA-256 digests, HttpOnly/SameSite cookies, 30-minute idle expiry, 24-hour absolute expiry, rotation at login, logout revocation, and a five-session account limit. Mutations require an exact trusted Origin, JSON content type, and an authenticated CSRF token. Auth endpoints have persistent IP/account rate limits and bounded hashing concurrency. See [security details and limits](docs/api/auth.md).
 
 For a production-like run, `make build`, then run `./bin/api` with configuration exported and `npm --prefix apps/web start`. Before an actual production deployment: set `APP_ENV=production`, an HTTPS `APP_ORIGIN`, and a restricted database role with `sslmode=verify-full`; terminate TLS at a trusted reverse proxy. The production session cookie uses the `__Host-` prefix and Secure flag. Keep the API private and deploy only the web entrypoint. Do not use demo credentials. This demo does not implement password reset, verified email, MFA, or OIDC federation.
