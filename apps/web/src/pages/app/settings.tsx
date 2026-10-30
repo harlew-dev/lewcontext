@@ -7,13 +7,12 @@ import {
   DescriptionTerm,
 } from "@/components/ui/description-list";
 import { Divider } from "@/components/ui/divider";
-import { Notice } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { Text } from "@/components/ui/text";
-import { useApi } from "@/lib/api";
+import { toast } from "@/components/ui/toast";
+import { errorMessage, useApi } from "@/lib/api";
 import { useSession } from "@/lib/session";
-import { useActionError } from "@/lib/use-action-error";
 export default function AccountSettings() {
   const session = useSession();
   return (
@@ -61,17 +60,13 @@ function SessionControls() {
   const api = useApi();
   const session = useSession();
   const [busy, setBusy] = useState(false);
-  const error = useActionError();
-  const [done, setDone] = useState(false);
   async function revokeOthers() {
     setBusy(true);
     try {
       await api.sessions().destroyOthers();
-      error.clear();
-      setDone(true);
+      toast.success("All other sessions have been signed out.");
     } catch (e) {
-      error.fail(e);
-      setDone(false);
+      toast.error(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -98,16 +93,6 @@ function SessionControls() {
       <Button outline loading={busy} onClick={revokeOthers}>
         Sign out other sessions
       </Button>
-      {error.message && (
-        <Notice key={error.key} variant="error">
-          {error.message}
-        </Notice>
-      )}
-      {done && (
-        <Notice variant="success">
-          All other sessions have been signed out.
-        </Notice>
-      )}
     </div>
   );
 }

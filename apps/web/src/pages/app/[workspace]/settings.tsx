@@ -10,6 +10,7 @@ import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { Strong, Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
 import { useApi } from "@/lib/api";
 import { useActionError } from "@/lib/use-action-error";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
@@ -69,20 +70,18 @@ function RenameForm() {
   const refresh = useRefreshWorkspaces();
   const [name, setName] = useState(workspace.name);
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
   const error = useActionError();
   const clean = workspaceName(name);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (clean === null || saving) return;
     setSaving(true);
-    setDone(false);
     try {
       await api.workspaces().update(workspace.id, { name: clean });
       error.clear();
       refresh(workspace.id);
       setName(clean);
-      setDone(true);
+      toast.success("Workspace renamed.");
     } catch (e) {
       error.fail(e);
     } finally {
@@ -94,10 +93,7 @@ function RenameForm() {
       <WorkspaceNameField
         label="Name"
         value={name}
-        onChange={(value) => {
-          setName(value);
-          setDone(false);
-        }}
+        onChange={setName}
         disabled={saving}
       />
       <Button
@@ -112,7 +108,6 @@ function RenameForm() {
           {error.message}
         </Notice>
       )}
-      {done && <Notice variant="success">Workspace renamed.</Notice>}
     </form>
   );
 }

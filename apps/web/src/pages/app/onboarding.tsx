@@ -10,11 +10,11 @@ import { Notice } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text } from "@/components/ui/text";
-import { useApi } from "@/lib/api";
+import { Toaster, toast } from "@/components/ui/toast";
+import { errorMessage, useApi } from "@/lib/api";
 import { onboardingLoader } from "@/lib/loaders";
 import { routes } from "@/lib/routes";
 import { SessionProvider, useSession } from "@/lib/session";
-import { useActionError } from "@/lib/use-action-error";
 import type { Route } from "./+types/onboarding";
 // Signed in without a workspace yet: create the first one. Accounts that
 // already have one go on to /app.
@@ -26,6 +26,7 @@ export default function Onboarding({ loaderData }: Route.ComponentProps) {
   return (
     <SessionProvider session={loaderData.session}>
       <NewWorkspace />
+      <Toaster />
     </SessionProvider>
   );
 }
@@ -74,30 +75,22 @@ function SignedInAs() {
   const api = useApi();
   const session = useSession();
   const navigate = useNavigate();
-  const error = useActionError();
   async function signOut() {
     try {
       await api.auth().logout();
       await navigate(routes.login);
     } catch (e) {
-      error.fail(e);
+      toast.error(errorMessage(e));
     }
   }
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <Text className="min-w-0 truncate">
-          Signed in as <Strong>{session.user.email}</Strong>
-        </Text>
-        <Button plain className="shrink-0" onClick={signOut}>
-          Sign out
-        </Button>
-      </div>
-      {error.message && (
-        <Notice key={error.key} variant="error">
-          {error.message}
-        </Notice>
-      )}
+    <div className="flex items-center justify-between gap-4">
+      <Text className="min-w-0 truncate">
+        Signed in as <Strong>{session.user.email}</Strong>
+      </Text>
+      <Button plain className="shrink-0" onClick={signOut}>
+        Sign out
+      </Button>
     </div>
   );
 }

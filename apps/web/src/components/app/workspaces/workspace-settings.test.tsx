@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Toaster } from "@/components/ui/toast";
 import WorkspaceSettings from "@/pages/app/[workspace]/settings";
 import { SessionProvider } from "@/lib/session";
 import type { Session } from "@/lib/types";
@@ -39,6 +40,7 @@ function renderAs(role: Role) {
       <SessionProvider session={session}>
         <WorkspaceProvider workspace={workspace} first={first}>
           <WorkspaceSettings />
+          <Toaster />
         </WorkspaceProvider>
       </SessionProvider>
     </SWRConfig>,

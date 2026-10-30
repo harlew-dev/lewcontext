@@ -31,7 +31,6 @@ import {
   DropdownMenu,
   type DropdownMenuProps,
 } from "@/components/ui/dropdown";
-import { Notice } from "@/components/ui/feedback";
 import {
   Navbar,
   NavbarItem,
@@ -48,10 +47,10 @@ import {
   SidebarSection,
   SidebarSpacer,
 } from "@/components/ui/sidebar";
-import { useApi } from "@/lib/api";
+import { toast } from "@/components/ui/toast";
+import { errorMessage, useApi } from "@/lib/api";
 import { navigation, routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
-import { useActionError } from "@/lib/use-action-error";
 import { useWorkspace, useWorkspaceList } from "@/lib/workspace";
 import type { User } from "@/lib/types";
 import { SidebarLayout } from "./sidebar-layout";
@@ -227,7 +226,6 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
   const session = useSession();
   const workspace = useWorkspace();
   const navigate = useNavigate();
-  const error = useActionError();
   const [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false);
   const currentPath = useCurrentPath();
@@ -237,7 +235,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       await api.auth().logout();
       await navigate(routes.login);
     } catch (e) {
-      error.fail(e);
+      toast.error(errorMessage(e));
     }
   }
   const accountMenu = (anchor: DropdownMenuProps["anchor"]) => (
@@ -320,11 +318,6 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
         </Sidebar>
       }
     >
-      {error.message && (
-        <Notice key={error.key} variant="error" className="mb-6">
-          {error.message}
-        </Notice>
-      )}
       {children}
       <HelpDialog open={help} onClose={() => setHelp(false)} />
       <CreateWorkspaceDialog

@@ -3,6 +3,7 @@ import { Outlet, useParams } from "react-router";
 import { ApplicationLayout } from "@/components/layout/application-layout";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { ListSkeleton } from "@/components/ui/feedback";
+import { Toaster } from "@/components/ui/toast";
 import { paths } from "@/lib/api";
 import { parsePublicId } from "@/lib/ids";
 import { signedInLoader } from "@/lib/loaders";
@@ -33,6 +34,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
           <Outlet />
         </ApplicationLayout>
       </CurrentWorkspace>
+      <Toaster />
     </SessionProvider>
   );
 }

@@ -25,7 +25,7 @@ React 18, strict TypeScript, a single-page app on React Router v7 (framework mod
 - **Content used by one page stays in that page file**, split into named local functions. Move it to `components/` once a second page needs it.
 - **Reuse before adding.** Extend an existing `components/ui` primitive before writing new markup. Use BaseUI for interactive controls and overlays.
 - **Page routes** are registered in `routes.ts`, with their URLs in `lib/routes.ts`. CSP and security headers come from the Go server (`apps/api/internal/web`). **API paths and calls** live only in `lib/api/<resource>.ts`. Don't call `fetch` or write `/api/...` strings anywhere else.
-- **Every async UI handles pending, success, failure and empty states**: `<Button loading>`, `ListSkeleton`, `Notice` with Retry, `EmptyState`.
+- **Every async UI handles pending, success, failure and empty states**: `<Button loading>`, `ListSkeleton`, `Notice` with Retry, `toast` for finished actions, `EmptyState`.
 - **Accessibility:** keyboard navigation, visible focus, accessible names, announced errors and status, and reduced motion.
 
 ## Dependencies

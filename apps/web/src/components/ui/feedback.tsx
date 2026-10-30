@@ -9,21 +9,36 @@ import { cx } from "@/lib/cx";
 import { Button } from "./button";
 import { Subheading } from "./heading";
 import { Text } from "./text";
-const notices = {
+// How each kind of message is marked and announced: errors as alerts,
+// successes as polite status updates. Notice and toast share these.
+export const messageVariants = {
   error: {
     icon: XCircleIcon,
     role: "alert",
-    className:
-      "bg-red-50 text-red-800 ring-red-600/10 *:data-[slot=icon]:fill-red-500 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20",
+    iconColor: "*:data-[slot=icon]:fill-red-500",
   },
   success: {
     icon: CheckCircleIcon,
     role: "status",
-    className:
-      "bg-lime-50 text-lime-800 ring-lime-600/15 *:data-[slot=icon]:fill-lime-600 dark:bg-lime-400/10 dark:text-lime-300 dark:ring-lime-400/20",
+    iconColor: "*:data-[slot=icon]:fill-lime-600",
   },
 } as const;
-// Inline message. Errors announce as alerts; successes as polite status updates.
+export type MessageVariant = keyof typeof messageVariants;
+const noticeColors: Record<MessageVariant, string> = {
+  error:
+    "bg-red-50 text-red-800 ring-red-600/10 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20",
+  success:
+    "bg-lime-50 text-lime-800 ring-lime-600/15 dark:bg-lime-400/10 dark:text-lime-300 dark:ring-lime-400/20",
+};
+// The close button on a Notice or toast.
+export function DismissButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button plain aria-label="Dismiss notification" onClick={onClick}>
+      <XMarkIcon />
+    </Button>
+  );
+}
+// Inline message, next to the form or list it belongs to.
 export function Notice({
   variant,
   children,
@@ -31,13 +46,13 @@ export function Notice({
   onDismiss,
   className,
 }: {
-  variant: keyof typeof notices;
+  variant: MessageVariant;
   children: ReactNode;
   onRetry?: () => void;
   onDismiss?: () => void;
   className?: string;
 }) {
-  const { icon: Icon, role, className: variantClasses } = notices[variant];
+  const { icon: Icon, role, iconColor } = messageVariants[variant];
   return (
     <div
       role={role}
@@ -45,7 +60,8 @@ export function Notice({
         className,
         "flex items-center gap-3 rounded-lg px-4 py-3 text-sm/6 ring-1 ring-inset",
         "*:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0",
-        variantClasses,
+        noticeColors[variant],
+        iconColor,
       )}
     >
       <Icon />
@@ -55,11 +71,7 @@ export function Notice({
           Try again
         </Button>
       )}
-      {onDismiss && (
-        <Button plain aria-label="Dismiss notification" onClick={onDismiss}>
-          <XMarkIcon />
-        </Button>
-      )}
+      {onDismiss && <DismissButton onClick={onDismiss} />}
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
+import { toast } from "@/components/ui/toast";
 import { paths } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace";
 import type { Project } from "@/types/projects";
 export type ProjectEditor = ReturnType<typeof useProjectEditor>;
-// Create/edit dialog state and success notice for project pages. After a save
+// Create/edit dialog state and success toast for project pages. After a save
 // every cached list and project of this workspace revalidates, since the
 // change can move it between pages, filters and counts.
 export function useProjectEditor(
@@ -13,10 +14,9 @@ export function useProjectEditor(
   const { mutate } = useSWRConfig();
   const projects = paths.projects(useWorkspace().id);
   const [dialog, setDialog] = useState<Project | "new" | null>(null);
-  const [notice, setNotice] = useState("");
   function saved(project: Project) {
     const created = dialog === "new";
-    setNotice(
+    toast.success(
       created
         ? "Project created. A good start."
         : "Project updated. Keep it moving.",
@@ -30,5 +30,5 @@ export function useProjectEditor(
         projects.matches(key[0]),
     );
   }
-  return { dialog, setDialog, notice, setNotice, saved };
+  return { dialog, setDialog, saved };
 }

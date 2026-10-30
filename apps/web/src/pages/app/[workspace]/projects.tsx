@@ -86,11 +86,7 @@ export default function Projects() {
           </Button>
         </div>
       </div>
-      <ProjectNotices
-        editor={editor}
-        error={list.error}
-        onRetry={list.refresh}
-      />
+      <ProjectNotices error={list.error} onRetry={list.refresh} />
       <PaginatedTable
         className="mt-10"
         page={list.data}

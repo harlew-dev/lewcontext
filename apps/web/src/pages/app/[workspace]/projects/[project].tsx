@@ -45,11 +45,7 @@ function ProjectContent({ id }: { id: string }) {
         <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
         Projects
       </Link>
-      <ProjectNotices
-        editor={editor}
-        error={project.error}
-        onRetry={project.refresh}
-      />
+      <ProjectNotices error={project.error} onRetry={project.refresh} />
       {project.data ? (
         <ProjectDetails
           project={project.data}

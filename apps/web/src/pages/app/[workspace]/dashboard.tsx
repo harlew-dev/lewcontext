@@ -47,11 +47,7 @@ export default function Dashboard() {
           New project
         </Button>
       </div>
-      <ProjectNotices
-        editor={editor}
-        error={list.error}
-        onRetry={list.refresh}
-      />
+      <ProjectNotices error={list.error} onRetry={list.refresh} />
       {total !== undefined && (
         <div className="mt-4 grid gap-8 sm:grid-cols-2 xl:grid-cols-4">
           <Stat title="Total projects" value={total} />
