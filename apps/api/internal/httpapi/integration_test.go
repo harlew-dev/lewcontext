@@ -8,7 +8,9 @@ import (
 	"forma/api/internal/config"
 	"forma/api/internal/database"
 	"forma/api/internal/database/dbtest"
+	"forma/api/internal/factory"
 	"forma/api/internal/store"
+	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
 	"net/http"
 	"net/http/httptest"
@@ -56,10 +58,26 @@ func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie 
 	}
 	return w
 }
+
+// signedIn creates a fake user with a live session, without the rate-limited
+// auth endpoints. The session carries the cookie and CSRF token.
+func signedIn(t *testing.T, db bun.IDB, f *gofakeit.Faker) factory.Session {
+	t.Helper()
+	user, err := factory.Users.CreateOne(context.Background(), db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := factory.SessionFor(context.Background(), db, f, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session
+}
 func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	s, db := integrationServer(t)
 	h := s.Routes()
 	ctx := context.Background()
+	f := factory.TestFaker(t)
 	register := func(email string) (response, *http.Cookie) {
 		w := call(t, h, "POST", "/api/auth/register", fmt.Sprintf(`{"name":"Test User","email":%q,"password":"correct horse battery staple"}`, email), "", nil, 201)
 		var res response
@@ -69,7 +87,8 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 		return res, w.Result().Cookies()[0]
 	}
 	one, cookie := register("one@example.com")
-	two, otherCookie := register("two@example.com")
+	two := signedIn(t, db, f)
+	otherCookie := two.Cookie()
 	call(t, h, "POST", "/api/auth/register", `{"name":"Again","email":"one@example.com","password":"correct horse battery staple"}`, "", nil, 409)
 	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
 		t.Fatal("cookie flags missing")
@@ -104,7 +123,7 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "GET", path, "", "", cookie, 200)
 	call(t, h, "GET", path, "", "", otherCookie, 404)
 	call(t, h, "GET", "/api/projects/nope", "", "", cookie, 400)
-	call(t, h, "PATCH", path, body, two.CSRF, otherCookie, 404)
+	call(t, h, "PATCH", path, body, two.CSRFToken, otherCookie, 404)
 	updated := strings.Replace(body, "Planned", "Completed", 1)
 	var saved store.Project
 	_ = json.Unmarshal(call(t, h, "PATCH", path, updated, one.CSRF, cookie, 200).Body.Bytes(), &saved)
@@ -128,26 +147,61 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "GET", "/api/auth/me", "", "", secondCookie, 401)
 	call(t, h, "POST", "/api/auth/logout", "{}", signed.CSRF, rotated, 204)
 	call(t, h, "GET", "/api/auth/me", "", "", rotated, 401)
-	if _, err := db.ExecContext(ctx, "UPDATE sessions SET last_seen_at=now()-interval '31 minutes' WHERE user_id=?", two.User.ID); err != nil {
+	for _, state := range []func(*factory.Session){factory.Idle, factory.Expired} {
+		stale, err := factory.Sessions.State(func(s *factory.Session) { s.UserID = two.UserID }).State(state).CreateOne(ctx, db, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		call(t, h, "GET", "/api/auth/me", "", "", stale.Cookie(), 401)
+	}
+	capped, err := factory.Users.CreateOne(ctx, db, f)
+	if err != nil {
 		t.Fatal(err)
 	}
-	call(t, h, "GET", "/api/auth/me", "", "", otherCookie, 401)
-	_, expiryCookie := register("expiry@example.com")
-	if _, err := db.ExecContext(ctx, "UPDATE sessions SET expires_at=now()-interval '1 second' WHERE token_hash=?", auth.Digest(expiryCookie.Value)); err != nil {
+	first, err := factory.SessionFor(ctx, db, f, capped.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	call(t, h, "GET", "/api/auth/me", "", "", expiryCookie, 401)
-	capped, firstCookie := register("cap@example.com")
 	for i := 0; i < 5; i++ {
-		call(t, h, "POST", "/api/auth/login", `{"email":"cap@example.com","password":"correct horse battery staple"}`, "", nil, 200)
+		call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, capped.Email, factory.DefaultPassword), "", nil, 200)
 	}
-	call(t, h, "GET", "/api/auth/me", "", "", firstCookie, 401)
+	call(t, h, "GET", "/api/auth/me", "", "", first.Cookie(), 401)
 	var sessions int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE user_id=?", capped.User.ID).Scan(&sessions); err != nil || sessions != 5 {
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE user_id=?", capped.ID).Scan(&sessions); err != nil || sessions != 5 {
 		t.Fatalf("session cap: want 5 sessions, got %d (%v)", sessions, err)
 	}
 	for i := 0; i < 10; i++ {
 		call(t, h, "POST", "/api/auth/login", `{"email":"missing@example.com","password":"correct horse battery staple"}`, "", nil, 401)
 	}
 	call(t, h, "POST", "/api/auth/login", `{"email":"missing@example.com","password":"correct horse battery staple"}`, "", nil, 429)
+}
+
+// Prefilled counters reach the limits without making every attempt. Each
+// test starts with no counters, since a request creates its own.
+func TestAccountRateLimit(t *testing.T) {
+	s, db := integrationServer(t)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	user, err := factory.Users.CreateOne(ctx, db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login := fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword)
+	locked := call(t, s.Routes(), "POST", "/api/auth/login", login, "", nil, 429)
+	if locked.Header().Get("Retry-After") != "900" {
+		t.Fatal("rate-limited login without Retry-After")
+	}
+}
+func TestIPRateLimit(t *testing.T) {
+	s, db := integrationServer(t)
+	f := factory.TestFaker(t)
+	_, err := factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(t, s.Routes(), "POST", "/api/auth/register", `{"name":"New","email":"new@example.com","password":"correct horse battery staple"}`, "", nil, 429)
 }

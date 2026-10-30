@@ -21,8 +21,9 @@ migrate-rollback:
 migration:
 	@test -n "$(name)" || (echo 'Usage: make migration name=add_tasks'; exit 1)
 	cd apps/api && go run ./cmd/migrate create $(name)
+# make seed [only=demo|volume|users] [count=n] [projects=n] [email=address]
 seed:
-	cd apps/api && go run ./cmd/seed
+	cd apps/api && go run ./cmd/seed $(if $(only),-only '$(only)') $(if $(count),-count '$(count)') $(if $(projects),-projects '$(projects)') $(if $(email),-email '$(email)')
 api:
 	cd apps/api && go run ./cmd/server
 web:

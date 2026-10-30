@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"forma/api/internal/config"
+	"forma/api/internal/factory"
 	"forma/api/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestCredentialsValidation(t *testing.T) {
@@ -56,6 +58,24 @@ func TestStrictJSON(t *testing.T) {
 		var in credentials
 		if decode(w, r, &in) {
 			t.Fatal("bad JSON accepted")
+		}
+	}
+}
+
+// Fake data has to be data the API would accept, or tests exercise states
+// real users can't reach.
+func TestFactoriesMatchValidation(t *testing.T) {
+	f := factory.TestFaker(t)
+	for _, p := range factory.Projects.Make(f, 500) {
+		in := store.ProjectInput{Name: p.Name, Description: p.Description, Status: p.Status, Color: p.Color}
+		if !validProject(&in) || in.Name != p.Name || in.Description != p.Description {
+			t.Fatalf("fake project rejected or changed by validation: %+v", p)
+		}
+	}
+	for _, u := range factory.Users.Make(f, 500) {
+		in := credentials{Name: u.Name, Email: u.Email, Password: factory.DefaultPassword}
+		if !validCredentials(&in) || in.Email != u.Email || utf8.RuneCountInString(u.Name) > 80 {
+			t.Fatalf("fake user rejected or changed by validation: %+v", u)
 		}
 	}
 }

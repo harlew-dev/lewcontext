@@ -29,6 +29,15 @@ Open **http://localhost:3000**. Use this exact host (not `127.0.0.1`) because th
 
 Sign in with **hello@forma.test** and the `DEMO_PASSWORD` in `.env` (default local example: **DemoWorkspace2026!**). Or choose **Sign up** for your own empty workspace. The seed runs only when explicitly invoked, refuses production, and leaves an existing demo account unchanged.
 
+More seeders add random fake data (gofakeit) for trying pagination, search and sorting. They only insert, into the `DATABASE_URL` in `.env`:
+
+```sh
+make seed only=volume count=500          # projects for the demo account (or email=you@example.com)
+make seed only=users count=25 projects=20 # fake accounts, up to 20 projects each, password DEMO_PASSWORD
+```
+
+Fake records come from the factories in `apps/api/internal/factory`, one per table; integration tests use the same factories.
+
 The dashboard shows real database data. Create/edit projects, change their status, search/filter them, refresh, manage other sessions, and sign out. Reloading a page preserves data. Every account can access only its own projects.
 
 ## Checks

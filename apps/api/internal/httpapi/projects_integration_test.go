@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"forma/api/internal/factory"
 	"forma/api/internal/store"
+	"github.com/brianvoe/gofakeit/v7"
+	"github.com/uptrace/bun"
 	"net/http"
 	"net/url"
 	"slices"
@@ -13,16 +16,6 @@ import (
 	"time"
 )
 
-// signUp registers a user through the API and returns their ID and session cookie.
-func signUp(t *testing.T, h http.Handler, email string) (int64, *http.Cookie) {
-	t.Helper()
-	w := call(t, h, "POST", "/api/auth/register", fmt.Sprintf(`{"name":"Test User","email":%q,"password":"correct horse battery staple"}`, email), "", nil, 201)
-	var res response
-	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-		t.Fatal(err)
-	}
-	return res.User.ID, w.Result().Cookies()[0]
-}
 func listProjects(t *testing.T, h http.Handler, cookie *http.Cookie, query string) store.Page[store.Project] {
 	t.Helper()
 	var page store.Page[store.Project]
@@ -39,33 +32,32 @@ func projectIDs(projects []store.Project) []int64 {
 	return ids
 }
 
-// seedProjects inserts n projects for userID. Pairs share an updated_at so
-// ordering has to fall back to the ID tiebreak.
-func seedProjects(t *testing.T, s *Server, userID int64, n int) {
+// seedProjects creates n fake projects for userID with predictable names,
+// statuses and timestamps. Pairs share an updated_at, so ordering has to fall
+// back to the ID tiebreak.
+func seedProjects(t *testing.T, db bun.IDB, f *gofakeit.Faker, userID int64, n int) {
 	t.Helper()
 	statuses := []string{"Planned", "In progress", "Completed"}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	projects := make([]store.Project, n)
-	for i := range projects {
-		projects[i] = store.Project{
-			UserID:    userID,
-			Name:      fmt.Sprintf("Project %02d", i),
-			Status:    statuses[i%3],
-			Color:     "blue",
-			CreatedAt: base.Add(time.Duration(i) * time.Hour),
-			UpdatedAt: base.Add(time.Duration(i/2) * time.Minute),
-		}
-	}
-	if _, err := s.Store.DB.NewInsert().Model(&projects).Exec(context.Background()); err != nil {
+	_, err := factory.ProjectsFor(userID).Sequence(func(i int, p *factory.Project) {
+		p.Name = fmt.Sprintf("Project %02d", i)
+		p.Description = ""
+		p.Status = statuses[i%3]
+		p.CreatedAt = base.Add(time.Duration(i) * time.Hour)
+		p.UpdatedAt = base.Add(time.Duration(i/2) * time.Minute)
+	}).Create(context.Background(), db, f, n)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
 func TestProjectPagination(t *testing.T) {
-	s, _ := integrationServer(t)
+	s, db := integrationServer(t)
 	h := s.Routes()
-	owner, cookie := signUp(t, h, "pages@example.com")
-	_, otherCookie := signUp(t, h, "other@example.com")
-	seedProjects(t, s, owner, 45)
+	f := factory.TestFaker(t)
+	session := signedIn(t, db, f)
+	owner, cookie := session.UserID, session.Cookie()
+	otherCookie := signedIn(t, db, f).Cookie()
+	seedProjects(t, db, f, owner, 45)
 
 	t.Run("pages cover every project once for each sort", func(t *testing.T) {
 		for _, sort := range []string{"-updated", "updated", "-created", "created", "name", "-name", "status", "-status"} {
@@ -119,8 +111,10 @@ func TestProjectPagination(t *testing.T) {
 	t.Run("search treats wildcards and quotes literally", func(t *testing.T) {
 		names := map[string]string{"%": `50% done`, "_": `under_score`, `\`: `back\slash`, "'": `it's quoted`}
 		for _, name := range names {
-			in := store.ProjectInput{Name: name, Status: "Planned", Color: "rose"}
-			if _, err := s.Store.CreateProject(context.Background(), owner, in); err != nil {
+			_, err := factory.ProjectsFor(owner).State(func(p *factory.Project) {
+				p.Name, p.Description = name, ""
+			}).CreateOne(context.Background(), db, f)
+			if err != nil {
 				t.Fatal(err)
 			}
 		}

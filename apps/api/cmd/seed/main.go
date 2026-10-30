@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"flag"
+	"fmt"
 	"forma/api/internal/auth"
 	"forma/api/internal/config"
 	"forma/api/internal/database"
-	"forma/api/internal/store"
+	"forma/api/internal/factory"
+	"forma/api/internal/seed"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -19,47 +21,69 @@ func main() {
 		log.Fatal(err)
 	}
 	if c.Production {
-		log.Fatal("demo seed is disabled in production")
+		log.Fatal("seeding is disabled in production")
 	}
-	password := os.Getenv("DEMO_PASSWORD")
-	if len(password) < 12 || len(password) > 128 {
-		log.Fatal("set DEMO_PASSWORD to 12–128 bytes")
+	only := flag.String("only", seed.Seeders[0].Name, "seeder to run: "+seederNames())
+	count := flag.Int("count", 0, "records to create (0 uses the seeder's default)")
+	projects := flag.Int("projects", 0, "most projects per fake user, for -only users (0 uses the default)")
+	email := flag.String("email", "", "account to add projects to, for -only volume (default the demo account)")
+	flag.Usage = usage
+	flag.Parse()
+	seeder, ok := seed.Find(*only)
+	if !ok {
+		log.Fatalf("unknown seeder %q; choose %s", *only, seederNames())
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	for _, n := range []int{*count, *projects} {
+		if n < 0 || n > seed.MaxCount {
+			log.Fatalf("counts must be between 0 and %d", seed.MaxCount)
+		}
+	}
+	options := seed.Options{Count: *count, Projects: *projects, Email: *email}
+	if seeder.NeedsPassword {
+		if options.PasswordHash, err = passwordHash(); err != nil {
+			log.Fatal(err)
+		}
+	}
+	faker, fakerSeed, err := factory.NewFaker()
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	db, err := database.Open(ctx, c.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	s := &store.Store{DB: db}
-	_, _, err = s.FindUser(ctx, "hello@forma.test")
-	if err == nil {
-		log.Print("Demo account already exists; no data changed")
-		return
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		log.Fatal(err)
-	}
-	hash, err := auth.HashPassword(password)
+	summary, err := seeder.Run(ctx, db, faker, options)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("seed %s: %v", seeder.Name, err)
 	}
-	now := time.Now()
-	projects := []store.Project{
-		{Name: "Website redesign", Description: "A fresh home for everything we’re building.", Status: "In progress", Color: "violet"},
-		{Name: "Mobile experience", Description: "Bring a little more delight to the everyday.", Status: "In progress", Color: "blue"},
-		{Name: "Brand guidelines", Description: "One shared language. A thousand possibilities.", Status: "Completed", Color: "amber"},
-		{Name: "Customer insights", Description: "Turn good conversations into better decisions.", Status: "In progress", Color: "rose"},
-		{Name: "Design system", Description: "Thoughtful foundations for what comes next.", Status: "Planned", Color: "emerald"},
-		{Name: "Product launch", Description: "Make our next chapter a memorable one.", Status: "Planned", Color: "violet"},
+	log.Printf("%s (fake data seed %d)", summary, fakerSeed)
+}
+
+// passwordHash hashes DEMO_PASSWORD once for every account a seeder creates.
+func passwordHash() (string, error) {
+	password := os.Getenv("DEMO_PASSWORD")
+	if len(password) < 12 || len(password) > 128 {
+		return "", fmt.Errorf("set DEMO_PASSWORD to 12–128 bytes")
 	}
-	for i := range projects {
-		projects[i].CreatedAt = now.AddDate(0, 0, -(14 + i))
-		projects[i].UpdatedAt = now.Add(-time.Duration(i*4) * time.Hour)
+	return auth.HashPassword(password)
+}
+func seederNames() string {
+	names := make([]string, len(seed.Seeders))
+	for i, s := range seed.Seeders {
+		names[i] = s.Name
 	}
-	if err = s.CreateDemoAccount(ctx, "Alex Morgan", "hello@forma.test", hash, projects); err != nil {
-		log.Fatal(err)
+	return strings.Join(names, ", ")
+}
+func usage() {
+	out := flag.CommandLine.Output()
+	fmt.Fprintln(out, "Usage: go run ./cmd/seed [-only seeder] [-count n] [-projects n] [-email address]")
+	fmt.Fprintln(out, "\nSeeders:")
+	for _, s := range seed.Seeders {
+		fmt.Fprintf(out, "  %-7s %s\n", s.Name, s.Description)
 	}
-	log.Print("Created demo account hello@forma.test and six projects")
+	fmt.Fprintln(out, "\nFlags:")
+	flag.PrintDefaults()
 }

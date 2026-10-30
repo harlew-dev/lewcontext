@@ -1,0 +1,64 @@
+package factory
+
+import (
+	"fmt"
+	"forma/api/internal/auth"
+	"github.com/brianvoe/gofakeit/v7"
+	"github.com/uptrace/bun"
+	"strings"
+	"sync"
+	"time"
+)
+
+// DefaultPassword signs in every fake user unless a seeder sets another hash.
+const DefaultPassword = "correct horse battery staple"
+
+// Argon2id is deliberately slow, so all fake users share one hash per process.
+var defaultHash = sync.OnceValues(func() (string, error) {
+	return auth.HashPassword(DefaultPassword)
+})
+
+type User struct {
+	bun.BaseModel `bun:"table:users,alias:u"`
+	ID            int64 `bun:",pk,autoincrement"`
+	Name          string
+	Email         string
+	PasswordHash  string
+	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+}
+
+// Users builds accounts with unique, valid, lowercase emails.
+var Users = Define(func(f *gofakeit.Faker) User {
+	first, last := f.FirstName(), f.LastName()
+	now := time.Now()
+	return User{
+		Name:         first + " " + last,
+		Email:        fmt.Sprintf("%s.%s.%s@example.test", slug(first), slug(last), strings.ToLower(f.LetterN(6))),
+		PasswordHash: mustHash(),
+		CreatedAt:    f.DateRange(now.AddDate(-1, 0, 0), now),
+	}
+})
+
+// WithPasswordHash signs a user in with another password's hash.
+func WithPasswordHash(hash string) func(*User) {
+	return func(u *User) { u.PasswordHash = hash }
+}
+
+// mustHash panics only if the system random source fails.
+func mustHash() string {
+	hash, err := defaultHash()
+	if err != nil {
+		panic(fmt.Sprintf("hash fake user password: %v", err))
+	}
+	return hash
+}
+
+// slug keeps the ASCII letters of a name for an email local part.
+func slug(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' {
+			return r
+		}
+		return -1
+	}, strings.ToLower(s))
+}

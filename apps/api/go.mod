@@ -3,6 +3,7 @@ module forma/api
 go 1.26.0
 
 require (
+	github.com/brianvoe/gofakeit/v7 v7.18.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/uptrace/bun v1.3.0
 	github.com/uptrace/bun/dialect/pgdialect v1.3.0

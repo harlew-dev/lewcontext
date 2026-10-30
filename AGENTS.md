@@ -44,7 +44,8 @@ This project replaces the previous project completely. The previous README was s
 - The supplied local test DB is `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext` (local setup adds `sslmode=disable`). Use only for development/testing.
 - Forward/reverse migrations are Bun SQL pairs under `apps/api/migrations` named `<version>_<name>.tx.up.sql` / `.tx.down.sql`; create them with `make migration name=...`. Never rewrite applied migrations. The Bun migrator (`internal/database/migrate.go`) runs each file in a transaction, records it in `bun_migrations` only after success, groups each run for rollback, and holds a PostgreSQL advisory lock. Databases from the previous runner are adopted once: `schema_migrations` is copied into `bun_migrations` and renamed `schema_migrations_legacy`. No auto-migrate on API startup.
 - Do not drop/reset databases or existing app data. Integration tests create and remove only their unique temporary schema. Down migration SQL is destructive and requires explicit user authorization; `make migrate-rollback` only previews unless `CONFIRM=1`.
-- The idempotent demo seed is explicit. It creates only its demo user/projects and leaves an existing account unchanged.
+- The idempotent demo seed is explicit. It creates only its demo user/projects and leaves an existing account unchanged. Other seeders (`make seed only=volume|users`) only insert fake data; seeders live in `internal/seed`.
+- Every table has a factory in `apps/api/internal/factory` with its own Bun model. A migration that adds a table or a required column updates the factory (and seeders) in the same change; `TestEveryTableHasAFactory` enforces this. Integration tests build data with factories rather than hand-written rows or setup through API calls, except where the endpoint itself is under test.
 
 ## Commands and validation
 
