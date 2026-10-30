@@ -1,123 +1,70 @@
-# lewcontext — Live GraphRAG Visualization
+# Forma
 
-**Watch your agent think.** lewcontext renders a GraphRAG knowledge graph as a living, neural-network-style map and lights up the nodes an agent touches as it retrieves context, in real time.
+A working project workspace with a Go API, PostgreSQL, and a server-rendered React frontend using **Uber Base Web (BaseUI)**. The restrained sidebar, typography, tables, forms, and dialogs are inspired by [Catalyst](https://catalyst.tailwindui.com/); no proprietary Catalyst source is included.
 
-> **Status:** early planning. Nothing here is built yet.
+## Run locally
 
-## Why
+Requirements: Go **1.26+**, Node **24+**, npm, PostgreSQL **15+**. PostgreSQL must already be running. On this computer, inspect it with `lewagent-services status`.
 
-RAG and GraphRAG pipelines are usually black boxes. You see the final answer, but not which documents, entities, facts or communities the agent looked at to get there. lewcontext makes retrieval observable: every step the agent takes is mapped onto the graph and shown as it happens.
-
-## Features
-
-- **Full graph preview.** The whole knowledge graph drawn as an interactive network: documents, chunks, entities, facts, communities and their reports.
-- **Live graph monitoring.** Nodes and edges light up the moment the agent touches them, like activations firing in a neural network, so you can follow its reasoning path.
-- **Discovered-nodes view.** A second view that starts empty and only shows the nodes the agent has actually seen, so its picture of the knowledge base grows as it explores.
-- **Trace overlay, not mutation.** The graph itself never changes during a run. The execution trace is layered on top of it.
-
-## Stack
-
-- **Backend:** Go
-- **Frontend:** React
-
-## Ingestion pipeline
-
-1. **Document extraction** with [Docling](https://github.com/docling-project/docling).
-2. **Length-aware semantic chunking** using an LLM.
-3. **Contextualized chunking**: each chunk is rewritten by an LLM to include context from the chunks before it, for better retrieval.
-4. **Graph construction**: entities, relationships, facts and communities are extracted into the canonical knowledge graph.
-
-## Canonical knowledge graph
-
-```
-Document
-   │
-   ├── HAS_CHUNK ─────▶ Chunk
-   │                      │
-   │                      ├── MENTIONS ───▶ Entity
-   │                      │
-   │                      └── SUPPORTS ───▶ Fact
-   │
-   └── BELONGS_TO ─────▶ Corpus
-
-Entity ── RELATIONSHIP ──▶ Entity
-
-Fact ─── SUBJECT ─────────▶ Entity
-Fact ─── OBJECT ──────────▶ Entity
-Fact ─── EVIDENCED_BY ───▶ Chunk
-
-Entity ── MEMBER_OF ──────▶ Community
-
-Community ── CHILD_OF ────▶ Community
-Community ── HAS_SUMMARY ─▶ CommunityReport
+```sh
+cp .env.example .env
+make install
+make migrate
+make seed
 ```
 
-## Agent graph tools
+The example environment uses the supplied test database at `127.0.0.1:5432/lewcontext`. Its credentials are for this local test environment only. Existing tables/data are never dropped by setup. Migrations are explicit, transactional, versioned, and protected by a PostgreSQL advisory lock.
 
-The agent explores the graph through a small set of tools. Each call is traced and shown on the graph.
+In two terminals, from the repository root:
 
-| Tool | Purpose |
-| --- | --- |
-| `search_graph(query, node_types, top_k)` | Find candidate nodes for a query |
-| `expand_nodes(node_ids, relationship_types, hops, limit)` | Walk outward from nodes along relationships |
-| `get_nodes(node_ids)` | Fetch full node content |
-| `search_community(query, depth)` | Search community reports at a given level |
-| `find_path(source_id, target_id, max_hops)` | Find how two nodes are connected |
-| `search_facts(query, entities, date_range)` | Find facts, optionally scoped to entities and dates |
-
-## Node states
-
-| Colour | Meaning |
-| --- | --- |
-| Grey | In the graph, untouched |
-| Blue | Retrieval candidate |
-| Purple | Graph traversal passed through it |
-| Yellow | Selected by the reranker |
-| Green | Actually exposed to the LLM |
-| Orange | Referenced or cited in the final answer |
-
-A **bright pulse** marks nodes touched during the current operation.
-
-## Example
-
-> **User:** "How is project Apollo connected to Acme?"
-
-```
-search_graph("project Apollo Acme")
-        ↓
-[Apollo]  [Acme]  [Bob Smith]
-        ↓
-expand_nodes(["Apollo", "Acme"], hops=2)
-        ↓
-[Apollo] ── owned_by ──▶ [Division X] ── supplier ──▶ [Acme]
-        ↓
-get_nodes(...)
-        ↓
-LLM produces the answer
+```sh
+make api
 ```
 
-On the full graph, the same run looks like this. Nothing in the graph changes; the trace is drawn over it:
-
-```
-Before                         During execution
-
-          ○                              ○
-    ○─────●────○                   ○─────🟢═══🟡
-   /       \                      /       ║
-  ○         ○────○               ○        🟢────○
-           /                              ║
-      ○───○                          ○───🟣
+```sh
+make web
 ```
 
-## Views
+Open **http://localhost:3000**. Use this exact host (not `127.0.0.1`) because the default allowed origin is `http://localhost:3000`.
 
-| View | Shows |
-| --- | --- |
-| **Full graph** | The whole corpus, with the live trace overlaid |
-| **Discovered** | Only the subgraph the agent has encountered so far, built up live |
+Sign in with **hello@forma.test** and the `DEMO_PASSWORD` in `.env` (default local example: **DemoWorkspace2026!**). Or choose **Create an account** for your own empty workspace. The seed runs only when explicitly invoked, refuses production, and leaves an existing demo account unchanged.
 
-## Use cases
+The dashboard shows real database data. Create/edit projects, change their status, search/filter them, refresh, manage other sessions, and sign out. Reloading a page preserves data. Every account can access only its own projects.
 
-- Debugging retrieval: why did the agent miss that document?
-- Understanding agent behaviour: which communities and entities does it lean on?
-- Demos and teaching: show how GraphRAG works, visually and live.
+## Checks
+
+```sh
+make test          # Go unit tests (race detector), React/API client tests
+make check         # gofmt, go vet, TypeScript, ESLint, Prettier
+make build         # Go executable plus Next production build
+
+# Real DB integration tests, each in a fresh temporary schema that is cleaned up:
+export TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable'
+make test-integration
+
+# API and web servers must already be running:
+make test-e2e
+```
+
+The browser test uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` for another installed Chromium. Set `TEST_DATABASE_URL` for automatic removal of the uniquely created E2E account after the run; without it, that test account remains. Browser tests exercise registration, login failures, project creation/editing, pending states, filters, SSR HTML, security headers, mobile layout, session revocation, logout, and persistence. See [test-environment instructions](docs/testing.md).
+
+## Architecture
+
+- `apps/api/cmd`: small server, migration, and seed entrypoints.
+- `apps/api/internal/httpapi/routes.go`: all API routes and authentication requirements.
+- `apps/api/internal/{auth,config,database,httpapi,store}`: cryptography, validated config, migrations, HTTP boundary, parameterized SQL repositories.
+- `apps/api/migrations`: embedded forward and reverse SQL migrations.
+- `apps/web/src/pages`: thin Next.js Pages Router entrypoints; protected pages use request-time SSR.
+- `apps/web/src/lib/routes.ts`: navigation and API route definitions.
+- `apps/web/src/components/{ui,layout,auth,dashboard,projects}`: reusable BaseUI primitives and feature components.
+- `apps/web/src/lib`: typed API client, SSR loader, theme, Styletron setup, domain types.
+- `apps/web/src/styles`: styles separated by purpose; no generated utility framework or copied proprietary kit.
+- `docs`: setup, API/security contracts, and test instructions.
+
+Browser requests go to the same-origin `/api/*` proxy; Go listens on loopback `:8080`. SSR forwards only the requesting browser's cookies to that fixed backend URL. Authenticated HTML and API responses are not cacheable. Styletron styles are collected per SSR request and hydrated on the client. SWR caches are keyed by user ID to prevent data carrying across account changes.
+
+## Security and deployment
+
+Passwords use Argon2id. Sessions use 256-bit opaque random tokens stored as SHA-256 digests, HttpOnly/SameSite cookies, 30-minute idle expiry, 24-hour absolute expiry, rotation at login, logout revocation, and a five-session account limit. Mutations require an exact trusted Origin, JSON content type, and an authenticated CSRF token. Auth endpoints have persistent IP/account rate limits and bounded hashing concurrency. See [security details and limits](docs/security.md).
+
+For a production-like run, `make build`, then run `./bin/api` with configuration exported and `npm --prefix apps/web start`. Before an actual production deployment: set `APP_ENV=production`, an HTTPS `APP_ORIGIN`, and a restricted database role with `sslmode=verify-full`; terminate TLS at a trusted reverse proxy. The production session cookie uses the `__Host-` prefix and Secure flag. Keep the API private and deploy only the web entrypoint. Do not use demo credentials. This demo does not implement password reset, verified email, MFA, or OIDC federation.
