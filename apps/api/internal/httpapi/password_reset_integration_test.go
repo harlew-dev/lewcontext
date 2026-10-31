@@ -38,7 +38,7 @@ func mailServer(t *testing.T) (s *Server, db *bun.DB, box *mailbox, deliver func
 	s, db = integrationServer(t)
 	box = &mailbox{}
 	bus := events.NewBus()
-	mailer := must(mail.New(box))(t)
+	mailer := must(mail.New(box, "lewcontext"))(t)
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(s.Store, mailer, s.Config.Origin))
 	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(s.Store, mailer, s.Config.Origin))
 	s.Store.Listeners = bus

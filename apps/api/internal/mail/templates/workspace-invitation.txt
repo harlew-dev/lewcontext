@@ -1,7 +1,11 @@
+{{ define "content" -}}
 You’ve been invited to join {{ .Workspace }}.
 
 {{ if .Inviter }}{{ .Inviter }} ({{ .InviterEmail }}) invited you{{ else }}You were invited{{ end }} to join as {{ .Role }}. Sign in, or create an account with this email address, to accept. The link expires in 7 days:
 
 {{ .URL }}
 
+New to {{ app }}? Learn what it is: {{ .Home }}
+
 If you weren’t expecting this, you can ignore it.
+{{- end }}

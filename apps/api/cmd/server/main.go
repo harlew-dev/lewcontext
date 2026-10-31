@@ -113,7 +113,7 @@ func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
 	if err != nil {
 		return err
 	}
-	mailer, err := mail.New(driver)
+	mailer, err := mail.New(driver, c.AppName)
 	if err != nil {
 		return err
 	}

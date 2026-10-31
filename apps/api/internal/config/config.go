@@ -13,6 +13,9 @@ import (
 type Config struct {
 	DatabaseURL, Origin, Address string
 	Production                   bool
+	// AppName is the product name (APP_NAME), as in the web build: emails
+	// open with it.
+	AppName string
 	// Mail is how email is delivered and who it comes from (mail.go).
 	Mail
 	// RateLimits is RateLimitsOff to switch every rate limit off, for the
@@ -32,7 +35,7 @@ const (
 )
 
 func Load() (Config, error) {
-	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Origin: env("APP_ORIGIN", "http://localhost:3000"), Address: env("API_ADDR", "127.0.0.1:8080"), Production: os.Getenv("APP_ENV") == "production"}
+	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Origin: env("APP_ORIGIN", "http://localhost:3000"), Address: env("API_ADDR", "127.0.0.1:8080"), Production: os.Getenv("APP_ENV") == "production", AppName: env("APP_NAME", "lewcontext")}
 	if err := c.loadMail(); err != nil {
 		return c, err
 	}

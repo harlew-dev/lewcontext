@@ -34,15 +34,17 @@ Delaying sends by how many a recipient has had was considered and rejected: a de
 | Template | Constant | Data | Subject |
 | --- | --- | --- | --- |
 | `forgot-password.html` | `mail.ForgotPassword` | `ForgotPasswordData{Name, URL}` | Reset your password |
-| `workspace-invitation.html` | `mail.WorkspaceInvitation` | `WorkspaceInvitationData{Workspace, Inviter, InviterEmail, Role, URL}` (`Role` with its article, "a member"; `Inviter` empty once that account is gone) | You’ve been invited to join a workspace |
+| `workspace-invitation.html` | `mail.WorkspaceInvitation` | `WorkspaceInvitationData{Workspace, Inviter, InviterEmail, Role, URL, Home}` (`Role` with its article, "a member"; `Inviter` empty once that account is gone; `Home` the homepage, for the "Learn about …" button beside "View the invitation", since the recipient may not know the app) | You’ve been invited to join a workspace |
 
-Every HTML email shares `templates/layout.html`: the document, the grey page and the white card. Each email's file defines only its `title` and `content`, and `mail.New` parses each one with the layout as a set of its own. The `.txt` files stand alone: the same words, the link written out, no markup.
+Every HTML email shares `templates/layout.html`: the document, the grey page, the white card and, at its top, the logo and the app's name. The logo is `templates/logo.png`, the web app's `favicon.svg` rendered at 64×64 and shown at 32×32 (`node scripts/email-logo.mjs` regenerates it after a logo change); `Send` embeds it in every message as an inline attachment, which the layout shows with `src="cid:logo"`. The name beside it is text, so the email is branded even with images off. Each email's file defines only its `title` and `content`, and `mail.New` parses each one with the layout as a set of its own. Every plain-text email shares `templates/layout.txt`, which opens with the app's name on its own line; each `.txt` file defines its `content`: the same words, the link written out, no markup.
+
+The app's name is `APP_NAME` (`lewcontext` by default), the same as the web build's; `mail.New(driver, c.AppName)` passes it in, and templates read it with `{{ app }}`. The Docker image sets it from its `APP_NAME` build argument, so the web app and the emails agree.
 
 Placeholders use Go's syntax, `{{ .Name }}` and `{{ .URL }}`: the dot reads a field of the data struct.
 
 ### Adding one
 
-1. Write `templates/<name>.html`, defining `{{ define "title" }}` and `{{ define "content" }}`: inline styles only, no scripts, no remote images (they act as tracking pixels). Write `templates/<name>.txt` with the same text and the link on a line of its own.
+1. Write `templates/<name>.html`, defining `{{ define "title" }}` and `{{ define "content" }}`: inline styles only, no scripts, no remote images (they act as tracking pixels). Write `templates/<name>.txt` defining `{{ define "content" -}}` … `{{- end }}`, with the same text and the link on a line of its own.
 2. Add a `Template` constant, its subject in `subjects`, and a `<Name>Data` struct of plain `string` fields.
 3. Add example data to `examples` in `mail_test.go`. `TestEveryTemplateRenders` fails without it.
 4. Decide its kind ([above](#who-gets-email-and-how-often)): asked-for mail gets a `<feature>:per-email` limit on the request that causes it, with an integration test; security mail gets none; notifications need an opt-in setting first.
@@ -53,6 +55,7 @@ An account's name is whatever the user typed, such as `<script>alert('XSS')</scr
 
 - **`html/template`, never `text/template`.** It escapes each value for where it appears: text, attribute, URL, CSS or JS. `<h1>Hack</h1>` becomes `&lt;h1&gt;Hack&lt;/h1&gt;` and shows as text. A `javascript:` value in `href` becomes `#ZgotmplZ`; only `http`, `https` and `mailto` links pass. `TestNoTextTemplate` checks the import.
 - **Never convert data to `template.HTML`, `template.URL`, `template.HTMLAttr`, `template.JS` or `template.CSS`.** Those types mean "already safe" and switch escaping off.
+- **Images:** no SVG (Gmail and Outlook don't display it, inline or as an image), no `data:` URLs (Gmail blocks them) and no remote images (blocked by default in many clients, and they act as tracking pixels). An image must be a PNG embedded in the message as an inline attachment (`Message.Inline`) and referenced with `cid:`, as the logo is. A hosted logo URL was considered and rejected: blocked by default in Outlook and many work clients, a request to our server on every open, and a URL that could never change.
 - **Templates are trusted; data isn't.** That is `html/template`'s security model, so templates come only from the embedded files, never from the database or a request.
 - **No user data in headers.** Subjects are fixed strings in Go, not in the template files. They're mail headers, and HTML escaping would garble them (`&` → `&amp;`). The From header comes from config, the recipient is checked by `Send`, and nothing else is set from data.
 - **The plain-text part uses `text/template`,** in `text.go` only, which parses only `.txt` files (`TestNoTextTemplate` checks both). Plain text has no markup to inject, so nothing needs escaping, and names can't add lines: the API refuses control characters in them. A name containing a URL may be shown as a link by a mail client, as it may in the HTML part.
@@ -81,7 +84,7 @@ The old value `file` is refused with a message saying it's now `log`.
 Startup refuses `smtp` without `SMTP_HOST` or `MAIL_FROM_ADDRESS`, and any rule above broken; messages name the setting, never its value, so the password can't reach a log. The startup log line names the host, port, TLS mode and sender, never the credentials.
 
 - **Certificates are always verified** against the system's roots, TLS 1.2 at least.
-- **Headers:** From (`MAIL_FROM_NAME <MAIL_FROM_ADDRESS>`), To, the fixed Subject, Date, a random Message-ID on the sender's domain, and `Auto-Submitted: auto-generated` (RFC 3834, so out-of-office replies don't answer). No `User-Agent`. The body is `multipart/alternative`: plain text, then HTML.
+- **Headers:** From (`MAIL_FROM_NAME <MAIL_FROM_ADDRESS>`), To, the fixed Subject, Date, a random Message-ID on the sender's domain, and `Auto-Submitted: auto-generated` (RFC 3834, so out-of-office replies don't answer). No `User-Agent`. The body holds the plain text, then the HTML, then the logo (`image/png`, `Content-ID: <logo>`).
 - **A failure** (an unreachable server, a refused login, a 4xx or 5xx reply) returns an error, so the event worker retries: 1 s, 10 s, 1 min, 10 min, 1 h, then failed ([events.md](events.md#delivery-eventsworker)). A permanent refusal is retried too. The error goes into `event_deliveries.last_error`; an SMTP reply may name the recipient, never the password.
 - **A duplicate is harmless:** if the server accepted a message and the process stopped before the delivery was marked done, the listener runs again and sends a new link, which replaces the first.
 - **On success** the log says `mail sent` with the template and Message-ID: never the recipient or the body.

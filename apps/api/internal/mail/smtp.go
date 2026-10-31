@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -70,8 +71,9 @@ func (d *SMTPDriver) Deliver(ctx context.Context, m Message) error {
 }
 
 // message builds the email: From, To, Subject, Date, Message-ID and
-// Auto-Submitted headers, then the plain-text part and its HTML alternative.
-// Nothing in a header comes from user data.
+// Auto-Submitted headers, the plain-text part and its HTML alternative, and
+// the HTML's inline images (the logo). Nothing in a header comes from user
+// data.
 func (d *SMTPDriver) message(m Message) (*gomail.Msg, error) {
 	msg := gomail.NewMsg(gomail.WithNoDefaultUserAgent())
 	if err := msg.FromFormat(d.config.FromName, d.config.FromAddress); err != nil {
@@ -91,6 +93,14 @@ func (d *SMTPDriver) message(m Message) (*gomail.Msg, error) {
 	msg.SetGenHeader(gomail.Header("Auto-Submitted"), "auto-generated")
 	msg.SetBodyString(gomail.TypeTextPlain, m.Text)
 	msg.AddAlternativeString(gomail.TypeTextHTML, m.HTML)
+	for _, image := range m.Inline {
+		// go-mail writes a given Content-ID as it is; RFC 2392 wants <…>.
+		err := msg.EmbedReader(image.Name, bytes.NewReader(image.Data),
+			gomail.WithFileContentID("<"+image.ContentID+">"), gomail.WithFileContentType(gomail.ContentType("image/png")))
+		if err != nil {
+			return nil, fmt.Errorf("smtp: embed %s: %w", image.Name, err)
+		}
+	}
 	return msg, nil
 }
 

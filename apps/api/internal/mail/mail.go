@@ -5,8 +5,10 @@
 // Every email has an HTML part and a plain-text part. The HTML templates are
 // html/template files embedded in the binary: each email's file defines its
 // "title" and "content", which templates/layout.html wraps in the shared
-// document. The plain-text templates (templates/<name>.txt) are rendered in
-// text.go, the only file that may use text/template. html/template
+// document. The plain-text templates (templates/<name>.txt) define their
+// "content" for templates/layout.txt, and are rendered in text.go, the only
+// file that may use text/template. Both layouts open with the app's name,
+// which templates read with {{ app }}. html/template
 // escapes every value for where it appears (text, attribute, URL), so data
 // such as an account's name can't add markup or links. Data structs hold
 // plain strings: never convert a value to template.HTML, template.URL or the
@@ -24,8 +26,11 @@ import (
 	"strings"
 )
 
-//go:embed templates/*.html templates/*.txt
+//go:embed templates/*.html templates/*.txt templates/logo.png
 var files embed.FS
+
+// logoContentID is how the layout refers to the embedded logo: src="cid:logo".
+const logoContentID = "logo"
 
 // Template names an email: templates/<name>.html.
 type Template string
@@ -56,6 +61,7 @@ type WorkspaceInvitationData struct {
 	InviterEmail string
 	Role         string // with its article: "a member", "an admin"
 	URL          string // the invitation link, built from APP_ORIGIN
+	Home         string // the homepage, APP_ORIGIN + "/", for someone new to the app
 }
 
 // Message is a rendered email, ready for a driver.
@@ -63,6 +69,15 @@ type Message struct {
 	To, Subject string
 	Template    Template
 	HTML, Text  string
+	// Inline are images the HTML shows with src="cid:<ContentID>", sent
+	// inside the message (never fetched from a server).
+	Inline []Inline
+}
+
+// Inline is an image embedded in a message.
+type Inline struct {
+	ContentID, Name string
+	Data            []byte
 }
 
 // Driver delivers rendered messages: SMTPDriver, or FileDriver in development.
@@ -73,27 +88,34 @@ type Driver interface {
 type Mailer struct {
 	templates map[Template]*template.Template
 	texts     map[Template]textTemplate
+	logo      []byte
 	driver    Driver
 }
 
-// New parses every template, HTML with the layout and plain text, so a broken
-// or missing one stops the server from starting rather than failing when an
-// email is sent. Each email is its own set, since each defines "title" and
-// "content".
-func New(driver Driver) (*Mailer, error) {
+// New parses every template, HTML and plain text, each with its layout, so a
+// broken or missing one stops the server from starting rather than failing
+// when an email is sent. Each email is its own set, since each defines
+// "title" and "content". app is the product name (APP_NAME) the layouts open
+// with; html/template escapes it like any other value.
+func New(driver Driver, app string) (*Mailer, error) {
 	templates := map[Template]*template.Template{}
 	texts := map[Template]textTemplate{}
+	funcs := template.FuncMap{"app": func() string { return app }}
 	for name := range subjects {
-		t, err := template.ParseFS(files, "templates/layout.html", "templates/"+fileName(name))
+		t, err := template.New("layout.html").Funcs(funcs).ParseFS(files, "templates/layout.html", "templates/"+fileName(name))
 		if err != nil {
 			return nil, fmt.Errorf("mail template %s is missing or broken: %w", fileName(name), err)
 		}
 		templates[name] = t.Option("missingkey=error")
-		if texts[name], err = parseText(files, name); err != nil {
+		if texts[name], err = parseText(files, name, app); err != nil {
 			return nil, err
 		}
 	}
-	return &Mailer{templates: templates, texts: texts, driver: driver}, nil
+	logo, err := files.ReadFile("templates/logo.png")
+	if err != nil {
+		return nil, err
+	}
+	return &Mailer{templates: templates, texts: texts, logo: logo, driver: driver}, nil
 }
 
 // Send renders template t with data (its *Data struct), both parts, and
@@ -115,7 +137,8 @@ func (m *Mailer) Send(ctx context.Context, to string, t Template, data any) erro
 	if err != nil {
 		return fmt.Errorf("render mail %s: %w", t, err)
 	}
-	return m.driver.Deliver(ctx, Message{To: to, Subject: subject, Template: t, HTML: body.String(), Text: text})
+	logo := Inline{ContentID: logoContentID, Name: "logo.png", Data: m.logo}
+	return m.driver.Deliver(ctx, Message{To: to, Subject: subject, Template: t, HTML: body.String(), Text: text, Inline: []Inline{logo}})
 }
 
 // validRecipient accepts a bare address (no display name) without line

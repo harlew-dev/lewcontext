@@ -27,6 +27,8 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates && adduser -D -H -u 10001 app
 COPY --from=api /out/ /usr/local/bin/
 USER app
-ENV API_ADDR=0.0.0.0:3000
+# The same product name as the web build, for the server's emails.
+ARG APP_NAME=lewcontext
+ENV API_ADDR=0.0.0.0:3000 APP_NAME=$APP_NAME
 EXPOSE 3000
 CMD ["api"]

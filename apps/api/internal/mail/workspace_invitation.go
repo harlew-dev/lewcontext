@@ -46,6 +46,7 @@ func SendInvitation(s InvitationStore, m *Mailer, origin string) func(context.Co
 			InviterEmail: inv.SenderEmail,
 			Role:         withArticle(inv.Role),
 			URL:          origin + "/auth/invitations/" + token,
+			Home:         origin + "/",
 		}
 		if err := m.Send(ctx, inv.Email, WorkspaceInvitation, data); err != nil {
 			return err

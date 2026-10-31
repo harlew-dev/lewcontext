@@ -27,7 +27,7 @@ func (o *outbox) Deliver(_ context.Context, m Message) error {
 func newMailer(t *testing.T) (*Mailer, *outbox) {
 	t.Helper()
 	box := &outbox{}
-	m, err := New(box)
+	m, err := New(box, "lewcontext")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func newMailer(t *testing.T) (*Mailer, *outbox) {
 // Example data for every template, so each one is rendered at least once.
 var examples = map[Template]any{
 	ForgotPassword:      ForgotPasswordData{Name: "Ada", URL: "http://localhost:3000/auth/forgot-password/abc"},
-	WorkspaceInvitation: WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc"},
+	WorkspaceInvitation: WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc", Home: "http://localhost:3000/"},
 }
 
 // Every email is a whole document from the shared layout, titled with its own
@@ -80,9 +80,32 @@ func TestEveryTemplateRenders(t *testing.T) {
 	}
 }
 
+// Both parts open with the app's name: the HTML card's wordmark above the
+// content, escaped like any value, and the plain text's first line.
+func TestAppNameOpensEveryEmail(t *testing.T) {
+	box := &outbox{}
+	m, err := New(box, "Acme & <Co>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range examples {
+		if err := m.Send(context.Background(), "ada@example.com", name, data); err != nil {
+			t.Fatal(err)
+		}
+		msg := box.sent[len(box.sent)-1]
+		wordmark := strings.Index(msg.HTML, ">Acme &amp; &lt;Co&gt;</td>")
+		if wordmark < 0 || wordmark > strings.Index(msg.HTML, "Ada") || strings.Contains(msg.HTML, "<Co>") {
+			t.Errorf("%s HTML doesn't open with the escaped name:\n%s", name, msg.HTML)
+		}
+		if !strings.HasPrefix(msg.Text, "Acme & <Co>\n\n") || strings.HasPrefix(msg.Text[len("Acme & <Co>\n\n"):], "\n") || !strings.HasSuffix(msg.Text, ".\n") || strings.HasSuffix(msg.Text, "\n\n") {
+			t.Errorf("%s plain text:\n%q", name, msg.Text)
+		}
+	}
+}
+
 // Every email needs its plain-text template; New fails without one.
 func TestMissingTextTemplate(t *testing.T) {
-	if _, err := parseText(files, Template("missing")); err == nil {
+	if _, err := parseText(files, Template("missing"), "lewcontext"); err == nil {
 		t.Fatal("parsed a template that doesn't exist")
 	}
 }
@@ -103,8 +126,9 @@ func TestUntrustedDataIsEscaped(t *testing.T) {
 		if !strings.Contains(html, escaped) {
 			t.Errorf("name %q not escaped as %q", name, escaped)
 		}
-		for _, tag := range []string{"<script", "<h1", "<img"} {
-			if strings.Contains(html, tag) {
+		// The layout's logo is the only image.
+		for tag, layout := range map[string]int{"<script": 0, "<h1": 0, "<img": 1} {
+			if strings.Count(html, tag) != layout {
 				t.Errorf("name %q added %s to the email", name, tag)
 			}
 		}
@@ -178,7 +202,7 @@ func TestNoTextTemplate(t *testing.T) {
 
 func TestFileDriverIsPrivateAndAppends(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mail", "mail.log")
-	m, err := New(&FileDriver{Path: path})
+	m, err := New(&FileDriver{Path: path}, "lewcontext")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +301,7 @@ func TestPasswordResetListener(t *testing.T) {
 func TestMissingTemplateStopsStartup(t *testing.T) {
 	subjects["not-a-file"] = "Missing"
 	defer delete(subjects, "not-a-file")
-	if _, err := New(&outbox{}); err == nil || !strings.Contains(err.Error(), "not-a-file.html") {
+	if _, err := New(&outbox{}, "lewcontext"); err == nil || !strings.Contains(err.Error(), "not-a-file.html") {
 		t.Fatalf("New: %v", err)
 	}
 }
@@ -338,6 +362,14 @@ func TestInvitationListener(t *testing.T) {
 	token := html[start+len(prefix) : start+len(prefix)+43]
 	if s.issued[inv.Invitation] != auth.Digest(token) {
 		t.Fatal("stored digest doesn't match the link")
+	}
+	// Someone new to the app can find out what it is: a second button, and a
+	// line in the plain text, both to the homepage.
+	if !strings.Contains(html, `href="http://localhost:3000/"`) || !strings.Contains(html, ">Learn about lewcontext</a") {
+		t.Errorf("no homepage button in:\n%s", html)
+	}
+	if !strings.Contains(box.sent[0].Text, "New to lewcontext? Learn what it is: http://localhost:3000/") {
+		t.Errorf("no homepage line in:\n%s", box.sent[0].Text)
 	}
 	for _, tag := range []string{"<h1>", "<script>"} {
 		if strings.Contains(html, tag) {

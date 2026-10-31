@@ -216,7 +216,7 @@ func smtpMailer(t *testing.T, s *fakeSMTP, mode string, trust bool, username, pa
 		d.rootCAs = x509.NewCertPool()
 		d.rootCAs.AddCert(leaf)
 	}
-	m, err := New(d)
+	m, err := New(d, "Acme")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,21 +261,57 @@ func TestSMTPMessage(t *testing.T) {
 			t.Errorf("unexpected %s header: %q", name, h.Get(name))
 		}
 	}
-	// multipart/alternative: plain text first, then HTML, both with the link.
-	mediaType, params, err := mime.ParseMediaType(h.Get("Content-Type"))
-	if err != nil || mediaType != "multipart/alternative" {
-		t.Fatalf("Content-Type: %q", h.Get("Content-Type"))
+	// Plain text first, then HTML, both with the link, and the logo the HTML
+	// shows embedded as a PNG with the Content-ID it refers to.
+	leaves := mimeLeaves(t, h.Get("Content-Type"), msg.Body)
+	if len(leaves) != 3 {
+		t.Fatalf("%d parts: %+v", len(leaves), leaves)
 	}
-	parts := multipart.NewReader(msg.Body, params["boundary"])
-	for _, want := range []string{"text/plain", "text/html"} {
+	link := "https://app.example.com/auth/forgot-password/abc"
+	if leaves[0].contentType != "text/plain" || !strings.Contains(leaves[0].body, link) {
+		t.Errorf("first part: %s\n%s", leaves[0].contentType, leaves[0].body)
+	}
+	if leaves[1].contentType != "text/html" || !strings.Contains(leaves[1].body, link) || !strings.Contains(leaves[1].body, `src="cid:logo"`) {
+		t.Errorf("second part: %s\n%s", leaves[1].contentType, leaves[1].body)
+	}
+	if leaves[2].contentType != "image/png" || leaves[2].contentID != "<logo>" || !strings.HasPrefix(leaves[2].body, "\x89PNG") {
+		t.Errorf("logo part: %s %s, %d bytes", leaves[2].contentType, leaves[2].contentID, len(leaves[2].body))
+	}
+}
+
+// mimeLeaf is one non-multipart part of a message, decoded.
+type mimeLeaf struct{ contentType, contentID, body string }
+
+// mimeLeaves walks nested multipart bodies in order.
+func mimeLeaves(t *testing.T, contentType string, body io.Reader) []mimeLeaf {
+	t.Helper()
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		t.Fatalf("Content-Type %q: %v", contentType, err)
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		raw, _ := io.ReadAll(body)
+		return []mimeLeaf{{contentType: mediaType, body: string(raw)}}
+	}
+	var leaves []mimeLeaf
+	parts := multipart.NewReader(body, params["boundary"])
+	for {
 		part, err := parts.NextPart()
+		if err == io.EOF {
+			return leaves
+		}
 		if err != nil {
-			t.Fatalf("%s part: %v", want, err)
+			t.Fatal(err)
 		}
-		body, _ := io.ReadAll(part)
-		if !strings.HasPrefix(part.Header.Get("Content-Type"), want) || !strings.Contains(string(body), "https://app.example.com/auth/forgot-password/abc") {
-			t.Errorf("%s part: %q\n%s", want, part.Header.Get("Content-Type"), body)
+		var content io.Reader = part
+		if strings.EqualFold(part.Header.Get("Content-Transfer-Encoding"), "base64") {
+			content = base64.NewDecoder(base64.StdEncoding, part)
 		}
+		inner := mimeLeaves(t, part.Header.Get("Content-Type"), content)
+		if len(inner) == 1 {
+			inner[0].contentID = part.Header.Get("Content-Id")
+		}
+		leaves = append(leaves, inner...)
 	}
 }
 

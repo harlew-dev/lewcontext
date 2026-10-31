@@ -80,7 +80,7 @@ func (c *Config) loadSMTP() error {
 		return errors.New("MAIL_FROM_ADDRESS must be a bare email address, such as no-reply@example.com")
 	}
 	c.MailFromAddress = from
-	c.MailFromName = env("MAIL_FROM_NAME", env("APP_NAME", "lewcontext"))
+	c.MailFromName = env("MAIL_FROM_NAME", c.AppName)
 	if strings.ContainsAny(c.MailFromName, "\r\n") || strings.ContainsAny(c.SMTP.Host, " \t\r\n/") {
 		return errors.New("MAIL_FROM_NAME and SMTP_HOST can't contain line breaks")
 	}
