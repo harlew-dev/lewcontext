@@ -152,13 +152,13 @@ func TestRateLimitRecordedOnce(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	user := must(factory.Users.CreateOne(ctx, db, f))(t)
-	must(factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+	must(factory.RateLimits.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	login := fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword)
 	for range 3 {
 		call(t, h, "POST", "/api/auth/login", login, "", nil, 429)
 	}
-	e := onlyEvent(t, db, "auth.rate_limited")
-	if e.Payload["scope"] != "auth:per-account" || !is(e.UserID, 0) {
+	e := onlyEvent(t, db, "rate_limit.reached")
+	if e.Payload["limit"] != "auth:per-account:block" || e.Payload["ip"] != "127.0.0.1" || e.Payload["window"] != float64(900) || !is(e.UserID, 0) {
 		t.Fatalf("rate limited: %+v", e)
 	}
 	if len(eventsNamed(t, db, "auth.login_attempted")) != 0 {
@@ -169,11 +169,11 @@ func TestRateLimitRecordedOnce(t *testing.T) {
 func TestIPRateLimitRecorded(t *testing.T) {
 	s, db := integrationServer(t)
 	f := factory.TestFaker(t)
-	must(factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f))(t)
+	must(factory.RateLimits.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f))(t)
 	for range 2 {
 		call(t, s.Routes(), "POST", "/api/auth/login", `{"email":"a@example.com","password":"anything at all"}`, "", nil, 429)
 	}
-	if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "auth:per-ip" {
+	if e := onlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "auth:per-ip:block" {
 		t.Fatalf("rate limited: %+v", e)
 	}
 }

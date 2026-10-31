@@ -8,7 +8,9 @@ import (
 )
 
 // Routes is the single registry of API endpoints and their authorization
-// requirements, and of the web app's pages when Pages is set.
+// requirements and rate limits, and of the web app's pages when Pages is set.
+// Every route behind requireSession has a budget (limits.go); routes that
+// create rows also name their own limit with s.limit.
 func (s *Server) Routes() http.Handler {
 	api := s.security(s.apiRoutes())
 	pages := s.pageRoutes()
@@ -31,19 +33,25 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.Handle("PATCH /api/auth/me", s.requireSession(http.HandlerFunc(s.updateProfile)))
 	// Deleting the account checks the password, like the routes below.
 	mux.Handle("DELETE /api/auth/me", s.requireSession(s.limitAuth(http.HandlerFunc(s.destroyAccount))))
-	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.logout)))
-	mux.Handle("DELETE /api/auth/sessions", s.requireSession(http.HandlerFunc(s.revokeOthers)))
+	// The recovery routes skip the signed-in budget, so a stolen session can't
+	// use it up to keep the owner from signing it out (limits.go).
+	mux.Handle("POST /api/auth/logout", s.requireSessionUnmetered(http.HandlerFunc(s.logout)))
+	mux.Handle("DELETE /api/auth/sessions", s.requireSessionUnmetered(http.HandlerFunc(s.revokeOthers)))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
-	mux.Handle("POST /api/auth/password/verify", s.requireSession(s.limitAuth(http.HandlerFunc(s.verifyPassword))))
-	mux.Handle("PATCH /api/auth/password", s.requireSession(s.limitAuth(http.HandlerFunc(s.changePassword))))
+	mux.Handle("POST /api/auth/password/verify", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(s.verifyPassword))))
+	mux.Handle("PATCH /api/auth/password", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(s.changePassword))))
 	// Password reset by link, signed out (password_reset.go). Requesting a
 	// link and checking one don't hash, so they take only the IP quota.
 	mux.HandleFunc("POST /api/auth/password-reset", s.requestPasswordReset)
 	mux.HandleFunc("POST /api/auth/password-reset/check", s.checkPasswordReset)
 	mux.Handle("PATCH /api/auth/password-reset", s.limitAuth(http.HandlerFunc(s.resetPassword)))
+	// An invitation link's page checks it signed out, and accepts it signed in.
+	invitations := invitationHandlers{s}
+	mux.HandleFunc("POST /api/invitations/check", invitations.check)
+	mux.Handle("POST /api/invitations/accept", s.requireSession(http.HandlerFunc(invitations.accept)))
 	workspaces := workspaceHandlers{s}
 	mux.Handle("GET /api/workspaces", s.requireSession(http.HandlerFunc(workspaces.index)))
-	mux.Handle("POST /api/workspaces", s.requireSession(http.HandlerFunc(workspaces.store)))
+	mux.Handle("POST /api/workspaces", s.requireSession(s.limit(workspacePerUser, workspaces.store)))
 
 	// Everything inside a workspace requires a session and membership.
 	s.workspaceRoutes(group(mux, "/api/workspaces/{workspace}", s.requireSession, s.requireWorkspace))
@@ -59,18 +67,24 @@ func (s *Server) workspaceRoutes(ws routeGroup) {
 	projects := projectHandlers{s}
 	members := memberHandlers{s}
 	membership := membershipHandlers{s}
+	invitations := invitationHandlers{s}
 	ws.HandleFunc("GET", "", workspaces.show)
 	ws.Can("PATCH", "", auth.WorkspaceUpdate, workspaces.update)
 	// Deleting checks the owner's password, so it shares sign-in's limits.
 	ws.Can("DELETE", "", auth.WorkspaceDestroy, s.limitAuth(http.HandlerFunc(workspaces.destroy)).ServeHTTP)
 	ws.HandleFunc("GET", "/projects", projects.index)
-	ws.Can("POST", "/projects", auth.ProjectStore, projects.store)
+	ws.Can("POST", "/projects", auth.ProjectStore, s.limit(projectPerUser, projects.store))
 	ws.HandleFunc("GET", "/projects/{project}", projects.show)
 	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, projects.update)
 	ws.Can("DELETE", "/projects/{project}", auth.ProjectDestroy, projects.destroy)
 	ws.Can("GET", "/members", auth.WorkspaceMemberIndex, members.index)
 	ws.Can("PATCH", "/members/{member}", auth.WorkspaceMemberUpdate, members.update)
 	ws.Can("DELETE", "/members/{member}", auth.WorkspaceMemberDestroy, members.destroy)
+	// Invitations email an address the inviter chooses, so sending has its
+	// own limit (and invitation:global in the handler).
+	ws.Can("GET", "/invitations", auth.WorkspaceInvitationIndex, invitations.index)
+	ws.Can("POST", "/invitations", auth.WorkspaceInvitationStore, s.limit(invitationPerUser, invitations.store))
+	ws.Can("DELETE", "/invitations/{invitation}", auth.WorkspaceInvitationDestroy, invitations.destroy)
 	// Your own membership: anyone may leave, apart from the last owner.
 	ws.Can("DELETE", "/membership", auth.AnyMember, membership.destroy)
 }

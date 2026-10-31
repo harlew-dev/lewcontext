@@ -1,6 +1,7 @@
 // Package events defines what the API records as having happened: sign-ins,
 // password changes, workspaces, their members and projects created, changed
-// or deleted, and accounts deleted.
+// or deleted, invitations sent and accepted, accounts deleted, and rate
+// limits reached.
 //
 // Each event is a struct whose JSON is the stored payload. Payloads identify
 // records by public ID only (usr_, wsp_, prj_) and never hold passwords,
@@ -23,13 +24,15 @@ type Event interface {
 
 // Catalogue lists every event type, for tests and docs.
 var Catalogue = []Event{
-	Registered{}, LoginAttempted{}, LoggedIn{}, RateLimited{}, LoggedOut{},
+	Registered{}, LoginAttempted{}, LoggedIn{}, LoggedOut{},
 	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
 	AccountDeleted{},
 	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
 	WorkspaceCreated{}, WorkspaceRenamed{}, WorkspaceDeleted{},
 	WorkspaceMemberUpdated{}, WorkspaceMemberRemoved{}, WorkspaceMemberLeft{},
+	WorkspaceInvitationCreated{}, WorkspaceInvitationSent{}, WorkspaceInvitationRevoked{}, WorkspaceInvitationAccepted{},
 	ProjectCreated{}, ProjectUpdated{}, ProjectDeleted{},
+	RateLimitReached{},
 }
 
 // Change is a field's value before and after an update.

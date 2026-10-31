@@ -3,11 +3,13 @@ import { useOptionalSession } from "@/lib/session";
 import { browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
 import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
+import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
 export { ApiError, errorMessage } from "./http";
 export type { ApiPath } from "./paths";
+export type { InvitationIndexQuery } from "./invitations";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
 export type { WorkspaceDeletion, WorkspaceIndexQuery } from "./workspaces";
@@ -26,6 +28,7 @@ export const paths = {
   workspaces: workspaceRoutes,
   projects: projectRoutes,
   members: memberRoutes,
+  invitations: invitationRoutes,
   auth: authRoutes,
   sessions: sessionRoutes,
 };
@@ -51,6 +54,8 @@ export function client(http: Http) {
     // Projects belong to a workspace, so their client takes its ID.
     projects: (workspace: string) => projects(http, workspace),
     members: (workspace: string) => members(http, workspace),
+    // A workspace's invitations, or with no workspace, the link's check and accept.
+    invitations: invitations(http),
     auth: () => auth(http),
     sessions: () => sessions(http),
   };

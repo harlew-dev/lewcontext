@@ -34,6 +34,8 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `workspaces()` | `index({ page, perPage, canLeave: false })`, `show(id)`, `store({ name })`, `update(id, { name })` (owners and admins), `destroy(id, { name, password })` (owners), `leave(id)` (`DELETE …/membership`) |
 | `projects(workspace)` | `index`, `show`, `store`, `update`, `destroy` (owners and admins) |
 | `members(workspace)` | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins) |
+| `invitations(workspace)` | `index({ page, perPage })`, `store({ email, role })`, `destroy(id)` (owners and admins) |
+| `invitations()` | `check(token)`, `accept(token)`: the link's page, by the token in the body |
 | `auth()` | `me`, `login(credentials)`, `register(registration)`, `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces) |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
@@ -69,9 +71,11 @@ list.refresh()   // Retry, refresh, or after a mutation
 
 - **SWR key** is `[path, userId]`, with the user ID from the session context, so one user never sees another's cached data.
 - **Pages fetch their own data**: there is no server rendering, so a page renders at once with skeletons. `useResource(path, fallback)` shows `fallback` (e.g. a record from an already loaded list) until the fetch returns; a `null` path fetches nothing.
+- **Polling:** `useResource(path, fallback, { refreshInterval: (data) => ms })` refreshes again after `ms`, or stops at 0: the pending invitations poll every 3 s only while one is "Sending…".
 - **Changing path** keeps the previous data in `data` while `loading` is true, and keeps it if the new request fails. Show it, dimmed, with an error `Notice` that offers Retry.
 - **`loading`** is true only when there is no data yet for this path. `refreshing` is true while revalidating.
 - **401** redirects to `/auth/login?next=<this page>` ([pages.md](pages.md#returning-after-sign-in-next)).
+- **Retries:** a failed read is retried twice (`swrConfig`, `lib/swr.ts`, set in `root.tsx`), except a 4xx: a 403 or 404 won't change, and retrying a 429 would spend more of the rate limit ([../api/rate-limits.md](../api/rate-limits.md)). The API's message ("Too many requests. Try again in 12 minutes.") shows in the error `Notice`, and Retry asks again.
 
 ## Changing data
 

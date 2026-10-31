@@ -41,6 +41,13 @@ func clientIP(r *http.Request) string {
 func currentWorkspace(r *http.Request) store.Workspace {
 	return r.Context().Value(workspaceKey{}).(store.Workspace)
 }
+
+// optionalWorkspace is the workspace in the path on routes that may run
+// without one (the rate limiters).
+func optionalWorkspace(r *http.Request) (store.Workspace, bool) {
+	workspace, ok := r.Context().Value(workspaceKey{}).(store.Workspace)
+	return workspace, ok
+}
 func unsafeMethod(method string) bool {
 	return method != "GET" && method != "HEAD" && method != "OPTIONS"
 }
@@ -104,7 +111,21 @@ func (s *Server) sessionDigest(r *http.Request) string {
 	}
 	return auth.Digest(token)
 }
+
+// requireSession lets through requests with a live session, and a valid CSRF
+// token on mutations, then counts each against its user's budget (meter).
 func (s *Server) requireSession(next http.Handler) http.Handler {
+	return s.signedIn(next, true)
+}
+
+// requireSessionUnmetered is requireSession without the budget, for the
+// recovery routes: signing out, revoking other sessions and changing the
+// password. Someone holding a stolen session then can't use up the owner's
+// budget to stop them. They only delete rows, or keep sign-in's limits.
+func (s *Server) requireSessionUnmetered(next http.Handler) http.Handler {
+	return s.signedIn(next, false)
+}
+func (s *Server) signedIn(next http.Handler, metered bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, err := s.session(r)
 		if errors.Is(err, errNoSession) {
@@ -124,7 +145,11 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), sessionKey{}, session)
-		next.ServeHTTP(w, r.WithContext(events.WithActor(ctx, session.User.ID)))
+		r = r.WithContext(events.WithActor(ctx, session.User.ID))
+		if metered && !s.meter(w, r) {
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -186,7 +211,7 @@ func requirePermission(p auth.Permission, next http.Handler) http.Handler {
 }
 func (s *Server) limitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.allowAuth(w, r, authPerIP, authPerIP.key(clientIP(r))) {
+		if !s.allow(w, r, authPerIP, authPerIP.key(clientIP(r))) {
 			return
 		}
 		select {

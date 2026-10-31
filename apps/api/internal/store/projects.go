@@ -77,10 +77,15 @@ func (s *Store) FindProject(ctx context.Context, workspaceID int64, publicID str
 	return p, err
 }
 
-// CreateProject creates a project in the workspace and records project.created.
+// CreateProject creates a project in the workspace and records
+// project.created. It returns a QuotaError when the workspace already holds
+// MaxWorkspaceProjects.
 func (s *Store) CreateProject(ctx context.Context, w Workspace, in ProjectInput) (Project, error) {
 	p := Project{WorkspaceID: w.ID, Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := checkWorkspaceProjects(ctx, tx, w.ID); err != nil {
+			return err
+		}
 		if _, err := tx.NewInsert().Model(&p).Returning("*").Exec(ctx); err != nil {
 			return err
 		}

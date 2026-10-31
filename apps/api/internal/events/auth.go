@@ -44,16 +44,6 @@ type LoggedIn struct {
 
 func (LoggedIn) EventName() string { return "auth.logged_in" }
 
-// RateLimited: a rate limit refused its first request in a window. Scope is
-// the limit's name, e.g. "auth:per-ip" or "password-reset:per-email"
-// (httpapi/limits.go); User is set when a signed-in user hit it.
-type RateLimited struct {
-	Scope string `json:"scope"`
-	User  string `json:"user,omitempty"`
-}
-
-func (RateLimited) EventName() string { return "auth.rate_limited" }
-
 // LoggedOut: a session was signed out.
 type LoggedOut struct {
 	User string `json:"user"`

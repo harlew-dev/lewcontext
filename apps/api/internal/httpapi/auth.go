@@ -7,10 +7,8 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/store"
-	"log/slog"
 	"net/http"
 	"net/mail"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -47,47 +45,15 @@ func strongPassword(password string) bool {
 	return utf8.RuneCountInString(password) >= 12
 }
 func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email string) bool {
-	return s.allowAuth(w, r, authPerAccount, authPerAccount.key(email))
+	return s.allow(w, r, authPerAccount, authPerAccount.key(email))
 }
 
-// allowAuth counts an attempt against a rate limit under key and answers 429
-// when it is used up. The first refusal in a window records
-// auth.rate_limited; the ones after it don't, so a flood writes one event.
-func (s *Server) allowAuth(w http.ResponseWriter, r *http.Request, l rateLimit, key string) bool {
-	allowed, firstRefusal, err := s.Store.AllowAuth(r.Context(), key, l.limit, l.window)
-	if err == nil && firstRefusal {
-		if l.busy != "" {
-			slog.Warn("a rate limit shared by everyone was reached", "limit", l.name, "window", l.window)
-		}
-		e := events.RateLimited{Scope: l.name}
-		var subject store.EventScope
-		if session, ok := optionalSession(r); ok {
-			e.User, subject.UserID = session.User.PublicID, session.User.ID
-		}
-		err = s.Store.Record(r.Context(), e, subject)
-	}
-	if err != nil {
-		internalError(w, err)
-		return false
-	}
-	if !allowed {
-		w.Header().Set("Retry-After", strconv.Itoa(int(l.window.Seconds())))
-		if l.busy != "" {
-			fail(w, 503, l.busy)
-		} else {
-			fail(w, 429, "Too many attempts. Try again in "+waitFor(l.window)+".")
-		}
-		return false
-	}
-	return true
-}
-
-// waitFor says how long a window is: "15 minutes" or "an hour".
-func waitFor(d time.Duration) string {
-	if d == time.Hour {
-		return "an hour"
-	}
-	return strconv.Itoa(int(d.Minutes())) + " minutes"
+// registrationLimit counts a valid sign-up against the account creation
+// limits: per IP first, so a client refused there doesn't spend the limit
+// shared by everyone.
+func (s *Server) registrationLimit(w http.ResponseWriter, r *http.Request) bool {
+	return s.allow(w, r, registerPerIP, registerPerIP.key(clientIP(r))) &&
+		s.allow(w, r, registerGlobal, registerGlobal.everyone())
 }
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var in credentials
@@ -98,7 +64,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "Use a name, a valid email, and a password of 12–128 characters.")
 		return
 	}
-	if !s.accountLimit(w, r, in.Email) {
+	if !s.accountLimit(w, r, in.Email) || !s.registrationLimit(w, r) {
 		return
 	}
 	hash, err := auth.HashPassword(in.Password)

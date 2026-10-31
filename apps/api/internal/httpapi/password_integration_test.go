@@ -123,7 +123,7 @@ func TestPasswordRateLimit(t *testing.T) {
 	f := factory.TestFaker(t)
 	session := signedIn(t, db, f)
 	email := emailOf(t, db, session.UserID)
-	must(factory.AuthAttempts.State(factory.ForAccount(email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+	must(factory.RateLimits.State(factory.ForAccount(email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	locked := call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, factory.DefaultPassword), session.CSRFToken, session.Cookie(), 429)
 	if locked.Header().Get("Retry-After") != "900" {
 		t.Fatal("rate-limited check without Retry-After")

@@ -72,6 +72,7 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `API_ADDR` | `127.0.0.1:8080` | Listen address (loopback by default); `make serve` uses `127.0.0.1:3000` |
 | `API_URL` | `http://127.0.0.1:8080` | Only for Vite's dev proxy (`make dev`, `make web`) |
 | `MAIL_DRIVER` | `file`; `off` in production | `file` writes email to `MAIL_FILE`; `off` sends nothing, so password reset answers 503. Production refuses `file` ([mail.md](mail.md)) |
+| `RATE_LIMITS` | `on` | `off` switches every rate limit off, for the end-to-end tests; quotas stay. Production refuses `off` ([rate-limits.md](rate-limits.md#switching-limits-off-for-tests-rate_limits)) |
 | `MAIL_FILE` | `tmp/mail.log` | The development mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
@@ -80,4 +81,4 @@ Without a web build, the server serves the API only in development (Vite serves 
 
 ## More
 
-[endpoints.md](endpoints.md) · [auth.md](auth.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)
+[endpoints.md](endpoints.md) · [auth.md](auth.md) · [rate-limits.md](rate-limits.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)

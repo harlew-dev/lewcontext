@@ -54,3 +54,44 @@ type WorkspaceMemberLeft struct {
 }
 
 func (WorkspaceMemberLeft) EventName() string { return "workspace.member.left" }
+
+// WorkspaceInvitationCreated: someone (the actor) invited Email to the
+// workspace as Role. The mail.workspace_invitation listener sends the link.
+type WorkspaceInvitationCreated struct {
+	Invitation string `json:"invitation"`
+	Workspace  string `json:"workspace"`
+	Email      string `json:"email"`
+	Role       string `json:"role"`
+}
+
+func (WorkspaceInvitationCreated) EventName() string { return "workspace.invitation.created" }
+
+// WorkspaceInvitationSent: an invitation's link was emailed, for the created
+// event Request (evt_…). A resend after a retry replaces the earlier link.
+type WorkspaceInvitationSent struct {
+	Invitation string `json:"invitation"`
+	Workspace  string `json:"workspace"`
+	Request    string `json:"request"`
+}
+
+func (WorkspaceInvitationSent) EventName() string { return "workspace.invitation.sent" }
+
+// WorkspaceInvitationRevoked: someone (the actor) revoked the invitation to
+// Email, so its link stops working.
+type WorkspaceInvitationRevoked struct {
+	Invitation string `json:"invitation"`
+	Workspace  string `json:"workspace"`
+	Email      string `json:"email"`
+}
+
+func (WorkspaceInvitationRevoked) EventName() string { return "workspace.invitation.revoked" }
+
+// WorkspaceInvitationAccepted: the invitee (the actor and user) accepted and
+// joined as Role, or kept the role they already had.
+type WorkspaceInvitationAccepted struct {
+	Invitation string `json:"invitation"`
+	Workspace  string `json:"workspace"`
+	Role       string `json:"role"`
+}
+
+func (WorkspaceInvitationAccepted) EventName() string { return "workspace.invitation.accepted" }

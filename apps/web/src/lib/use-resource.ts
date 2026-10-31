@@ -9,8 +9,16 @@ import { useOptionalSession } from "./session";
 // a record from an already loaded list) is shown until the fetch returns.
 // While a new path loads, or if it fails, the last loaded data stays
 // available. A null path fetches nothing. Expired sessions go to login,
-// returning to this page afterwards.
-export function useResource<T>(path: ApiPath<T> | null, fallback?: T) {
+// returning to this page afterwards. `refreshInterval` polls: milliseconds
+// until the next refresh after each load, or 0 to stop (e.g. only while an
+// invitation's email is still being sent).
+export function useResource<T>(
+  path: ApiPath<T> | null,
+  fallback?: T,
+  {
+    refreshInterval,
+  }: { refreshInterval?: (data: T | undefined) => number } = {},
+) {
   const api = useApi();
   const navigate = useNavigate();
   const location = useLocation();
@@ -20,6 +28,7 @@ export function useResource<T>(path: ApiPath<T> | null, fallback?: T) {
     () => api.get(path as ApiPath<T>),
     {
       fallbackData: fallback,
+      refreshInterval,
       onError(error) {
         if (error instanceof ApiError && error.status === 401)
           void navigate(loginPath(location.pathname + location.search), {

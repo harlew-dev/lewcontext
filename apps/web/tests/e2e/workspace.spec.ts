@@ -13,6 +13,11 @@ const resetEmail = `e2e-${stamp}-reset@lewcontext.test`;
 const crewEmail = `e2e-${stamp}-crew@lewcontext.test`;
 const teammateEmail = `e2e-${stamp}-teammate@lewcontext.test`;
 const deleteEmail = `e2e-${stamp}-delete@lewcontext.test`;
+const switcherEmail = `e2e-${stamp}-switcher@lewcontext.test`;
+const inviterEmail = `e2e-${stamp}-inviter@lewcontext.test`;
+const inviteeEmail = `e2e-${stamp}-invitee@lewcontext.test`;
+const joinerEmail = `e2e-${stamp}-joiner@lewcontext.test`;
+const revokedEmail = `e2e-${stamp}-revoked@lewcontext.test`;
 const emails = [
   email,
   returnEmail,
@@ -25,6 +30,10 @@ const emails = [
   crewEmail,
   teammateEmail,
   deleteEmail,
+  switcherEmail,
+  inviterEmail,
+  inviteeEmail,
+  joinerEmail,
 ];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
@@ -380,7 +389,7 @@ test("signing in returns to the page that needed it, and only to our pages", asy
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(`/app/${ws}/dashboard`);
 });
-test("workspaces: switch, create, rename, copy the ID, and open the newest", async ({
+test("workspaces: switch, create, rename and copy the ID", async ({
   page,
   context,
 }) => {
@@ -396,7 +405,6 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
   await expect(page).not.toHaveURL(`/app/${first}/dashboard`);
   await expect(page).toHaveURL(workspaceUrl);
   await expect(dialog).toHaveCount(0);
-  const second = workspaceOf(page);
   await expect(page.getByText("Room for your next big thing")).toBeVisible();
   // Both are listed, newest first, and switching is a link.
   await page.getByRole("button", { name: "Workspace menu" }).click();
@@ -433,25 +441,44 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
     page.getByRole("status").filter({ hasText: "Copied" }),
   ).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(first);
-  // More than a page of workspaces: the switcher loads the rest as it scrolls.
+});
+test("the switcher loads more workspaces as it scrolls, and signing in opens the newest", async ({
+  page,
+}) => {
+  // You can own 20 workspaces, so the ones past a page of the switcher that
+  // aren't yours are added as memberships in the database (no invites yet).
+  test.skip(!process.env.TEST_DATABASE_URL, "needs TEST_DATABASE_URL");
+  await register(page, switcherEmail, "Sam Switcher");
+  await onboard(page, "First studio");
   const headers = await apiHeaders(page);
-  for (let i = 0; i < 23; i++) {
+  for (let i = 0; i < 19; i++) {
     const response = await page.request.post("/api/workspaces", {
       headers,
       data: { name: `Bulk ${String(i).padStart(2, "0")}` },
     });
     expect(response.status()).toBe(201);
   }
+  const refused = await page.request.post("/api/workspaces", {
+    headers,
+    data: { name: "One too many" },
+  });
+  expect(refused.status()).toBe(422);
+  expect((await refused.json()).error).toBe("You can own up to 20 workspaces.");
+  sql(
+    `WITH created AS (INSERT INTO workspaces (name, created_at, updated_at) SELECT 'Bulk ' || n, now() + n * interval '1 millisecond', now() FROM generate_series(19, 22) AS n RETURNING id) INSERT INTO workspace_user (user_id, workspace_id, role) SELECT u.id, c.id, 'member' FROM created c JOIN users u ON u.email = '${switcherEmail}'`,
+  );
   await page.goto("/app");
   await expect(page).toHaveURL(workspaceUrl);
   await expect(
     page.getByRole("button", { name: "Workspace menu" }),
   ).toContainText("Bulk 22");
   await page.getByRole("button", { name: "Workspace menu" }).click();
+  const menu = page.getByRole("menu");
+  const listed = menu.locator('a[href$="/dashboard"]');
   await expect(listed).toHaveCount(20);
   await listed.last().scrollIntoViewIfNeeded();
-  await expect(listed).toHaveCount(25);
-  await expect(listed.last()).toHaveText(/Renamed studio$/);
+  await expect(listed).toHaveCount(24);
+  await expect(listed.last()).toHaveText(/First studio$/);
   await expect(menu.getByRole("menuitem", { name: "Show more" })).toHaveCount(
     0,
   );
@@ -459,13 +486,12 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
   await page.keyboard.press("Escape");
   await page.context().clearCookies();
   await page.goto("/auth/login");
-  await page.getByLabel("Email").fill(scrollEmail);
+  await page.getByLabel("Email").fill(switcherEmail);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(
     page.getByRole("button", { name: "Workspace menu" }),
   ).toContainText("Bulk 22");
-  expect(workspaceOf(page)).not.toBe(second);
 });
 test("other people's workspaces are not found until you're a member; members can't rename and viewers can't change anything", async ({
   page,
@@ -670,9 +696,13 @@ test("change password: checks the current one twice and signs out other sessions
 const mailbox =
   process.env.MAIL_FILE ||
   new URL("../../../../tmp/mail.log", import.meta.url).pathname;
-// The path of the newest reset link sent to `to`, once the server's worker
-// has written it (it polls every second).
-async function resetLinkFor(to: string): Promise<string> {
+// The path of the newest link of a kind (a reset link, or an invitation)
+// sent to `to`, once the server's worker has written it (it polls every
+// second).
+async function mailedLink(
+  to: string,
+  kind: "forgot-password" | "invitations",
+): Promise<string> {
   let link = "";
   await expect
     .poll(
@@ -689,12 +719,12 @@ async function resetLinkFor(to: string): Promise<string> {
         const match = messages
           .at(-1)
           ?.match(
-            /href="https?:\/\/[^/"]+(\/auth\/forgot-password\/[\w-]{43})"/,
+            new RegExp(`href="https?://[^/"]+(/auth/${kind}/[\\w-]{43})"`),
           );
         link = match?.[1] ?? "";
         return link;
       },
-      { message: `a reset link for ${to} in ${mailbox}`, timeout: 15000 },
+      { message: `a ${kind} link for ${to} in ${mailbox}`, timeout: 15000 },
     )
     .not.toBe("");
   return link;
@@ -714,7 +744,7 @@ test("forgot password: a link from the mailbox sets a new password once", async 
   await expect(
     page.getByRole("heading", { name: "Check your email" }),
   ).toBeVisible();
-  const link = await resetLinkFor(resetEmail);
+  const link = await mailedLink(resetEmail, "forgot-password");
   const token = link.split("/").at(-1)!;
   // The token travels only in request bodies, never in an API URL.
   const apiURLs: string[] = [];
@@ -892,3 +922,117 @@ async function paginate(page: Page, ws: string) {
   await expect(rows.first()).toContainText("Fresh idea");
   await expect(page.getByText("24 projects in this workspace")).toBeVisible();
 }
+test("invitations: invite by email, join through the link as a new or existing account, revoke", async ({
+  page,
+  browser,
+}) => {
+  // Someone who already has an account, signed in in a browser of their own.
+  const joiner = await browser.newContext();
+  const joinerPage = await joiner.newPage();
+  await register(joinerPage, joinerEmail, "Jo Joiner");
+  await onboard(joinerPage, "Jo’s own");
+  // The owner invites a new address, the existing account, and one to revoke.
+  await register(page, inviterEmail, "Ivy Inviter");
+  const ws = await onboard(page, "Invite studio");
+  await page.goto(`/app/${ws}/settings/members`);
+  for (const [email, role] of [
+    [inviteeEmail, "Member"],
+    [joinerEmail, "Viewer"],
+    [revokedEmail, "Member"],
+  ]) {
+    await page.getByRole("button", { name: "Invite", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Email").fill(email);
+    if (role !== "Member") {
+      await dialog.getByRole("combobox").click();
+      await page.getByRole("option", { name: role }).click();
+    }
+    await dialog.getByRole("button", { name: "Send invitation" }).click();
+    await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+  }
+  const pending = page.getByRole("region", { name: "Pending invitations" });
+  // "Sending…" until the worker has emailed each one; the list polls.
+  await expect(pending.getByText("Sending…")).toHaveCount(0, {
+    timeout: 15000,
+  });
+  await expect(pending.getByRole("row")).toHaveCount(4);
+  const revokedLink = await mailedLink(revokedEmail, "invitations");
+  await pending
+    .getByRole("button", {
+      name: `Actions for the invitation to ${revokedEmail}`,
+    })
+    .click();
+  await page.getByRole("menuitem", { name: "Revoke invitation" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Revoke invitation" })
+    .click();
+  await expect(
+    page.getByText(`The invitation to ${revokedEmail} was revoked.`),
+  ).toBeVisible();
+  await expect(pending.getByRole("row")).toHaveCount(3);
+
+  // A new account signs up through its link and lands in the workspace.
+  const invitee = await browser.newContext();
+  const inviteePage = await invitee.newPage();
+  const link = await mailedLink(inviteeEmail, "invitations");
+  const token = link.split("/").at(-1)!;
+  const apiURLs: string[] = [];
+  inviteePage.on("request", (r) => {
+    if (new URL(r.url()).pathname.startsWith("/api/")) apiURLs.push(r.url());
+  });
+  await inviteePage.goto(link);
+  await expect(
+    inviteePage.getByRole("heading", { name: "Join Invite studio" }),
+  ).toBeVisible();
+  await expect(
+    inviteePage.getByText(
+      `Ivy Inviter (${inviterEmail}) invited you as a member.`,
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await inviteePage.getByRole("link", { name: "Create an account" }).click();
+  await expect(
+    inviteePage.getByText("Invite studio has invited you to join.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(inviteePage.getByLabel("Email")).toHaveValue(inviteeEmail);
+  await inviteePage.getByLabel("Full name").fill("Ines Invitee");
+  await inviteePage.getByLabel("Password", { exact: true }).fill(password);
+  await inviteePage.getByRole("button", { name: "Create account" }).click();
+  await expect(inviteePage).toHaveURL(`/app/${ws}/dashboard`);
+  await expect(
+    inviteePage.getByText("You joined Invite studio."),
+  ).toBeVisible();
+  // The token never travelled in an API URL.
+  expect(apiURLs.filter((url) => url.includes(token))).toEqual([]);
+  // The link worked once.
+  await inviteePage.goto(link);
+  await expect(
+    inviteePage.getByRole("heading", { name: "This invitation has expired" }),
+  ).toBeVisible();
+
+  // The existing account opens its link signed in, and joins on request.
+  await joinerPage.goto(await mailedLink(joinerEmail, "invitations"));
+  await joinerPage.getByRole("button", { name: "Join Invite studio" }).click();
+  await expect(joinerPage).toHaveURL(`/app/${ws}/dashboard`);
+  await expect(joinerPage.getByText("You joined Invite studio.")).toBeVisible();
+
+  // The revoked link no longer works.
+  await joinerPage.goto(revokedLink);
+  await expect(
+    joinerPage.getByRole("heading", { name: "This invitation has expired" }),
+  ).toBeVisible();
+
+  // The owner sees both as members, and nothing pending.
+  await page.reload();
+  await expect(page.getByRole("cell", { name: /^Ines Invitee/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /^Jo Joiner/ })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Pending invitations" }),
+  ).toHaveCount(0);
+  await joiner.close();
+  await invitee.close();
+});

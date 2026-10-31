@@ -13,11 +13,19 @@ type Config struct {
 	// a development mailbox; MailOff sends nothing, so password reset is
 	// unavailable.
 	MailDriver, MailFile string
+	// RateLimits is RateLimitsOff to switch every rate limit off, for the
+	// end-to-end tests; quotas and the hashing slots stay. Production
+	// refuses it.
+	RateLimits string
 }
 
 const (
 	MailFile = "file"
 	MailOff  = "off"
+)
+const (
+	RateLimitsOn  = "on"
+	RateLimitsOff = "off"
 )
 
 func Load() (Config, error) {
@@ -34,6 +42,13 @@ func Load() (Config, error) {
 	// could take over any account.
 	if c.Production && c.MailDriver == MailFile {
 		return c, errors.New("MAIL_DRIVER=file is for development only; production has no email delivery yet, so use off")
+	}
+	c.RateLimits = env("RATE_LIMITS", RateLimitsOn)
+	if c.RateLimits != RateLimitsOn && c.RateLimits != RateLimitsOff {
+		return c, errors.New("RATE_LIMITS must be on or off")
+	}
+	if c.Production && c.RateLimits == RateLimitsOff {
+		return c, errors.New("RATE_LIMITS=off is for tests only; production keeps its rate limits")
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")

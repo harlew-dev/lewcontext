@@ -107,6 +107,12 @@ func TestFactoriesMatchValidation(t *testing.T) {
 			t.Fatalf("fake membership has an unknown role: %+v", m)
 		}
 	}
+	for _, i := range factory.WorkspaceInvitations.Make(f, 500) {
+		email := i.Email
+		if !validEmail(&email) || email != i.Email || i.Role == auth.RoleOwner {
+			t.Fatalf("fake invitation rejected or changed by validation: %+v", i)
+		}
+	}
 	for _, u := range factory.Users.Make(f, 500) {
 		in := credentials{Name: u.Name, Email: u.Email, Password: factory.DefaultPassword}
 		if !validCredentials(&in) || in.Email != u.Email || utf8.RuneCountInString(u.Name) > 80 {

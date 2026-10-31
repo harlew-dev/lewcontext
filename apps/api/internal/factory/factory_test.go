@@ -110,7 +110,7 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if user.PublicID == "" || workspace.PublicID == "" || projects[0].PublicID == "" {
 		t.Fatal("RETURNING did not fill public IDs")
 	}
-	if _, err := AuthAttempts.Create(ctx, db, f, 3); err != nil {
+	if _, err := RateLimits.Create(ctx, db, f, 3); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := PasswordResets.State(ResetFor(user.ID)).CreateOne(ctx, db, f); err != nil {

@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Each run owns a unique schema; existing application data is never reset.
@@ -268,16 +269,14 @@ func TestAccountRateLimit(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	user := must(factory.Users.CreateOne(ctx, db, f))(t)
-	must(factory.AuthAttempts.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+	must(factory.RateLimits.State(factory.ForAccount(user.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	login := fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword)
 	locked := call(t, s.Routes(), "POST", "/api/auth/login", login, "", nil, 429)
-	if locked.Header().Get("Retry-After") != "900" {
-		t.Fatal("rate-limited login without Retry-After")
-	}
+	retryWithin(t, locked, 15*time.Minute)
 }
 func TestIPRateLimit(t *testing.T) {
 	s, db := integrationServer(t)
 	f := factory.TestFaker(t)
-	must(factory.AuthAttempts.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f))(t)
+	must(factory.RateLimits.State(factory.ForIP("127.0.0.1")).State(factory.Exhausted(60)).CreateOne(context.Background(), db, f))(t)
 	call(t, s.Routes(), "POST", "/api/auth/register", `{"name":"New","email":"new@example.com","password":"correct horse battery staple"}`, "", nil, 429)
 }

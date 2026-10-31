@@ -16,6 +16,7 @@ export default [
     "auth/forgot-password/:token",
     "pages/auth/forgot-password/[token].tsx",
   ),
+  route("auth/invitations/:token", "pages/auth/invitations/[token].tsx"),
   route("app", "pages/app/index.tsx"),
   route("app/onboarding", "pages/app/onboarding.tsx"),
   layout("pages/app/layout.tsx", [

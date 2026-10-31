@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
+import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/ui/feedback";
@@ -9,24 +10,35 @@ import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
-import { authPath, routes } from "@/lib/routes";
+import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
+import { useInvitation } from "@/lib/use-invitation";
 import type { Route } from "./+types/register";
 // Signed-in visitors go on to ?next= or /app.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return guestLoader(request);
 }
 export default function Register() {
+  const arrived = authPageState(useLocation().state);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(arrived.email ?? "");
   const [password, setPassword] = useState("");
   const api = useApi();
   const [search] = useSearchParams();
-  // A new account has no workspace yet, so it always starts at onboarding.
+  // Coming from an invitation link: say so, and fill in its email.
+  const token = invitationToken(search.get("next"));
+  const invitation = useInvitation(token);
+  const [prefilled, setPrefilled] = useState(false);
+  if (invitation.kind === "live" && !prefilled) {
+    setPrefilled(true);
+    if (email === "") setEmail(invitation.invitation.email);
+  }
+  // A new account has no workspace yet, so it starts at onboarding, unless it
+  // came to accept an invitation: then it goes back to the link.
   const { loading, error, submit } = useAuthSubmit(
     api.auth().register,
-    routes.onboarding,
+    token ? undefined : routes.onboarding,
   );
   return (
     <AuthLayout>
@@ -36,6 +48,11 @@ export default function Register() {
       >
         <Logo href={routes.home} />
         <Heading>Create your account</Heading>
+        <InvitationCallout
+          check={invitation}
+          ending="Create an account with this email to accept."
+          dead="This invitation has expired or was revoked. You can still create an account."
+        />
         <ErrorNotice error={error} />
         <Field disabled={loading}>
           <Label>Email</Label>
@@ -81,7 +98,10 @@ export default function Register() {
         </Button>
         <Text>
           Already have an account?{" "}
-          <TextLink href={authPath(routes.login, search.get("next"))}>
+          <TextLink
+            href={authPath(routes.login, search.get("next"))}
+            state={arrived.invitation ? { invitation: true } : undefined}
+          >
             <Strong>Sign in</Strong>
           </TextLink>
         </Text>

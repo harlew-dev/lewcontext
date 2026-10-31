@@ -111,7 +111,7 @@ func TestDeleteWorkspaceRateLimit(t *testing.T) {
 	m := newMemberFixture(t)
 	ctx := context.Background()
 	email := emailOf(t, m.db, m.owner.UserID)
-	must(factory.AuthAttempts.State(factory.ForAccount(email)).State(factory.Exhausted(10)).CreateOne(ctx, m.db, m.f))(t)
+	must(factory.RateLimits.State(factory.ForAccount(email)).State(factory.Exhausted(10)).CreateOne(ctx, m.db, m.f))(t)
 	call(t, m.h, "DELETE", m.path(""), deleteWorkspaceBody(m.workspace.Name, factory.DefaultPassword), m.owner.CSRFToken, m.owner.Cookie(), 429)
 	call(t, m.h, "GET", m.path(""), "", "", m.owner.Cookie(), 200)
 }

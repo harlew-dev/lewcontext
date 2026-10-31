@@ -2,7 +2,7 @@
 
 Code: `internal/events` (event types, request metadata, `Bus`, `Listen`, `Worker`), `internal/store/events.go` (`record`, `Record`, `EventScope`), `internal/store/deliveries.go` (the delivery queue). Plan: [plans/features/events.md](../../plans/features/events.md).
 
-The API records what happens (sign-ins, password changes, workspaces and projects created, changed or deleted, accounts deleted) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. One listener is registered: `mail.password_reset` sends reset links ([mail.md](mail.md)).
+The API records what happens (sign-ins, password changes, workspaces and projects created, changed or deleted, accounts deleted, rate limits reached) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. Two listeners are registered: `mail.password_reset` sends reset links and `mail.workspace_invitation` sends invitations ([mail.md](mail.md)).
 
 ## How an event is recorded
 
@@ -33,7 +33,6 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.registered` | `user`, `name`, `email` | `CreateUser` |
 | `auth.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `succeeded` / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (not on registration or a password change) |
-| `auth.rate_limited` | `scope`: the limit's name, e.g. `auth:per-ip`, `password-reset:per-email` ([auth.md](auth.md#rate-limits)), `user` (when signed in) | `allowAuth`, only for the first refused request in a window |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
 | `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` | both password endpoints and both deletions that need it, whenever the current password was checked |
@@ -49,16 +48,21 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `workspace.member.updated` | `workspace`, `user`, `changes.role` (`from`, `to`); `user_id` is the member, the actor who changed it | `UpdateMemberRole`, only when the role changed |
 | `workspace.member.removed` | `workspace`, `user`, `role` (the role they had); `user_id` is the member | `RemoveMember` |
 | `workspace.member.left` | `workspace`, `role`; the member is both actor and `user_id` | `LeaveWorkspace` |
+| `workspace.invitation.created` | `invitation`, `workspace`, `email`, `role` (the inviter is the actor) | `CreateInvitation`; queues `mail.workspace_invitation` |
+| `workspace.invitation.sent` | `invitation`, `workspace`, `request` (the created event's `evt_` ID) | the `mail.workspace_invitation` listener, after writing the link |
+| `workspace.invitation.revoked` | `invitation`, `workspace`, `email` | `RevokeInvitation` |
+| `workspace.invitation.accepted` | `invitation`, `workspace`, `role` (the role they now have); the new member is actor and `user_id` | `AcceptInvitation` |
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
 | `project.updated` | `project`, `workspace`, `changes` per changed field (`from`, `to`) | `UpdateProject`, only when something changed |
 | `project.deleted` | `project`, `workspace`, `name` | `DeleteProject` |
+| `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `ip`; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |
 
 ## What's stored, and what never is
 
 - **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
-- **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted` and `auth.password_reset.requested`, and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
+- **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted` and `auth.password_reset.requested`, the IP on `rate_limit.reached`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
-- **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `auth.rate_limited`, so a flood writes one row.
+- **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `rate_limit.reached`, so a flood writes one row per limit.
 - Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
 
 ## Listeners

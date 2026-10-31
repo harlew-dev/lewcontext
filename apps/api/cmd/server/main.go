@@ -48,6 +48,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if c.RateLimits == config.RateLimitsOff {
+		slog.Warn("rate limits are off (RATE_LIMITS=off): for tests only")
+	}
 	if err := servePages(api, c); err != nil {
 		return err
 	}
@@ -96,7 +99,8 @@ func run() error {
 }
 
 // listen registers every listener. Without email delivery (MAIL_DRIVER=off)
-// nothing sends a reset link, and the API refuses to take requests for one.
+// nothing sends reset links or invitations, and the API refuses to take
+// requests for either.
 func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
 	if c.MailDriver == config.MailOff {
 		return nil
@@ -107,6 +111,7 @@ func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
 	}
 	slog.Info("mail goes to the development mailbox", "file", c.MailFile)
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
+	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(repository, mailer, c.Origin))
 	return nil
 }
 

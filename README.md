@@ -271,6 +271,7 @@ Fake records come from the factories in `apps/api/internal/factory`, one per tab
 | `make migrate-rollback` | Preview undoing the last migration group; `CONFIRM=1` runs it and can drop data |
 | `make seed` | Seed the demo account (see [Sample data](#sample-data) for other seeders) |
 | `make docker-dev` | Start the whole app in Docker on `:3000`: database, build, migrate, seed, app |
+| `make docker-app` | After a code change (UI or API): rebuild the image and restart only the app container, without migrating or seeding |
 | `make docker-up` / `make docker-down` | Build and start, or stop, the whole app in Docker without migrating or seeding |
 | `make docker-migrate` / `make docker-seed` | Migrate or seed from the app container |
 
@@ -296,7 +297,7 @@ make test-integration
 **End-to-end tests** run in Chromium against `make serve` (stop `make dev` first):
 
 ```sh
-make serve      # in one terminal
+RATE_LIMITS=off make serve   # in one terminal; one run signs up more users than the per-IP limit allows
 make test-e2e   # in another
 ```
 
@@ -335,7 +336,7 @@ The app shell and API responses are never cached, while hashed assets are cached
 - **Passwords** are hashed with Argon2id.
 - **Sessions** use 256-bit opaque random tokens, stored as SHA-256 digests, in HttpOnly/SameSite cookies. They expire after 30 minutes idle or 24 hours in total, rotate at login, are revoked at logout, and are limited to five per account.
 - **Mutations** require an exact trusted `Origin`, a JSON content type and an authenticated CSRF token.
-- **Auth endpoints** have persistent IP and account rate limits and bounded hashing concurrency.
+- **Rate limits:** auth endpoints have persistent IP and account limits and bounded hashing concurrency; every signed-in request has a budget per user, creating workspaces and projects has its own limit, and quotas cap how many can exist ([details](docs/api/rate-limits.md)).
 
 See [security details and limits](docs/api/auth.md).
 

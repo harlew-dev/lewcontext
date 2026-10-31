@@ -41,7 +41,7 @@ Every method starts with a verb:
 | `Index<Resources>` | one page of a list, search and filters included (a filter is a field on the query, not a new method) | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
 | `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindUser`, `FindProject`, `FindWorkspace` |
 | `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject` |
-| a domain verb | when it says more than create, update or delete | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation` |
+| a domain verb | when it says more than create, update or delete | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation`, `Allow` |
 | `Check<Thing>` | a yes/no question about a record | `CheckPasswordReset` |
 
 - There are no noun-only methods (`Project`, `Session`).
@@ -65,7 +65,7 @@ Every method starts with a verb:
 
 ## Rate limits (`httpapi/limits.go`)
 
-`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. A limit shared by everyone is counted by `global`. Planned (the CAPTCHA plan): levels add `:challenge` or `:block` (`register:global:block`) in events.
+`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. Counted by is `per-ip`, `per-account`, `per-email`, `per-user` or `global` (a limit shared by everyone); `TestRateLimitNames` checks it. In `rate_limit.reached`, the level reached follows the name: `register:global:block`. Every limit has only `block` for now; the CAPTCHA plan adds `:challenge`.
 
 ## Web app
 

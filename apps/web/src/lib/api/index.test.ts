@@ -160,3 +160,36 @@ describe("auth() and sessions()", () => {
     expect(stub.sent()[2].csrf).toBe("csrf");
   });
 });
+describe("invitations", () => {
+  const base = `/api/workspaces/${ws}/invitations`;
+  it("builds a workspace's paths", () => {
+    const routes = paths.invitations(ws);
+    expect(routes.index()).toBe(base);
+    expect(routes.index({ perPage: 100 })).toBe(`${base}?perPage=100`);
+    expect(routes.matches(`${base}?perPage=100`)).toBe(true);
+    expect(routes.matches(`/api/workspaces/${ws}/members`)).toBe(false);
+  });
+  it("sends only the email and role, and the link's token only in bodies", async () => {
+    const stub = stubFetch();
+    const token = "t".repeat(43);
+    await api("csrf")
+      .invitations(ws)
+      .store({ email: "bob@example.com", role: "member" });
+    await api("csrf").invitations(ws).destroy("inv_00000000000001");
+    await api().invitations().check(token);
+    await api("csrf").invitations().accept(token);
+    expect(requests(stub)).toEqual([
+      `POST ${base}`,
+      `DELETE ${base}/inv_00000000000001`,
+      "POST /api/invitations/check",
+      "POST /api/invitations/accept",
+    ]);
+    expect(stub.sent().map((s) => s.body)).toEqual([
+      { email: "bob@example.com", role: "member" },
+      undefined,
+      { token },
+      { token },
+    ]);
+    expect(stub.sent().every((s) => !s.url.includes(token))).toBe(true);
+  });
+});

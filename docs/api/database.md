@@ -11,7 +11,8 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `workspaces` | Workspaces (name) | `Workspace` (+ the member's `Role`, read from `workspace_user`) |
 | `workspace_user` | Memberships: user, workspace, `role` (`owner`, `admin`, `member`, `viewer`; `auth.Role`); unique per pair | unexported `membership` |
 | `projects` | Projects in a workspace (`ON DELETE CASCADE`) | `Project` |
-| `auth_attempts` | Rate-limit counters, keyed `<limit name>:<digest>` ([auth.md](auth.md#rate-limits)) | unexported `authAttempt` |
+| `rate_limits` | Rate-limit counters: `key` (`<limit name>:<digest>`), `hits`, `resets_at` ([rate-limits.md](rate-limits.md)). Reads are counted in memory instead | unexported `rateLimitRecord` |
+| `workspace_invitations` | Invitations: `public_id` (`inv_`), workspace, invited `email`, `role` (never owner), `invited_by` (`SET NULL`), the link's `token_hash` and `sent_at` once emailed, `expires_at`; unique per workspace and email ([auth.md](auth.md#invitations)) | unexported `invitationRecord` (+ `Invitation` as listed) |
 | `password_resets` | One live reset link per user: the token's SHA-256 digest and `expires_at`; deleted when used, replaced, or the password changes | unexported `passwordReset` |
 | `events` | What happened: name, actor, user, workspace, `jsonb` payload, user agent ([events.md](events.md)). Deleting a user deletes the events about them (`user_id`, `CASCADE`) and nulls `actor_id`; deleting a workspace nulls `workspace_id` (`SET NULL`), so its history survives until pruned | unexported `eventRecord` |
 | `event_deliveries` | One row per event and listener: attempts, `next_attempt_at` (also the claim lease), `delivered_at`, `failed_at`, `last_error` | unexported `deliveryRecord` |
@@ -19,7 +20,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 
 ## Public IDs
 
-`users`, `workspaces`, `projects` and `events` have `public_id text NOT NULL UNIQUE DEFAULT public_id('usr' | 'wsp' | 'prj' | 'evt')`, with a `CHECK` on the format. The plpgsql `public_id(prefix)` function (migration 001) turns bytes from the built-in `gen_random_uuid()` into 14 base62 characters, skipping the UUID's fixed version/variant bytes and bytes ≥ 248 so every character is equally likely (about 83 random bits). No extension is needed.
+`users`, `workspaces`, `projects`, `workspace_invitations` and `events` have `public_id text NOT NULL UNIQUE DEFAULT public_id('usr' | 'wsp' | 'prj' | 'inv' | 'evt')`, with a `CHECK` on the format. The plpgsql `public_id(prefix)` function (migration 001) turns bytes from the built-in `gen_random_uuid()` into 14 base62 characters, skipping the UUID's fixed version/variant bytes and bytes ≥ 248 so every character is equally likely (about 83 random bits). No extension is needed.
 
 - Every insert gets one, from the API, factories or seeders. Models map it as `PublicID string` with `bun:",nullzero"`, so Bun sends `DEFAULT`, and read it back with `Returning("*")`. Go never generates IDs.
 - JSON uses the public ID as `"id"`; the bigint `id` is `json:"-"` and stays internal (keys, joins, sort tie-breaks).
@@ -34,8 +35,8 @@ Store methods are named verb first ([../naming.md](../naming.md#store-methods-in
 | `Index<Resources>` | one page of a list, with its search and filters | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
 | `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindProject`, `FindSession`, `FindWorkspace` (through the user's membership), `FindUser` |
 | `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject`, `DeleteWorkspace`, `DeleteAccount` |
-| a domain verb | when it says more | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset` |
-| `Check<Thing>` | a yes/no question | `CheckPasswordReset` |
+| a domain verb | when it says more | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `IssueInvitationToken`, `AcceptInvitation`, `RevokeInvitation`, `Allow` (a hit against a rate limit) |
+| `Check<Thing>` | a yes/no question, or what a link shows | `CheckPasswordReset`, `CheckInvitation` |
 
 Methods implementing an interface from elsewhere keep its names (`Claim`, `Delivered`, `Fail`, `Retry` for `events.Queue`).
 
@@ -44,11 +45,12 @@ Methods implementing an interface from elsewhere keep its names (`Claim`, `Deliv
 - **Scope by membership:** workspaces are only read through a `workspace_user` row for the session's user (`memberWorkspaces`). Workspace data (projects) is scoped by the workspace's internal ID from `requireWorkspace`: `WHERE p.public_id = ? AND p.workspace_id = ?`, returning `sql.ErrNoRows` (404) when the row isn't in that workspace.
 - **Bun's builder only:** write queries with `NewSelect`/`NewInsert`/`NewUpdate`/`NewDelete` (and `With`, `ColumnExpr`, `WhereGroup` for the harder ones), in tests too; no SQL strings through `NewRaw`, `QueryContext` or `ExecContext`. Only `internal/database` (schemas, advisory locks) and migration files write SQL directly.
 - **Placeholders only:** values always go through Bun `?` placeholders, and SQL text is never built from input. Dynamic `ORDER BY` uses a fixed map of SQL strings (see [pagination.md](pagination.md)).
+- **Quotas** (`quotas.go`): `CreateWorkspace`, `CreateProject`, `CreateInvitation` and `AcceptInvitation` lock a row (the user's, or the workspace's) and count before inserting, returning `QuotaError` past the cap ([rate-limits.md](rate-limits.md#quotas)).
 - Request contexts carry a 10 s timeout. Pass `r.Context()` into every store call.
 
 ## Migrations
 
-- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_auth_attempts`, `007_create_events`, `008_create_event_deliveries`, `009_create_password_resets`.
+- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_rate_limits`, `007_create_events`, `008_create_event_deliveries`, `009_create_password_resets`, `010_create_workspace_invitations`.
 - **Squashed while in development.** There is no database whose data must be kept, so a table changes by **editing its create migration**, not by adding an alter migration. Then rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed`. Once a database holds data that must be kept, migrations become append-only again.
 - **`make migrate-fresh`** lists the tables and row counts it would drop. `CONFIRM=1` drops the current schema (`DROP SCHEMA … CASCADE`), recreates it and migrates. It is refused when `APP_ENV=production`. Only run it on the local development database. Other checkouts sharing that database need it too after pulling a schema change: Bun only runs migrations it hasn't recorded, so an edited file won't re-run.
 - **Running:** `make migrate` applies pending files, each in its own transaction, as one group, holding a PostgreSQL advisory lock. `make migrate-status` lists them. The API never migrates on startup.
@@ -81,7 +83,7 @@ cd apps/api && go run ./cmd/prune -h                # lists targets and their de
 - **Ages are per target.** `older-than` overrides one only with a target (a run over every target uses each default), and takes whole days or hours (`90d`, `36h`), at least `1h`, so a typo like `0d` can't empty a table.
 - **The cutoff is fixed** when the run starts; rows created meanwhile are never in scope.
 - **Batches** of 5000 rows, each one short `DELETE … FOR UPDATE SKIP LOCKED` statement, so a large prune holds no long transaction and two runs don't wait on each other. Ctrl-C (or the 30-minute run timeout) stops between batches; the report says how many were deleted.
-- **Allowed in production**, unlike `seed`; a deployment would run it from cron. `sessions`, `auth_attempts` and `password_resets` aren't targets: the server's 15-minute cleanup already deletes them.
+- **Allowed in production**, unlike `seed`; a deployment would run it from cron. `sessions`, `rate_limits`, `password_resets` and `workspace_invitations` aren't targets: the server's 15-minute cleanup already deletes them (invitations 30 days after they expire).
 - **Adding a target** is two files, and nothing shared changes. The table needs a bigint `id` primary key.
 
   ```go

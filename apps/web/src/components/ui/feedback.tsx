@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   CheckCircleIcon,
+  InformationCircleIcon,
   XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -11,7 +12,8 @@ import { Button } from "./button";
 import { Subheading } from "./heading";
 import { Text } from "./text";
 // How each kind of message is marked and announced: errors as alerts,
-// successes as polite status updates. Notice and toast share these.
+// successes and information as polite status updates. Notice and toast share
+// these.
 export const messageVariants = {
   error: {
     icon: XCircleIcon,
@@ -23,6 +25,11 @@ export const messageVariants = {
     role: "status",
     iconColor: "*:data-[slot=icon]:fill-lime-600",
   },
+  info: {
+    icon: InformationCircleIcon,
+    role: "status",
+    iconColor: "*:data-[slot=icon]:fill-blue-500",
+  },
 } as const;
 export type MessageVariant = keyof typeof messageVariants;
 const noticeColors: Record<MessageVariant, string> = {
@@ -30,6 +37,7 @@ const noticeColors: Record<MessageVariant, string> = {
     "bg-red-50 text-red-800 ring-red-600/10 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20",
   success:
     "bg-lime-50 text-lime-800 ring-lime-600/15 dark:bg-lime-400/10 dark:text-lime-300 dark:ring-lime-400/20",
+  info: "bg-blue-50 text-blue-800 ring-blue-600/15 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/20",
 };
 // The close button on a Notice or toast.
 export function DismissButton({ onClick }: { onClick: () => void }) {

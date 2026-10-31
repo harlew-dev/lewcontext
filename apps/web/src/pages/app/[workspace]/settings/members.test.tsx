@@ -15,10 +15,37 @@ import { WorkspaceProvider } from "@/lib/workspace";
 import { gate, stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 import { testWorkspace } from "@/test/workspace";
+import type { Invitation } from "@/types/invitations";
 import type { Member } from "@/types/members";
 import type { Role } from "@/types/workspaces";
 const session = testSession();
 const members = "/api/workspaces/wsp_2yEHYLwiwPVhLW/members";
+const invitations = "/api/workspaces/wsp_2yEHYLwiwPVhLW/invitations";
+const future = "2099-01-01T00:00:00Z";
+function invitation(
+  id: number,
+  email: string,
+  overrides: Partial<Invitation> = {},
+): Invitation {
+  return {
+    id: `inv_${String(id).padStart(14, "0")}`,
+    email,
+    role: "member",
+    invitedBy: { id: "usr_00000000000002", name: "Olive Owner" },
+    sentAt: "2026-10-31T12:00:00Z",
+    createdAt: "2026-10-31T12:00:00Z",
+    expiresAt: future,
+    ...overrides,
+  };
+}
+function invitationPage(items: Invitation[]) {
+  return {
+    body: {
+      data: items,
+      pages: { current: 1, total: 1, perPage: 100, items: items.length },
+    },
+  };
+}
 function member(id: number, name: string, role: Role): Member {
   return {
     id: `usr_${String(id).padStart(14, "0")}`,
@@ -168,5 +195,133 @@ describe("workspace members", () => {
     // Loading shows for at least 400 ms (useDelayedLoading).
     await waitFor(() => expect(remove).not.toHaveAttribute("data-loading"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+describe("invitations", () => {
+  it.each(["member", "viewer"] as const)(
+    "offers a %s no Invite",
+    async (role) => {
+      stubApi({});
+      renderAs(role);
+      expect(screen.queryByRole("button", { name: "Invite" })).toBeNull();
+    },
+  );
+  it("invites as a role you may give, showing a refused email on its field", async () => {
+    const api = stubApi({
+      [`GET ${members}`]: { body: page },
+      [`GET ${invitations}`]: [
+        invitationPage([]),
+        invitationPage([invitation(1, "bob@example.com", { sentAt: null })]),
+      ],
+      [`POST ${invitations}`]: [
+        {
+          status: 422,
+          body: {
+            error: "Already invited. Revoke it to send a new one.",
+            field: "email",
+          },
+        },
+        { status: 201, body: invitation(1, "bob@example.com") },
+      ],
+    });
+    renderAs("admin");
+    fireEvent.click(await screen.findByRole("button", { name: "Invite" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading")).toHaveTextContent(
+      "Invite someone to Acme",
+    );
+    fireEvent.click(within(dialog).getByRole("combobox"));
+    expect(
+      (await screen.findAllByRole("option")).map((o) => o.textContent),
+    ).toEqual(["Member", "Viewer"]);
+    fireEvent.click(screen.getByRole("option", { name: "Viewer" }));
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
+      target: { value: " bob@example.com " },
+    });
+    const send = within(dialog).getByRole("button", {
+      name: "Send invitation",
+    });
+    fireEvent.click(send);
+    expect(
+      await within(dialog).findByText(
+        "Already invited. Revoke it to send a new one.",
+      ),
+    ).toBeVisible();
+    expect(within(dialog).getByLabelText("Email")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    fireEvent.click(send);
+    expect(
+      await screen.findByText("Invitation sent to bob@example.com."),
+    ).toBeInTheDocument();
+    expect(api.sent("POST").map((s) => s.body)).toEqual([
+      { email: "bob@example.com", role: "viewer" },
+      { email: "bob@example.com", role: "viewer" },
+    ]);
+    // The pending list refreshes and shows the new invitation.
+    expect(await screen.findByText("Sending…")).toBeVisible();
+  });
+  it("lists pending invitations, revoking only roles you may give", async () => {
+    const api = stubApi({
+      [`GET ${members}`]: { body: page },
+      [`GET ${invitations}`]: invitationPage([
+        invitation(1, "sending@example.com", { sentAt: null }),
+        invitation(2, "sent@example.com", { role: "viewer" }),
+        invitation(3, "lapsed@example.com", {
+          expiresAt: "2026-01-01T00:00:00Z",
+        }),
+        invitation(4, "admin@example.com", { role: "admin", invitedBy: null }),
+      ]),
+      [`DELETE ${invitations}/inv_00000000000002`]: { status: 204 },
+    });
+    renderAs("admin");
+    const section = await screen.findByRole("region", {
+      name: "Pending invitations",
+    });
+    const row = (email: string) =>
+      within(section).getByText(email).closest("tr") as HTMLElement;
+    expect(row("sending@example.com")).toHaveTextContent("Sending…");
+    expect(row("sent@example.com")).toHaveTextContent("Sent");
+    expect(row("lapsed@example.com")).toHaveTextContent("Expired");
+    expect(row("admin@example.com")).toHaveTextContent("A former member");
+    // An admin can't give admin, so can't revoke an admin invitation.
+    expect(
+      within(row("admin@example.com")).queryByRole("button", {
+        name: /Actions for/,
+      }),
+    ).toBeNull();
+    fireEvent.click(
+      within(row("sent@example.com")).getByRole("button", {
+        name: "Actions for the invitation to sent@example.com",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Revoke invitation" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading")).toHaveTextContent(
+      "Revoke the invitation to sent@example.com?",
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Revoke invitation" }),
+    );
+    expect(
+      await screen.findByText(
+        "The invitation to sent@example.com was revoked.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.sent("DELETE")).toHaveLength(1);
+  });
+  it("shows no section without pending invitations", async () => {
+    stubApi({
+      [`GET ${members}`]: { body: page },
+      [`GET ${invitations}`]: invitationPage([]),
+    });
+    renderAs("owner");
+    expect(await screen.findByText("5 members")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Pending invitations" }),
+    ).toBeNull();
   });
 });

@@ -19,14 +19,20 @@ type Event struct {
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
-// Events builds auth.rate_limited events from the last 90 days, which need
+// Events builds rate_limit.reached events from the last 90 days, which need
 // no other records. Use a state for events about a user or workspace.
 var Events = Define(func(f *gofakeit.Faker) Event {
 	now := time.Now()
+	created := f.DateRange(now.AddDate(0, 0, -90), now)
 	return Event{
-		Name:      "auth.rate_limited",
-		Payload:   map[string]any{"scope": "auth:per-ip"},
+		Name: "rate_limit.reached",
+		Payload: map[string]any{
+			"limit":    "auth:per-ip:block",
+			"ip":       f.IPv4Address(),
+			"window":   900,
+			"resetsAt": created.Add(15 * time.Minute),
+		},
 		UserAgent: truncate(f.UserAgent(), 256),
-		CreatedAt: f.DateRange(now.AddDate(0, 0, -90), now),
+		CreatedAt: created,
 	}
 })

@@ -32,8 +32,9 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `Workspaces` | `Workspace` | Fake company names (≤ 80 characters), created in the last year. Use `WorkspaceFor` to add an owner |
 | `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role (any of `auth.Roles`, viewers included). Needs `UserID` and `WorkspaceID`; use `MemberOf` |
 | `Projects` | `Project` | Valid name, description, status and color; created in the last 90 days. Needs `WorkspaceID`; use `ProjectsIn` |
-| `AuthAttempts` | `AuthAttempt` | Counter in the current 15-minute window, keyed like the IP limiter |
-| `Events` | `Event` | `auth.rate_limited` events from the last 90 days (no other records needed); set `UserID`/`WorkspaceID` with a state. Seeders don't create events: fake history would be misleading |
+| `RateLimits` | `RateLimit` | Counter in the current 15-minute window, keyed like the `auth:per-ip` limiter |
+| `Events` | `Event` | `rate_limit.reached` events from the last 90 days (no other records needed); set `UserID`/`WorkspaceID` with a state. Seeders don't create events: fake history would be misleading |
+| `WorkspaceInvitations` | `WorkspaceInvitation` | A live invitation, not yet sent, to a unique `example.test` address as admin, member or viewer. Needs `WorkspaceID`; use `InvitationsTo(workspaceID)`. `Sent` gives it a link and keeps the raw `Token` |
 | `EventDeliveries` | `EventDelivery` | A pending delivery, due now. Needs `EventID`; use `DeliveryOf(eventID, listener)` |
 
 ```go
@@ -50,7 +51,7 @@ factory.ProjectsIn(workspace.ID).
 ```
 
 - **Methods:** `Make` (build only), `Create`, `CreateOne`, `State`, `Sequence`. Factories are immutable, so each state returns a copy.
-- **Named states:** `Expired` and `Idle` (sessions), `ForAccount`, `ForIP` and `Exhausted(limit)` (auth attempts), `WithPasswordHash` (users), `Named` (workspaces).
+- **Named states:** `Expired` and `Idle` (sessions), `ForAccount`, `ForIP`, `ForLimit(name, subject)` and `Exhausted(limit)` (rate limits), `WithPasswordHash` (users), `Named` (workspaces), `Sent`, `ExpiredInvitation` and `InvitedAs(email, role)` (invitations).
 - **Public IDs** are left empty and filled by PostgreSQL's default; `Create` reads them back (`workspace.PublicID`).
 - **Randomness:** fresh every run. When a test fails it logs `fake data seed N`, and `FAKER_SEED=N` replays it. Seeders print the seed too.
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-var appTables = []string{"users", "sessions", "workspaces", "workspace_user", "projects", "auth_attempts", "events", "event_deliveries"}
+var appTables = []string{"users", "sessions", "workspaces", "workspace_user", "projects", "rate_limits", "events", "event_deliveries", "workspace_invitations"}
 
 func tableExists(t *testing.T, db *bun.DB, table string) bool {
 	t.Helper()

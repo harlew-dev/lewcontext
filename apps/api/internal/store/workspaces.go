@@ -63,10 +63,14 @@ func (s *Store) FindWorkspace(ctx context.Context, userID int64, publicID string
 }
 
 // CreateWorkspace creates a workspace with the user as its only owner, who
-// therefore can't leave it.
+// therefore can't leave it. It returns a QuotaError when the user already
+// owns MaxOwnedWorkspaces.
 func (s *Store) CreateWorkspace(ctx context.Context, userID int64, in WorkspaceInput) (Workspace, error) {
 	w := Workspace{Name: in.Name}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := checkOwnedWorkspaces(ctx, tx, userID); err != nil {
+			return err
+		}
 		if _, err := tx.NewInsert().Model(&w).Returning("*").Exec(ctx); err != nil {
 			return err
 		}

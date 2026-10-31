@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // mailbox is a mail driver that keeps what it's given.
@@ -30,15 +31,16 @@ func (b *mailbox) Deliver(_ context.Context, m mail.Message) error {
 	return nil
 }
 
-// resetServer is an integration server whose reset links go to a mailbox
-// when deliver runs the worker once, as the server's worker would.
-func resetServer(t *testing.T) (s *Server, db *bun.DB, box *mailbox, deliver func()) {
+// mailServer is an integration server whose reset links and invitations go
+// to a mailbox when deliver runs the worker once, as the server's worker would.
+func mailServer(t *testing.T) (s *Server, db *bun.DB, box *mailbox, deliver func()) {
 	t.Helper()
 	s, db = integrationServer(t)
 	box = &mailbox{}
 	bus := events.NewBus()
 	mailer := must(mail.New(box))(t)
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(s.Store, mailer, s.Config.Origin))
+	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(s.Store, mailer, s.Config.Origin))
 	s.Store.Listeners = bus
 	worker := &events.Worker{Bus: bus, Queue: s.Store}
 	deliver = func() {
@@ -89,7 +91,7 @@ func hasReset(t *testing.T, db bun.IDB, userID int64) bool {
 // The request answers the same whether or not an account uses the email;
 // only the listener, later, finds out.
 func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
-	s, db, box, deliver := resetServer(t)
+	s, db, box, deliver := mailServer(t)
 	h := s.Routes()
 	user := must(factory.Users.CreateOne(context.Background(), db, factory.TestFaker(t)))(t)
 	known := requestReset(t, h, "  "+strings.ToUpper(user.Email)+" ", 202)
@@ -127,7 +129,7 @@ func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
 }
 
 func TestPasswordResetSetsANewPassword(t *testing.T) {
-	s, db, box, deliver := resetServer(t)
+	s, db, box, deliver := mailServer(t)
 	h := s.Routes()
 	ctx := context.Background()
 	f := factory.TestFaker(t)
@@ -168,7 +170,7 @@ func TestPasswordResetSetsANewPassword(t *testing.T) {
 // Links die when they expire, when a newer one is requested, and when the
 // password is changed while signed in.
 func TestPasswordResetLinkLifetime(t *testing.T) {
-	s, db, box, deliver := resetServer(t)
+	s, db, box, deliver := mailServer(t)
 	h := s.Routes()
 	ctx := context.Background()
 	f := factory.TestFaker(t)
@@ -243,11 +245,12 @@ func TestPasswordResetLimits(t *testing.T) {
 			requestReset(t, h, "nobody@example.com", 202)
 		}
 		refused := requestReset(t, h, "nobody@example.com", 429)
-		if refused.Header().Get("Retry-After") != "3600" || !strings.Contains(refused.Body.String(), "an hour") {
-			t.Fatalf("refusal: %v %s", refused.Header(), refused.Body.String())
+		retryWithin(t, refused, time.Hour)
+		if !strings.Contains(refused.Body.String(), "Too many attempts. Try again in an hour.") {
+			t.Fatalf("refusal: %s", refused.Body.String())
 		}
 		requestReset(t, h, "nobody@example.com", 429)
-		if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "password-reset:per-email" {
+		if e := onlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "password-reset:per-email:block" {
 			t.Fatalf("rate limited: %+v", e)
 		}
 		if n := len(eventsNamed(t, db, "auth.password_reset.requested")); n != 3 {
@@ -261,30 +264,30 @@ func TestPasswordResetLimits(t *testing.T) {
 		s, db := integrationServer(t)
 		h := s.Routes()
 		f := factory.TestFaker(t)
-		must(factory.AuthAttempts.State(factory.ForLimit("password-reset:per-ip", "127.0.0.1")).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+		must(factory.RateLimits.State(factory.ForLimit("password-reset:per-ip", "127.0.0.1")).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 		requestReset(t, h, "nobody@example.com", 429)
-		if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "password-reset:per-ip" {
+		if e := onlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "password-reset:per-ip:block" {
 			t.Fatalf("rate limited: %+v", e)
 		}
 		// Refused early, it spent none of the later limits.
-		later, err := db.NewSelect().TableExpr("auth_attempts").
-			Where("key LIKE 'password-reset:per-email:%' OR key = 'password-reset:all-accounts'").
+		later, err := db.NewSelect().TableExpr("rate_limits").
+			Where("key LIKE 'password-reset:per-email:%' OR key = 'password-reset:global'").
 			Count(ctx)
 		if err != nil || later != 0 {
 			t.Fatalf("later limits counted %d (%v)", later, err)
 		}
 	})
 
-	t.Run("all accounts", func(t *testing.T) {
+	t.Run("global", func(t *testing.T) {
 		s, db := integrationServer(t)
 		h := s.Routes()
 		f := factory.TestFaker(t)
-		must(factory.AuthAttempts.State(factory.ForLimit("password-reset:all-accounts", "")).State(factory.Exhausted(100)).CreateOne(ctx, db, f))(t)
+		must(factory.RateLimits.State(factory.ForLimit("password-reset:global", "")).State(factory.Exhausted(100)).CreateOne(ctx, db, f))(t)
 		busy := requestReset(t, h, "nobody@example.com", 503)
 		if !strings.Contains(busy.Body.String(), "Password reset is busy") {
 			t.Fatalf("busy: %s", busy.Body.String())
 		}
-		if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "password-reset:all-accounts" {
+		if e := onlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "password-reset:global:block" {
 			t.Fatalf("rate limited: %+v", e)
 		}
 	})

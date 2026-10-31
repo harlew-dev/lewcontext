@@ -33,15 +33,17 @@ BaseUI provides behaviour (focus, keyboard, overlays) for Button, Input, Textare
 
 ## Component APIs (`components/ui`)
 
+Where a `Button` goes in a form, dialog, settings section or page header, and which style it takes, is in [forms-and-actions.md](forms-and-actions.md).
+
 Files are kebab-case and export a family of named components. Keep these props stable. Components with alternatives use a `variant` prop (never `tone`, and never one component per alternative).
 
 | File | Exports and main props |
 | --- | --- |
-| `button.tsx` | `Button` `color` (`dark/zinc`, or `red` for destructive actions: remove, leave, delete) \| `outline` \| `plain`, `href` (renders a React Router link), `loading`, `disabled` · `TouchTarget` |
+| `button.tsx` | `Button` `color` (`dark/zinc`, or `red` for destructive actions: remove, leave, delete) \| `outline` \| `plain`, `href` (renders a React Router link, with optional navigation `state`), `loading`, `disabled` · `TouchTarget` |
 | `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
 | `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
-| `feedback.tsx` | `Notice variant` (`error` alert, `success` status), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
+| `feedback.tsx` | `Notice variant` (`error` alert, `success` status, `info` status in blue: the invitation callout), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |
 | `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled`, `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors) |
 | `input.tsx` / `textarea.tsx` | `Input`, `InputGroup` (leading icon, or `InputActions` at the end: `InputLock label` for a read-only value that can't change (`label` says why; default "Can’t be changed"), `InputButton aria-label onClick` for an icon action such as Copy; at most two) · `Textarea` |
@@ -113,6 +115,7 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 
 - **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`; with `project.destroy`, a last column with `ProjectActions`), `ProjectActions` (the ⋯ menu: Delete project, with a confirmation; also in the project page's header), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
 - **`workspaces`**, shared by onboarding, the switcher and workspace settings: `WorkspaceAvatar` (the name's first letter; also in the account's last-owner warning), `WorkspaceNameField`, `useCreateWorkspace` and `CreateWorkspaceDialog`.
+- **`invitations`**, shared by the invitation page, login and register: `InvitationCallout` (an `info` Notice, "<workspace> has invited you to join." with who invited you and the role; a skeleton while checking, an error for a dead link) and `withArticle(role)`.
 - **`account`**, shared by account settings, onboarding and the reset link page: `PasswordField`, `NewPasswordFields`, and `DeleteAccountDialog` (password confirmation; a 409 goes to `onLastOwner`).
 
 The workspace switcher (`WorkspaceDropdown` in `application-layout.tsx`) shows the current workspace and lists every workspace newest first, loading more as the list scrolls ([pagination.md](pagination.md#infinite-lists)).

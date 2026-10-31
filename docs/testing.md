@@ -8,7 +8,7 @@ How to set up a local environment, run and build the app, and check it by hand. 
 ## Start from a clean checkout
 
 1. Install Go 1.26+, Node 24+, npm, Docker with Compose, Chromium for browser tests, a C compiler (`gcc`, needed by `go test -race` in `make test`), and the PostgreSQL client (`psql`, used by the end-to-end tests' membership setup and cleanup). On Ubuntu: `sudo apt install gcc postgresql-client`.
-2. Start the database: `make db` runs PostgreSQL 17 with pgvector from `compose.yaml` on `127.0.0.1:5432`. To run the whole app in Docker instead, `make docker-dev` starts the database, builds the image, migrates, seeds and starts the app on `:3000`.
+2. Start the database: `make db` runs PostgreSQL 17 with pgvector from `compose.yaml` on `127.0.0.1:5432`. To run the whole app in Docker instead, `make docker-dev` starts the database, builds the image, migrates, seeds and starts the app on `:3000`. After changing the code, `make docker-app` rebuilds the image and restarts only the app container: no migrate or seed, and the database keeps running. The web app is embedded in the Go binary, so a UI-only change rebuilds the image too; Docker's cache skips the unchanged steps (dependency installs). Run `make docker-migrate` as well if the change added a migration.
 3. Copy `.env.example` to `.env`. It contains the local test DB URL: `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`.
 4. Run `make install`, `make migrate`, and optionally `make seed` (more fake data: [api/seeding.md](api/seeding.md)). After pulling a schema change, rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed` (migrations are squashed while in development; [api/database.md](api/database.md#migrations)).
 5. Start the dev server: `make dev` ([below](#run-the-dev-server)).
@@ -56,7 +56,7 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Before claiming a change works
 
-`make test`, `make check`, `make test-integration` (with `TEST_DATABASE_URL`) for anything touching SQL, auth, middleware or migrations, `make test-e2e` (against `make serve`) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them.
+`make test`, `make check`, `make test-integration` (with `TEST_DATABASE_URL`) for anything touching SQL, auth, middleware or migrations, `make test-e2e` (against `RATE_LIMITS=off make serve`, [ui/testing.md](ui/testing.md)) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them.
 
 ## Manual demo
 

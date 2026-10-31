@@ -8,7 +8,8 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | --- | --- |
 | [api/README.md](api/README.md) | need the package layout, request flow, how Go serves the web app, or environment variables |
 | [api/endpoints.md](api/endpoints.md) | call or add an endpoint |
-| [api/auth.md](api/auth.md) | touch sign-in, sessions, CSRF, rate limits or security headers |
+| [api/auth.md](api/auth.md) | touch sign-in, sessions, CSRF or security headers |
+| [api/rate-limits.md](api/rate-limits.md) | add an endpoint, a limit or a quota, or touch `requireSession` |
 | [api/events.md](api/events.md) | record something that happened (the `events` audit trail), or add an event type |
 | [api/mail.md](api/mail.md) | send an email, add a mail template, or read the development mailbox |
 | [api/pagination.md](api/pagination.md) | list, search or sort a resource |
@@ -25,6 +26,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [ui/api.md](ui/api.md) | fetch or mutate API data from components or route loaders |
 | [ui/pagination.md](ui/pagination.md) | build a paginated, searchable, sortable list |
 | [ui/design.md](ui/design.md) | build or style components |
+| [ui/forms-and-actions.md](ui/forms-and-actions.md) | add a form or a button: where actions go (bottom right; full width only on sign-in pages), their order and style |
 | [ui/testing.md](ui/testing.md) | write or run Vitest and Playwright tests |
 | [ui/base-ui.md](ui/base-ui.md) | use or customise a BaseUI component, or hit one of its known issues |
 | [ui/strict-mode.md](ui/strict-mode.md) | see something only under `make dev` (double renders, effects running twice) |

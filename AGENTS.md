@@ -16,7 +16,7 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 
 **Always read the docs for an area before writing code that affects it.** This isn't optional, even for small changes, and it applies to subagents too:
 
-1. Before the first edit, find every area the change touches in the table below, and read each of those docs in full. Most changes touch more than one: a new endpoint touches `endpoints.md`, `auth.md`, `database.md` and `api/testing.md`, plus `ui/api.md` if the web app calls it. A new component touches `ui/design.md` and `ui/base-ui.md`.
+1. Before the first edit, find every area the change touches in the table below, and read each of those docs in full. Most changes touch more than one: a new endpoint touches `endpoints.md`, `auth.md`, `rate-limits.md`, `database.md` and `api/testing.md`, plus `ui/api.md` if the web app calls it. A new component touches `ui/design.md` and `ui/base-ui.md`.
 2. If the work has a plan in `plans/features/`, read it too. Its confirmed decisions override your defaults.
 3. Follow what the docs say over what you'd otherwise do. If a doc and the code disagree, or a doc's rule doesn't fit the task, stop and tell the user; don't silently pick one.
 4. Update every doc whose summary the change makes untrue, in the same change. A new doc gets a row in `docs/README.md` and in the table below.
@@ -28,7 +28,8 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 | `docs/deployment.md` | Production: image and commands, required config, migrating and releasing, several servers, proxies and client IPs, Cloudflare, email, security checklist |
 | `docs/api/README.md` | Go package layout, request flow, serving the web app, environment variables |
 | `docs/api/endpoints.md` | Every API endpoint, its protection and responses |
-| `docs/api/auth.md` | Passwords, password reset, sessions, CSRF, rate limits, headers, workspace roles |
+| `docs/api/auth.md` | Passwords, password reset, sessions, CSRF, headers, workspace roles |
+| `docs/api/rate-limits.md` | Budgets on every signed-in request, per-feature and sign-in limits, quotas, `RATE_LIMITS`, limiting a new endpoint |
 | `docs/api/events.md` | The `events` audit trail, the event catalogue, listeners and the delivery worker |
 | `docs/api/mail.md` | `mailer.Send`, mail templates and their safety rules, the development mailbox |
 | `docs/api/pagination.md` | Listing, searching and sorting a resource |
@@ -40,6 +41,7 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 | `docs/ui/api.md` | Fetching and mutating API data from components and loaders |
 | `docs/ui/pagination.md` | Paginated, searchable, sortable lists |
 | `docs/ui/design.md` | Building and styling components |
+| `docs/ui/forms-and-actions.md` | Where buttons and actions go (settings forms, one-off actions, dialogs, danger zones, page headers, table rows, sign-in pages), their order and style. **Read it before adding any button** |
 | `docs/ui/base-ui.md` | Using and customising BaseUI, and its known issues |
 | `docs/ui/strict-mode.md` | Behaviour seen only under `make dev` (double renders, effects twice) |
 | `docs/ui/testing.md` | Vitest and Playwright tests |
@@ -62,18 +64,18 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
    Keep layouts responsive and retain keyboard navigation, focus indicators, accessible names, labels, error/status announcements, and reduced-motion support.
 7. Keep the server free of user data: there is no server rendering, and prerendered pages are built without a session. Go sends signed-out requests for `/app/*` to login before serving any HTML; signed-in pages load the session in the layout route's `clientLoader` and their data through SWR (instant page swaps with skeletons). Never cache user data in module-level variables. Styletron CSS for prerendered pages is collected per file at build time (`entry.server.tsx`). SWR keys include user ID. The app shell and API responses must remain no-store.
 8. Every async interaction must handle pending, success, failure, and empty results. Disable duplicate mutation submission; use `<Button loading>` for pending actions, `ListSkeleton` for fetched lists, and route progress. Preserve available data on a refresh failure and provide Retry. Redirect expired sessions to login.
-9. Persist real application data through the Go API. Derive dashboard counts from actual project data. Demo records belong in the explicit seed command, never hardcoded in UI. New registrations start with no workspace (onboarding creates the first) and no projects.
+9. Persist real application data through the Go API. Derive dashboard counts from actual project data. Demo records belong in the explicit seed command, never hardcoded in UI. Registration never creates or joins a workspace, and new accounts have no projects. A new account goes to onboarding to create its first workspace, unless it signed up through an invitation link; it then returns to that link, which accepts the invitation. Joining a workspace only ever happens by accepting an invitation link: never look up invitations by email at sign-up or sign-in (there is no email verification).
 
 ## Authentication/security invariants
 
 - Keep Argon2id with fresh random salts and constant-time comparison. Never log/store plaintext passwords. Password minimum at sign-up is 12 Unicode characters, max 128 UTF-8 bytes; login checks only the max, so the development seed's `DEMO_PASSWORD` may be short (`password`).
-- Opaque 256-bit server sessions, digests in DB, independent CSRF tokens, HttpOnly/SameSite cookies; production Secure `__Host-` cookie. No session/auth tokens in localStorage or query strings.
-- Enforce exact Origin, content type, and CSRF for mutations; keep auth rate limits, hashing concurrency bound, session rotation, idle/absolute expiry, logout revocation, and other-session revocation.
+- Opaque 256-bit server sessions, digests in DB, independent CSRF tokens, HttpOnly/SameSite cookies; production Secure `__Host-` cookie. No session or CSRF tokens in localStorage, URLs or query strings. The one exception is single-use emailed link tokens (password reset, invitations): they may appear in their page's path, and in `?next=` pointing at that page (`returnPath` matches the exact token shape). They are never put in API URLs; they go in JSON bodies.
+- Enforce exact Origin, content type, and CSRF for mutations; keep rate limits (budgets in `requireSession`, feature limits, auth limits) and quotas, hashing concurrency bound, session rotation, idle/absolute expiry, logout revocation, and other-session revocation.
 - Require session middleware on every private endpoint. Workspace data goes through `requireWorkspace` (membership via `workspace_user`, same 404 for non-members and missing workspaces) and every workspace mutation names its permission with `ws.Can` (`internal/auth/permissions.go`; the `ws` group panics on an unguarded one); scope SQL by the member's workspace ID, never a request-supplied owner, workspace or role. Test non-members, other workspaces and refused roles before adding resources.
-- Identify records outside the API only by their public IDs (`usr_`/`wsp_`/`prj_` + 14 base62, generated by the PostgreSQL `public_id()` column default); never expose internal bigint IDs in responses or URLs.
+- Identify records outside the API only by their public IDs (`usr_`/`wsp_`/`prj_`/`inv_` + 14 base62, generated by the PostgreSQL `public_id()` column default); never expose internal bigint IDs in responses or URLs.
 - Pass every value through Bun `?` placeholders (Bun escapes them into the query) and never build SQL text from input. Use bounded bodies/fields/headers, HTTP/query timeouts, generic public errors, and graceful shutdown. Do not enable wildcard credentialed CORS or trust forwarding headers blindly.
 - Keep script CSP hashes for the built HTML (computed by `internal/web` at startup from each file's inline scripts; never `'unsafe-inline'` scripts) and the other security headers; inline CSS is required by Styletron. Production requires HTTPS and verified DB TLS. No demo seed in production.
-- See `docs/api/auth.md` for limits. Password reset by link exists, but there is no email delivery: links go to a development mailbox file (`MAIL_DRIVER=file`, refused in production), so reset is off in production. Do not claim email delivery, email verification, MFA, or OIDC exists until it is implemented and tested.
+- See `docs/api/auth.md` for limits. Password reset by link and workspace invitations exist, but there is no email delivery: links go to a development mailbox file (`MAIL_DRIVER=file`, refused in production), so both are off in production. Do not claim email delivery, email verification, MFA, or OIDC exists until it is implemented and tested.
 - Email goes through `mailer.Send` (`internal/mail`) from a listener, never a handler, rendered from embedded `html/template` files; never `text/template` for HTML, never wrap data in `template.HTML`/`template.URL`, and never put user data in mail headers.
 
 ## Database and migrations
@@ -88,13 +90,13 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 
 ## Commands and validation
 
-Use `make db` (PostgreSQL with pgvector in Docker), `make install`, `make migrate` (`make migrate-status` to inspect), `make seed`, then `make dev` (`scripts/dev.sh`: the API and Vite in one terminal, Vite on :3000 proxying `/api` to Go; or `make api` and `make web` in separate terminals). `make serve` instead builds the single binary with the web app embedded and runs it on :3000, as in production. `make docker-dev` runs the whole app in Docker from the `Dockerfile` instead (database, image build, migrate, seed, then the app). Make loads root `.env`. Browse `http://localhost:3000` with the default origin configuration.
+Use `make db` (PostgreSQL with pgvector in Docker), `make install`, `make migrate` (`make migrate-status` to inspect), `make seed`, then `make dev` (`scripts/dev.sh`: the API and Vite in one terminal, Vite on :3000 proxying `/api` to Go; or `make api` and `make web` in separate terminals). `make serve` instead builds the single binary with the web app embedded and runs it on :3000, as in production. `make docker-dev` runs the whole app in Docker from the `Dockerfile` instead (database, image build, migrate, seed, then the app); after a code change, `make docker-app` rebuilds and restarts only the app container. Make loads root `.env`. Browse `http://localhost:3000` with the default origin configuration.
 
 Before claiming completion, run relevant checks and report failures:
 
 - `make test` and `make check`.
 - Set `TEST_DATABASE_URL` and run `make test-integration` for auth, SQL, migrations, middleware, or authorization changes. An unset variable skips integration tests in `make test`; do not report that as DB verification.
-- `make test-e2e` with `make serve` running for user flows (it covers the Go page gate and CSP, which the Vite dev server doesn't have); set the test DB URL so the unique test user is cleaned up. Default installed Chromium path can be changed with `CHROMIUM_PATH`.
+- `make test-e2e` with `RATE_LIMITS=off make serve` running for user flows (it covers the Go page gate and CSP, which the Vite dev server doesn't have); set the test DB URL so the unique test user is cleaned up. Default installed Chromium path can be changed with `CHROMIUM_PATH`.
 - `make build` when changing frontend/build integration or backend composition.
 - Check dependency audits for dependency/auth changes. Preserve lockfiles. Explain compatibility overrides in `docs/ui/README.md` (Dependencies); do not suppress type errors with `any`/unsafe casts instead of fixing dependencies.
 - Do not add tests that merely mirror trivial styling. Prefer behavior, security boundaries, and real persistence coverage.

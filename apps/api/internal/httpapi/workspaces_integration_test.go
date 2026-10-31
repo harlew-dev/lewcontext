@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -154,11 +155,13 @@ type workspaceRoute struct {
 	pattern string
 	path    string // after /api/workspaces/{workspace}
 	body    string
+	// newBody, when set, makes each request's body instead of body.
+	newBody func() string
 	ok      int
 	allowed []auth.Role // nil: every member
 	// target appends a new record's ID to path for each request, for routes
 	// that change or delete the record they name: "member" (a viewer's user
-	// ID) or "project".
+	// ID), "project" or "invitation" (a viewer's).
 	target string
 	// fresh sends each request to a new workspace named "Matrix" that every
 	// role belongs to, for routes that delete the workspace.
@@ -186,8 +189,26 @@ func workspaceRoutesMatrix(projectID string) []workspaceRoute {
 		{pattern: "GET /api/workspaces/{workspace}/members", path: "/members", ok: 200, allowed: owners},
 		{pattern: "PATCH /api/workspaces/{workspace}/members/{member}", path: "/members", body: `{"role":"member"}`, ok: 200, allowed: owners, target: "member"},
 		{pattern: "DELETE /api/workspaces/{workspace}/members/{member}", path: "/members", ok: 204, allowed: owners, target: "member"},
+		{pattern: "GET /api/workspaces/{workspace}/invitations", path: "/invitations", ok: 200, allowed: owners},
+		{pattern: "POST /api/workspaces/{workspace}/invitations", path: "/invitations", newBody: newInvitee, ok: 201, allowed: owners},
+		{pattern: "DELETE /api/workspaces/{workspace}/invitations/{invitation}", path: "/invitations", ok: 204, allowed: owners, target: "invitation"},
 		{pattern: "DELETE /api/workspaces/{workspace}/membership", path: "/membership", ok: 204},
 	}
+}
+
+var invitees atomic.Int64
+
+// newInvitee is an invitation body to an address nobody has invited yet.
+func newInvitee() string {
+	return fmt.Sprintf(`{"email":"invitee-%d@example.test","role":"viewer"}`, invitees.Add(1))
+}
+
+// bodyFor is the body of one request to the route.
+func (route workspaceRoute) bodyFor() string {
+	if route.newBody != nil {
+		return route.newBody()
+	}
+	return route.body
 }
 func TestWorkspacePermissionMatrix(t *testing.T) {
 	s, db := integrationServer(t)
@@ -211,6 +232,9 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 	}
 	newProject := func() string {
 		return must(factory.ProjectsIn(workspace.ID).CreateOne(ctx, db, f))(t).PublicID
+	}
+	newInvitation := func() string {
+		return must(factory.InvitationsTo(workspace.ID).State(factory.InvitedAs(fmt.Sprintf("revoke-%d@example.test", invitees.Add(1)), auth.RoleViewer)).CreateOne(ctx, db, f))(t).PublicID
 	}
 	newWorkspace := func() string {
 		w := must(factory.WorkspaceFor(ctx, db, f, owner.UserID, factory.Named("Matrix")))(t)
@@ -245,6 +269,8 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 				return workspacePath(id, route.path+"/"+newViewer())
 			case "project":
 				return workspacePath(id, route.path+"/"+newProject())
+			case "invitation":
+				return workspacePath(id, route.path+"/"+newInvitation())
 			}
 			return workspacePath(id, route.path)
 		}
@@ -255,11 +281,11 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 			}
 			session := sessions[role]
 			t.Run(route.pattern+" as "+string(role), func(t *testing.T) {
-				call(t, h, method, pathFor(), route.body, session.CSRFToken, session.Cookie(), want)
+				call(t, h, method, pathFor(), route.bodyFor(), session.CSRFToken, session.Cookie(), want)
 			})
 		}
 		t.Run(route.pattern+" as an outsider", func(t *testing.T) {
-			call(t, h, method, pathFor(), route.body, outsider.CSRFToken, outsider.Cookie(), 404)
+			call(t, h, method, pathFor(), route.bodyFor(), outsider.CSRFToken, outsider.Cookie(), 404)
 		})
 	}
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
+import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
@@ -9,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
-import { authPageState, authPath, routes } from "@/lib/routes";
+import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
+import { useInvitation } from "@/lib/use-invitation";
 import type { Route } from "./+types/login";
 // Signed-in visitors go on to ?next= or /app.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
@@ -25,6 +27,13 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const api = useApi();
   const [search] = useSearchParams();
+  // Coming from an invitation link: say so, and fill in its email.
+  const invitation = useInvitation(invitationToken(search.get("next")));
+  const [prefilled, setPrefilled] = useState(false);
+  if (invitation.kind === "live" && !prefilled) {
+    setPrefilled(true);
+    if (email === "") setEmail(invitation.invitation.email);
+  }
   const { loading, error, submit } = useAuthSubmit(api.auth().login);
   return (
     <AuthLayout>
@@ -34,6 +43,11 @@ export default function Login() {
       >
         <Logo href={routes.home} />
         <Heading>Sign in to your account</Heading>
+        <InvitationCallout
+          check={invitation}
+          ending="Sign in to accept."
+          dead="This invitation has expired or was revoked. You can still sign in."
+        />
         {arrived.passwordReset && !error.message && (
           <Notice variant="success">
             Password updated. Sign in with your new password.
@@ -78,7 +92,10 @@ export default function Login() {
         </Button>
         <Text>
           Don’t have an account?{" "}
-          <TextLink href={authPath(routes.register, search.get("next"))}>
+          <TextLink
+            href={authPath(routes.register, search.get("next"))}
+            state={arrived.invitation ? { invitation: true } : undefined}
+          >
             <Strong>Sign up</Strong>
           </TextLink>
         </Text>

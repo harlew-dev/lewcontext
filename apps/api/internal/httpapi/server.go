@@ -18,6 +18,8 @@ type Server struct {
 	Pages     http.Handler
 	dummyHash string
 	authSlots chan struct{}
+	// memoryLimits counts the limits kept in memory (api-read:per-user).
+	memoryLimits *memoryLimiter
 }
 
 func New(s *store.Store, c config.Config) (*Server, error) {
@@ -25,7 +27,7 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{Store: s, Config: c, dummyHash: dummy, authSlots: make(chan struct{}, 4)}, nil
+	return &Server{Store: s, Config: c, dummyHash: dummy, authSlots: make(chan struct{}, 4), memoryLimits: newMemoryLimiter()}, nil
 }
 func jsonResponse(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

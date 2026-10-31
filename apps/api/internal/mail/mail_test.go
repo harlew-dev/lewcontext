@@ -36,7 +36,23 @@ func newMailer(t *testing.T) (*Mailer, *outbox) {
 
 // Example data for every template, so each one is rendered at least once.
 var examples = map[Template]any{
-	ForgotPassword: ForgotPasswordData{Name: "Ada", URL: "http://localhost:3000/auth/forgot-password/abc"},
+	ForgotPassword:      ForgotPasswordData{Name: "Ada", URL: "http://localhost:3000/auth/forgot-password/abc"},
+	WorkspaceInvitation: WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc"},
+}
+
+// Every email is a whole document from the shared layout, titled with its own
+// subject.
+func TestLayoutWrapsEveryTemplate(t *testing.T) {
+	m, box := newMailer(t)
+	for name, data := range examples {
+		if err := m.Send(context.Background(), "ada@example.com", name, data); err != nil {
+			t.Fatal(err)
+		}
+		html := box.sent[len(box.sent)-1].HTML
+		if !strings.HasPrefix(html, "<!doctype html>") || !strings.Contains(html, "<title>"+subjects[name]+"</title>") || !strings.Contains(html, "max-width: 480px") {
+			t.Errorf("%s isn't wrapped in the layout:\n%s", name, html)
+		}
+	}
 }
 
 func TestEveryTemplateRenders(t *testing.T) {
@@ -244,5 +260,100 @@ func TestMissingTemplateStopsStartup(t *testing.T) {
 	defer delete(subjects, "not-a-file")
 	if _, err := New(&outbox{}); err == nil || !strings.Contains(err.Error(), "not-a-file.html") {
 		t.Fatalf("New: %v", err)
+	}
+}
+
+// invitations is an in-memory InvitationStore.
+type invitations struct {
+	live     map[string]store.InvitationMail // public ID → invitation
+	issued   map[string]string               // public ID → token digest
+	recorded []events.Event
+}
+
+func (i *invitations) IssueInvitationToken(_ context.Context, publicID, hash string) (store.InvitationMail, error) {
+	inv, ok := i.live[publicID]
+	if !ok {
+		return inv, sql.ErrNoRows
+	}
+	i.issued[publicID] = hash
+	return inv, nil
+}
+
+func (i *invitations) Record(_ context.Context, e events.Event, _ store.EventScope) error {
+	i.recorded = append(i.recorded, e)
+	return nil
+}
+
+func TestInvitationListener(t *testing.T) {
+	m, box := newMailer(t)
+	inv := store.InvitationMail{
+		Invitation: "inv_00000000000001", Workspace: "wsp_00000000000001", WorkspaceID: 3,
+		WorkspaceName: "<h1>Acme</h1>", Email: "bob@example.com", Role: auth.RoleAdmin,
+		SenderName: "<script>alert(1)</script>", SenderEmail: "ada@example.com",
+	}
+	s := &invitations{live: map[string]store.InvitationMail{inv.Invitation: inv}, issued: map[string]string{}}
+	listen := SendInvitation(s, m, "http://localhost:3000")
+	ctx := context.Background()
+	now := events.Delivered{EventID: "evt_00000000000001", OccurredAt: time.Now(), Attempt: 1}
+
+	// Revoked, accepted or expired meanwhile: nothing sent or recorded.
+	if err := listen(ctx, events.WorkspaceInvitationCreated{Invitation: "inv_00000000000002"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(box.sent) != 0 || len(s.recorded) != 0 {
+		t.Fatal("a gone invitation was sent")
+	}
+
+	if err := listen(ctx, events.WorkspaceInvitationCreated{Invitation: inv.Invitation}, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(box.sent) != 1 || box.sent[0].To != inv.Email || box.sent[0].Subject != "You’ve been invited to join a workspace" {
+		t.Fatalf("sent %+v", box.sent)
+	}
+	html := box.sent[0].HTML
+	prefix := `href="http://localhost:3000/auth/invitations/`
+	start := strings.Index(html, prefix)
+	if start < 0 {
+		t.Fatalf("no link in:\n%s", html)
+	}
+	token := html[start+len(prefix) : start+len(prefix)+43]
+	if s.issued[inv.Invitation] != auth.Digest(token) {
+		t.Fatal("stored digest doesn't match the link")
+	}
+	for _, tag := range []string{"<h1>", "<script>"} {
+		if strings.Contains(html, tag) {
+			t.Errorf("%s reached the email", tag)
+		}
+	}
+	if !strings.Contains(html, "&lt;h1&gt;Acme&lt;/h1&gt;") || !strings.Contains(html, "as an admin") || !strings.Contains(html, "(ada@example.com)") {
+		t.Fatalf("email:\n%s", html)
+	}
+	sent, ok := s.recorded[0].(events.WorkspaceInvitationSent)
+	if len(s.recorded) != 1 || !ok || sent.Invitation != inv.Invitation || sent.Workspace != inv.Workspace || sent.Request != now.EventID {
+		t.Fatalf("recorded %+v", s.recorded)
+	}
+
+	// A rerun issues a new link, replacing the first.
+	if err := listen(ctx, events.WorkspaceInvitationCreated{Invitation: inv.Invitation}, now); err != nil {
+		t.Fatal(err)
+	}
+	if s.issued[inv.Invitation] == auth.Digest(token) {
+		t.Fatal("rerun reused the token")
+	}
+
+	// An event older than an invitation's lifetime is dropped.
+	stale := events.Delivered{EventID: "evt_00000000000002", OccurredAt: time.Now().Add(-store.InvitationLifetime - time.Minute)}
+	if err := listen(ctx, events.WorkspaceInvitationCreated{Invitation: inv.Invitation}, stale); err != nil || len(box.sent) != 2 {
+		t.Fatalf("stale event sent: %v, %d", err, len(box.sent))
+	}
+
+	// A sender whose account is gone isn't named.
+	inv.SenderName, inv.SenderEmail = "", ""
+	s.live[inv.Invitation] = inv
+	if err := listen(ctx, events.WorkspaceInvitationCreated{Invitation: inv.Invitation}, now); err != nil {
+		t.Fatal(err)
+	}
+	if html := box.sent[2].HTML; !strings.Contains(html, "You were invited to join as an admin") || strings.Contains(html, "()") {
+		t.Fatalf("email without a sender:\n%s", html)
 	}
 }

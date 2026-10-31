@@ -13,6 +13,7 @@ import { SWRConfig } from "swr";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { RouteProgress } from "@/components/ui/route-progress";
 import { appName } from "@/lib/app";
+import { swrConfig } from "@/lib/swr";
 import { theme } from "@/lib/theme";
 import type { Route } from "./+types/root";
 import "@/styles/globals.css";
@@ -53,7 +54,7 @@ export function Layout({ children }: { children: ReactNode }) {
 function Providers({ children }: { children: ReactNode }) {
   return (
     <BaseProvider theme={theme}>
-      <SWRConfig value={{ errorRetryCount: 2, revalidateOnFocus: true }}>
+      <SWRConfig value={swrConfig}>
         <MotionConfig reducedMotion="user">{children}</MotionConfig>
       </SWRConfig>
     </BaseProvider>

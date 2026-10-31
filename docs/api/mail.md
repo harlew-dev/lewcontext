@@ -22,12 +22,15 @@ err := mailer.Send(ctx, user.Email, mail.ForgotPassword, mail.ForgotPasswordData
 | Template | Constant | Data | Subject |
 | --- | --- | --- | --- |
 | `forgot-password.html` | `mail.ForgotPassword` | `ForgotPasswordData{Name, URL}` | Reset your password |
+| `workspace-invitation.html` | `mail.WorkspaceInvitation` | `WorkspaceInvitationData{Workspace, Inviter, InviterEmail, Role, URL}` (`Role` with its article, "a member"; `Inviter` empty once that account is gone) | You’ve been invited to join a workspace |
+
+Every email shares `templates/layout.html`: the document, the grey page and the white card. Each email's file defines only its `title` and `content`, and `mail.New` parses each one with the layout as a set of its own.
 
 Placeholders use Go's syntax, `{{ .Name }}` and `{{ .URL }}`: the dot reads a field of the data struct.
 
 ### Adding one
 
-1. Write `templates/<name>.html`: a complete document with inline styles only, no scripts, no remote images (they act as tracking pixels).
+1. Write `templates/<name>.html`, defining `{{ define "title" }}` and `{{ define "content" }}`: inline styles only, no scripts, no remote images (they act as tracking pixels).
 2. Add a `Template` constant, its subject in `subjects`, and a `<Name>Data` struct of plain `string` fields.
 3. Add example data to `examples` in `mail_test.go`. `TestEveryTemplateRenders` fails without it.
 
@@ -45,7 +48,7 @@ An account's name is whatever the user typed, such as `<script>alert('XSS')</scr
 | `MAIL_DRIVER` | Driver | Notes |
 | --- | --- | --- |
 | `file` (default outside production) | `FileDriver` | Appends each message to `MAIL_FILE` (`tmp/mail.log`; `make` uses the repository's `tmp/`): a `====` line, `To`, `Subject`, `Template`, then the HTML. The file is created `0600`, and the server log notes only that mail was written, never the body. **Refused in production:** it holds working reset links. |
-| `off` (default in production) | none | Nothing is sent. The password reset listener isn't registered, and requests for a link answer 503. |
+| `off` (default in production) | none | Nothing is sent. Neither listener is registered, and requests for a reset link or an invitation answer 503. |
 
 To read the mailbox: `tail -n 40 tmp/mail.log`. To see an email rendered, save its HTML to a `.html` file and open it. With `make docker-dev`, it's inside the container: `docker compose exec app cat /tmp/mail.log`.
 

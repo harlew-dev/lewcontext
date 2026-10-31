@@ -72,6 +72,11 @@ func (h workspaceHandlers) store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workspace, err := h.Store.CreateWorkspace(r.Context(), current(r).User.ID, in)
+	var quota store.QuotaError
+	if errors.As(err, &quota) {
+		fail(w, 422, "You can own up to "+thousands(quota.Max)+" workspaces.")
+		return
+	}
 	if err != nil {
 		internalError(w, err)
 		return

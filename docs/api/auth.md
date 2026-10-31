@@ -46,23 +46,15 @@ Signed-in mutations also need `X-CSRF-Token`: an independent random token return
 
 ## Rate limits
 
-Stored in `auth_attempts` in fixed windows; successful attempts count too. Each limit is a named `rateLimit` in `httpapi/limits.go`. Its name, `<feature>:<counted by>`, prefixes the key (`<name>:<sha256 of IP or email>`, or the bare name for a limit shared by everyone) and is the `scope` of `auth.rate_limited`.
+Sign-in, sign-up and password reset are limited per IP, per account or email, and for everyone, and every signed-in request has a budget per user, with tighter limits on creating workspaces and projects and quotas on how many can exist. All of it is in [rate-limits.md](rate-limits.md). What matters here:
 
-| Name | Limit | Where | Refusal |
-| --- | --- | --- | --- |
-| `auth:per-ip` | 60 / 15 min | `limitAuth` on register, login, both signed-in password endpoints, deleting a workspace or the account, and the reset itself; directly on reset requests and checks | 429 |
-| `auth:per-account` | 10 / 15 min | `accountLimit` in register, login, both signed-in password endpoints and both deletions (the session user's email), so a stolen session can't guess the password faster than a login could. Password reset never touches it | 429 |
-| `password-reset:per-ip` | 10 / hour | reset requests: one IP can't mail many people | 429 |
-| `password-reset:per-email` | 3 / hour | reset requests, from any IP, known email or not: caps mail to one inbox | 429 |
-| `password-reset:all-accounts` | 100 / hour | reset requests from everyone: caps mail in a distributed flood. Also logs a warning | 503 |
-
-A reset request is counted against those four in the order listed, stopping at the first refusal, so one client can't use up the limit shared by everyone.
-
-Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's dev proxy) shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
+- `auth:per-ip` (60 / 15 min) and `auth:per-account` (10 / 15 min) guard every password check: `limitAuth` (the IP limit and a hashing slot) and `accountLimit`. Both deletions and the signed-in password endpoints use the session user's email, so a stolen session can't guess the password faster than a login could.
+- Logout, revoking other sessions and the password endpoints skip the signed-in budget, so a stolen session can't use it up to stop its owner.
+- Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's dev proxy) shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
 
 ## Audit trail
 
-Sign-ups, login attempts (with the email typed and the connection IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups, login attempts (with the email typed and the connection IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window (`rate_limit.reached`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 
@@ -81,7 +73,7 @@ Data belongs to workspaces; users reach a workspace through a `workspace_user` r
 | *(membership)* | ✓ | ✓ | ✓ | ✓ | `GET` the workspace and its projects |
 | `workspace.update` | ✓ | ✓ | | | `PATCH /workspaces/{ws}` |
 | `workspace.destroy` | ✓ | | | | `DELETE /workspaces/{ws}` |
-| `workspace.invitation.index` / `.store` / `.destroy` | ✓ | ✓ | | | no endpoints yet (invitations) |
+| `workspace.invitation.index` / `.store` / `.destroy` | ✓ | ✓ | | | `GET`, `POST …/invitations`, `DELETE …/invitations/{inv}` ([Invitations](#invitations)) |
 | `workspace.member.index` | ✓ | ✓ | | | `GET …/members` |
 | `workspace.member.update` | ✓ | ✓ | | | `PATCH …/members/{usr}` |
 | `workspace.member.destroy` | ✓ | ✓ | | | `DELETE …/members/{usr}` |
@@ -98,8 +90,24 @@ A viewer reads everything except the member and invitation lists (which hold oth
 - Creating a workspace makes the creator its `owner`, in the same transaction.
 - **Members** (`internal/store/members.go`): changing a role, removing someone and leaving each run in one transaction that first locks the workspace row (`FOR UPDATE`), then re-reads the actor's role and the target's membership, so concurrent changes are serialised. A change that would leave no owner (demoting, removing or leaving as the only owner) is refused with 409 (`ErrLastOwner`); two owners demoting each other at once leave one. Promoting someone to owner, then stepping down, is how ownership moves. Workspace responses carry `canLeave` (false for the only owner) so the web app can say so before you try.
 - **Removal** deletes only the `workspace_user` row: the user's next request to that workspace gets 404, their sessions and account stay, and the workspace's projects stay (projects have no owner). Only owners and admins can list members, so members and viewers never see other members' emails.
-- Invites and ownership transfer as its own flow are not implemented.
+- **Transferring ownership** is promoting someone to owner, then leaving or stepping down; there is no separate transfer flow.
 - Public IDs are unguessable (about 83 random bits), but access never depends on that: every workspace route checks membership.
+
+## Invitations
+
+Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `internal/mail/workspace_invitation.go` (the listener). Plan: [plans/features/workspace-invitations.md](../../plans/features/workspace-invitations.md).
+
+1. **Invite** (`POST …/invitations {email, role}`, `workspace.invitation.store`): the role must be in your `assignableRoles`, and never `owner` (invite as admin, then promote, so a link can't grant ownership). Under the workspace lock the store reads your role again, then refuses an existing member, a live invitation to the same email (an expired one is replaced), the 51st live one and the member quota (100 members plus live invitations). It records `workspace.invitation.created`, which queues the email. The answer is the same whether or not the email has an account.
+2. **Listener** (`mail.workspace_invitation`, about a second later): makes a 256-bit token (`auth.Token`), stores only its digest and `sent_at` on the row (replacing any earlier link), emails `APP_ORIGIN + /auth/invitations/<token>`, and records `workspace.invitation.sent`. An invitation revoked, accepted or expired meanwhile gets nothing.
+3. **Page** `/auth/invitations/<token>`: `POST /api/invitations/check {token}` (works signed out, `auth:per-ip`) returns the workspace's name, who invited you and the role.
+4. **Accept** (`POST /api/invitations/accept {token}`, signed in): one transaction locks the workspace, then the invitation, checks the signed-in email is the invited one (403 otherwise, and the invitation is left as it was), adds the membership (an existing member keeps their role), deletes the invitation and records `workspace.invitation.accepted`. A second accept, or a revoke, waits and then finds nothing.
+5. **Revoke** (`DELETE …/invitations/{inv}`, `workspace.invitation.destroy`, and the invitation's role in your `assignableRoles`): locks in the same order (workspace, then invitation; the other way round the two deadlock), deletes the row and records `workspace.invitation.revoked`. The link stops working.
+
+- **Joining is always deliberate.** Registering or signing in never looks up invitations: accepting needs the token, which only the invited inbox has, and the signed-in email must match. There is no email verification, so someone with a leaked link who registers the invited address first could still join; single use, the 7-day lifetime and revoking bound that.
+- **The token** works once, for 7 days, and only its digest is stored. It is in the page's path and in `?next=` for login and register (AGENTS.md names this exception), never in an API URL. A crafted `?next=` can't make anyone join: the page joins at once only with navigation state from its own buttons, and otherwise shows **Join**.
+- **The email** has a fixed subject, escapes every name ([mail.md](mail.md)), and shows the inviter's address so a misleading workspace name can be judged. With `MAIL_DRIVER=off` (production) inviting answers 503.
+- **Limits:** `invitation:per-user` (20 an hour), `invitation:global` (200 an hour, 503), 50 live invitations and the member quota ([rate-limits.md](rate-limits.md)).
+- Expired invitations stay listed, as Expired, for 30 days; then `Store.Cleanup` deletes them. Accepted and revoked ones are deleted; their events keep the history.
 
 ## Deleting
 
@@ -117,6 +125,6 @@ Register workspace routes in `workspaceRoutes` in `routes.go` (the `ws` group ap
 
 ## Not implemented
 
-Email verification, email delivery (password reset links go to a development mailbox file only, so reset is off in production), MFA/passkeys, OIDC and workspace invites. Don't describe them as existing. Before public use you'd also need email delivery, observability, backups, abuse monitoring and load testing.
+Email verification, email delivery (password reset links and invitations go to a development mailbox file only, so both are off in production), MFA/passkeys and OIDC. Don't describe them as existing. Before public use you'd also need email delivery, observability, backups, abuse monitoring and load testing.
 
 References: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

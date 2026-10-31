@@ -16,12 +16,6 @@ type sessionRecord struct {
 	LastSeenAt    time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 	ExpiresAt     time.Time `bun:",notnull"`
 }
-type authAttempt struct {
-	bun.BaseModel `bun:"table:auth_attempts,alias:a"`
-	Key           string    `bun:",pk"`
-	Attempts      int       `bun:",notnull"`
-	ResetsAt      time.Time `bun:",notnull"`
-}
 
 // CreateSession starts a session for the user, replacing the one oldHash
 // identifies, and records e (such as auth.logged_in) with it when e isn't nil.
@@ -100,28 +94,11 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 	})
 }
 
-// AllowAuth counts an attempt against key's limit in fixed windows of the
-// given length. Limits persist across restarts and multiple API processes; no
-// proxy header is trusted. firstRefusal is true for the one request in a
-// window that first goes over the limit, so callers can record it once however
-// many follow.
-func (s *Store) AllowAuth(ctx context.Context, key string, limit int, window time.Duration) (allowed, firstRefusal bool, err error) {
-	attempt := authAttempt{Key: key, Attempts: 1}
-	seconds := int(window.Seconds())
-	err = s.DB.NewInsert().Model(&attempt).
-		Value("resets_at", "now() + make_interval(secs => ?)", seconds).
-		On("CONFLICT (key) DO UPDATE").
-		Set("attempts = CASE WHEN a.resets_at <= now() THEN 1 ELSE a.attempts + 1 END").
-		Set("resets_at = CASE WHEN a.resets_at <= now() THEN now() + make_interval(secs => ?) ELSE a.resets_at END", seconds).
-		Returning("attempts").
-		Scan(ctx)
-	return attempt.Attempts <= limit, attempt.Attempts == limit+1, err
-}
-
-// Cleanup deletes used-up rate-limit windows, ended sessions and expired
-// reset links.
+// Cleanup deletes used-up rate-limit windows, ended sessions, expired reset
+// links, and invitations that expired over 30 days ago (until then they're
+// listed as expired, so whoever sent one can see why it wasn't used).
 func (s *Store) Cleanup(ctx context.Context) error {
-	if _, err := s.DB.NewDelete().Model((*authAttempt)(nil)).Where("resets_at <= now()").Exec(ctx); err != nil {
+	if _, err := s.DB.NewDelete().Model((*rateLimitRecord)(nil)).Where("resets_at <= now()").Exec(ctx); err != nil {
 		return err
 	}
 	if _, err := s.DB.NewDelete().Model((*sessionRecord)(nil)).
@@ -129,6 +106,9 @@ func (s *Store) Cleanup(ctx context.Context) error {
 		Exec(ctx); err != nil {
 		return err
 	}
-	_, err := s.DB.NewDelete().Model((*passwordReset)(nil)).Where("expires_at <= now()").Exec(ctx)
+	if _, err := s.DB.NewDelete().Model((*passwordReset)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
+		return err
+	}
+	_, err := s.DB.NewDelete().Model((*invitationRecord)(nil)).Where("expires_at <= now() - interval '30 days'").Exec(ctx)
 	return err
 }

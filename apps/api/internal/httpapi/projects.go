@@ -116,6 +116,11 @@ func (h projectHandlers) store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.Store.CreateProject(r.Context(), currentWorkspace(r), in)
+	var quota store.QuotaError
+	if errors.As(err, &quota) {
+		fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" projects.")
+		return
+	}
 	if err != nil {
 		internalError(w, err)
 		return

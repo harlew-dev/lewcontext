@@ -58,10 +58,10 @@ func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 // up the limit shared by everyone. Unknown emails count like real ones.
 func (s *Server) allowPasswordResetRequest(w http.ResponseWriter, r *http.Request, email string) bool {
 	ip := clientIP(r)
-	return s.allowAuth(w, r, authPerIP, authPerIP.key(ip)) &&
-		s.allowAuth(w, r, passwordResetPerIP, passwordResetPerIP.key(ip)) &&
-		s.allowAuth(w, r, passwordResetPerEmail, passwordResetPerEmail.key(email)) &&
-		s.allowAuth(w, r, passwordResetAllAccounts, passwordResetAllAccounts.everyone())
+	return s.allow(w, r, authPerIP, authPerIP.key(ip)) &&
+		s.allow(w, r, passwordResetPerIP, passwordResetPerIP.key(ip)) &&
+		s.allow(w, r, passwordResetPerEmail, passwordResetPerEmail.key(email)) &&
+		s.allow(w, r, passwordResetGlobal, passwordResetGlobal.everyone())
 }
 
 // checkPasswordReset lets the link's page say straight away that a link has
@@ -71,7 +71,7 @@ func (s *Server) checkPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !s.allowAuth(w, r, authPerIP, authPerIP.key(clientIP(r))) {
+	if !s.allow(w, r, authPerIP, authPerIP.key(clientIP(r))) {
 		return
 	}
 	if !validResetToken(in.Token) {

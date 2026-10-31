@@ -9,9 +9,9 @@ endif
 # from (MAIL_DRIVER=file); make test-e2e reads reset links from it.
 MAIL_FILE ?= $(CURDIR)/tmp/mail.log
 export MAIL_FILE
-.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-up docker-migrate docker-seed docker-down
+.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-up docker-migrate docker-seed docker-down'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -65,6 +65,11 @@ docker-dev: db
 	docker compose run --rm app migrate
 	docker compose run --rm app seed
 	docker compose up -d --wait app
+# After changing the code (UI or API): rebuild the image and restart only the app container.
+# No migrate or seed, and the database keeps running. The web build is embedded in the Go
+# binary, so a UI change still rebuilds the image; Docker's cache skips unchanged steps.
+docker-app:
+	docker compose up -d --build --no-deps --wait app
 # Or step by step: start everything, then migrate and seed.
 docker-up:
 	docker compose up -d --build --wait

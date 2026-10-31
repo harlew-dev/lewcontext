@@ -62,6 +62,8 @@ type ButtonElementProps = Omit<
 > & { href?: never };
 type LinkElementProps = {
   href: string;
+  // Navigation state for the page it opens (React Router's Link state).
+  state?: unknown;
   "aria-label"?: string;
   "aria-current"?: "page";
   onClick?: () => void;

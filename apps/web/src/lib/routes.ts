@@ -28,6 +28,11 @@ export const routes = {
   register: "/auth/register",
   // Asks for a reset link; the link itself is /auth/forgot-password/<token>.
   forgotPassword: "/auth/forgot-password",
+  // An invitation's emailed link. Like the reset link, it holds a single-use
+  // token, so it can also be a ?next= (AGENTS.md names the exception).
+  invitations: {
+    show: (token: string) => `/auth/invitations/${token}`,
+  },
 } as const;
 // Sidebar items for a workspace. Account & security is in the account menu
 // and workspace settings in the workspace menu instead.
@@ -43,10 +48,14 @@ export function navigation(workspace: string) {
 }
 const wsp = publicIdPattern("wsp");
 const prj = publicIdPattern("prj");
-// Signed-in pages a sign-in may return to (?next=), matched exactly. Add a
-// pattern for each new page under /app. Onboarding isn't one: /app sends
-// accounts without a workspace there anyway.
+// The shape of auth.Token in Go: 43 base64url characters.
+export const linkToken = /^[A-Za-z0-9_-]{43}$/;
+const invitationLink = /^\/auth\/invitations\/([A-Za-z0-9_-]{43})$/;
+// Pages a sign-in may return to (?next=), matched exactly: the signed-in
+// pages, and an invitation link. Add a pattern for each new page under /app.
+// Onboarding isn't one: /app sends accounts without a workspace there anyway.
 const returnRoutes = [
+  invitationLink,
   /^\/app$/,
   /^\/app\/settings$/,
   new RegExp(`^/app/${wsp}/dashboard$`),
@@ -73,6 +82,13 @@ export function returnPath(next: unknown): string | null {
   if (!returnRoutes.some((route) => route.test(url.pathname))) return null;
   return url.pathname + url.search;
 }
+// The token of an invitation link that `next` returns to, or null: login and
+// register show that invitation, and register returns there instead of going
+// to onboarding.
+export function invitationToken(next: unknown): string | null {
+  const path = returnPath(next);
+  return path ? (invitationLink.exec(path)?.[1] ?? null) : null;
+}
 // An auth page (login or register) that returns to `next` after signing in,
 // when it's an allowed return path.
 export function authPath(page: string, next: unknown): string {
@@ -81,12 +97,15 @@ export function authPath(page: string, next: unknown): string {
 }
 // Navigation state the sign-in pages pass each other, rather than the URL, so
 // an email stays out of history and server logs: the email typed so far,
-// whether the password was just reset, and whether the account was just
-// deleted (account settings sends you to login afterwards).
+// whether the password was just reset, whether the account was just deleted
+// (account settings sends you to login afterwards), and whether the visitor
+// came from our own invitation page's buttons (the invitation is then
+// accepted as soon as they're signed in; a crafted ?next= can't set it).
 export type AuthPageState = {
   email?: string;
   passwordReset?: boolean;
   accountDeleted?: boolean;
+  invitation?: boolean;
 };
 export function authPageState(state: unknown): AuthPageState {
   if (typeof state !== "object" || state === null) return {};
@@ -97,6 +116,7 @@ export function authPageState(state: unknown): AuthPageState {
         : undefined,
     passwordReset: "passwordReset" in state && state.passwordReset === true,
     accountDeleted: "accountDeleted" in state && state.accountDeleted === true,
+    invitation: "invitation" in state && state.invitation === true,
   };
 }
 // Navigation state for onboarding: the name of the workspace just deleted,
@@ -108,6 +128,16 @@ export function onboardingState(state: unknown): OnboardingState {
   return "deletedWorkspace" in state &&
     typeof state.deletedWorkspace === "string"
     ? { deletedWorkspace: state.deletedWorkspace }
+    : {};
+}
+// Navigation state for the signed-in layout: the workspace just joined from
+// an invitation, which the layout announces (the invitation page's own toast
+// would be lost as it unmounts).
+export type ArrivalState = { joinedWorkspace?: string };
+export function arrivalState(state: unknown): ArrivalState {
+  if (typeof state !== "object" || state === null) return {};
+  return "joinedWorkspace" in state && typeof state.joinedWorkspace === "string"
+    ? { joinedWorkspace: state.joinedWorkspace }
     : {};
 }
 // The login page, returning to `path` afterwards.

@@ -34,9 +34,10 @@ jobs:
       - run: make migrate
       - run: npm --prefix apps/web exec -- playwright install --with-deps chromium
       # As make serve: the binary built above serves the API and the embedded web app on :3000.
+      # Rate limits off: one e2e run signs up more users from one IP than register:per-ip allows.
       - name: Start application
         run: |
-          API_ADDR=127.0.0.1:3000 ./bin/api > /tmp/lewcontext-api.log 2>&1 &
+          API_ADDR=127.0.0.1:3000 RATE_LIMITS=off ./bin/api > /tmp/lewcontext-api.log 2>&1 &
           for attempt in $(seq 1 30); do curl -sf http://localhost:3000/auth/login > /dev/null && exit 0; sleep 2; done
           echo 'The app did not start on :3000'; cat /tmp/lewcontext-api.log; exit 1
       - name: Browser tests
