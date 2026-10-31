@@ -9,7 +9,22 @@ import (
 	"unicode/utf8"
 )
 
-var eventName = regexp.MustCompile(`^(auth|workspace|project)\.[a-z_]+$`)
+// eventName is <resource>.<fact> in a known area: two or three snake_case
+// segments, like the events.name CHECK (migration 007).
+var eventName = regexp.MustCompile(`^(auth|workspace|project)(\.[a-z][a-z_]*){1,2}$`)
+
+func TestEventNamePattern(t *testing.T) {
+	for _, name := range []string{"workspace.member.removed", "auth.logged_in", "auth.password_reset.requested", "project.updated"} {
+		if !eventName.MatchString(name) {
+			t.Errorf("%q refused", name)
+		}
+	}
+	for _, name := range []string{"workspace.member_removed.x.y", "Workspace.created", "workspace..created", "workspace.created.", "workspace.1created", "workspace", "billing.paid"} {
+		if eventName.MatchString(name) {
+			t.Errorf("%q accepted", name)
+		}
+	}
+}
 
 func TestCatalogueNames(t *testing.T) {
 	seen := map[string]bool{}

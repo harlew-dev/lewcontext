@@ -101,7 +101,7 @@ type PasswordResetRequested struct {
 	IP    string `json:"ip"`
 }
 
-func (PasswordResetRequested) EventName() string { return "auth.password_reset_requested" }
+func (PasswordResetRequested) EventName() string { return "auth.password_reset.requested" }
 
 // PasswordResetSent: a reset link was sent to an account's email, for the
 // request event Request (evt_…).
@@ -111,7 +111,7 @@ type PasswordResetSent struct {
 	Request string `json:"request"`
 }
 
-func (PasswordResetSent) EventName() string { return "auth.password_reset_sent" }
+func (PasswordResetSent) EventName() string { return "auth.password_reset.sent" }
 
 // PasswordResetCompleted: a reset link set a new password, which signed out
 // every session of the account's.
@@ -120,4 +120,4 @@ type PasswordResetCompleted struct {
 	OtherSessionsRevoked int    `json:"otherSessionsRevoked"`
 }
 
-func (PasswordResetCompleted) EventName() string { return "auth.password_reset_completed" }
+func (PasswordResetCompleted) EventName() string { return "auth.password_reset.completed" }

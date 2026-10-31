@@ -62,7 +62,7 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 | `TestProjectPagination` | Every sort across pages, past-the-end, filters, literal wildcards, isolation, bad parameters |
 | `TestEveryTableHasAFactory` | Each migrated table has a factory, and every factory inserts |
 | `TestFactoriesMatchValidation` | Fake values pass API validation |
-| `internal/database` tests | Migrations up/down, idempotency, `public_id()` uniqueness and format, `Fresh` (refused in production, rebuilds the schema) |
+| `internal/database` tests | Migrations up/down, idempotency, `public_id()` uniqueness and format, the `events.name` CHECK (two or three segments), `Fresh` (refused in production, rebuilds the schema) |
 | `internal/seed` tests | Demo runs once with its Acme workspace; `volume` and `users` insert exactly what they say |
 | `TestSignedInPagesNeedASessionBeforeAnyHTML`, `TestAPIAndPagesStayApart` | `/app/*` without a session (none, unknown, idle, expired) → 302 to login with `next` and no HTML; signed in gets the shell; unknown API paths never get the shell; pages answer GET/HEAD only; no web build serves the API only |
 | `internal/web` tests | Per-file CSP hashes (as browsers compute them), fallback vs 404, cache headers, security headers and HSTS, dot-files hidden, a build without the fallback refused |

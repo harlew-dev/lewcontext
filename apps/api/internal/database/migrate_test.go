@@ -6,6 +6,7 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/database/dbtest"
+	"lewcontext/api/internal/factory"
 	"testing"
 )
 
@@ -67,6 +68,30 @@ func TestPublicIDDefaults(t *testing.T) {
 	short := map[string]any{"public_id": "usr_short", "name": "A", "email": "a@example.com", "password_hash": "x"}
 	if _, err := db.NewInsert().Model(&short).TableExpr("users").Exec(ctx); err == nil {
 		t.Fatal("malformed public_id accepted")
+	}
+}
+
+// Event names are <resource>.<fact>: two or three snake_case segments.
+func TestEventNameCheck(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	f := factory.TestFaker(t)
+	named := func(name string) error {
+		_, err := factory.Events.State(func(e *factory.Event) { e.Name = name }).CreateOne(ctx, db, f)
+		return err
+	}
+	for _, name := range []string{"auth.logged_in", "workspace.member.removed"} {
+		if err := named(name); err != nil {
+			t.Errorf("%q refused: %v", name, err)
+		}
+	}
+	for _, name := range []string{"workspace.member.removed.again", "workspace", "Workspace.created", "workspace..created", "workspace.1created"} {
+		if err := named(name); err == nil {
+			t.Errorf("%q accepted", name)
+		}
 	}
 }
 func TestFreshRebuildsTheSchema(t *testing.T) {

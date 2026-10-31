@@ -19,9 +19,9 @@ type ResetStore interface {
 	Record(ctx context.Context, e events.Event, scope store.EventScope) error
 }
 
-// PasswordReset is the listener that answers auth.password_reset_requested:
+// PasswordReset is the listener that answers auth.password_reset.requested:
 // it issues a reset link for the account using the email, sends it, and
-// records auth.password_reset_sent. An email without an account gets nothing.
+// records auth.password_reset.sent. An email without an account gets nothing.
 //
 // The token is made here, not in the request, so it is never stored: the
 // database keeps its digest and the mailbox the link. A delivery that runs

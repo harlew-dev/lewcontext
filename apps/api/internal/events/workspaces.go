@@ -24,7 +24,7 @@ type WorkspaceMemberUpdated struct {
 	Changes   Changes `json:"changes"`
 }
 
-func (WorkspaceMemberUpdated) EventName() string { return "workspace.member_updated" }
+func (WorkspaceMemberUpdated) EventName() string { return "workspace.member.updated" }
 
 // WorkspaceMemberRemoved: someone (the actor) removed a member, who had role.
 // The account stays.
@@ -34,7 +34,7 @@ type WorkspaceMemberRemoved struct {
 	Role      string `json:"role"`
 }
 
-func (WorkspaceMemberRemoved) EventName() string { return "workspace.member_removed" }
+func (WorkspaceMemberRemoved) EventName() string { return "workspace.member.removed" }
 
 // WorkspaceMemberLeft: a member (the actor) left the workspace.
 type WorkspaceMemberLeft struct {
@@ -42,4 +42,4 @@ type WorkspaceMemberLeft struct {
 	Role      string `json:"role"`
 }
 
-func (WorkspaceMemberLeft) EventName() string { return "workspace.member_left" }
+func (WorkspaceMemberLeft) EventName() string { return "workspace.member.left" }

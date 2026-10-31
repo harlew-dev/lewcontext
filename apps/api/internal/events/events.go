@@ -14,8 +14,8 @@ import (
 	"unicode/utf8"
 )
 
-// Event is one thing that happened. EventName is "<area>.<past_tense>",
-// e.g. "project.created".
+// Event is one thing that happened. EventName is "<resource>.<fact>" (docs/naming.md),
+// e.g. "project.created" or "workspace.member.removed".
 type Event interface {
 	EventName() string
 }

@@ -50,7 +50,7 @@ func (s *Store) CheckPasswordReset(ctx context.Context, hash string) (bool, erro
 
 // ResetPassword gives the account whose live reset link is hash the password
 // hash passwordHash, deletes the link and every session of the account's, and
-// records auth.password_reset_completed, in one transaction. It returns
+// records auth.password_reset.completed, in one transaction. It returns
 // ErrResetInvalid unless hash is a live link.
 func (s *Store) ResetPassword(ctx context.Context, hash, passwordHash string) (User, error) {
 	var u User

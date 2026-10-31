@@ -97,7 +97,7 @@ func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
 	if known.Body.String() != unknown.Body.String() || known.Header().Get("Content-Type") != unknown.Header().Get("Content-Type") {
 		t.Fatalf("responses differ: %q vs %q", known.Body.String(), unknown.Body.String())
 	}
-	requested := eventsNamed(t, db, "auth.password_reset_requested")
+	requested := eventsNamed(t, db, "auth.password_reset.requested")
 	if len(requested) != 2 || requested[0].Payload["email"] != user.Email || requested[1].Payload["email"] != "nobody@example.com" ||
 		requested[0].Payload["ip"] != "127.0.0.1" || !is(requested[0].UserID, 0) || !is(requested[0].ActorID, 0) {
 		t.Fatalf("requested events: %+v", requested)
@@ -118,7 +118,7 @@ func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
 	if stored != auth.Digest(token) {
 		t.Fatal("the stored digest isn't the link's token's")
 	}
-	sent := onlyEvent(t, db, "auth.password_reset_sent")
+	sent := onlyEvent(t, db, "auth.password_reset.sent")
 	if sent.Payload["user"] != user.PublicID || sent.Payload["email"] != user.Email || !validPublicID("evt", sent.Payload["request"].(string)) ||
 		!is(sent.UserID, user.ID) || strings.Contains(sent.Raw, token) || strings.Contains(sent.Raw, stored) {
 		t.Fatalf("sent event: %+v", sent)
@@ -151,7 +151,7 @@ func TestPasswordResetSetsANewPassword(t *testing.T) {
 	}
 	// Every session ends, including any an attacker held.
 	call(t, h, "GET", "/api/auth/me", "", "", session.Cookie(), 401)
-	completed := onlyEvent(t, db, "auth.password_reset_completed")
+	completed := onlyEvent(t, db, "auth.password_reset.completed")
 	if completed.Payload["user"] != user.PublicID || completed.Payload["otherSessionsRevoked"] != 1.0 || !is(completed.UserID, user.ID) {
 		t.Fatalf("completed event: %+v", completed)
 	}
@@ -228,7 +228,7 @@ func TestPasswordResetLinkWorksOnceUnderConcurrency(t *testing.T) {
 	if codes[1] == 200 {
 		winner = passwords[1]
 	}
-	if !storedPasswordIs(t, db, user.ID, winner) || len(eventsNamed(t, db, "auth.password_reset_completed")) != 1 {
+	if !storedPasswordIs(t, db, user.ID, winner) || len(eventsNamed(t, db, "auth.password_reset.completed")) != 1 {
 		t.Fatal("the winning password wasn't the one saved, or two resets were recorded")
 	}
 }
@@ -250,7 +250,7 @@ func TestPasswordResetLimits(t *testing.T) {
 		if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "password-reset:per-email" {
 			t.Fatalf("rate limited: %+v", e)
 		}
-		if n := len(eventsNamed(t, db, "auth.password_reset_requested")); n != 3 {
+		if n := len(eventsNamed(t, db, "auth.password_reset.requested")); n != 3 {
 			t.Fatalf("%d requests recorded; refused ones count too", n)
 		}
 		// Another email from the same IP still gets through.
@@ -317,7 +317,7 @@ func TestPasswordResetRequestProtections(t *testing.T) {
 	// Without email delivery, nothing could send the link.
 	s.Config.MailDriver = config.MailOff
 	requestReset(t, s.Routes(), "a@example.com", 503)
-	if found := eventsNamed(t, db, "auth.password_reset_requested"); len(found) != 0 {
+	if found := eventsNamed(t, db, "auth.password_reset.requested"); len(found) != 0 {
 		t.Fatalf("refused requests recorded: %+v", found)
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // Password reset by link, for someone who can't sign in. Requesting a link
-// only records auth.password_reset_requested and answers the same for every
+// only records auth.password_reset.requested and answers the same for every
 // email, without looking the account up; the mail.password_reset listener
 // (internal/mail) issues and sends the link. The link's page checks it, then
 // sets a new password with it, which signs out every session.

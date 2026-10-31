@@ -53,13 +53,15 @@ Every method starts with a verb:
 
 ## Events (`internal/events`)
 
-`<area>.<past_tense>`, snake_case: a fact, not a command.
+`<resource>.<fact>`: `workspace.invitation.created`, `workspace.member.removed`, `auth.password_reset.requested`, `project.updated`, `auth.logged_in`. Segments are snake_case.
 
-- `store` records `*_created`;
-- `update` records `*_updated`, or a more specific fact (`workspace.renamed`);
-- `destroy` records `*_deleted`, or a more specific fact (`workspace.member_removed`, `workspace.member_left`, `workspace.invitation_revoked`).
-
-One event type per fact, with variable details in the payload, never in the name (`rate_limit.reached` with a `limit` field, not one event per limit).
+- **The resource** is what the event is about, spelled as in its permission: a top-level resource is one segment (`project`, `workspace`), and a resource inside another adds one (`workspace.member`, `workspace.invitation`, `auth.password_reset`). The permission `workspace.member.update` guards the route that records `workspace.member.updated`.
+- **The fact** is the last segment: past tense, a fact rather than a command (`created`, `updated`, `removed`, `left`, `sent`). Everything before it is what the fact is about, so filtering by resource is a prefix (`workspace.member.%`).
+- **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`); only stored sub-resources (reset links, members, invitations) get a segment.
+- **At most three segments**, enforced by the `events.name` CHECK and `TestCatalogueNames`. A deeper resource needs this rule revisited, not a fourth dot.
+- **CRUD actions:** `store` records `<resource>.created`; `update` records `<resource>.updated`, or a more specific fact (`workspace.renamed`); `destroy` records `<resource>.deleted`, or a more specific fact (`workspace.member.removed`, `workspace.member.left`, `workspace.invitation.revoked`).
+- **One event type per fact**, with variable details in the payload, never in the name (`rate_limit.reached` with a `limit` field, not one event per limit).
+- **Listener names** (`mail.password_reset`) name listeners, not events; they are stored with each delivery and don't follow event renames.
 
 ## Rate limits (`httpapi/limits.go`)
 

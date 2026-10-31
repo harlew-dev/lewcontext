@@ -1,7 +1,7 @@
 CREATE TABLE events (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  public_id text NOT NULL UNIQUE DEFAULT public_id('evt') CHECK (public_id ~ '^evt_[0-9A-Za-z]{14}$'),
- name text NOT NULL CHECK (name ~ '^[a-z]+\.[a-z_]+$'),
+ name text NOT NULL CHECK (name ~ '^[a-z][a-z_]*(\.[a-z][a-z_]*){1,2}$'),
  actor_id bigint REFERENCES users(id) ON DELETE SET NULL,
  user_id bigint REFERENCES users(id) ON DELETE CASCADE,
  workspace_id bigint REFERENCES workspaces(id) ON DELETE CASCADE,

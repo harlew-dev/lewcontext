@@ -185,11 +185,11 @@ func TestChangeMemberRole(t *testing.T) {
 	})
 	t.Run("the role change is recorded once, and not when unchanged", func(t *testing.T) {
 		change(m.owner, viewer, `{"role":"viewer"}`, 200)
-		if len(eventsNamed(t, m.db, "workspace.member_updated")) != 2 {
+		if len(eventsNamed(t, m.db, "workspace.member.updated")) != 2 {
 			t.Fatal("an unchanged role was recorded")
 		}
 		change(m.owner, viewer, `{"role":"admin"}`, 200)
-		found := eventsNamed(t, m.db, "workspace.member_updated")
+		found := eventsNamed(t, m.db, "workspace.member.updated")
 		e := found[len(found)-1]
 		if !is(e.ActorID, m.owner.UserID) || !is(e.UserID, viewer.UserID) || !is(e.WorkspaceID, m.workspace.ID) ||
 			e.Payload["user"] != m.publicID(t, viewer) || e.Payload["workspace"] != m.workspace.PublicID ||
@@ -275,7 +275,7 @@ func TestRemoveMember(t *testing.T) {
 	call(t, m.h, "GET", m.path("/projects"), "", "", member.Cookie(), 404)
 	call(t, m.h, "GET", "/api/auth/me", "", "", member.Cookie(), 200)
 	remove(admin, member, 404)
-	e := onlyEvent(t, m.db, "workspace.member_removed")
+	e := onlyEvent(t, m.db, "workspace.member.removed")
 	if !is(e.ActorID, admin.UserID) || !is(e.UserID, member.UserID) || !is(e.WorkspaceID, m.workspace.ID) ||
 		e.Payload["user"] != m.publicID(t, member) || e.Payload["role"] != "member" || e.Payload["workspace"] != m.workspace.PublicID {
 		t.Fatalf("event: %s", e.Raw)
@@ -302,7 +302,7 @@ func TestLeaveWorkspace(t *testing.T) {
 	if listWorkspaces(t, m.h, viewer.Cookie(), "").Pages.Items != 0 {
 		t.Fatal("left workspace still listed")
 	}
-	e := onlyEvent(t, m.db, "workspace.member_left")
+	e := onlyEvent(t, m.db, "workspace.member.left")
 	if !is(e.ActorID, viewer.UserID) || !is(e.UserID, viewer.UserID) || !is(e.WorkspaceID, m.workspace.ID) ||
 		e.Payload["role"] != "viewer" || e.Payload["workspace"] != m.workspace.PublicID {
 		t.Fatalf("event: %s", e.Raw)

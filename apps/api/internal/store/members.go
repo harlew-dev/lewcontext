@@ -61,7 +61,7 @@ func (s *Store) IndexMembers(ctx context.Context, workspaceID int64, f MemberFil
 }
 
 // UpdateMemberRole gives the member with the user public ID memberID a new
-// role, on behalf of actorID, and records workspace.member_updated when it
+// role, on behalf of actorID, and records workspace.member.updated when it
 // changed. The actor's role is read again under the workspace lock; both the
 // member's role and the new one must be among the roles it may assign
 // (ErrNotAssignable), and the last owner can't be demoted (ErrLastOwner).
@@ -101,7 +101,7 @@ func (s *Store) UpdateMemberRole(ctx context.Context, w Workspace, actorID int64
 
 // RemoveMember takes the member with the user public ID memberID out of the
 // workspace on behalf of actorID, with the same checks as UpdateMemberRole,
-// and records workspace.member_removed. Their account and projects stay.
+// and records workspace.member.removed. Their account and projects stay.
 // Callers refuse actorID removing themselves (that's leaving).
 func (s *Store) RemoveMember(ctx context.Context, w Workspace, actorID int64, memberID string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -124,7 +124,7 @@ func (s *Store) RemoveMember(ctx context.Context, w Workspace, actorID int64, me
 }
 
 // LeaveWorkspace removes userID's own membership and records
-// workspace.member_left, unless they are its last owner (ErrLastOwner).
+// workspace.member.left, unless they are its last owner (ErrLastOwner).
 func (s *Store) LeaveWorkspace(ctx context.Context, w Workspace, userID int64) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if err := lockWorkspace(ctx, tx, w.ID); err != nil {
