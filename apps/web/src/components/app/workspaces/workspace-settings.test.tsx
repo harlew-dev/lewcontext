@@ -10,6 +10,7 @@ import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 import { Toaster } from "@/components/ui/toast";
 import WorkspaceEdit from "@/pages/app/[workspace]/settings";
+import WorkspaceSettingsLayout from "@/pages/app/[workspace]/settings/layout";
 import { onboardingState } from "@/lib/routes";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
@@ -54,8 +55,11 @@ function renderAs(
             <Routes>
               <Route
                 path="/app/:workspace/settings"
-                element={<WorkspaceEdit />}
-              />
+                element={<WorkspaceSettingsLayout />}
+              >
+                <Route index element={<WorkspaceEdit />} />
+                <Route path="members" element={<p>Members tab</p>} />
+              </Route>
               <Route
                 path="/app/:workspace/dashboard"
                 element={<p>Opened the next workspace</p>}
@@ -140,6 +144,23 @@ describe("workspace settings", () => {
     expect(screen.getByRole("link", { name: "Members" })).toHaveAttribute(
       "href",
       "/app/wsp_2yEHYLwiwPVhLW/settings/members",
+    );
+  });
+  it("keeps the heading and tabs mounted when switching tabs", async () => {
+    renderAs("admin");
+    const tabs = screen.getByRole("navigation", { name: "Workspace settings" });
+    fireEvent.click(screen.getByRole("link", { name: "Members" }));
+    expect(await screen.findByText("Members tab")).toBeInTheDocument();
+    // The same element, so the underline slides rather than reappearing.
+    expect(screen.getByRole("navigation", { name: "Workspace settings" })).toBe(
+      tabs,
+    );
+    expect(screen.getByRole("link", { name: "Members" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Workspace settings",
     );
   });
   it("lets a viewer leave, then opens their next workspace", async () => {

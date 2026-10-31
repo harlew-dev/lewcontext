@@ -1,7 +1,10 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Outlet, useLocation, useParams } from "react-router";
 import { ApplicationLayout } from "@/components/layout/application-layout";
-import { PageTransition } from "@/components/layout/page-transition";
+import {
+  PageTransition,
+  usePageKey,
+} from "@/components/layout/page-transition";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { ListSkeleton } from "@/components/ui/feedback";
 import { Toaster, toast } from "@/components/ui/toast";
@@ -28,14 +31,15 @@ export function shouldRevalidate() {
   return false;
 }
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
-  const { pathname } = useLocation();
+  const pageKey = usePageKey();
   if ("unavailable" in loaderData) return <ServiceUnavailable />;
   return (
     <SessionProvider session={loaderData.session}>
       <CurrentWorkspace first={loaderData.workspaces}>
         <ApplicationLayout>
-          {/* Each page fades in; a new query (search, page) isn't a new page. */}
-          <PageTransition key={pathname}>
+          {/* Each page fades in; a new query (search, page) isn't a new
+              page, and nor is another tab of the same page. */}
+          <PageTransition key={pageKey}>
             <Outlet />
           </PageTransition>
         </ApplicationLayout>

@@ -27,10 +27,14 @@ export default [
       "app/:workspace/projects/:project",
       "pages/app/[workspace]/projects/[project].tsx",
     ),
-    route("app/:workspace/settings", "pages/app/[workspace]/settings.tsx"),
+    // General and Members are tabs of one layout (the heading and tabs).
     route(
-      "app/:workspace/settings/members",
-      "pages/app/[workspace]/settings/members.tsx",
+      "app/:workspace/settings",
+      "pages/app/[workspace]/settings/layout.tsx",
+      [
+        index("pages/app/[workspace]/settings.tsx"),
+        route("members", "pages/app/[workspace]/settings/members.tsx"),
+      ],
     ),
   ]),
   // The admin dashboard, at its secret key (docs/api/admin.md). The sign-in

@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useSWRConfig } from "swr";
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
 import { RoleBadge, roleLabels } from "@/components/app/workspaces/role-badge";
-import { SettingsTabs } from "@/components/app/workspaces/settings-tabs";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Divider } from "@/components/ui/divider";
 import {
   Dropdown,
   DropdownButton,
@@ -25,7 +23,7 @@ import {
 } from "@/components/ui/dropdown";
 import { EmptyState, ErrorNotice, Notice } from "@/components/ui/feedback";
 import { ErrorMessage, Field, Label } from "@/components/ui/fieldset";
-import { Heading, Subheading } from "@/components/ui/heading";
+import { Subheading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { PaginatedTable } from "@/components/ui/paginated-table";
@@ -60,19 +58,12 @@ import { can, type Role } from "@/types/workspaces";
 // anyone else the page explains that without asking the API.
 export default function MemberIndex() {
   const workspace = useWorkspace();
-  return (
-    <div className="mx-auto max-w-4xl">
-      <Heading>Workspace settings</Heading>
-      <SettingsTabs current="members" />
-      <Divider className="my-10 mt-6" />
-      {can(workspace, "workspace.member.index") ? (
-        <MemberList key={workspace.id} />
-      ) : (
-        <Notice variant="error">
-          Only owners and admins can see this workspace’s members.
-        </Notice>
-      )}
-    </div>
+  return can(workspace, "workspace.member.index") ? (
+    <MemberList key={workspace.id} />
+  ) : (
+    <Notice variant="error">
+      Only owners and admins can see this workspace’s members.
+    </Notice>
   );
 }
 // The page state in the URL (?q=&page=); values the API would reject fall back.

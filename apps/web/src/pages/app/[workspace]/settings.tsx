@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { CheckIcon, DocumentDuplicateIcon } from "@heroicons/react/16/solid";
 import { PasswordField } from "@/components/app/account/password-fields";
-import { SettingsTabs } from "@/components/app/workspaces/settings-tabs";
 import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
@@ -14,7 +13,6 @@ import {
   FieldGroup,
   Label,
 } from "@/components/ui/fieldset";
-import { Heading } from "@/components/ui/heading";
 import {
   Input,
   InputActions,
@@ -45,10 +43,7 @@ export default function WorkspaceEdit() {
   const workspace = useWorkspace();
   const canRename = can(workspace, "workspace.update");
   return (
-    <div className="mx-auto max-w-4xl">
-      <Heading>Workspace settings</Heading>
-      <SettingsTabs current="general" />
-      <Divider className="my-10 mt-6" />
+    <>
       <SettingsSection title="General">
         {canRename ? (
           <RenameForm key={workspace.id} />
@@ -74,7 +69,7 @@ export default function WorkspaceEdit() {
       </SettingsSection>
       <Divider className="my-10" soft />
       <DangerZone key={workspace.id} />
-    </div>
+    </>
   );
 }
 // Renames the workspace, then reloads its record and the switcher so the new

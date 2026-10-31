@@ -9,6 +9,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
 import { Toaster } from "@/components/ui/toast";
+import WorkspaceSettingsLayout from "@/pages/app/[workspace]/settings/layout";
 import MemberIndex from "@/pages/app/[workspace]/settings/members";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
@@ -81,9 +82,11 @@ function renderAs(role: Role) {
           >
             <Routes>
               <Route
-                path="/app/:workspace/settings/members"
-                element={<MemberIndex />}
-              />
+                path="/app/:workspace/settings"
+                element={<WorkspaceSettingsLayout />}
+              >
+                <Route path="members" element={<MemberIndex />} />
+              </Route>
             </Routes>
           </MemoryRouter>
           <Toaster />
