@@ -1,9 +1,10 @@
-package httpapi
+package admin
 
 import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/mail"
 	"lewcontext/api/internal/store"
@@ -17,7 +18,7 @@ import (
 // Events are the admin dashboard's /api/admin/events routes:
 // the audit trail, filtered and paged by a cursor. Every read is recorded
 // (admin.event.listed, .viewed) with the filters used.
-type Events struct{ *Server }
+type Events struct{ *httpapi.Server }
 
 // Events list page sizes.
 const (
@@ -127,7 +128,7 @@ func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.Event
 	}
 	if used.Email != "" {
 		f.Email = used.Email
-		valid = valid && ValidEmail(&f.Email)
+		valid = valid && httpapi.ValidEmail(&f.Email)
 		used.Email = f.Email
 	}
 	if used.IP != "" {
@@ -146,47 +147,47 @@ func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.Event
 func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 	f, perPage, used, ok := adminEventQuery(r)
 	if !ok {
-		Fail(w, 400, "Check the filters.")
+		httpapi.Fail(w, 400, "Check the filters.")
 		return
 	}
 	page, err := h.Repo.IndexAdminEvents(r.Context(), f, perPage)
 	if errors.Is(err, store.ErrNoCursor) {
-		Fail(w, 400, "That page is no longer available. Start from the newest events.")
+		httpapi.Fail(w, 400, "That page is no longer available. Start from the newest events.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	e := events.AdminEventListed{Admin: Admin(r).User.PublicID, Filters: used}
+	e := events.AdminEventListed{Admin: httpapi.Admin(r).User.PublicID, Filters: used}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, page)
+	httpapi.JSON(w, 200, page)
 }
 
 func (h Events) Show(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("event")
 	if !input.PublicID("evt", id) {
-		Fail(w, 404, "Event not found.")
+		httpapi.Fail(w, 404, "Event not found.")
 		return
 	}
 	event, err := h.Repo.FindAdminEvent(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
-		Fail(w, 404, "Event not found.")
+		httpapi.Fail(w, 404, "Event not found.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	e := events.AdminEventViewed{Admin: Admin(r).User.PublicID, Event: event.PublicID}
+	e := events.AdminEventViewed{Admin: httpapi.Admin(r).User.PublicID, Event: event.PublicID}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, event)
+	httpapi.JSON(w, 200, event)
 }
 
 // adminCatalogue is what the filters offer: every event, rate limit and
@@ -200,15 +201,15 @@ type adminCatalogue struct {
 
 func (h Events) Catalogue(w http.ResponseWriter, r *http.Request) {
 	limits := []string{mail.AccountExistsPerAccount.Name}
-	for _, l := range RateLimits {
+	for _, l := range httpapi.RateLimits {
 		limits = append(limits, l.Name)
 	}
 	slices.Sort(limits)
-	JSON(w, 200, adminCatalogue{Events: catalogueNames(), Limits: limits, Listeners: h.listeners()})
+	httpapi.JSON(w, 200, adminCatalogue{Events: catalogueNames(), Limits: limits, Listeners: listeners(h.Server)})
 }
 
 // listeners names every registered listener, sorted.
-func (s *Server) listeners() []string {
+func listeners(s *httpapi.Server) []string {
 	names := []string{}
 	if s.Repo.Listeners == nil {
 		return names

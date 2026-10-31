@@ -1,10 +1,15 @@
-package httpapi
+// Package admin answers /api/admin/*, the admin dashboard (docs/api/admin.md):
+// signing in at the door and the read-only views across every workspace.
+// Every route is registered in the router's adminRoutes, behind
+// httpapi.RequireAdminKey, and every read is recorded.
+package admin
 
 import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"log/slog"
@@ -12,11 +17,11 @@ import (
 	"time"
 )
 
-// AdminSessions are the admin door's sign-in and session routes, named
+// Sessions are the admin door's sign-in and session routes, named
 // actions like /api/auth/* (router/routes.go). Every sign-in needs the password and
 // then a second factor; an admin without MFA sets it up here instead, only
 // inside the setup window that admin grant opens.
-type AdminSessions struct{ *Server }
+type Sessions struct{ *httpapi.Server }
 
 // wrongAdminLogin is the one refusal of the admin door's password step, for
 // a wrong password, an unknown email, a non-admin and an admin who can't get
@@ -25,13 +30,13 @@ const wrongAdminLogin = "Email or password is incorrect."
 
 // Login checks the password at the admin door and starts the second factor:
 // a code, or setting MFA up. POST /api/admin/login.
-func (h AdminSessions) Login(w http.ResponseWriter, r *http.Request) {
-	var in Credentials
-	if !Decode(w, r, &in) {
+func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
+	var in httpapi.Credentials
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !ValidCredentials(&in) {
-		Fail(w, 401, wrongAdminLogin)
+	if !httpapi.ValidCredentials(&in) {
+		httpapi.Fail(w, 401, wrongAdminLogin)
 		return
 	}
 	if !h.AccountLimit(w, r, in.Email) {
@@ -39,7 +44,7 @@ func (h AdminSessions) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user, hash, err := h.Repo.FindUser(r.Context(), in.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	known := err == nil
@@ -50,7 +55,7 @@ func (h AdminSessions) Login(w http.ResponseWriter, r *http.Request) {
 		// take longer than a wrong one.
 		admin, adminErr = h.Repo.FindAdmin(r.Context(), user.ID)
 		if adminErr != nil && !errors.Is(adminErr, store.ErrNotAdmin) {
-			InternalError(w, adminErr)
+			httpapi.InternalError(w, adminErr)
 			return
 		}
 	} else {
@@ -66,7 +71,7 @@ func (h AdminSessions) Login(w http.ResponseWriter, r *http.Request) {
 		e.User = user.PublicID
 	}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	switch result {
@@ -75,7 +80,7 @@ func (h AdminSessions) Login(w http.ResponseWriter, r *http.Request) {
 	case events.AdminLoginMFASetupRequired:
 		h.startAdminChallenge(w, r, user, store.ChallengeAdminSetup, auth.AdminSetupLifetime, "mfaSetupRequired")
 	default:
-		Fail(w, 401, wrongAdminLogin)
+		httpapi.Fail(w, 401, wrongAdminLogin)
 	}
 }
 
@@ -101,25 +106,25 @@ func adminLoginResult(known, valid bool, admin store.Admin, adminErr error) stri
 
 // startAdminChallenge answers a right password at the door: no session yet,
 // a challenge with purpose in the admin door's own cookie, and {flag: true}.
-func (h AdminSessions) startAdminChallenge(w http.ResponseWriter, r *http.Request, user store.User, purpose string, lifetime time.Duration, flag string) {
+func (h Sessions) startAdminChallenge(w http.ResponseWriter, r *http.Request, user store.User, purpose string, lifetime time.Duration, flag string) {
 	token, err := auth.Token()
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	if err := h.Repo.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, time.Now().Add(lifetime)); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	http.SetCookie(w, auth.AdminMFACookie(token, h.Config.Production, lifetime))
-	JSON(w, 200, map[string]bool{flag: true})
+	httpapi.JSON(w, 200, map[string]bool{flag: true})
 }
 
 // LoginMFASetup starts setting MFA up for an admin who has it off, inside
 // their setup window: a new secret for the QR code. POST
 // /api/admin/login/mfa/setup.
-func (h AdminSessions) LoginMFASetup(w http.ResponseWriter, r *http.Request) {
-	if !Decode(w, r, &struct{}{}) {
+func (h Sessions) LoginMFASetup(w http.ResponseWriter, r *http.Request) {
+	if !httpapi.Decode(w, r, &struct{}{}) {
 		return
 	}
 	hash, admin, purpose, ok := h.adminChallenge(w, r)
@@ -127,7 +132,7 @@ func (h AdminSessions) LoginMFASetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if purpose != store.ChallengeAdminSetup || !admin.SetupOpen() {
-		h.endAdminChallenge(w, r, hash, MFASignInAgain)
+		h.endAdminChallenge(w, r, hash, httpapi.MFASignInAgain)
 		return
 	}
 	h.BeginMFASetup(w, r, admin.User)
@@ -137,19 +142,19 @@ func (h AdminSessions) LoginMFASetup(w http.ResponseWriter, r *http.Request) {
 // the first code of the setup, which turns MFA on for the whole account and
 // returns its recovery codes. Either starts the admin session. POST
 // /api/admin/login/mfa.
-func (h AdminSessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
-	var in MFACode
-	if !Decode(w, r, &in) {
+func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
+	var in httpapi.MFACode
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
+	if !h.Allow(w, r, httpapi.AuthPerIP, httpapi.AuthPerIP.IPKey(httpapi.ClientIP(r))) {
 		return
 	}
 	hash, admin, purpose, ok := h.adminChallenge(w, r)
 	if !ok {
 		return
 	}
-	if !h.Allow(w, r, MFAPerAccount, MFAPerAccount.Key(admin.User.PublicID)) {
+	if !h.Allow(w, r, httpapi.MFAPerAccount, httpapi.MFAPerAccount.Key(admin.User.PublicID)) {
 		return
 	}
 	if purpose == store.ChallengeAdminSetup {
@@ -159,22 +164,22 @@ func (h AdminSessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	factor := h.SecondFactor(admin.User, in.Code)
 	result, err := h.Repo.AnswerMFAChallenge(r.Context(), hash, store.ChallengeAdmin, admin.User.ID, factor)
 	if errors.Is(err, store.ErrNoChallenge) {
-		h.endAdminChallenge(w, r, "", MFASignInAgain)
+		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	if err := h.RecordMFACheck(r, admin.User, factor, events.MFAStepAdminLogin, result.OK, result.FactorUsed); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	switch {
 	case result.Ended:
-		h.endAdminChallenge(w, r, "", MFATooManyCodes)
+		h.endAdminChallenge(w, r, "", httpapi.MFATooManyCodes)
 	case !result.OK:
-		FailField(w, 422, "code", WrongMFACode)
+		httpapi.FailField(w, 422, "code", httpapi.WrongMFACode)
 	default:
 		h.startAdminSession(w, r, result.User, 200, nil)
 	}
@@ -183,9 +188,9 @@ func (h AdminSessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 // confirmAdminSetup turns MFA on with the setup's first code, while the
 // window is still open, and starts the admin session with the new recovery
 // codes in the answer (201).
-func (h AdminSessions) confirmAdminSetup(w http.ResponseWriter, r *http.Request, hash string, admin store.Admin, code string) {
+func (h Sessions) confirmAdminSetup(w http.ResponseWriter, r *http.Request, hash string, admin store.Admin, code string) {
 	if !admin.SetupOpen() {
-		h.endAdminChallenge(w, r, hash, MFASignInAgain)
+		h.endAdminChallenge(w, r, hash, httpapi.MFASignInAgain)
 		return
 	}
 	codes, ok := h.ConfirmMFASetup(w, r, admin.User, h.SessionDigest(r), code)
@@ -193,7 +198,7 @@ func (h AdminSessions) confirmAdminSetup(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err := h.Repo.DeleteMFAChallenge(r.Context(), hash); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	now := time.Now()
@@ -204,20 +209,20 @@ func (h AdminSessions) confirmAdminSetup(w http.ResponseWriter, r *http.Request,
 // adminChallenge reads the admin door's challenge cookie and returns the
 // live challenge's digest, admin and purpose. It answers 401 (back to the
 // password) when there is none, or its user is no longer an admin.
-func (h AdminSessions) adminChallenge(w http.ResponseWriter, r *http.Request) (string, store.Admin, string, bool) {
+func (h Sessions) adminChallenge(w http.ResponseWriter, r *http.Request) (string, store.Admin, string, bool) {
 	cookie, err := r.Cookie(auth.AdminMFACookieName(h.Config.Production))
 	if err != nil || !input.Token(cookie.Value) {
-		h.endAdminChallenge(w, r, "", MFASignInAgain)
+		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return "", store.Admin{}, "", false
 	}
 	hash := auth.Digest(cookie.Value)
 	admin, purpose, err := h.Repo.FindAdminChallenge(r.Context(), hash)
 	if errors.Is(err, store.ErrNoChallenge) {
-		h.endAdminChallenge(w, r, "", MFASignInAgain)
+		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return "", admin, "", false
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return "", admin, "", false
 	}
 	return hash, admin, purpose, true
@@ -225,40 +230,40 @@ func (h AdminSessions) adminChallenge(w http.ResponseWriter, r *http.Request) (s
 
 // endAdminChallenge sends the browser back to the password: 401, without the
 // challenge cookie, and the challenge hash deleted when given.
-func (h AdminSessions) endAdminChallenge(w http.ResponseWriter, r *http.Request, hash, message string) {
+func (h Sessions) endAdminChallenge(w http.ResponseWriter, r *http.Request, hash, message string) {
 	if hash != "" {
 		if err := h.Repo.DeleteMFAChallenge(r.Context(), hash); err != nil {
-			InternalError(w, err)
+			httpapi.InternalError(w, err)
 			return
 		}
 	}
 	h.clearAdminCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
-	Fail(w, 401, message)
+	httpapi.Fail(w, 401, message)
 }
 
 // startAdminSession signs the admin in to the dashboard, records
 // admin.logged_in, and answers with the session as /api/admin/me does, plus
 // extra.
-func (h AdminSessions) startAdminSession(w http.ResponseWriter, r *http.Request, user store.User, status int, extra map[string]any) {
+func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user store.User, status int, extra map[string]any) {
 	token, err := auth.Token()
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	csrf, err := auth.Token()
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	expires := time.Now().Add(auth.AdminSessionLifetime)
 	e := events.AdminLoggedIn{User: user.PublicID}
 	err = h.Repo.CreateAdminSession(r.Context(), user.ID, auth.Digest(token), h.AdminKeyHash(), csrf, expires, e)
 	if errors.Is(err, store.ErrNotAdmin) {
-		h.endAdminChallenge(w, r, "", MFASignInAgain)
+		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	h.clearAdminCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
@@ -267,22 +272,22 @@ func (h AdminSessions) startAdminSession(w http.ResponseWriter, r *http.Request,
 	for key, value := range extra {
 		body[key] = value
 	}
-	JSON(w, status, body)
+	httpapi.JSON(w, status, body)
 }
 
 // Me is the signed-in admin's session; the admin pages' first call, which
 // answers 401 without one. GET /api/admin/me.
-func (h AdminSessions) Me(w http.ResponseWriter, r *http.Request) {
-	session := Admin(r)
-	JSON(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt})
+func (h Sessions) Me(w http.ResponseWriter, r *http.Request) {
+	session := httpapi.Admin(r)
+	httpapi.JSON(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt})
 }
 
 // Logout ends the admin session (the app session, if any, stays). POST
 // /api/admin/logout.
-func (h AdminSessions) Logout(w http.ResponseWriter, r *http.Request) {
+func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(auth.AdminCookieName(h.Config.Production))
-	if err := h.Repo.DeleteAdminSession(r.Context(), Admin(r).User, auth.Digest(cookie.Value)); err != nil {
-		InternalError(w, err)
+	if err := h.Repo.DeleteAdminSession(r.Context(), httpapi.Admin(r).User, auth.Digest(cookie.Value)); err != nil {
+		httpapi.InternalError(w, err)
 		return
 	}
 	h.clearAdminCookie(w, auth.AdminCookie("", h.Config.Production))
@@ -291,7 +296,7 @@ func (h AdminSessions) Logout(w http.ResponseWriter, r *http.Request) {
 
 // clearAdminCookie tells the browser to drop cookie (an admin session or
 // challenge cookie, built empty).
-func (h AdminSessions) clearAdminCookie(w http.ResponseWriter, cookie *http.Cookie) {
+func (h Sessions) clearAdminCookie(w http.ResponseWriter, cookie *http.Cookie) {
 	cookie.MaxAge = -1
 	cookie.Expires = time.Unix(0, 0)
 	http.SetCookie(w, cookie)

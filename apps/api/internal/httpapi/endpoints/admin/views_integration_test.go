@@ -1,4 +1,4 @@
-package httpapi_test
+package admin_test
 
 import (
 	"context"

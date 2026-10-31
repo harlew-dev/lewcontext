@@ -5,6 +5,7 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/endpoints/account"
+	"lewcontext/api/internal/httpapi/endpoints/admin"
 	"lewcontext/api/internal/httpapi/endpoints/workspace"
 	"net/http"
 	"strings"
@@ -107,13 +108,13 @@ func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
 // unknown route; then the sign-in steps, or an admin session. They only read,
 // apart from signing in and out.
 func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
-	sessions := httpapi.AdminSessions{Server: s}
-	users := httpapi.Users{Server: s}
-	workspaces := httpapi.AdminWorkspaces{Server: s}
-	workspaceProjects := httpapi.WorkspaceProjects{Server: s}
-	adminEvents := httpapi.Events{Server: s}
-	mail := httpapi.Mail{Server: s}
-	deliveries := httpapi.Deliveries{Server: s}
+	sessions := admin.Sessions{Server: s}
+	users := admin.Users{Server: s}
+	workspaces := admin.Workspaces{Server: s}
+	workspaceProjects := admin.WorkspaceProjects{Server: s}
+	adminEvents := admin.Events{Server: s}
+	mail := admin.Mail{Server: s}
+	deliveries := admin.Deliveries{Server: s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.RequireAdminKey(http.HandlerFunc(httpapi.NotFound)))
