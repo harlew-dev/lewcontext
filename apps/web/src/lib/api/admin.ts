@@ -1,4 +1,6 @@
 import { url, type Page } from "@/lib/pagination";
+import type { Project, ProjectSort } from "@/types/projects";
+import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
 import type { MfaSetup, RecoveryCodes } from "./auth";
 import type { Http } from "./http";
@@ -6,6 +8,11 @@ import { path } from "./paths";
 import {
   defaultAdminUserSort,
   defaultAdminWorkspaceSort,
+  type AdminCatalogue,
+  type AdminDeliveryRow,
+  type AdminEvent,
+  type AdminEventDetail,
+  type AdminMail,
   type AdminSession,
   type AdminUser,
   type AdminUserDetail,
@@ -13,6 +20,10 @@ import {
   type AdminWorkspace,
   type AdminWorkspaceDetail,
   type AdminWorkspaceSort,
+  type CursorPage,
+  type DeliveryStatus,
+  type EventFilters,
+  type MailWindow,
 } from "@/types/admin";
 // The admin dashboard's API, under /api/admin. Every call carries the key
 // (adminHttp), never in a path. The lists take a page, a search and a sort;
@@ -28,6 +39,24 @@ export type AdminWorkspaceIndexQuery = {
   perPage?: number;
   q?: string;
   sort?: AdminWorkspaceSort;
+};
+// A workspace's projects take the app's list query.
+export type AdminProjectIndexQuery = {
+  page?: number;
+  perPage?: number;
+  q?: string;
+  status?: Project["status"];
+  sort?: ProjectSort;
+};
+// The Events list's query: its filters and a page size.
+export type AdminEventIndexQuery = EventFilters & { perPage?: number };
+export type AdminDeliveryIndexQuery = {
+  status?: DeliveryStatus;
+  listener?: string;
+  from?: string;
+  to?: string;
+  before?: string;
+  perPage?: number;
 };
 // The door's password step: a code next, or (an admin without MFA, inside
 // the setup window) setting MFA up.
@@ -69,6 +98,33 @@ export const adminRoutes = {
     show: (id: string) =>
       path<AdminWorkspaceDetail>(`${base}/workspaces/${id}`),
   },
+  projects: (workspace: string) => ({
+    index: ({ page, perPage, q, status, sort }: AdminProjectIndexQuery = {}) =>
+      path<Page<Project>>(
+        url(`${base}/workspaces/${workspace}/projects`, {
+          page,
+          perPage,
+          q,
+          status,
+          sort: sort === defaultProjectSort ? undefined : sort,
+        }),
+      ),
+  }),
+  events: {
+    index: (query: AdminEventIndexQuery = {}) =>
+      path<CursorPage<AdminEvent>>(url(`${base}/events`, query)),
+    show: (id: string) => path<AdminEventDetail>(`${base}/events/${id}`),
+  },
+  catalogue: () => path<AdminCatalogue>(`${base}/catalogue`),
+  // The Mail summary; 24h is the default, so it's left out.
+  mail: (window: MailWindow = "24h") =>
+    path<AdminMail>(
+      url(`${base}/mail`, { window: window === "24h" ? undefined : window }),
+    ),
+  deliveries: {
+    index: (query: AdminDeliveryIndexQuery = {}) =>
+      path<CursorPage<AdminDeliveryRow>>(url(`${base}/deliveries`, query)),
+  },
 };
 export function adminClient(http: Http) {
   return {
@@ -98,6 +154,21 @@ export function adminClient(http: Http) {
       index: (query: AdminWorkspaceIndexQuery = {}) =>
         http.get(adminRoutes.workspaces.index(query)),
       show: (id: string) => http.get(adminRoutes.workspaces.show(id)),
+    }),
+    projects: (workspace: string) => ({
+      index: (query: AdminProjectIndexQuery = {}) =>
+        http.get(adminRoutes.projects(workspace).index(query)),
+    }),
+    events: () => ({
+      index: (query: AdminEventIndexQuery = {}) =>
+        http.get(adminRoutes.events.index(query)),
+      show: (id: string) => http.get(adminRoutes.events.show(id)),
+    }),
+    catalogue: () => http.get(adminRoutes.catalogue()),
+    mail: (window?: MailWindow) => http.get(adminRoutes.mail(window)),
+    deliveries: () => ({
+      index: (query: AdminDeliveryIndexQuery = {}) =>
+        http.get(adminRoutes.deliveries.index(query)),
     }),
   };
 }

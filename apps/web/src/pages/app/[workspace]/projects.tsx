@@ -2,6 +2,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { PlusIcon } from "@heroicons/react/16/solid";
 import { ProjectDialog } from "@/components/app/projects/project-dialog";
 import { ProjectNotices } from "@/components/app/projects/project-notices";
+import { StatusField } from "@/components/app/projects/status-field";
 import {
   projectQuery,
   indexQuery,
@@ -15,18 +16,13 @@ import {
 import { useProjectEditor } from "@/components/app/projects/use-project-editor";
 import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
-import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import { paths } from "@/lib/api";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
 import { can } from "@/types/workspaces";
-import {
-  statuses,
-  type ProjectQuery,
-  type StatusFilter,
-} from "@/types/projects";
+import type { ProjectQuery } from "@/types/projects";
 // The page state lives in the URL (?q=&status=&sort=&page=), so it survives
 // reloads and back/forward; every change fetches through SWR.
 export default function ProjectIndex() {
@@ -109,29 +105,5 @@ export default function ProjectIndex() {
       />
       <ProjectDialog editor={editor} />
     </>
-  );
-}
-function StatusField({
-  value,
-  onChange,
-}: {
-  value: StatusFilter;
-  onChange: (status: StatusFilter) => void;
-}) {
-  return (
-    <Listbox<StatusFilter>
-      aria-label="Filter by status"
-      value={value}
-      onChange={onChange}
-    >
-      <ListboxOption value="all">
-        <ListboxLabel>All</ListboxLabel>
-      </ListboxOption>
-      {statuses.map((item) => (
-        <ListboxOption key={item} value={item}>
-          <ListboxLabel>{item}</ListboxLabel>
-        </ListboxOption>
-      ))}
-    </Listbox>
   );
 }

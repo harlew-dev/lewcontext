@@ -41,10 +41,9 @@ func (Registered) EventName() string { return "auth.registered" }
 
 // LoginAttempted: a login reached the password check. Email is as typed
 // (trimmed, lowercased, and a valid address); User is empty when no account
-// uses it. IP is the connection's address; forwarded headers aren't trusted.
+// uses it.
 type LoginAttempted struct {
 	Email  string `json:"email"`
-	IP     string `json:"ip"`
 	User   string `json:"user,omitempty"`
 	Result string `json:"result"`
 }
@@ -112,10 +111,9 @@ func (ProfileUpdated) EventName() string { return "auth.profile_updated" }
 // PasswordResetRequested: someone asked for a password reset link. Email is
 // as typed (trimmed, lowercased, and a valid address), whether or not an
 // account uses it: the request doesn't look the account up, so its response
-// can't tell. IP is the connection's address.
+// can't tell.
 type PasswordResetRequested struct {
 	Email string `json:"email"`
-	IP    string `json:"ip"`
 }
 
 func (PasswordResetRequested) EventName() string { return "auth.password_reset.requested" }
@@ -146,7 +144,6 @@ func (PasswordResetCompleted) EventName() string { return "auth.password_reset.c
 // does, and sends a code or "you already have an account".
 type RegistrationRequested struct {
 	Email string `json:"email"`
-	IP    string `json:"ip"`
 }
 
 func (RegistrationRequested) EventName() string { return "auth.registration.requested" }
@@ -168,7 +165,6 @@ func (RegistrationSent) EventName() string { return "auth.registration.sent" }
 type RegistrationChecked struct {
 	Email   string `json:"email"`
 	OK      bool   `json:"ok"`
-	IP      string `json:"ip"`
 	Attempt int    `json:"attempt"`
 }
 

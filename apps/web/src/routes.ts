@@ -50,6 +50,9 @@ export default [
       "admin/:key/workspaces/:workspace",
       "pages/admin/[key]/workspaces/[workspace].tsx",
     ),
+    route("admin/:key/events", "pages/admin/[key]/events.tsx"),
+    route("admin/:key/events/:event", "pages/admin/[key]/events/[event].tsx"),
+    route("admin/:key/mail", "pages/admin/[key]/mail.tsx"),
   ]),
   route("*", "pages/not-found.tsx"),
 ] satisfies RouteConfig;

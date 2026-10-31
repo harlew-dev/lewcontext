@@ -40,7 +40,6 @@ func (AdminRevoked) EventName() string { return "admin.revoked" }
 // check. Email is as typed; User is empty when no account uses it.
 type AdminLoginAttempted struct {
 	Email  string `json:"email"`
-	IP     string `json:"ip"`
 	User   string `json:"user,omitempty"`
 	Result string `json:"result"`
 }
@@ -50,7 +49,6 @@ func (AdminLoginAttempted) EventName() string { return "admin.login_attempted" }
 // AdminLoggedIn: an admin session started, after the second factor.
 type AdminLoggedIn struct {
 	User string `json:"user"`
-	IP   string `json:"ip"`
 }
 
 func (AdminLoggedIn) EventName() string { return "admin.logged_in" }
@@ -98,3 +96,74 @@ type AdminWorkspaceViewed struct {
 }
 
 func (AdminWorkspaceViewed) EventName() string { return "admin.workspace.viewed" }
+
+// AdminEventListed: an admin loaded a page of the Events list, with the
+// filters used (so "who searched for this email" is answerable).
+type AdminEventListed struct {
+	Admin   string       `json:"admin"`
+	Filters EventFilters `json:"filters"`
+}
+
+func (AdminEventListed) EventName() string { return "admin.event.listed" }
+
+// EventFilters are the Events list's filters as the admin sent them; empty
+// ones are left out. IP is the address or range searched for, not the
+// admin's own, which is in the events.ip column like any request's.
+type EventFilters struct {
+	Name       string     `json:"name,omitempty"`
+	Account    string     `json:"account,omitempty"`
+	Workspace  string     `json:"workspace,omitempty"`
+	Email      string     `json:"email,omitempty"`
+	IP         string     `json:"ip,omitempty"`
+	From       *time.Time `json:"from,omitempty"`
+	To         *time.Time `json:"to,omitempty"`
+	AdminReads bool       `json:"adminReads,omitempty"`
+	Before     string     `json:"before,omitempty"`
+}
+
+// AdminEventViewed: an admin opened one event's detail.
+type AdminEventViewed struct {
+	Admin string `json:"admin"`
+	Event string `json:"event"`
+}
+
+func (AdminEventViewed) EventName() string { return "admin.event.viewed" }
+
+// AdminMailViewed: an admin loaded the Mail summary for Window (24h or 7d).
+type AdminMailViewed struct {
+	Admin  string `json:"admin"`
+	Window string `json:"window"`
+}
+
+func (AdminMailViewed) EventName() string { return "admin.mail.viewed" }
+
+// AdminDeliveryListed: an admin loaded a page of the deliveries list, with
+// the filters used.
+type AdminDeliveryListed struct {
+	Admin   string          `json:"admin"`
+	Filters DeliveryFilters `json:"filters"`
+}
+
+func (AdminDeliveryListed) EventName() string { return "admin.delivery.listed" }
+
+// DeliveryFilters are the deliveries list's filters; empty ones are left out.
+type DeliveryFilters struct {
+	Status   string     `json:"status,omitempty"`
+	Listener string     `json:"listener,omitempty"`
+	From     *time.Time `json:"from,omitempty"`
+	To       *time.Time `json:"to,omitempty"`
+	Before   string     `json:"before,omitempty"`
+}
+
+// AdminProjectListed: an admin loaded a page of a workspace's projects, with
+// its search, status, sort and page number.
+type AdminProjectListed struct {
+	Admin     string `json:"admin"`
+	Workspace string `json:"workspace"`
+	Q         string `json:"q"`
+	Status    string `json:"status"`
+	Sort      string `json:"sort"`
+	Page      int    `json:"page"`
+}
+
+func (AdminProjectListed) EventName() string { return "admin.project.listed" }

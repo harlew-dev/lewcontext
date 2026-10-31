@@ -47,11 +47,11 @@ func TestClientIPBehindATrustedProxy(t *testing.T) {
 	if got := loginFrom(h, "127.0.0.1:1234", "203.0.113.8"); got != 401 {
 		t.Fatalf("another client behind the same proxy: %d", got)
 	}
-	if e := onlyEvent(t, s.Store.DB, "rate_limit.reached"); e.Payload["ip"] != "203.0.113.7" {
-		t.Errorf("rate limit recorded %v", e.Payload["ip"])
+	if e := onlyEvent(t, s.Store.DB, "rate_limit.reached"); e.IP != "203.0.113.7" {
+		t.Errorf("rate limit recorded %v", e.IP)
 	}
-	if e := onlyEvent(t, s.Store.DB, "auth.login_attempted"); e.Payload["ip"] != "203.0.113.8" {
-		t.Errorf("login attempt recorded %v", e.Payload["ip"])
+	if e := onlyEvent(t, s.Store.DB, "auth.login_attempted"); e.IP != "203.0.113.8" {
+		t.Errorf("login attempt recorded %v", e.IP)
 	}
 }
 
@@ -66,8 +66,8 @@ func TestClientIPFromAnUntrustedConnection(t *testing.T) {
 			t.Fatalf("forged %s reset the budget: %d", forged, got)
 		}
 	}
-	if e := onlyEvent(t, s.Store.DB, "rate_limit.reached"); e.Payload["ip"] != "198.51.100.1" {
-		t.Errorf("rate limit recorded %v", e.Payload["ip"])
+	if e := onlyEvent(t, s.Store.DB, "rate_limit.reached"); e.IP != "198.51.100.1" {
+		t.Errorf("rate limit recorded %v", e.IP)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestIPv6CountedByItsSlash64(t *testing.T) {
 	if got := loginFrom(h, "[2001:db8:1:3::99]:1234", ""); got != 401 {
 		t.Fatalf("the next /64: %d", got)
 	}
-	if e := onlyEvent(t, db, "rate_limit.reached"); e.Payload["ip"] != "2001:db8:1:2:abcd::99" {
-		t.Errorf("rate limit recorded %v", e.Payload["ip"])
+	if e := onlyEvent(t, db, "rate_limit.reached"); e.IP != "2001:db8:1:2:abcd::99" {
+		t.Errorf("rate limit recorded %v", e.IP)
 	}
 }

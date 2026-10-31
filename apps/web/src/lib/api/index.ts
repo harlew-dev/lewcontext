@@ -16,6 +16,9 @@ export type {
   AdminLoginStep,
   AdminSetupDone,
   AdminSignedIn,
+  AdminDeliveryIndexQuery,
+  AdminEventIndexQuery,
+  AdminProjectIndexQuery,
   AdminUserIndexQuery,
   AdminWorkspaceIndexQuery,
 } from "./admin";

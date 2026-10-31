@@ -149,7 +149,7 @@ func TestSignUpWithAnEmailedCode(t *testing.T) {
 		t.Fatal("register made an account or a session")
 	}
 	requested := onlyEvent(t, db, "auth.registration.requested")
-	if requested.Payload["email"] != "ada@example.com" || requested.Payload["ip"] != "127.0.0.1" || requested.UserID.Valid {
+	if requested.Payload["email"] != "ada@example.com" || requested.IP != "127.0.0.1" || requested.UserID.Valid {
 		t.Fatalf("requested %+v", requested)
 	}
 	deliverSignUp(t, s, box)

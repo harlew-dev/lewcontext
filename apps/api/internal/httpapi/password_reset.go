@@ -45,7 +45,7 @@ func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !s.allowPasswordResetRequest(w, r, in.Email) {
 		return
 	}
-	e := events.PasswordResetRequested{Email: in.Email, IP: clientIP(r)}
+	e := events.PasswordResetRequested{Email: in.Email}
 	if err := s.Store.Record(r.Context(), e, store.EventScope{}); err != nil {
 		internalError(w, err)
 		return

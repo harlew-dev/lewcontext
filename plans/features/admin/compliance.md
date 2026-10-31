@@ -1,6 +1,6 @@
 # Compliance: retention, erasure, export, audit evidence
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A7 of the [admin plans](README.md). Needs [events-and-mail](events-and-mail.md), [observability](observability.md) and [actions](actions.md). Docs it will change: [database.md](../../../docs/api/database.md) (pruning), [events.md](../../../docs/api/events.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [deployment.md](../../../docs/deployment.md), [admin.md](../../../docs/api/admin.md); new `docs/compliance.md` (the data map and control mapping) and `docs/incident-response.md` (the runbook).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A7 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md), [observability](observability.md) and [actions](actions.md). Docs it will change: [database.md](../../../docs/api/database.md) (pruning), [events.md](../../../docs/api/events.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [deployment.md](../../../docs/deployment.md), [admin.md](../../../docs/api/admin.md); new `docs/compliance.md` (the data map and control mapping) and `docs/incident-response.md` (the runbook).
 
 ## Why, and what this can't do
 

@@ -60,7 +60,7 @@ func (h adminAuthHandlers) login(w http.ResponseWriter, r *http.Request) {
 	if result == events.AdminLoginMFAOff {
 		slog.Warn("an admin without two-factor authentication signed in outside the setup window; run admin grant again", "user", user.PublicID)
 	}
-	e := events.AdminLoginAttempted{Email: in.Email, IP: clientIP(r), Result: result}
+	e := events.AdminLoginAttempted{Email: in.Email, Result: result}
 	if known {
 		e.User = user.PublicID
 	}
@@ -250,7 +250,7 @@ func (h adminAuthHandlers) startAdminSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	expires := time.Now().Add(auth.AdminSessionLifetime)
-	e := events.AdminLoggedIn{User: user.PublicID, IP: clientIP(r)}
+	e := events.AdminLoggedIn{User: user.PublicID}
 	err = h.Store.CreateAdminSession(r.Context(), user.ID, auth.Digest(token), h.adminKeyHash(), csrf, expires, e)
 	if errors.Is(err, store.ErrNotAdmin) {
 		h.endAdminChallenge(w, r, "", mfaSignInAgain)

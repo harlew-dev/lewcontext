@@ -102,6 +102,10 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 	sessions := adminAuthHandlers{s}
 	users := adminUserHandlers{s}
 	workspaces := adminWorkspaceHandlers{s}
+	workspaceProjects := adminWorkspaceProjectHandlers{s}
+	adminEvents := adminEventHandlers{s}
+	mail := adminMailHandlers{s}
+	deliveries := adminDeliveryHandlers{s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.requireAdminKey(http.HandlerFunc(notFound)))
@@ -117,6 +121,13 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 	admin.HandleFunc("GET", "/users/{user}", users.show)
 	admin.HandleFunc("GET", "/workspaces", workspaces.index)
 	admin.HandleFunc("GET", "/workspaces/{workspace}", workspaces.show)
+	admin.HandleFunc("GET", "/workspaces/{workspace}/projects", workspaceProjects.index)
+	admin.HandleFunc("GET", "/events", adminEvents.index)
+	admin.HandleFunc("GET", "/events/{event}", adminEvents.show)
+	// The filters' names: no user data, so the one read not recorded.
+	admin.HandleFunc("GET", "/catalogue", adminEvents.catalogue)
+	admin.HandleFunc("GET", "/mail", mail.show)
+	admin.HandleFunc("GET", "/deliveries", deliveries.index)
 }
 
 // unknownRoutesAsJSON answers a request no API route matches with the JSON

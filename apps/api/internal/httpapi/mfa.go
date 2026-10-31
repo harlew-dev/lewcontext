@@ -352,6 +352,6 @@ func (s *Server) newRecoveryCodes() ([]string, []string, error) {
 
 // recordMFACheck records auth.mfa.checked.
 func (s *Server) recordMFACheck(r *http.Request, user store.User, f store.SecondFactor, step string, ok bool, used store.FactorUsed) error {
-	e := events.MFAChecked{User: user.PublicID, OK: ok, Method: f.Method(), Step: step, IP: clientIP(r), RecoveryCodesLeft: used.RecoveryCodesLeft}
+	e := events.MFAChecked{User: user.PublicID, OK: ok, Method: f.Method(), Step: step, RecoveryCodesLeft: used.RecoveryCodesLeft}
 	return s.Store.Record(r.Context(), e, store.EventScope{UserID: user.ID})
 }

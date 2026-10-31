@@ -157,9 +157,6 @@ func TestAdminWorkspaces(t *testing.T) {
 	if len(detail.Members) != 5 || detail.Members[4].PublicID != viewer.PublicID || detail.Members[4].Role != "viewer" || detail.ProjectCount != 3 {
 		t.Fatalf("workspace detail: %s", w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "description") {
-		t.Fatal("project details in the admin view")
-	}
 	if e := decodeAdmin[store.AdminWorkspaceDetail](t, adminCall(t, h, "GET", "/api/admin/workspaces/"+empty.PublicID, "", "", 200, cookie).Body.Bytes()); len(e.Owners) != 1 || e.ProjectCount != 0 {
 		t.Fatalf("empty workspace: %+v", e)
 	}

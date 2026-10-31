@@ -15,6 +15,7 @@ type Event struct {
 	UserID        int64          `bun:",nullzero"`
 	WorkspaceID   int64          `bun:",nullzero"`
 	Payload       map[string]any `bun:"type:jsonb"`
+	IP            string         `bun:"ip,type:inet,nullzero"`
 	UserAgent     string
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
@@ -28,11 +29,17 @@ var Events = Define(func(f *gofakeit.Faker) Event {
 		Name: "rate_limit.reached",
 		Payload: map[string]any{
 			"limit":    "auth:per-ip:block",
-			"ip":       f.IPv4Address(),
 			"window":   900,
 			"resetsAt": created.Add(15 * time.Minute),
 		},
+		IP:        f.IPv4Address(),
 		UserAgent: truncate(f.UserAgent(), 256),
 		CreatedAt: created,
 	}
 })
+
+// EventOf makes events named name with payload, which identifies records by
+// public ID as the store's events do.
+func EventOf(name string, payload map[string]any) func(*Event) {
+	return func(e *Event) { e.Name, e.Payload = name, payload }
+}

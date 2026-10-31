@@ -53,8 +53,13 @@ func TestPayloadsHoldNothingSensitive(t *testing.T) {
 			if field.Type.Kind() == reflect.Int64 {
 				t.Errorf("%s.%s is an int64; payloads use public IDs", typ.Name(), field.Name)
 			}
-			if tag := field.Tag.Get("json"); tag == "" || tag == "-" {
+			tag := field.Tag.Get("json")
+			if tag == "" || tag == "-" {
 				t.Errorf("%s.%s has no JSON name", typ.Name(), field.Name)
+			}
+			// The client's address lives in the events.ip column only.
+			if strings.Split(tag, ",")[0] == "ip" {
+				t.Errorf("%s.%s: the client IP goes in events.ip, not the payload", typ.Name(), field.Name)
 			}
 		}
 	}
@@ -71,13 +76,14 @@ func TestChangesKeepOnlyChangedFields(t *testing.T) {
 
 func TestRequestMeta(t *testing.T) {
 	ctx := context.Background()
-	if Actor(ctx) != 0 || UserAgent(ctx) != "" {
+	if Actor(ctx) != 0 || IP(ctx) != "" || UserAgent(ctx) != "" {
 		t.Fatal("empty context has meta")
 	}
 	ctx = WithUserAgent(ctx, strings.Repeat("é", 300)+"\xff")
 	ctx = WithActor(ctx, 7)
-	if Actor(ctx) != 7 {
-		t.Fatal("actor lost")
+	ctx = WithIP(ctx, "203.0.113.9")
+	if Actor(ctx) != 7 || IP(ctx) != "203.0.113.9" {
+		t.Fatal("actor or IP lost")
 	}
 	agent := UserAgent(ctx)
 	if !utf8.ValidString(agent) || utf8.RuneCountInString(agent) != maxUserAgent {

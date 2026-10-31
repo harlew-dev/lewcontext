@@ -265,6 +265,48 @@ describe("the admin client", () => {
     // @ts-expect-error not a sort the API accepts
     paths.admin.users.index({ sort: "password" });
   });
+  it("builds the Events, Mail and projects paths, leaving out defaults", () => {
+    expect(paths.admin.events.index()).toBe("/api/admin/events");
+    expect(
+      paths.admin.events.index({
+        name: "workspace.member.",
+        email: "ada@example.com",
+        ip: "10.0.0.0/16",
+        adminReads: "include",
+        before: "evt_2yEHYLwiwPVhLW",
+      }),
+    ).toBe(
+      "/api/admin/events?name=workspace.member.&email=ada%40example.com&ip=10.0.0.0%2F16&adminReads=include&before=evt_2yEHYLwiwPVhLW",
+    );
+    expect(paths.admin.events.show("evt_2yEHYLwiwPVhLW")).toBe(
+      "/api/admin/events/evt_2yEHYLwiwPVhLW",
+    );
+    expect(paths.admin.catalogue()).toBe("/api/admin/catalogue");
+    expect(paths.admin.mail()).toBe("/api/admin/mail");
+    expect(paths.admin.mail("24h")).toBe("/api/admin/mail");
+    expect(paths.admin.mail("7d")).toBe("/api/admin/mail?window=7d");
+    expect(
+      paths.admin.deliveries.index({
+        status: "failed",
+        before: "evt_2yEHYLwiwPVhLW:mail.password_reset",
+      }),
+    ).toBe(
+      "/api/admin/deliveries?status=failed&before=evt_2yEHYLwiwPVhLW%3Amail.password_reset",
+    );
+    expect(
+      paths.admin
+        .projects("wsp_2yEHYLwiwPVhLW")
+        .index({ page: 2, sort: "-updated", status: "Planned" }),
+    ).toBe(
+      "/api/admin/workspaces/wsp_2yEHYLwiwPVhLW/projects?page=2&status=Planned",
+    );
+    // @ts-expect-error the summary has no 1-hour window
+    paths.admin.mail("1h");
+    // @ts-expect-error not a delivery status
+    paths.admin.deliveries.index({ status: "bounced" });
+    // @ts-expect-error admin reads are shown with "include" only
+    paths.admin.events.index({ adminReads: "yes" });
+  });
   it("sends the key in X-Admin-Key, the codes in bodies, and the admin CSRF token", async () => {
     const stub = stubFetch({ mfaRequired: true });
     const admin = adminClient(adminHttp(key, "admin-csrf"));

@@ -62,6 +62,10 @@ navigate(projectsPath(workspace.id, { ...query, page: 1, status }), { preventScr
 - **Selector:** only when there is more than one page. Previous, the page numbers and Next sit together at the right. Previous and Next are disabled at the ends. Page numbers are hidden on small screens.
 - **Errors** stay with the page's `Notice` (with Retry), not inside the table.
 
+## Cursor lists
+
+The admin dashboard's Events and the Mail page's deliveries page by a cursor ([../api/pagination.md](../api/pagination.md#cursor-pages-log-tables)): no page numbers or totals, a plain `Table`, and **Older / Newer** below it (`CursorNav`, `components/app/admin/cursor-nav.tsx`). The URL holds only `before`, so a link to a page stays shareable; Older passes the cursors of the newer pages in navigation state, and Newer pops one, or opens the newest page when there are none (arriving from a link). A cached page comes back from SWR without loading again.
+
 ## Infinite lists
 
 Lists shown in a menu (the workspace switcher) load a page at a time as they scroll, instead of a page selector. `useResourcePages(pathFor, initial)` (`lib/use-resource-pages.ts`) wraps SWR's `useSWRInfinite`:

@@ -101,7 +101,7 @@ func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
 	}
 	requested := eventsNamed(t, db, "auth.password_reset.requested")
 	if len(requested) != 2 || requested[0].Payload["email"] != user.Email || requested[1].Payload["email"] != "nobody@example.com" ||
-		requested[0].Payload["ip"] != "127.0.0.1" || !is(requested[0].UserID, 0) || !is(requested[0].ActorID, 0) {
+		requested[0].IP != "127.0.0.1" || !is(requested[0].UserID, 0) || !is(requested[0].ActorID, 0) {
 		t.Fatalf("requested events: %+v", requested)
 	}
 	if len(box.sent) != 0 {

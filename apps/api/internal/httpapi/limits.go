@@ -258,7 +258,7 @@ func (s *Server) recordLimitReached(r *http.Request, l rateLimit, resetsAt time.
 	if l.busy != "" {
 		slog.Warn("a rate limit shared by everyone was reached", "limit", l.name, "window", l.window)
 	}
-	e := events.RateLimitReached{Limit: l.name + ":block", IP: clientIP(r), Window: int(l.window.Seconds()), ResetsAt: resetsAt}
+	e := events.RateLimitReached{Limit: l.name + ":block", Window: int(l.window.Seconds()), ResetsAt: resetsAt}
 	var scope store.EventScope
 	if session, ok := optionalSession(r); ok {
 		e.User, scope.UserID = session.User.PublicID, session.User.ID

@@ -7,6 +7,8 @@ const key = process.env.E2E_ADMIN_ROUTE_KEY!;
 const stamp = Date.now();
 const adminEmail = `e2e-${stamp}-admin@lewcontext.test`;
 const otherEmail = `e2e-${stamp}-not-admin@lewcontext.test`;
+// A reset request whose email failed, seeded for the Mail page.
+const brokenEmail = `e2e-${stamp}-broken@lewcontext.test`;
 const password = "A thoughtful test passphrase!";
 // Runs SQL against this run's database: granting admin (only the operator's
 // CLI does that, never the API), and cleanup.
@@ -19,6 +21,7 @@ function sql(statement: string): string {
 }
 test.afterAll(() => {
   sql(`DELETE FROM users WHERE email IN ('${adminEmail}', '${otherEmail}')`);
+  sql(`DELETE FROM events WHERE payload->>'email' = '${brokenEmail}'`);
 });
 // An authenticator app's code for a base32 setup key, `ahead` 30-second
 // steps from now (RFC 6238), as mfa.spec.ts computes it.
@@ -160,4 +163,56 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
       ),
     ),
   ).toBe(1);
+
+  // Events: filter by the other account's email, open its refused sign-in
+  // at the door, and follow the account it names.
+  await page.getByRole("link", { name: "Events" }).first().click();
+  await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
+  await page.getByLabel("Email").fill(otherEmail.toUpperCase());
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/admin/${key}/events\\?email=${encodeURIComponent(otherEmail)}$`,
+    ),
+  );
+  const attempt = page
+    .getByRole("row")
+    .filter({ hasText: "admin.login_attempted" });
+  await expect(attempt).toContainText("not_admin");
+  await attempt.getByRole("link").first().click();
+  await expect(
+    page.getByRole("heading", { name: "admin.login_attempted" }),
+  ).toBeVisible();
+  await expect(page.locator("pre")).toContainText(otherEmail);
+  await page.getByRole("link", { name: "Nora Notadmin" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Nora Notadmin" }),
+  ).toBeVisible();
+  // The event's IP is the client's, kept in its column.
+  expect(
+    sql(
+      `SELECT host(ip) FROM events WHERE name = 'admin.login_attempted' AND payload->>'email' = '${otherEmail}'`,
+    ),
+  ).toMatch(/^(127\.0\.0\.1|::1)$/);
+
+  // Mail: a delivery that failed (seeded, as a broken template leaves one)
+  // is listed under Failed with its error.
+  sql(
+    `WITH e AS (INSERT INTO events (name, payload) VALUES ('auth.password_reset.requested', '{"email": "${brokenEmail}"}') RETURNING id)
+     INSERT INTO event_deliveries (event_id, listener, attempts, failed_at, last_error)
+     SELECT id, 'mail.password_reset', 6, now(), 'render forgot-password: template: no such template' FROM e`,
+  );
+  await page.getByRole("link", { name: "Mail" }).first().click();
+  await expect(page.getByRole("heading", { name: "Mail" })).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Emails sent per hour" }),
+  ).toBeAttached();
+  await page
+    .getByRole("navigation", { name: "Delivery status" })
+    .getByRole("link", { name: /^Failed/ })
+    .click();
+  const failed = page.getByRole("row").filter({ hasText: brokenEmail });
+  await expect(failed).toContainText("Failed");
+  await expect(failed).toContainText("no such template");
+  expect(errors).toEqual([]);
 });

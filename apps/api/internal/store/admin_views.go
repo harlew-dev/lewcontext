@@ -12,8 +12,7 @@ import (
 // What the admin dashboard shows: every user and every workspace. These
 // queries are deliberately not scoped to a membership, since they exist to
 // see across workspaces, so they're only reachable behind requireAdminKey
-// and requireAdminSession (httpapi/admin.go). They return no secrets and no
-// project names or descriptions: counts only.
+// and requireAdminSession (httpapi/admin.go). They return no secrets.
 
 // Default sorts: the newest first. The web app mirrors the keys in
 // src/types/admin.ts.
@@ -228,4 +227,16 @@ func (s *Store) FindAdminWorkspace(ctx context.Context, publicID string) (AdminW
 		Limit(MaxWorkspaceMembers).
 		Scan(ctx, &d.Members)
 	return d, err
+}
+
+// IndexAdminProjects returns one page of the projects in the workspace with
+// publicID, filtered and sorted as the app's list is, or sql.ErrNoRows when
+// there is no such workspace.
+func (s *Store) IndexAdminProjects(ctx context.Context, publicID string, f ProjectFilter, req PageRequest) (Page[Project], error) {
+	var workspaceID int64
+	err := s.DB.NewSelect().Model((*Workspace)(nil)).Column("w.id").Where("w.public_id = ?", publicID).Scan(ctx, &workspaceID)
+	if err != nil {
+		return Page[Project]{}, err
+	}
+	return s.IndexProjects(ctx, workspaceID, f, req)
 }

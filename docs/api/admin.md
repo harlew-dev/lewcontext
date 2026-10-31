@@ -1,6 +1,6 @@
 # Admin dashboard
 
-Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate), `admin_auth.go` (sign-in), `admin_users.go` and `admin_workspaces.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/api/admin.ts`. Plan: [plans/features/implemented/admin-access.md](../../plans/features/implemented/admin-access.md).
+Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate), `admin_auth.go` (sign-in), `admin_users.go`, `admin_workspaces.go`, `admin_events.go` and `admin_mail.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go` and `admin_mail.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/api/admin.ts`. Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md).
 
 Operators see every account and every workspace without running SQL against production. That view reads every user's data, so it's guarded by layers, each of which alone gets nobody in:
 
@@ -48,9 +48,15 @@ Everything under `/api/admin/` checks `X-Admin-Key` first (`requireAdminKey`): a
 | GET | `/api/admin/users/{user}` | key, admin session | The account as listed, plus `memberships` (`{workspace: {id, name}, role, addedAt}`, at most 100, newest first) and `sessionCount` (live app sessions) |
 | GET | `/api/admin/workspaces` | key, admin session | A page of workspaces: `id`, `name`, `createdAt`, `memberCount`, `projectCount`, `owners` (`{id, name, email}`, at most 3, oldest first). `q` (name), `sort` `created` (default `-created`), `name` |
 | GET | `/api/admin/workspaces/{workspace}` | key, admin session | The workspace as listed, plus `members` (`{id, name, email, role, addedAt}`, by role then name) |
+| GET | `/api/admin/workspaces/{workspace}/projects` | key, admin session | A page of the workspace's projects (`id`, `name`, `description`, `status`, `color`, `createdAt`, `updatedAt`), with the app's `q`, `status` and `sort` ([pagination.md](pagination.md)); 404 for a missing workspace |
+| GET | `/api/admin/events` | key, admin session | The audit trail, newest first, a cursor page: `{data, next}` ([Events](#events)) |
+| GET | `/api/admin/events/{event}` | key, admin session | One event with `userAgent`, `deliveries` and `related` events |
+| GET | `/api/admin/catalogue` | key, admin session | `{events, limits, listeners}`: the names the filters offer. **Not recorded**: it holds no user data |
+| GET | `/api/admin/mail` | key, admin session | The Mail summary for `window` `24h` (default) or `7d` ([Mail](#mail)) |
+| GET | `/api/admin/deliveries` | key, admin session | Every delivery, newest event first, a cursor page: `status`, `listener`, `from`, `to`, `before` (`evt_…:listener`), `perPage` |
 
-- **Pagination** is the app's ([pagination.md](pagination.md)): `page`, `perPage`, and 400 for unknown or malformed parameters. A malformed or unknown ID is 404.
-- **Never in a response:** password hashes, MFA secrets, recovery codes, other users' session or CSRF tokens, internal IDs, project names or descriptions (counts only, for this first phase: the [events-and-mail](../../plans/features/admin/events-and-mail.md) plan shows them, with a projects list on the workspace page). `decodeAdmin` in the tests walks every admin response for such field names.
+- **Pagination** is the app's ([pagination.md](pagination.md)): `page`, `perPage`, and 400 for unknown or malformed parameters. Events and deliveries page by a cursor instead (log tables: [pagination.md](pagination.md#cursor-pages-log-tables)). A malformed or unknown ID is 404.
+- **Never in a response:** password hashes, MFA secrets, recovery codes, other users' session or CSRF tokens, internal IDs, the SMTP username and password. Project names and descriptions **are** shown (the workspace's projects, and event payloads as stored). `decodeAdmin` in the tests walks every admin response for such field names.
 - **Not scoped by membership, on purpose:** these queries see across workspaces, which is why they're only reachable behind both middlewares. `TestAdminRoutesStayInTheAdminGroup` fails if an `/api/admin` route is registered outside `adminRoutes`, or there without `requireAdminKey`.
 - **Admin status is never in an app response** (`/api/auth/me`). The one place an account learns it is an admin is turning MFA off: 409 "Admins must keep two-factor authentication on."
 
@@ -113,18 +119,57 @@ setup:  POST …/mfa/setup → the QR code (hidden until revealed) → POST …/
 | `admin.logged_in`, `admin.logged_out` | `user` (and `ip`) | actor |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page` | actor |
 | `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` | actor |
+| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (those used, the cursor included) | actor |
+| `admin.event.viewed` | `admin`, `event` | actor |
+| `admin.mail.viewed` | `admin`, `window` | actor |
+| `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page` | actor |
 
-Every read is recorded, so the trail shows what each admin looked at and searched for. The admin is named in the payload so the record outlives their account; `user_id` and `workspace_id` stay empty, so deleting the account or workspace looked at doesn't erase the record, and it never shows among their own events. Each code check also records `auth.mfa.checked` with step `admin_login` (or `enable` for the setup). See [events.md](events.md).
+Every read is recorded, so the trail shows what each admin looked at and searched for (who searched for an email, an IP, a workspace). The one exception is `GET /api/admin/catalogue`, which holds only names. The admin is named in the payload so the record outlives their account; `user_id` and `workspace_id` stay empty, so deleting the account or workspace looked at doesn't erase the record, and it never shows among their own events. Each code check also records `auth.mfa.checked` with step `admin_login` (or `enable` for the setup). See [events.md](events.md).
+
+## Events
+
+`GET /api/admin/events` reads the `events` table across every account and workspace:
+
+| Param | Rule | Default |
+| --- | --- | --- |
+| `name` | A catalogue name (`auth.login_attempted`) or a prefix ending in `.` (`auth.`, `workspace.member.`), expanded in Go to the catalogue names under it, so the query is `name IN (…)`, never `LIKE`. Anything else is 400 | all |
+| `account` | `usr_…`: what the account did (`actor_id`) or is about (`user_id`); an unknown account matches nothing | all |
+| `workspace` | `wsp_…`, matched on the payload's `workspace`, so a deleted workspace's events and admins' reads of it are found | all |
+| `email` | An address, lower-cased, matched with the payload's `email` | all |
+| `ip` | An address, or a CIDR no wider than /16 (IPv4) or /32 (IPv6), matched with `events.ip` (`<<=`) | all |
+| `from`, `to` | RFC 3339 times (`from` inclusive, `to` exclusive) | none |
+| `adminReads` | `include` shows `admin.*.listed` and `admin.*.viewed`, hidden otherwise (named exactly, one shows anyway) | hidden |
+| `before`, `perPage` | an `evt_` cursor (400 when that event is gone) and 1–100 | newest, 50 |
+
+- **Rows:** `id`, `name`, `createdAt`, `actor`, `user` and `workspace` (`{id, name, email}` / `{id, name}`, read from the column or, once that's empty, from the payload's `admin`, `user` or `workspace`: a deleted one is `{id}` alone), `ip` (null outside a request), `payload` as stored. The detail adds `userAgent`, `deliveries` (`listener`, `status`, `attempts`, `nextAttemptAt`, `deliveredAt`, `failedAt`, `lastError`) and `related`: the event its `request` field names, and the events naming it (a `.sent` and its `.requested`).
+- **Every filter has an index** (migration 007): `ip`, the payload's `email` and `workspace`, `actor_id`, `request`, beside `name` and `user_id`. Cursor pages count nothing.
+
+## Mail
+
+`GET /api/admin/mail` (`window` `24h` or `7d`):
+
+| Field | Holds | From |
+| --- | --- | --- |
+| `queue` | Per listener (every registered one, plus any renamed one still holding deliveries): `due` now, `retrying` (waiting, failed at least once), `oldestPendingAt` (the oldest waiting delivery's event: the worker's lag), and `failed` / `delivered` among the window's events | `event_deliveries` (the pending index), and the window's events |
+| `volume` | Emails sent per hour and kind: `password_reset`, `invitation`, `registration_code`, `account_exists`, `email_verification` | the listeners' `.sent` events |
+| `requests` | Asked for vs sent, for `password_reset`, `registration` and `email_verification`. Resets for an address with no account send nothing (a wide gap is someone trying addresses); sign-ups and verification always send | the `.requested` and `.sent` events |
+| `topRecipients` | Addresses asked for 3 or more times in the window (at most 20), with `resets`, `invitations` and `registrations`: enough to spot an inbox being flooded, not a log of who got mail | `email` on `auth.password_reset.requested`, `workspace.invitation.created`, `auth.registration.requested` |
+| `driver`, `lastDeliveredAt`, `lastFailure` | `MAIL_DRIVER`, SMTP host, port and TLS mode, the sender (never the credentials); the newest delivery done and the newest failure's listener, time and error, in the window | config, `event_deliveries` |
+
+`GET /api/admin/deliveries` lists `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `email`, if any), `status` (`pending`, `retrying`, `failed`, `delivered`), `attempts`, `nextAttemptAt` (while waiting), `deliveredAt`, `failedAt`, `lastError`. A failure's `last_error` may name the recipient (an SMTP reply), never the password.
 
 ## Web app
 
-- **Routes** (`routes.ts`): `admin/:key` (`pages/admin/[key]/index.tsx`, `AdminLogin`), and inside `pages/admin/layout.tsx`: `users` (`AdminUserIndex`), `users/:user` (`AdminUserShow`), `workspaces` (`AdminWorkspaceIndex`), `workspaces/:workspace` (`AdminWorkspaceShow`). Not prerendered.
+- **Routes** (`routes.ts`): `admin/:key` (`pages/admin/[key]/index.tsx`, `AdminLogin`), and inside `pages/admin/layout.tsx`: `users` (`AdminUserIndex`), `users/:user` (`AdminUserShow`, with **Activity**: Events for `?account=`), `workspaces` (`AdminWorkspaceIndex`), `workspaces/:workspace` (`AdminWorkspaceShow`, with **Activity** and its projects in a `PaginatedTable`, rows without links), `events` (`AdminEventIndex`), `events/:event` (`AdminEventShow`), `mail` (`AdminDeliveryIndex`). Not prerendered.
 - **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. `useAdminApi()` sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `routes.admin.*(key)`.
+- **Nothing reloads on its own.** Every load is a recorded read, so `useAdminResource` doesn't revalidate on focus or reconnect: only opening a page, a new query, or a Refresh button (Events, Mail) loads again.
+- **Events** (`pages/admin/[key]/events.tsx`): the filters in a form (Event, a `Listbox` of the catalogue grouped by area, each area's prefix an option; Account, Workspace, Email, IP; From and To as UTC days; Admin reads), applied together with Apply filters, kept in the URL. The table (`components/app/admin/events.tsx`: `EventTable`, `eventSummary`) shows the time (opening the event), the name and a one-line summary from the payload, the actor, what it's about, and the IP; every account, workspace and IP links to its page or filter. **Older / Newer** (`CursorNav`) follow the cursor; the way back travels in navigation state, so the URL holds only `before`. An event's page shows the payload as indented JSON in a `<pre>`, through React's escaping.
+- **Mail** (`pages/admin/[key]/mail.tsx`): the window and Refresh in the header, `Stat` tiles for the queue, emails per hour as a stacked `BarChart` (`components/ui/chart.tsx`, Recharts; its numbers in a table for screen readers), asked for vs sent, frequent addresses (each linking to Events `?email=`), the queue per listener, how mail is sent, then the deliveries with status tabs (Failed first while the window has any).
 - **Loaders** (`lib/loaders.ts`): `adminLoginLoader` (404 → not-found, signed in → Users) and `adminLoader` (404 → not-found, 401 → sign-in).
-- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users and Workspaces, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out.
+- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users, Workspaces, Events and Mail, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out.
 - **Lists** use `PaginatedTable`, `SearchField` and sortable headers (`components/app/admin/admin-list.tsx`: URL state, `AdminTableHead`, `MfaBadge`, `EmailBadge` (zinc "Not verified"; a user's page also shows lime "Verified", the list only the unverified), `AdminBadge`); rows link to their page. There are no row menus: there are no actions.
 - `react/no-danger` is on for the whole web app: other users' names and emails render only through React's escaping.
 
 ## Not built
 
-Events, Mail and Monitoring pages, alerts, write actions, an IP allowlist, admin roles and several keys at once (rotating without signing everyone out) are planned in [plans/features/admin/](../../plans/features/admin/README.md). Not planned: impersonation, a separate admin origin, passkeys for admins.
+Monitoring pages, alerts, write actions (retrying a delivery among them), an IP allowlist, admin roles and several keys at once (rotating without signing everyone out) are planned in [plans/features/admin/](../../plans/features/admin/README.md). Email bodies are never stored, so the dashboard can't show them. Not planned: impersonation, a separate admin origin, passkeys for admins.

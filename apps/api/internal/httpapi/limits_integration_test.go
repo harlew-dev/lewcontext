@@ -31,7 +31,7 @@ func retryWithin(t *testing.T, w *httptest.ResponseRecorder, window time.Duratio
 func reached(t *testing.T, s *Server, limit string) storedEvent {
 	t.Helper()
 	e := onlyEvent(t, s.Store.DB, "rate_limit.reached")
-	if e.Payload["limit"] != limit || e.Payload["ip"] != "127.0.0.1" || e.Payload["resetsAt"] == nil {
+	if e.Payload["limit"] != limit || e.IP != "127.0.0.1" || e.Payload["resetsAt"] == nil {
 		t.Fatalf("want %s: %+v", limit, e)
 	}
 	return e

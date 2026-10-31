@@ -10,9 +10,9 @@ import { statusColors } from "@/components/app/projects/project-display";
 import { useProjectEditor } from "@/components/app/projects/use-project-editor";
 import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Divider } from "@/components/ui/divider";
 import { ListSkeleton } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
+import { Stat } from "@/components/ui/stat";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
 import type { Page } from "@/lib/pagination";
 import { paths } from "@/lib/api";
@@ -49,7 +49,7 @@ export default function Dashboard() {
       <ProjectNotices error={list.error} onRetry={list.refresh} />
       {total !== undefined && (
         <div className="mt-4 grid gap-8 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat title="Total projects" value={total} />
+          <ProjectStat title="Total projects" value={total} />
           {statuses.map((status) => (
             <StatusStat key={status} status={status} total={total} />
           ))}
@@ -107,7 +107,7 @@ function StatusStat({ status, total }: { status: Status; total: number }) {
   const workspace = useWorkspace();
   const count = useResource(countPath(workspace.id, status));
   return (
-    <Stat
+    <ProjectStat
       title={status}
       value={count.data?.pages.items}
       total={total}
@@ -115,7 +115,8 @@ function StatusStat({ status, total }: { status: Status; total: number }) {
     />
   );
 }
-function Stat({
+// A project count, with its share of all projects when given the total.
+function ProjectStat({
   title,
   value,
   total,
@@ -128,22 +129,15 @@ function Stat({
 }) {
   const share = total && value ? Math.round((value / total) * 100) : 0;
   return (
-    <div>
-      <Divider />
-      <div className="mt-6 text-lg/6 font-medium sm:text-sm/6">{title}</div>
-      <div className="mt-3 text-3xl/8 font-semibold sm:text-2xl/8">
-        {value ?? "–"}
-      </div>
-      <div className="mt-3 text-sm/6 sm:text-xs/6">
-        {total === undefined ? (
-          <span className="text-zinc-500">In this workspace</span>
-        ) : (
-          <>
-            <Badge color={color}>{share}%</Badge>{" "}
-            <span className="text-zinc-500">of all projects</span>
-          </>
-        )}
-      </div>
-    </div>
+    <Stat title={title} value={value}>
+      {total === undefined ? (
+        <span className="text-zinc-500">In this workspace</span>
+      ) : (
+        <>
+          <Badge color={color}>{share}%</Badge>{" "}
+          <span className="text-zinc-500">of all projects</span>
+        </>
+      )}
+    </Stat>
   );
 }

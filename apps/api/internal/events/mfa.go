@@ -43,13 +43,12 @@ type MFADisabled struct {
 func (MFADisabled) EventName() string { return "auth.mfa.disabled" }
 
 // MFAChecked: a second factor was checked, for Step, by Method. A recovery
-// code also says how many are left. IP is the client's address.
+// code also says how many are left.
 type MFAChecked struct {
 	User              string `json:"user"`
 	OK                bool   `json:"ok"`
 	Method            string `json:"method"`
 	Step              string `json:"step"`
-	IP                string `json:"ip"`
 	RecoveryCodesLeft *int   `json:"recoveryCodesLeft,omitempty"`
 }
 

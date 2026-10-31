@@ -40,7 +40,6 @@ var ErrNoRegistration = errors.New("no pending registration")
 // the digest of the token in its browser's cookie.
 type NewRegistration struct {
 	Email, Name, PasswordHash, TokenHash string
-	IP                                   string
 }
 
 // PendingRegistration is what the sign-up's own browser may see of it.
@@ -63,7 +62,7 @@ type RegistrationResult struct {
 // whether or not an account uses the email.
 func (s *Store) CreatePendingRegistration(ctx context.Context, in NewRegistration) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		request, err := s.recordID(ctx, tx, events.RegistrationRequested{Email: in.Email, IP: in.IP}, EventScope{})
+		request, err := s.recordID(ctx, tx, events.RegistrationRequested{Email: in.Email}, EventScope{})
 		if err != nil {
 			return err
 		}
@@ -95,7 +94,7 @@ func (s *Store) FindPendingRegistration(ctx context.Context, tokenHash string) (
 // used. The old code stops working at once, since the row forgets it, and
 // a late delivery of the old request finds nothing (its request ID is
 // gone). ErrNoRegistration without a live sign-up.
-func (s *Store) ResendPendingRegistration(ctx context.Context, tokenHash, ip string) (PendingRegistration, error) {
+func (s *Store) ResendPendingRegistration(ctx context.Context, tokenHash string) (PendingRegistration, error) {
 	var p PendingRegistration
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var row pendingRegistration
@@ -106,7 +105,7 @@ func (s *Store) ResendPendingRegistration(ctx context.Context, tokenHash, ip str
 		if err != nil {
 			return err
 		}
-		request, err := s.recordID(ctx, tx, events.RegistrationRequested{Email: row.Email, IP: ip}, EventScope{})
+		request, err := s.recordID(ctx, tx, events.RegistrationRequested{Email: row.Email}, EventScope{})
 		if err != nil {
 			return err
 		}
@@ -160,7 +159,7 @@ func (s *Store) IssueRegistrationCode(ctx context.Context, request, codeHash str
 // creates the account, verified, deletes every sign-up for the email and
 // records auth.registered; if an account took the email meanwhile, it
 // creates nothing (Exists). ErrNoRegistration without a live sign-up.
-func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest, ip string) (RegistrationResult, error) {
+func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest string) (RegistrationResult, error) {
 	var result RegistrationResult
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var row pendingRegistration
@@ -172,7 +171,7 @@ func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest, ip 
 			return err
 		}
 		result.OK = subtle.ConstantTimeCompare([]byte(digest), []byte(row.CodeHash)) == 1
-		checked := events.RegistrationChecked{Email: row.Email, OK: result.OK, IP: ip, Attempt: row.Attempts + 1}
+		checked := events.RegistrationChecked{Email: row.Email, OK: result.OK, Attempt: row.Attempts + 1}
 		if err := s.record(ctx, tx, checked, EventScope{}); err != nil {
 			return err
 		}

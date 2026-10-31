@@ -18,6 +18,7 @@ type storedEvent struct {
 	ActorID, UserID, WorkspaceID sql.NullInt64
 	Raw                          string         // the payload as PostgreSQL prints it
 	Payload                      map[string]any `bun:"-"`
+	IP                           string         // host() of events.ip, "" for null
 	UserAgent                    string
 }
 
@@ -26,6 +27,7 @@ func storedEvents(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().TableExpr("events").
 		Column("name", "actor_id", "user_id", "workspace_id", "user_agent").
 		ColumnExpr("payload::text AS raw").
+		ColumnExpr("coalesce(host(ip), '') AS ip").
 		OrderExpr("id")
 }
 
@@ -117,7 +119,7 @@ func TestAuthEvents(t *testing.T) {
 		userID        int64
 	}{{"ada@example.com", "wrong_password", userID}, {"nobody@example.com", "unknown_account", 0}, {"ada@example.com", "succeeded", userID}} {
 		a := attempts[i]
-		if a.Payload["email"] != want.email || a.Payload["result"] != want.result || a.Payload["ip"] != "127.0.0.1" ||
+		if a.Payload["email"] != want.email || a.Payload["result"] != want.result || a.IP != "127.0.0.1" ||
 			!is(a.UserID, want.userID) || !is(a.ActorID, 0) || strings.Contains(a.Raw, "wrong guess") || strings.Contains(a.Raw, password) {
 			t.Errorf("attempt %d: %+v", i, a)
 		}
@@ -158,7 +160,7 @@ func TestRateLimitRecordedOnce(t *testing.T) {
 		call(t, h, "POST", "/api/auth/login", login, "", nil, 429)
 	}
 	e := onlyEvent(t, db, "rate_limit.reached")
-	if e.Payload["limit"] != "auth:per-account:block" || e.Payload["ip"] != "127.0.0.1" || e.Payload["window"] != float64(900) || !is(e.UserID, 0) {
+	if e.Payload["limit"] != "auth:per-account:block" || e.IP != "127.0.0.1" || e.Payload["window"] != float64(900) || !is(e.UserID, 0) {
 		t.Fatalf("rate limited: %+v", e)
 	}
 	if len(eventsNamed(t, db, "auth.login_attempted")) != 0 {

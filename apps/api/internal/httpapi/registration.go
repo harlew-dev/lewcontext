@@ -34,7 +34,7 @@ func (s *Server) beginRegistration(w http.ResponseWriter, r *http.Request, in cr
 		internalError(w, err)
 		return
 	}
-	pending := store.NewRegistration{Email: in.Email, Name: in.Name, PasswordHash: hash, TokenHash: auth.Digest(token), IP: clientIP(r)}
+	pending := store.NewRegistration{Email: in.Email, Name: in.Name, PasswordHash: hash, TokenHash: auth.Digest(token)}
 	if err := s.Store.CreatePendingRegistration(r.Context(), pending); err != nil {
 		internalError(w, err)
 		return
@@ -74,7 +74,7 @@ func (h registrationHandlers) resend(w http.ResponseWriter, r *http.Request) {
 	if !h.allow(w, r, registerPerEmail, registerPerEmail.key(pending.Email)) || !h.allow(w, r, registerGlobal, registerGlobal.everyone()) {
 		return
 	}
-	pending, err := h.Store.ResendPendingRegistration(r.Context(), digest, clientIP(r))
+	pending, err := h.Store.ResendPendingRegistration(r.Context(), digest)
 	if errors.Is(err, store.ErrNoRegistration) {
 		h.endRegistration(w, registrationEnded)
 		return
@@ -102,7 +102,7 @@ func (h registrationHandlers) verify(w http.ResponseWriter, r *http.Request) {
 	if !ok || !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.key(pending.Email)) {
 		return
 	}
-	result, err := h.Store.CompleteRegistration(r.Context(), digest, h.emailCodeDigest(in.Code), clientIP(r))
+	result, err := h.Store.CompleteRegistration(r.Context(), digest, h.emailCodeDigest(in.Code))
 	switch {
 	case errors.Is(err, store.ErrNoRegistration):
 		h.endRegistration(w, registrationEnded)

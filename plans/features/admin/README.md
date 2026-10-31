@@ -1,6 +1,6 @@
 # Admin dashboard: the plans after admin access
 
-Status: **draft 2026-10-31**. A1 (events-and-mail) decisions confirmed 2026-10-31; the other plans' decisions to confirm. Builds on [admin access](../implemented/admin-access.md) (the secret door, CLI-granted admins with required MFA, admin sessions, read-only Users and Workspaces, every read recorded).
+Status: **draft 2026-10-31**. A1 (events-and-mail) implemented 2026-10-31; the other plans' decisions to confirm. Builds on [admin access](../implemented/admin-access.md) (the secret door, CLI-granted admins with required MFA, admin sessions, read-only Users and Workspaces, every read recorded).
 
 Admin access left out the Events, Mail and Monitoring pages, any write action, an IP allowlist and holding several keys at once. These plans cover all of them, plus the observability and compliance groundwork that production monitoring needs. Each is its own plan with its own decisions, so they can be confirmed and shipped one at a time.
 
@@ -8,7 +8,7 @@ Admin access left out the Events, Mail and Monitoring pages, any write action, a
 
 | # | Plan | Adds | Needs |
 | --- | --- | --- | --- |
-| A1 | [events-and-mail](events-and-mail.md) | The **Events** page (the audit trail, filtered by name, account, workspace, email, IP and time) and the **Mail** page (the delivery queue, failures, volume per template and recipient). An `events.ip` column; project names and descriptions shown, with a projects list on the workspace page | admin access |
+| A1 | [events-and-mail](../implemented/admin/events-and-mail.md) | The **Events** page (the audit trail, filtered by name, account, workspace, email, IP and time) and the **Mail** page (the delivery queue, failures, volume per template and recipient). An `events.ip` column; project names and descriptions shown, with a projects list on the workspace page | admin access |
 | A2 | [access-hardening](access-hardening.md) | `ADMIN_ALLOWED_IPS` (an IP allowlist), `ADMIN_ROUTE_KEY_PREVIOUS` (rotating the key without signing everyone out), an Admins page, admin roles (`viewer`, `operator`) | admin access |
 | A3 | [observability](observability.md) | The groundwork: JSON logs with request IDs, panic recovery, grouped errors (`app_errors`), per-minute sums per route shared across servers (`request_minutes`, `metric_minutes`; never a row per request), server heartbeats (`server_instances`), slow-query logging, an optional Prometheus `/metrics` on a private port | none (A1 for the IP column it logs alongside) |
 | A4 | [monitoring](monitoring.md) | The **Monitoring** pages: Overview, Security, Rate limits, IP addresses, Accounts, Workspaces, Usage, Data, Integrity, Performance, Errors, Configuration | A1, A3 |

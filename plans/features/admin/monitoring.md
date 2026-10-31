@@ -1,6 +1,6 @@
 # Admin: Monitoring pages
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A4 of the [admin plans](README.md). Needs [events-and-mail](events-and-mail.md) (`events.ip`, the Events page to drill into) and [observability](observability.md) (metrics, errors, servers). Docs it will change: [admin.md](../../../docs/api/admin.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md); a new `docs/api/monitoring.md` (every signal, its query and thresholds).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A4 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md) (`events.ip`, the Events page to drill into) and [observability](observability.md) (metrics, errors, servers). Docs it will change: [admin.md](../../../docs/api/admin.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md); a new `docs/api/monitoring.md` (every signal, its query and thresholds).
 
 ## Why
 
@@ -259,7 +259,7 @@ Each new table gets a factory (`TestEveryTableHasAFactory`).
 - **Pages** under `pages/admin/[key]/monitoring/`: `index.tsx` (Overview, `AdminMonitoringOverview`), `security.tsx`, `limits.tsx`, `ips.tsx` and `ips/[ip].tsx`, `accounts.tsx`, `workspaces.tsx`, `usage.tsx`, `data.tsx`, `integrity.tsx`, `performance.tsx`, `errors.tsx` and `errors/[error].tsx`, `configuration.tsx`. Each is one `useAdminResource` call and local sections.
 - **Navigation:** a "Monitoring" heading in the admin sidebar with an item per page (decision 5), not a tab bar of twelve.
 - **A window switch** (1 h, 24 h, 7 d) in the page header, kept in the URL.
-- **New primitives in `components/ui`** (decision 4), hand-built SVG with Tailwind classes and `dark:` variants: `Stat` (a tile: label, value, level, sparkline, link), `Sparkline`, `BarChart` (time buckets, stacked), `Meter` (a quota's fill), `LevelBadge`. Colour is zinc, with red, amber and green **only** for levels, always with a word beside it ("Critical"), never colour alone. Every chart has a text summary for screen readers and a "Show as table" toggle. Shared monitoring pieces go in `components/app/admin/`.
+- **New primitives in `components/ui`** (decision 4), charts through `components/ui/chart.tsx` (Recharts, from [events and mail](../implemented/admin/events-and-mail.md#charts-decision-12)) with Tailwind classes and `dark:` variants: `Stat` (a tile: label, value, level, sparkline, link), `Sparkline`, `BarChart` (time buckets, stacked), `Meter` (a quota's fill), `LevelBadge`. Colour is zinc, with red, amber and green **only** for levels, always with a word beside it ("Critical"), never colour alone. Every chart has a text summary for screen readers and a "Show as table" toggle. Shared monitoring pieces go in `components/app/admin/`.
 - **Loading and errors:** skeletons per section, a Retry on failure that keeps the last data, as AGENTS.md rule 8 asks.
 
 ## Seeding
@@ -296,7 +296,7 @@ Each new table gets a factory (`TestEveryTableHasAFactory`).
 | 1 | Which pages, in what order | The twelve above, shipped in that order; Overview, Security and Rate limits are a useful first release on their own |
 | 2 | Where signals and thresholds live | Once, in `internal/monitor`, shared with alerts; thresholds in code, changed by a reviewed commit and listed in `docs/api/monitoring.md`. Environment overrides only if an operator needs them later |
 | 3 | Computing numbers | On read, bounded to 7 days, indexed, 5 s deadline. Rollups only for a signal that proves slow |
-| 4 | Charts | Hand-built SVG primitives in `components/ui`, no chart library: five simple shapes, our own styling and dark mode, nothing added to the bundle |
+| 4 | Charts | Revised by [events and mail](../implemented/admin/events-and-mail.md) decision 12: the shared `components/ui/chart.tsx` on Recharts (already in the admin bundle), with `Sparkline`, a stacked `BarChart` and `Meter` added beside it; our own styling and dark mode through Tailwind classes |
 | 5 | Navigation | A Monitoring heading in the sidebar with an item per page |
 | 6 | Active accounts | `users.last_seen_at`, written at most hourly by `requireSession`, without an event |
 | 7 | Emails and IPs in review lists | Shown, admin-only and recorded; everywhere else counts |

@@ -23,7 +23,7 @@ function isStatus(value: string): value is Exclude<StatusFilter, "all"> {
   return (statuses as readonly string[]).includes(value);
 }
 // URL parameters for a query, leaving out defaults.
-function queryParams({ page, q, status, sort }: ProjectQuery) {
+export function projectParams({ page, q, status, sort }: ProjectQuery) {
   return {
     q,
     status: status === "all" ? "" : status,
@@ -33,7 +33,7 @@ function queryParams({ page, q, status, sort }: ProjectQuery) {
 }
 // A workspace's projects page URL for a query.
 export function projectsPath(workspace: string, query: ProjectQuery): string {
-  return url(routes.projects.index(workspace), queryParams(query));
+  return url(routes.projects.index(workspace), projectParams(query));
 }
 // The API query for the page state ("all" statuses means no filter); pass it
 // to api.projects(workspace).index() or paths.projects(workspace).index().

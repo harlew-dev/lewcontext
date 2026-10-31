@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { TableHeader, TableRow } from "@/components/ui/table";
 import {
   cleanSearch,
@@ -10,9 +10,15 @@ import {
   type Sort,
   type SortDirection,
 } from "@/lib/pagination";
-import type { AdminListQuery } from "@/types/admin";
+import { formatDateTime } from "@/lib/format";
+import type {
+  AdminDelivery,
+  AdminListQuery,
+  DeliveryStatus,
+} from "@/types/admin";
 // Shared by the admin dashboard's Users and Workspaces lists: their URL
-// state (?q=&sort=&page=), a sortable header row, and the account badges.
+// state (?q=&sort=&page=), a sortable header row, and the account badges;
+// and by Events and Mail: a delivery's status badge.
 
 // A list page's state in its URL. Values the API would reject fall back to
 // defaults, so a hand-edited URL still renders a page.
@@ -85,4 +91,25 @@ export function EmailBadge({
 }
 export function AdminBadge() {
   return <Badge color="purple">Admin</Badge>;
+}
+// A delivery's status, the word always beside the colour.
+const deliveryBadges: Record<
+  DeliveryStatus,
+  { label: string; color: BadgeColor }
+> = {
+  delivered: { label: "Delivered", color: "lime" },
+  pending: { label: "Pending", color: "zinc" },
+  retrying: { label: "Retrying", color: "pink" },
+  failed: { label: "Failed", color: "rose" },
+};
+export function DeliveryStatusBadge({ status }: { status: DeliveryStatus }) {
+  const { label, color } = deliveryBadges[status];
+  return <Badge color={color}>{label}</Badge>;
+}
+// When a delivery finished, or when it's tried next.
+export function DeliveryTime({ delivery: d }: { delivery: AdminDelivery }) {
+  if (d.deliveredAt) return <>{formatDateTime(d.deliveredAt)}</>;
+  if (d.failedAt) return <>Gave up {formatDateTime(d.failedAt)}</>;
+  if (d.nextAttemptAt) return <>Next try {formatDateTime(d.nextAttemptAt)}</>;
+  return <>–</>;
 }

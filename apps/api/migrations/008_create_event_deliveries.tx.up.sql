@@ -10,3 +10,5 @@ CREATE TABLE event_deliveries (
 );
 CREATE INDEX event_deliveries_pending_idx ON event_deliveries(next_attempt_at, event_id)
  WHERE delivered_at IS NULL AND failed_at IS NULL;
+-- The admin dashboard's failed deliveries, few among many delivered.
+CREATE INDEX event_deliveries_failed_idx ON event_deliveries(failed_at DESC) WHERE failed_at IS NOT NULL;

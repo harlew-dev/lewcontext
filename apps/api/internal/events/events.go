@@ -38,6 +38,7 @@ var Catalogue = []Event{
 	RateLimitReached{},
 	AdminGranted{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
 	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
+	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
 }
 
 // Change is a field's value before and after an update.
@@ -60,10 +61,12 @@ func (c Changes) Add(field, from, to string) {
 // maxUserAgent matches the events.user_agent column's CHECK.
 const maxUserAgent = 256
 
-// meta is who is acting in a request and with what browser, carried in the
-// request context so store methods can record it without extra arguments.
+// meta is who is acting in a request, from where and with what browser,
+// carried in the request context so store methods can record it without
+// extra arguments.
 type meta struct {
 	actorID   int64
+	ip        string
 	userAgent string
 }
 type metaKey struct{}
@@ -77,6 +80,14 @@ func current(ctx context.Context) meta {
 func WithActor(ctx context.Context, actorID int64) context.Context {
 	m := current(ctx)
 	m.actorID = actorID
+	return context.WithValue(ctx, metaKey{}, m)
+}
+
+// WithIP records the request's client address (httpapi's clientIP), stored
+// in the events.ip column rather than in payloads.
+func WithIP(ctx context.Context, ip string) context.Context {
+	m := current(ctx)
+	m.ip = ip
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
@@ -94,6 +105,10 @@ func WithUserAgent(ctx context.Context, userAgent string) context.Context {
 
 // Actor is the internal ID of the user acting, or 0 when nobody is signed in.
 func Actor(ctx context.Context) int64 { return current(ctx).actorID }
+
+// IP is the request's client address, or "" outside a request (the CLI and
+// listeners).
+func IP(ctx context.Context) string { return current(ctx).ip }
 
 // UserAgent is the request's User-Agent, or "" outside a request.
 func UserAgent(ctx context.Context) string { return current(ctx).userAgent }

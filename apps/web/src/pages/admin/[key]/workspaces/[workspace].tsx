@@ -1,5 +1,16 @@
-import { useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+import {
+  AdminTableHead,
+  type AdminColumn,
+} from "@/components/app/admin/admin-list";
+import { ProjectStatusBadge } from "@/components/app/projects/project-display";
+import {
+  indexQuery,
+  projectParams,
+  projectQuery,
+} from "@/components/app/projects/project-query";
+import { StatusField } from "@/components/app/projects/status-field";
 import { RoleBadge } from "@/components/app/workspaces/role-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +21,8 @@ import {
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Link } from "@/components/ui/link";
+import { PaginatedTable } from "@/components/ui/paginated-table";
+import { SearchField } from "@/components/ui/search-field";
 import {
   Table,
   TableBody,
@@ -22,11 +35,14 @@ import { paths } from "@/lib/api";
 import { useAdminKey } from "@/lib/admin";
 import { formatDate } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
+import { url } from "@/lib/pagination";
 import { routes } from "@/lib/routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import type { AdminWorkspaceDetail } from "@/types/admin";
-// One workspace: its counts and its members. Opening it is recorded in the
-// audit trail (admin.workspace.viewed).
+import type { Project, ProjectQuery, ProjectSortField } from "@/types/projects";
+// One workspace: its counts, its members and its projects. Opening it is
+// recorded in the audit trail (admin.workspace.viewed, and
+// admin.project.listed for the projects).
 export default function AdminWorkspaceShow() {
   const id = parsePublicId("wsp", useParams().workspace);
   if (id === null) return <WorkspaceNotFound />;
@@ -59,9 +75,18 @@ function WorkspaceContent({ id }: { id: string }) {
   );
 }
 function WorkspaceDetails({ workspace }: { workspace: AdminWorkspaceDetail }) {
+  const key = useAdminKey();
   return (
     <>
-      <Heading className="mt-4 truncate lg:mt-8">{workspace.name}</Heading>
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-4 lg:mt-8">
+        <Heading className="min-w-0 truncate">{workspace.name}</Heading>
+        <Button
+          outline
+          href={routes.admin.events.index(key, { workspace: workspace.id })}
+        >
+          Activity
+        </Button>
+      </div>
       <div className="mt-12">
         <Subheading>Workspace</Subheading>
         <DescriptionList className="mt-4">
@@ -80,6 +105,7 @@ function WorkspaceDetails({ workspace }: { workspace: AdminWorkspaceDetail }) {
         </DescriptionList>
       </div>
       <Members workspace={workspace} />
+      <Projects workspace={workspace} />
     </>
   );
 }
@@ -119,6 +145,105 @@ function Members({ workspace }: { workspace: AdminWorkspaceDetail }) {
         </TableBody>
       </Table>
     </div>
+  );
+}
+const projectColumns: AdminColumn<ProjectSortField>[] = [
+  { label: "Name", field: "name", first: "ascending" },
+  { label: "Status", field: "status", first: "ascending" },
+  { label: "Description", className: "max-lg:hidden" },
+  {
+    label: "Updated",
+    field: "updated",
+    first: "descending",
+    className: "max-sm:hidden",
+  },
+];
+// The workspace's projects, names and descriptions included, searched,
+// filtered and sorted as the app's list is, in this page's URL. Each load is
+// recorded (admin.project.listed). There's no project page, so rows don't
+// link.
+function Projects({ workspace }: { workspace: AdminWorkspaceDetail }) {
+  const key = useAdminKey();
+  const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const query = projectQuery(search);
+  const list = useAdminResource(
+    paths.admin.projects(workspace.id).index(indexQuery(query)),
+  );
+  const pathFor = (q: ProjectQuery) =>
+    url(routes.admin.workspaces.show(key, workspace.id), projectParams(q));
+  const go = (q: Partial<ProjectQuery>, replace = false) =>
+    void navigate(pathFor({ ...query, page: 1, ...q }), {
+      replace,
+      preventScrollReset: true,
+    });
+  const filtered = query.q !== "" || query.status !== "all";
+  return (
+    <div className="mt-12">
+      <Subheading>Projects</Subheading>
+      <div className="mt-4 flex max-w-xl gap-4">
+        <div className="flex-1">
+          <SearchField
+            label="Search projects"
+            value={query.q}
+            onSearch={(q) => go({ q }, true)}
+          />
+        </div>
+        <div className="w-44">
+          <StatusField
+            value={query.status}
+            onChange={(status) => go({ status })}
+          />
+        </div>
+      </div>
+      {list.error && (
+        <Notice variant="error" className="mt-6" onRetry={list.refresh}>
+          {list.error}
+        </Notice>
+      )}
+      <PaginatedTable
+        className="mt-4"
+        page={list.data}
+        loading={list.loading}
+        label="Projects"
+        head={
+          <AdminTableHead
+            columns={projectColumns}
+            sort={query.sort}
+            sortHref={(sort) => pathFor({ ...query, page: 1, sort })}
+          />
+        }
+        row={(project) => <ProjectRow project={project} />}
+        rowKey={(project) => project.id}
+        href={(page) => pathFor({ ...query, page })}
+        empty={
+          <EmptyState
+            title={filtered ? "No projects match" : "No projects"}
+            description={
+              filtered
+                ? "Try another search or status."
+                : "This workspace has no projects."
+            }
+          />
+        }
+      />
+    </div>
+  );
+}
+function ProjectRow({ project }: { project: Project }) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{project.name}</TableCell>
+      <TableCell>
+        <ProjectStatusBadge status={project.status} />
+      </TableCell>
+      <TableCell className="max-w-sm truncate text-zinc-500 max-lg:hidden">
+        {project.description || "–"}
+      </TableCell>
+      <TableCell className="text-zinc-500 max-sm:hidden">
+        {formatDate(project.updatedAt)}
+      </TableCell>
+    </TableRow>
   );
 }
 function WorkspaceNotFound() {

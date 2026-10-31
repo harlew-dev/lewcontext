@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"lewcontext/api/internal/events"
 	"net"
 	"net/http"
 	"net/netip"
@@ -16,12 +17,14 @@ type clientIPKey struct{}
 const maxForwardedHops = 20
 
 // clientAddress works out the request's client address once, before any
-// other handler, and stores it in the context. The header is believed only
-// when the connection comes from a trusted proxy.
+// other handler, and stores it in the context, for limits and for the
+// events.ip column (events.WithIP). The header is believed only when the
+// connection comes from a trusted proxy.
 func (s *Server) clientAddress(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := resolveClientIP(r, s.Config.ClientIPHeader, s.Config.TrustedProxies)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), clientIPKey{}, ip)))
+		ctx := events.WithIP(context.WithValue(r.Context(), clientIPKey{}, ip), ip)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

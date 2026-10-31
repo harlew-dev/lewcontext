@@ -65,16 +65,25 @@ function UserContent({ id }: { id: string }) {
   );
 }
 function UserDetails({ user }: { user: AdminUserDetail }) {
+  const key = useAdminKey();
   return (
     <>
-      <div className="mt-4 lg:mt-8">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Heading className="truncate">{user.name}</Heading>
-          <MfaBadge enabled={user.mfaEnabled} />
-          <EmailBadge verifiedAt={user.emailVerifiedAt} />
-          {user.admin && <AdminBadge />}
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-4 lg:mt-8">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Heading className="truncate">{user.name}</Heading>
+            <MfaBadge enabled={user.mfaEnabled} />
+            <EmailBadge verifiedAt={user.emailVerifiedAt} />
+            {user.admin && <AdminBadge />}
+          </div>
+          <Text className="mt-1">{user.email}</Text>
         </div>
-        <Text className="mt-1">{user.email}</Text>
+        <Button
+          outline
+          href={routes.admin.events.index(key, { account: user.id })}
+        >
+          Activity
+        </Button>
       </div>
       <div className="mt-12">
         <Subheading>Account</Subheading>

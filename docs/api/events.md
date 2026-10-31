@@ -21,6 +21,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `user_id` | The account the event is about (auth events, and the member in member events). Deleting the account deletes these events |
 | `workspace_id` | The workspace (workspace and project events). Deleting the workspace sets it to null; the events stay, readable through the `wsp_` in their payload, until pruned |
 | `payload` | The event struct as JSON (`jsonb`) |
+| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithIP`, set by `clientAddress` from `clientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
 | `created_at` | When |
 
@@ -31,24 +32,24 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | Event | Payload | Recorded by |
 | --- | --- | --- |
 | `auth.registered` | `user`, `name`, `email`, `verifiedBy`: `code` (the sign-up's emailed code) / `none` (`EMAIL_VERIFICATION=off`) | `CompleteRegistration`, `CreateUser` |
-| `auth.registration.requested` | `email`, `ip` (no `user`: the request doesn't look the account up) | `register` and `register/resend` with verification on, for every request past the limits, taken email or not |
+| `auth.registration.requested` | `email` (no `user`: the request doesn't look the account up) | `register` and `register/resend` with verification on, for every request past the limits, taken email or not |
 | `auth.registration.sent` | `email`, `request` (the requested event's `evt_` ID), `existingAccount`, `user` when it exists | the `mail.registration` listener, after sending a code, or "You already have an account" to an email with one (not when `account-exists:per-account` held it back) |
-| `auth.registration.checked` | `email`, `ok`, `ip`, `attempt` (this sign-up's try, from 1) | `CompleteRegistration`, for every code that reached the check |
+| `auth.registration.checked` | `email`, `ok`, `attempt` (this sign-up's try, from 1) | `CompleteRegistration`, for every code that reached the check |
 | `auth.email_verification.requested` | `user` | `POST /api/auth/email-verification`: a signed-in account asked for a code |
 | `auth.email_verification.sent` | `user`, `request` | the `mail.email_verification` listener, after sending the code |
 | `auth.email_verified` | `user`, `via`: `code` / `password_reset` (completing a reset link, which went only to that inbox) | `VerifyEmail`, `ResetPassword` (only when the email wasn't verified yet) |
-| `auth.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
+| `auth.login_attempted` | `email`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
 | `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` / `mfa_setup` / `mfa_disable` / `recovery_codes` | both password endpoints, both deletions that need it, and setting up, turning off and renewing the codes of two-factor authentication, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
-| `auth.password_reset.requested` | `email`, `ip` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
+| `auth.password_reset.requested` | `email` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
 | `auth.password_reset.sent` | `user`, `email`, `request` (the requested event's `evt_` ID) | the `mail.password_reset` listener, after writing the link |
 | `auth.password_reset.completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
 | `auth.mfa.enabled` | `user`, `otherSessionsRevoked` | `EnableMFA`: the first code from the app turned two-factor authentication on (the first recovery codes come with it) |
 | `auth.mfa.disabled` | `user`, `reason`: `user` / `reset` (the operator's `admin reset-mfa`, with no actor) | `DisableMFA`, `ResetMFA` |
-| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `admin_login` / `enable` (also the admin door's setup) / `disable` / `recovery_codes`, `ip`, and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
+| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `admin_login` / `enable` (also the admin door's setup) / `disable` / `recovery_codes`, and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
 | `auth.recovery_codes.created` | `user`, `count` | `CreateRecoveryCodes`: a new set replaced the old |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |
@@ -67,17 +68,21 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `project.deleted` | `project`, `workspace`, `name` | `DeleteProject` |
 | `admin.granted` | `user`, `mfaSetupUntil` (null when MFA is already on); `user_id` set, no actor (the CLI) | `GrantAdmin` (`admin grant`) |
 | `admin.revoked` | `user`, `adminSessionsRevoked`; `user_id` set, no actor | `RevokeAdmin` (`admin revoke`) |
-| `admin.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `mfa_required` / `mfa_setup_required` / `wrong_password` / `unknown_account` / `not_admin` / `mfa_off` (an admin without MFA outside the setup window); no scope | `POST /api/admin/login`, for every attempt that reaches the password check |
-| `admin.logged_in` | `user`, `ip`; the admin is the actor, `user_id` stays empty | `CreateAdminSession`, after the code |
+| `admin.login_attempted` | `email`, `user` (if the account exists), `result`: `mfa_required` / `mfa_setup_required` / `wrong_password` / `unknown_account` / `not_admin` / `mfa_off` (an admin without MFA outside the setup window); no scope | `POST /api/admin/login`, for every attempt that reaches the password check |
+| `admin.logged_in` | `user`; the admin is the actor, `user_id` stays empty | `CreateAdminSession`, after the code |
 | `admin.logged_out` | `user`; actor only | `DeleteAdminSession` |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page`; actor only | every admin list read |
 | `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` (what was looked at); actor only, so deleting it keeps the record | every admin detail read |
-| `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `ip`; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |
+| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's); actor only | every Events and deliveries list read |
+| `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
+| `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
+| `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
+| `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |
 
 ## What's stored, and what never is
 
 - **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, MFA secrets, codes and recovery codes (or their digests), challenge tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
-- **Personal data, on purpose:** the email typed and the client IP on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the IP on `rate_limit.reached`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `clientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
+- **Personal data, on purpose:** the client IP of every event recorded during a request (the `ip` column), the email typed on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `clientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered; so are `auth.registration.requested` and `.checked`. Only the listener's `auth.registration.sent`, after the response, says whether the email had an account.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `rate_limit.reached`, so a flood writes one row per limit.
 - Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).

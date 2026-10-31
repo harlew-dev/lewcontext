@@ -87,7 +87,7 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 
 - **429** "Too many requests. Try again in 12 minutes." (or "Too many attempts…" for `auth:*`, `password-reset:per-*` and `email-code:per-email`). `Retry-After` and the message give the **time left in the window**: seconds rounded up, and minutes rounded up ("a minute", "12 minutes", "an hour"), or past an hour whole hours ("3 hours").
 - **503** with the limit's `busy` message for limits shared by everyone, with `Retry-After`, and `slog.Warn` the first time in a window.
-- **`rate_limit.reached`** is recorded the first time a limit is reached in a window, with `limit` (`<name>:block`), `user` and `workspace` when known, `ip`, `window` and `resetsAt` ([events.md](events.md)). A flood writes one event per limit per window.
+- **`rate_limit.reached`** is recorded the first time a limit is reached in a window, with `limit` (`<name>:block`), `user` and `workspace` when known, `window` and `resetsAt`, and the client IP in its `ip` column ([events.md](events.md)). A flood writes one event per limit per window.
 - The web app shows the API's message as it is, and SWR doesn't retry a 4xx read, so a 429 doesn't spend more of the budget ([ui/api.md](../ui/api.md#reading-data-useresource-libuse-resourcets)).
 
 ## Switching limits off for tests: `RATE_LIMITS`

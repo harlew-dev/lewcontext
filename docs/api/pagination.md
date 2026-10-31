@@ -44,6 +44,19 @@ Unknown, repeated or malformed parameters return 400. Signs, spaces and exponent
 - **Sort:** keys map to fixed SQL in `projectSorts`, and no column name comes from input. Every order ends in `p.id`, so equal values never repeat or go missing across pages. `status` sorts in workflow order (Planned → In progress → Completed).
 - **Bounded:** the page cap limits `OFFSET` to about 1M skipped rows, and the 10 s request timeout applies.
 
+## Cursor pages (log tables)
+
+The admin dashboard's Events and deliveries ([admin.md](admin.md#events)) page by a **cursor**, not a page number: log tables grow to millions of rows, counting them for "page 3 of 4,812" is the slow part, and nobody pages to the middle of an audit log; they filter.
+
+```json
+{ "data": [ { "id": "evt_…" } ], "next": "evt_…" }
+```
+
+- **`before`** is the cursor: rows strictly older than that row, ordered `created_at DESC, id DESC` (deliveries add `listener DESC`), compared as a row value `(created_at, id) < (?, ?)`, so rows sharing a time never repeat or go missing. `next` is the last row's cursor, or `null` on the last page.
+- **No totals:** nothing is counted. The store asks for `perPage + 1` rows to know whether there's a next page.
+- A cursor naming a row that's gone (pruned) is 400 "That page is no longer available."; a malformed one is 400 like any bad parameter.
+- Only for log tables. Everything a user pages through in the app stays numbered.
+
 ## Paginating a new resource
 
 ```go

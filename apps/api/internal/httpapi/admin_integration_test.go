@@ -87,6 +87,12 @@ var adminRoutesList = []struct{ method, path string }{
 	{"GET", "/api/admin/users/usr_2yEHYLwiwPVhLW"},
 	{"GET", "/api/admin/workspaces"},
 	{"GET", "/api/admin/workspaces/wsp_2yEHYLwiwPVhLW"},
+	{"GET", "/api/admin/workspaces/wsp_2yEHYLwiwPVhLW/projects"},
+	{"GET", "/api/admin/events"},
+	{"GET", "/api/admin/events/evt_2yEHYLwiwPVhLW"},
+	{"GET", "/api/admin/catalogue"},
+	{"GET", "/api/admin/mail"},
+	{"GET", "/api/admin/deliveries"},
 	{"PUT", "/api/admin/login"},
 	{"GET", "/api/admin/nothing"},
 }
@@ -185,7 +191,7 @@ func TestAdminLoginRefusals(t *testing.T) {
 	results := map[string]int{}
 	for _, e := range eventsNamed(t, db, "admin.login_attempted") {
 		results[e.Payload["result"].(string)]++
-		if e.ActorID.Valid || e.UserID.Valid || e.Payload["ip"] != "127.0.0.1" {
+		if e.ActorID.Valid || e.UserID.Valid || e.IP != "127.0.0.1" {
 			t.Fatalf("scope or ip: %+v", e)
 		}
 	}

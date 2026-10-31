@@ -7,7 +7,9 @@ import { routes } from "./routes";
 // useResource for the admin pages: a typed path from paths.admin, loaded with
 // the admin API. The SWR key is ["admin", the admin's user ID, path], apart
 // from the app's, and never holds the key. An ended admin session goes back
-// to the admin sign-in page.
+// to the admin sign-in page. Every load is recorded in the audit trail, so
+// nothing reloads on its own (focus, reconnecting): only opening a page, a
+// new query, or Refresh.
 export function useAdminResource<T>(path: ApiPath<T> | null) {
   const api = useAdminApi();
   const navigate = useNavigate();
@@ -17,6 +19,8 @@ export function useAdminResource<T>(path: ApiPath<T> | null) {
     path === null ? null : ["admin", adminId, path],
     () => api.get(path as ApiPath<T>),
     {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
       onError(error) {
         if (error instanceof ApiError && error.status === 401)
           void navigate(routes.admin.login(key), { replace: true });

@@ -132,7 +132,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 // write takes the same time whether or not the account exists. A right
 // password that still needs a second factor is mfa_required.
 func (s *Server) recordLoginAttempt(r *http.Request, email string, user store.User, known, valid, needsCode bool) error {
-	e := events.LoginAttempted{Email: email, IP: clientIP(r), Result: events.LoginUnknownAccount}
+	e := events.LoginAttempted{Email: email, Result: events.LoginUnknownAccount}
 	var subject store.EventScope
 	if known {
 		e.User, subject.UserID = user.PublicID, user.ID
