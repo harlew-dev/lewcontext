@@ -1,6 +1,6 @@
 # Endpoints
 
-All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser reaches them through the Next proxy at `/api/*`.
+All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The browser reaches them through the Next proxy at `/api/*`.
 
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
@@ -67,7 +67,7 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 ```
 
 - **Body for POST/PATCH:** `name` (trimmed, 1–80 characters, no control characters). Unknown fields, such as `id` or `role`, are rejected.
-- **Membership:** the `{workspace}` routes go through `requireWorkspace`, which looks the workspace up through your membership. Another user's workspace, a missing one and a malformed ID all get the same 404.
+- **Membership:** the `{workspace}` routes go through `RequireWorkspace`, which looks the workspace up through your membership. Another user's workspace, a missing one and a malformed ID all get the same 404.
 - **`canLeave`**: whether you may leave (`DELETE …/membership`). False only for a workspace's only owner. Read with the role in the same query, so the web app never loads the member list to tell.
 - **`permissions`** (sorted) and **`assignableRoles`** (most access first) come from your role, at no query cost, in every workspace response including the list. Empty lists for a viewer, never `null`.
 - **The list** takes `page` and `perPage` only (no search or sort). A new account has none; the web app's onboarding creates the first.
@@ -127,7 +127,7 @@ Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` r
   ```
 
   At most 100 are listed. The web app loads `GET /api/workspaces?canLeave=false` first, so this is the backstop.
-- **Password checks** work as `POST /api/auth/password/verify` does: `limitAuth` (`auth:per-ip`, a hashing slot) and `auth:per-account`, recording `auth.password_checked` ([auth.md](auth.md#deleting)).
+- **Password checks** work as `POST /api/auth/password/verify` does: `LimitAuth` (`auth:per-ip`, a hashing slot) and `auth:per-account`, recording `auth.password_checked` ([auth.md](auth.md#deleting)).
 
 ## Status codes
 
@@ -146,10 +146,10 @@ Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` r
 
 ## Adding an endpoint
 
-Name the route, its handler, permission, store method and events as in [../naming.md](../naming.md).
+Name the route, its controller, permission, store method and events as in [../naming.md](../naming.md).
 
-1. Handler and validation in `httpapi` (one file per resource). Handlers are methods on the resource's handler type, named after the action (`projectHandlers.index`, `.show`, `.store`, `.update`, `.destroy`); the query goes in `store`, taking the workspace's internal ID (`currentWorkspace(r).ID`).
-2. Register it in `routes.go`: workspace routes go in `workspaceRoutes` (`requireSession` and `requireWorkspace`), mutations with `ws.Can(…, auth.<Permission>, …)` ([auth.md](auth.md#protecting-a-new-endpoint)); account-level routes use `requireSession`.
+1. The controller and its validation in its area, `httpapi/endpoints/<area>/<resources>.go`, one controller per file ([naming](../naming.md#controllers)). Its methods are the actions (`workspace.Projects.Index`, `.Show`, `.Store`, `.Update`, `.Destroy`); the query goes in `store` (`h.Repo`), taking the workspace's internal ID (`httpapi.Workspace(r).ID`). What two areas need goes in the core, never imported from another area.
+2. Register it in `router/routes.go`: workspace routes go in `workspaceRoutes` (`RequireSession` and `RequireWorkspace`), mutations with `ws.Can(…, auth.<Permission>, …)` ([auth.md](auth.md#protecting-a-new-endpoint)); account-level routes use `RequireSession`.
 3. Rate limits: the budget is automatic; a route that creates rows also gets a `<feature>:per-user` limit, and anything that grows without bound a quota ([rate-limits.md](rate-limits.md#limiting-a-new-endpoint)).
-4. Integration tests for success, validation, 401, a non-member (404), another workspace's data (404 or empty), and a row in the role × route matrix (`workspaceRoutesMatrix`).
+4. Integration tests beside the controller (`endpoints/<area>/<resources>_integration_test.go`) for success, validation, 401, a non-member (404), another workspace's data (404 or empty), and a row in the role × route matrix (`workspaceRoutesMatrix`, in `router/permissions_integration_test.go`).
 5. Add it to this table.

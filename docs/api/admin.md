@@ -1,6 +1,6 @@
 # Admin dashboard
 
-Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate), `admin_auth.go` (sign-in), `admin_users.go`, `admin_workspaces.go`, `admin_events.go` and `admin_mail.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go` and `admin_mail.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/api/admin.ts`. Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md).
+Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate), `internal/httpapi/endpoints/admin`: `sessions.go` (sign-in), `users.go`, `workspaces.go`, `workspace_projects.go`, `events.go`, `mail.go` and `deliveries.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go` and `admin_mail.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/api/admin.ts`. Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md).
 
 Operators see every account and every workspace without running SQL against production. That view reads every user's data, so it's guarded by layers, each of which alone gets nobody in:
 
@@ -35,11 +35,11 @@ Admin pages and their redirects send `Referrer-Policy: no-referrer` (the key nev
 
 ## API
 
-Everything under `/api/admin/` checks `X-Admin-Key` first (`requireAdminKey`): a missing or wrong key gets exactly what an unknown API route gets, `404 {"error": "Not found."}` (the API's unknown-route answer is that JSON too, `unknownRoutesAsJSON`). So does any other path or method under `/api/admin/`, with the key or without. `security` (Origin, content type) runs before both.
+Everything under `/api/admin/` checks `X-Admin-Key` first (`RequireAdminKey`): a missing or wrong key gets exactly what an unknown API route gets, `404 {"error": "Not found."}` (the API's unknown-route answer is that JSON too, `unknownRoutesAsJSON`). So does any other path or method under `/api/admin/`, with the key or without. `security` (Origin, content type) runs before both.
 
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
-| POST | `/api/admin/login` | key, Origin, JSON, `limitAuth`, `auth:per-account` | `{mfaRequired: true}` or `{mfaSetupRequired: true}`, and the challenge cookie |
+| POST | `/api/admin/login` | key, Origin, JSON, `LimitAuth`, `auth:per-account` | `{mfaRequired: true}` or `{mfaSetupRequired: true}`, and the challenge cookie |
 | POST | `/api/admin/login/mfa/setup` | key, Origin, JSON (`{}`), an `admin_setup` challenge inside the setup window | `{secret, uri}`; replaces a pending secret. 401 otherwise (the challenge is ended) |
 | POST | `/api/admin/login/mfa` | key, Origin, JSON, a challenge, `auth:per-ip`, `mfa:per-account` | 200 `{user, csrfToken, expiresAt}` and the admin cookie; for an `admin_setup` challenge MFA is turned on and it's 201 with `recoveryCodes` too. 422 `field: "code"`; 401 when the challenge ended; 409 when the setup expired |
 | GET | `/api/admin/me` | key, admin session | `{user, csrfToken, expiresAt}`; 401 without one (the pages' probe) |
@@ -57,7 +57,7 @@ Everything under `/api/admin/` checks `X-Admin-Key` first (`requireAdminKey`): a
 
 - **Pagination** is the app's ([pagination.md](pagination.md)): `page`, `perPage`, and 400 for unknown or malformed parameters. Events and deliveries page by a cursor instead (log tables: [pagination.md](pagination.md#cursor-pages-log-tables)). A malformed or unknown ID is 404.
 - **Never in a response:** password hashes, MFA secrets, recovery codes, other users' session or CSRF tokens, internal IDs, the SMTP username and password. Project names and descriptions **are** shown (the workspace's projects, and event payloads as stored). `decodeAdmin` in the tests walks every admin response for such field names.
-- **Not scoped by membership, on purpose:** these queries see across workspaces, which is why they're only reachable behind both middlewares. `TestAdminRoutesStayInTheAdminGroup` fails if an `/api/admin` route is registered outside `adminRoutes`, or there without `requireAdminKey`.
+- **Not scoped by membership, on purpose:** these queries see across workspaces, which is why they're only reachable behind both middlewares. `TestAdminRoutesStayInTheAdminGroup` fails if an `/api/admin` route is registered outside `adminRoutes`, or there without `RequireAdminKey`.
 - **Admin status is never in an app response** (`/api/auth/me`). The one place an account learns it is an admin is turning MFA off: 409 "Admins must keep two-factor authentication on."
 
 ## Admins (`admins`)
@@ -107,7 +107,7 @@ setup:  POST …/mfa/setup → the QR code (hidden until revealed) → POST …/
 | Created by | login, register, password change | admin sign-in only, after a code |
 | Valid while | not expired | not expired, **still an admin, and made under the current key** |
 
-- `requireAdminSession` (after `requireAdminKey`) loads the session joined with `admins`, checks its `key_hash`, checks `X-CSRF-Token` on mutations, puts it in the context (`currentAdmin(r)`, `events.WithActor`) and counts reads against `admin-read:per-user` (1,000 / 5 min, in memory).
+- `RequireAdminSession` (after `RequireAdminKey`) loads the session joined with `admins`, checks its `key_hash`, checks `X-CSRF-Token` on mutations, puts it in the context (`httpapi.Admin(r)`, `events.WithActor`) and counts reads against `admin-read:per-user` (1,000 / 5 min, in memory).
 - **Independent of the app session.** Signing in to either never signs in to the other; signing out of one leaves the other. One browser can hold both. Only the token's digest is stored. `Store.Cleanup` deletes ended ones.
 
 ## Audit trail

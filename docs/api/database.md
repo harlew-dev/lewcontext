@@ -31,7 +31,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 
 - Every insert gets one, from the API, factories or seeders. Models map it as `PublicID string` with `bun:",nullzero"`, so Bun sends `DEFAULT`, and read it back with `Returning("*")`. Go never generates IDs.
 - JSON uses the public ID as `"id"`; the bigint `id` is `json:"-"` and stays internal (keys, joins, sort tie-breaks).
-- `httpapi.validPublicID(prefix, id)` checks the shape before any query.
+- `input.PublicID(prefix, id)` checks the shape before any query.
 
 ## Queries
 
@@ -49,7 +49,7 @@ Methods implementing an interface from elsewhere keep its names (`Claim`, `Deliv
 
 - All SQL lives in `internal/store`. Handlers never build queries.
 - **Deleting** relies on the foreign keys' `ON DELETE CASCADE` (and `SET NULL` for `events.actor_id` and `events.workspace_id`), in one transaction with the event. `DeleteWorkspace` and `DeleteAccount` take the workspace lock first, as every membership change does; `DeleteAccount` locks every workspace the user owns in `id` order, so two deletions can't deadlock ([endpoints.md](endpoints.md#deleting)).
-- **Scope by membership:** workspaces are only read through a `workspace_user` row for the session's user (`memberWorkspaces`). The one exception is the admin dashboard's reads (`admin_views.go`: `IndexAdminUsers`, `FindAdminUser`, `IndexAdminWorkspaces`, `FindAdminWorkspace`, `IndexAdminProjects`; `admin_events.go`: `IndexAdminEvents`, `FindAdminEvent`; `admin_mail.go`: `IndexAdminDeliveries`, `FindAdminMailSummary`), which see across workspaces on purpose and are reachable only behind the admin key and an admin session ([admin.md](admin.md)). Workspace data (projects) is scoped by the workspace's internal ID from `requireWorkspace`: `WHERE p.public_id = ? AND p.workspace_id = ?`, returning `sql.ErrNoRows` (404) when the row isn't in that workspace.
+- **Scope by membership:** workspaces are only read through a `workspace_user` row for the session's user (`memberWorkspaces`). The one exception is the admin dashboard's reads (`admin_views.go`: `IndexAdminUsers`, `FindAdminUser`, `IndexAdminWorkspaces`, `FindAdminWorkspace`, `IndexAdminProjects`; `admin_events.go`: `IndexAdminEvents`, `FindAdminEvent`; `admin_mail.go`: `IndexAdminDeliveries`, `FindAdminMailSummary`), which see across workspaces on purpose and are reachable only behind the admin key and an admin session ([admin.md](admin.md)). Workspace data (projects) is scoped by the workspace's internal ID from `RequireWorkspace`: `WHERE p.public_id = ? AND p.workspace_id = ?`, returning `sql.ErrNoRows` (404) when the row isn't in that workspace.
 - **Bun's builder only:** write queries with `NewSelect`/`NewInsert`/`NewUpdate`/`NewDelete` (and `With`, `ColumnExpr`, `WhereGroup` for the harder ones), in tests too; no SQL strings through `NewRaw`, `QueryContext` or `ExecContext`. Only `internal/database` (schemas, advisory locks) and migration files write SQL directly.
 - **Placeholders only:** values always go through Bun `?` placeholders, and SQL text is never built from input. Dynamic `ORDER BY` uses a fixed map of SQL strings (see [pagination.md](pagination.md)).
 - **Quotas** (`quotas.go`): `CreateWorkspace`, `CreateProject`, `CreateInvitation` and `AcceptInvitation` lock a row (the user's, or the workspace's) and count before inserting, returning `QuotaError` past the cap ([rate-limits.md](rate-limits.md#quotas)).

@@ -7,7 +7,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 ## How an event is recorded
 
 - **Same transaction as the change.** Store methods that change data call `record(ctx, tx, event, scope)` inside their transaction, so a change and its event are saved together or not at all. A change that fails leaves no event; an event that can't be written undoes its change.
-- **Events without a data change** (a login attempt, a rate limit reached, a password check) are written on their own with `s.Store.Record(ctx, event, scope)`. If that write fails, the request fails with 500.
+- **Events without a data change** (a login attempt, a rate limit reached, a password check) are written on their own with `s.Repo.Record(ctx, event, scope)`. If that write fails, the request fails with 500.
 - **No table locks.** Recording is an ordinary insert.
 - **Queued with it.** `record` also inserts one `event_deliveries` row per listener of that event (`Store.Listeners`, the server's bus), in the same transaction.
 
@@ -17,11 +17,11 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | --- | --- |
 | `public_id` | `evt_` + 14 base62 |
 | `name` | `<resource>.<fact>` ([naming.md](../naming.md#events-internalevents)), e.g. `project.updated`, `workspace.member.removed`; a CHECK allows two or three snake_case segments |
-| `actor_id` | Who acted: the signed-in user (`events.WithActor`, set by `requireSession`), or the user who registered or signed in. Null for login attempts and anonymous rate limits, and once the actor's account is deleted |
+| `actor_id` | Who acted: the signed-in user (`events.WithActor`, set by `RequireSession`), or the user who registered or signed in. Null for login attempts and anonymous rate limits, and once the actor's account is deleted |
 | `user_id` | The account the event is about (auth events, and the member in member events). Deleting the account deletes these events |
 | `workspace_id` | The workspace (workspace and project events). Deleting the workspace sets it to null; the events stay, readable through the `wsp_` in their payload, until pruned |
 | `payload` | The event struct as JSON (`jsonb`) |
-| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithIP`, set by `clientAddress` from `clientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
+| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithIP`, set by `ClientAddress` from `httpapi.ClientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
 | `created_at` | When |
 
@@ -82,7 +82,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 ## What's stored, and what never is
 
 - **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, MFA secrets, codes and recovery codes (or their digests), challenge tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
-- **Personal data, on purpose:** the client IP of every event recorded during a request (the `ip` column), the email typed on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `clientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
+- **Personal data, on purpose:** the client IP of every event recorded during a request (the `ip` column), the email typed on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `httpapi.ClientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered; so are `auth.registration.requested` and `.checked`. Only the listener's `auth.registration.sent`, after the response, says whether the email had an account.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `rate_limit.reached`, so a flood writes one row per limit.
 - Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
@@ -121,6 +121,6 @@ The server runs one worker (`cmd/server`); every server process runs its own, sh
 ## Adding an event
 
 1. A struct in `internal/events/<area>.go` with JSON tags and an `EventName()` returning `<resource>.<fact>` ([naming.md](../naming.md#events-internalevents)), added to `events.Catalogue`. Identify records by public ID; never add secrets.
-2. Record it in the store method that makes the change, inside its transaction, with an `EventScope` for the columns. Use `s.Store.Record` only for events with no data change.
-3. An integration test that the endpoint writes exactly one event with the right name, scope and payload (`eventsNamed`, `onlyEvent` in `httpapi/events_integration_test.go`), and nothing when the request is refused.
+2. Record it in the store method that makes the change, inside its transaction, with an `EventScope` for the columns. Use `s.Repo.Record` only for events with no data change.
+3. An integration test that the endpoint writes exactly one event with the right name, scope and payload (`apitest.EventsNamed`, `apitest.OnlyEvent`), and nothing when the request is refused.
 4. Add it to the catalogue above.

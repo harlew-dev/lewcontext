@@ -22,8 +22,8 @@ Every check follows the same shape:
 | Check | Where | Reads | Rule |
 | --- | --- | --- | --- |
 | `TestStoreMethodNames` | `internal/store/naming_test.go` | reflection on `*Store` | Every exported method starts with `Index`, `Find`, `Create`, `Update`, `Delete` or `Check`, or with a listed domain verb: `Rename`, `Remove`, `Leave`, `Issue`, `Reset`, `Change`, `Record`, `Count`, `Prune`, `Allow`, `Cleanup`. Methods of `events.Queue` (`Claim`, `Delivered`, `Fail`, `Retry`) are exempt, read from the interface type rather than listed, and the test asserts `*Store` implements it. `Index…` methods return `Page[T]` and an error. |
-| `TestHandlerNames` | `internal/httpapi/naming_test.go` | the package's Go source | Every type named `<resource>Handlers` embeds `*Server`, and its methods are `index`, `show`, `store`, `update`, `destroy` or a listed named verb (none today; invitations adds `accept`). |
-| `TestRouteNames` | `internal/httpapi/naming_test.go` | `routes.go` source | Every route's method is GET, POST, PATCH or DELETE (no PUT). Every route outside `/api/auth/*` and `/api/health` is registered with `<var>.<action>`, where `<var>` is a `…Handlers` value: no bare `s.something` handlers outside auth. |
+| `TestHandlerNames` | (done: `TestHTTPLayout`, `internal/httpapi/layout_test.go`) | the `httpapi` tree's Go source | Moved into `TestHTTPLayout` by the [httpapi layout](implemented/httpapi-layout.md): controllers (structs embedding `*httpapi.Server`) only in `endpoints/<area>`, one per file, their exported methods `Index`, `Show`, `Store`, `Update`, `Destroy` or a listed named action. |
+| `TestRouteNames` | `internal/httpapi/router/routes_test.go` | `router/routes.go` source | Every route's method is GET, POST, PATCH or DELETE (no PUT). Every route outside `/api/health` is registered with `<var>.<Action>`, where `<var>` is a controller value (`workspace.Projects{Server: s}`): no bare `s.something` handlers. |
 | `TestPermissionNames` | `internal/auth/permissions_test.go` | `permissions.go` source (the existing `declaredPermissions`, extended to return the constant's name) | Each permission is `<resource>.<action>`: snake_case segments ending in `index`, `show`, `store`, `update` or `destroy`. The Go constant is the same words in PascalCase (`workspace.member.destroy` → `WorkspaceMemberDestroy`). `AnyMember` is exempt. |
 | `TestEventResources` | `internal/events/events_test.go` | `events.Catalogue`, and `auth`'s permissions | A three-segment event's resource (`workspace.member` in `workspace.member.removed`) is a permission resource (a permission name minus its action), or is listed as a stored resource without permissions (`auth.password_reset`). The existing `TestEventNamePattern` already checks the shape. |
 
@@ -88,7 +88,7 @@ A new doc for people and AI agents. It explains what the checks enforce and how 
 
 ## Security risks and how they're avoided
 
-No runtime change: tests, a script and a Makefile line. The checks protect security conventions indirectly. `TestRouteNames` keeps auth-style `s.handler` routes confined to `/api/auth/*`, so a new resource route goes through a handler type, the `ws` group and `ws.Can`, where the role × route matrix covers it.
+No runtime change: tests, a script and a Makefile line. The checks protect security conventions indirectly. `TestRouteNames` keeps every route on a controller, so a new resource route goes through a controller, the `ws` group and `ws.Can`, where the role × route matrix covers it.
 
 | Risk | Mitigation |
 | --- | --- |
@@ -100,7 +100,7 @@ No runtime change: tests, a script and a Makefile line. The checks protect secur
 
 - Each check's table test: good names pass; bad names fail with the expected reason. For example, `ProjectList` and `Projects` for store methods; `create` and `list` for handlers; `PUT` routes; `workspace.member.remove` and a constant spelled differently from its permission; `workspace.membership.removed` as an unknown event resource; `create` in the API client; `routes.projectList`; a page exported as `Projects`; `ProjectTable.tsx`; a dead link, a dead anchor and a link to an untracked file for the script.
 - Run on the real code: all pass.
-- Run `gofmt`, `go vet`, `make test`, `make check` (which now includes the link check) and `make build`. No integration or e2e change is expected, but run `make test-integration` once, since `TestRouteNames` sits beside the integration tests.
+- Run `gofmt`, `go vet`, `make test`, `make check` (which now includes the link check) and `make build`. No integration or e2e change is expected, but run `make test-integration` once, since `TestRouteNames` sits beside the router's integration tests.
 
 ## Decisions (to confirm)
 

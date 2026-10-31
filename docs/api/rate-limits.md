@@ -1,21 +1,21 @@
 # Rate limits and quotas
 
-Code: `internal/httpapi/limits.go` (the limits, `allow`, `limit`, `meter`), `internal/httpapi/memlimit.go` (the in-memory counter), `internal/store/rate_limits.go` (`Store.Allow`), `internal/store/quotas.go`. Plan: [plans/features/implemented/rate-limits.md](../../plans/features/implemented/rate-limits.md).
+Code: `internal/httpapi/limits.go` (the limits, `Allow`, `Limit`, `meter`), `internal/httpapi/ratelimit` (what a limit is, its keys and messages, the in-memory counter), `internal/store/rate_limits.go` (`Store.Allow`), `internal/store/quotas.go`. Plan: [plans/features/implemented/rate-limits.md](../../plans/features/implemented/rate-limits.md).
 
 ## Three layers
 
 ```
-request ─▶ security (Origin, content type) ─▶ requireSession (session, CSRF)
+request ─▶ security (Origin, content type) ─▶ RequireSession (session, CSRF)
                                               │
                                               ├─ GET:   api-read:per-user   (in memory)
                                               └─ write: api:per-user        (database)
-                ─▶ requireWorkspace ─▶ can(permission)
+                ─▶ RequireWorkspace ─▶ can(permission)
                 ─▶ limit(<feature>:per-user, …)   only on routes that create rows
-                ─▶ handler ─▶ store: quota check in the insert's transaction
+                ─▶ controller ─▶ store: quota check in the insert's transaction
 ```
 
-- **Budgets** (`api:per-user`, `api-read:per-user`) are counted inside `requireSession` (`meter`), so every signed-in route has one, including routes added later.
-- **Feature limits** are named per route in `routes.go`, next to the permission, so a route shows everything that guards it on one line:
+- **Budgets** (`api:per-user`, `api-read:per-user`) are counted inside `RequireSession` (`meter`), so every signed-in route has one, including routes added later.
+- **Feature limits** are named per route in `router/routes.go`, next to the permission, so a route shows everything that guards it on one line:
 
   ```go
   ws.Can("POST", "/projects", auth.ProjectStore, s.limit(projectPerUser, projects.store))
@@ -28,11 +28,11 @@ request ─▶ security (Origin, content type) ─▶ requireSession (session, C
 
 - **Fixed windows.** A key's count starts at the first hit and resets when its window ends. Successful requests count too.
 - **The same for every email.** Limits counted by an email that may or may not have an account (`password-reset:per-email`, `invitation:per-email`, `register:per-email`, `email-code:per-email`) count every address alike, so a 429 never says whether the address is registered.
-- **Signed in, counted by user;** signed out (register, login, password reset), by client IP: `l.ipKey(r)`, never `l.key(clientIP(r))`. Counting signed-in traffic by IP would let one user lock out their whole office.
-- **The client IP** is the connection's address, or behind a proxy the one in `CLIENT_IP_HEADER`, believed only from `TRUSTED_PROXIES` ([auth.md](auth.md#rate-limits), [deployment](../deployment.md#behind-a-proxy-or-load-balancer)). Without them, everyone behind one proxy shares an IP. **IPv6 is counted by its /64** (`limitSubject`), since one user usually holds a whole /64 and could otherwise step around a limit by changing the last bits; IPv4 by the address.
+- **Signed in, counted by user;** signed out (register, login, password reset), by client IP: `l.IPKey(httpapi.ClientIP(r))`, never `l.Key(httpapi.ClientIP(r))`. Counting signed-in traffic by IP would let one user lock out their whole office.
+- **The client IP** is the connection's address, or behind a proxy the one in `CLIENT_IP_HEADER`, believed only from `TRUSTED_PROXIES` ([auth.md](auth.md#rate-limits), [deployment](../deployment.md#behind-a-proxy-or-load-balancer)). Without them, everyone behind one proxy shares an IP. **IPv6 is counted by its /64** (`Limit.IPKey`), since one user usually holds a whole /64 and could otherwise step around a limit by changing the last bits; IPv4 by the address.
 - **After the CSRF check.** A forged request, or one without the user's token, is refused before it counts, so another site can't spend someone's budget.
 - **In the database** (`rate_limits`: `key`, `hits`, `resets_at`), exact across servers, for writes, sign-in and mail. Keys are `<name>:<sha256 of the subject>` (an IPv4 address or IPv6 /64, an email or a user's `usr_` ID), or the bare name for a limit shared by everyone, so the table holds no addresses or IDs. The server's 15-minute cleanup deletes ended windows.
-- **In memory** (`memoryLimiter`) for reads only: no database write per request, but each server process counts on its own, so with N servers a user gets N times the read budget. Ended windows are swept at most once a minute.
+- **In memory** (`ratelimit.Memory`) for reads only: no database write per request, but each server process counts on its own, so with N servers a user gets N times the read budget. Ended windows are swept at most once a minute.
 - **Order:** the budget first, then feature limits, and per-subject limits before shared ones, so a client its own limit refuses doesn't spend a limit shared by everyone.
 
 ## Every limit
@@ -43,14 +43,14 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | --- | --- | --- | --- | --- | --- |
 | `api:per-user` | 300 / 15 min | session user | database | every signed-in write, except the recovery routes below | 429 |
 | `api-read:per-user` | 1,000 / 5 min | session user | memory | every signed-in GET: about 3 a second sustained | 429 |
-| `admin-read:per-user` | 1,000 / 5 min | admin user | memory | every admin dashboard read (`requireAdminSession`), the admin's own budget ([admin.md](admin.md)) | 429 |
+| `admin-read:per-user` | 1,000 / 5 min | admin user | memory | every admin dashboard read (`RequireAdminSession`), the admin's own budget ([admin.md](admin.md)) | 429 |
 | `workspace:per-user` | 10 / hour | session user | database | `POST /api/workspaces` | 429 |
 | `project:per-user` | 100 / hour | session user | database | `POST …/projects`, across all of the user's workspaces | 429 |
 | `invitation:per-user` | 20 / hour | session user | database | `POST …/invitations`, across all of the user's workspaces: each one emails an address the inviter chooses | 429 |
 | `invitation:per-email` | 5 / hour | invited email | database | `POST …/invitations`, once the body is valid, from any inviter or workspace: caps mail to one inbox. Counted for every address, registered or not | 429 "This email address has had too many invitations recently. Try again in …" |
 | `invitation:global` | 200 / hour | everyone | database | `POST …/invitations`, once the body is valid. Logs a warning | 503 "Invitations are busy. Try again later." |
-| `auth:per-ip` | 60 / 15 min | IP | database | `limitAuth`: register, login (and the admin door's), both signed-in password endpoints, deleting a workspace or the account, setting up, turning off and renewing the codes of two-factor authentication, the reset itself; directly on reset requests and checks, on a sign-in's second factor, and on a sign-up's `register/check`, `/resend` and `/verify` | 429 |
-| `auth:per-account` | 10 / 15 min | email | database | `accountLimit`: register, login (the app's and the admin door's, sharing one allowance), both signed-in password endpoints, both deletions and the MFA routes that check the password (the session user's email), so a stolen session can't guess faster than a login. Password reset never touches it | 429 |
+| `auth:per-ip` | 60 / 15 min | IP | database | `LimitAuth`: register, login (and the admin door's), both signed-in password endpoints, deleting a workspace or the account, setting up, turning off and renewing the codes of two-factor authentication, the reset itself; directly on reset requests and checks, on a sign-in's second factor, and on a sign-up's `register/check`, `/resend` and `/verify` | 429 |
+| `auth:per-account` | 10 / 15 min | email | database | `AccountLimit`: register, login (the app's and the admin door's, sharing one allowance), both signed-in password endpoints, both deletions and the MFA routes that check the password (the session user's email), so a stolen session can't guess faster than a login. Password reset never touches it | 429 |
 | `mfa:per-account` | 5 / 15 min | user (`usr_` ID) | database | every second-factor check: `POST /api/auth/login/mfa` and the admin door's `POST /api/admin/login/mfa` (after `auth:per-ip`, once the challenge names the user), enabling, disabling, new recovery codes. Each guess covers 3 of a million codes, so an attacker who has the password reaches about 0.14% a day. A challenge also ends after 5 wrong codes | 429 |
 | `register:per-ip` | 10 / hour | IP | database | register, once the body is valid | 429 |
 | `register:per-email` | 3 / hour | email typed | with `EMAIL_VERIFICATION=on`: register and `register/resend`, once the body is valid, every address alike, account or not (each one emails it) | 429 "This email address has had too many sign-up attempts recently. Try again in …" |
@@ -65,7 +65,7 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 
 Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `register:per-email` (verification on) → `register:global`; a sign-up's code `auth:per-ip` → `email-code:per-email`; an invitation `invitation:per-user` → `invitation:per-email` → `invitation:global`; a reset request `auth:per-ip` → `password-reset:per-ip` → `password-reset:per-email` → `password-reset:global`. Each stops at the first refusal.
 
-**Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `requireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows.
+**Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `RequireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows.
 
 **Not limited:** a wrong admin key (no query is made, and guessing 122 bits or more is hopeless), `GET /api/health` (orchestrator probes; put it behind an edge limiter if it's ever public) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
 
@@ -86,18 +86,18 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 ## Responses
 
 - **429** "Too many requests. Try again in 12 minutes." (or "Too many attempts…" for `auth:*`, `password-reset:per-*` and `email-code:per-email`). `Retry-After` and the message give the **time left in the window**: seconds rounded up, and minutes rounded up ("a minute", "12 minutes", "an hour"), or past an hour whole hours ("3 hours").
-- **503** with the limit's `busy` message for limits shared by everyone, with `Retry-After`, and `slog.Warn` the first time in a window.
+- **503** with the limit's `Busy` message for limits shared by everyone, with `Retry-After`, and `slog.Warn` the first time in a window.
 - **`rate_limit.reached`** is recorded the first time a limit is reached in a window, with `limit` (`<name>:block`), `user` and `workspace` when known, `window` and `resetsAt`, and the client IP in its `ip` column ([events.md](events.md)). A flood writes one event per limit per window.
 - The web app shows the API's message as it is, and SWR doesn't retry a 4xx read, so a 429 doesn't spend more of the budget ([ui/api.md](../ui/api.md#reading-data-useresource-libuse-resourcets)).
 
 ## Switching limits off for tests: `RATE_LIMITS`
 
-`RATE_LIMITS=off` makes `allow` pass everything and count nothing; quotas and the hashing slots still apply, and the server logs a warning at startup. It exists for the end-to-end tests, which sign up about a dozen users from one IP per run ([ui/testing.md](../ui/testing.md)). Production refuses it. The default is `on`.
+`RATE_LIMITS=off` makes `Allow` pass everything and count nothing; quotas and the hashing slots still apply, and the server logs a warning at startup. It exists for the end-to-end tests, which sign up about a dozen users from one IP per run ([ui/testing.md](../ui/testing.md)). Production refuses it. The default is `on`.
 
 ## Limiting a new endpoint
 
-1. **Signed in:** nothing to do for the budget; `requireSession` meters it. Use `requireSessionUnmetered` only for a route that must keep working when the budget is used up (recovery), and say why in `routes.go`.
-2. **Creates rows or sends mail:** declare a `rateLimit` in `limits.go` named `<feature>:per-user` (add it to `rateLimits`), and wrap the handler with `s.limit(…)` in `routes.go`.
-3. **Grows without bound:** add a quota check in the store method's transaction, under a row lock, returning `QuotaError`; map it to 422 in the handler.
-4. **Signed out:** write the limits out in the handler, per IP first, then any shared (`global`) one with a `busy` message. Count only once the body is valid if a shared limit is involved.
+1. **Signed in:** nothing to do for the budget; `RequireSession` meters it. Use `RequireSessionUnmetered` only for a route that must keep working when the budget is used up (recovery), and say why in `router/routes.go`.
+2. **Creates rows or sends mail:** declare a `ratelimit.Limit` in `httpapi/limits.go` named `<feature>:per-user` (add it to `RateLimits`), and wrap the action with `s.Limit(httpapi.<Feature>PerUser, …)` in `router/routes.go`.
+3. **Grows without bound:** add a quota check in the store method's transaction, under a row lock, returning `QuotaError`; map it to 422 in the controller.
+4. **Signed out:** write the limits out in the controller with `h.Allow(w, r, limit, key)`, per IP first, then any shared (`global`) one with a `Busy` message. Count only once the body is valid if a shared limit is involved.
 5. **Tests:** pre-fill the counter with `factory.RateLimits.State(factory.ForLimit(name, subject)).State(factory.Exhausted(n))` and send one request: 429 or 503, `Retry-After` within the window, one `rate_limit.reached` ([testing.md](testing.md)). Add the route to the table above.

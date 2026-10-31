@@ -1,6 +1,6 @@
 # Pagination, search and sort
 
-Lists are paged, filtered and sorted in the API, never in the browser. Code: `internal/store/pagination.go` (shared), `internal/httpapi/pagination.go` (parsing), `internal/store/projects.go` and `internal/httpapi/projects.go` (projects), `internal/store/workspaces.go` and `internal/httpapi/workspaces.go` (workspaces), `internal/store/members.go` and `internal/httpapi/members.go` (members).
+Lists are paged, filtered and sorted in the API, never in the browser. Code: `internal/store/pagination.go` (shared), `internal/httpapi/input/query.go` (parsing), `internal/store/projects.go` and `internal/httpapi/endpoints/workspace/projects.go` (projects), `internal/store/workspaces.go` and `internal/httpapi/endpoints/workspace/workspaces.go` (workspaces), `internal/store/members.go` and `internal/httpapi/endpoints/workspace/members.go` (members).
 
 ## Response
 
@@ -39,7 +39,7 @@ Unknown, repeated or malformed parameters return 400. Signs, spaces and exponent
 
 ## How it is safe
 
-- **Scoped first:** the base query starts with `WHERE p.workspace_id = ?` (the member's workspace from `requireWorkspace`), and both the count and the rows use it.
+- **Scoped first:** the base query starts with `WHERE p.workspace_id = ?` (the member's workspace from `RequireWorkspace`), and both the count and the rows use it.
 - **Search:** `%`, `_` and `\` are escaped (`containsPattern`) and bound with `?`, so `50%` matches literally.
 - **Sort:** keys map to fixed SQL in `projectSorts`, and no column name comes from input. Every order ends in `p.id`, so equal values never repeat or go missing across pages. `status` sorts in workflow order (Planned → In progress → Completed).
 - **Bounded:** the page cap limits `OFFSET` to about 1M skipped rows, and the 10 s request timeout applies.
@@ -71,8 +71,8 @@ func (s *Store) IndexTasks(ctx context.Context, workspaceID int64, f TaskFilter,
 
 ```go
 // httpapi: allow-list the parameters, then parse.
-params, ok := queryParams(r, "page", "perPage", "q", "sort")
-req, ok := pageRequest(params)
+params, ok := input.Query(r, "page", "perPage", "q", "sort")
+req, ok := input.Page(params)
 ```
 
 `Paginate` adds only `LIMIT`/`OFFSET` and runs Bun's `ScanAndCount`. It never adds a `WHERE` clause itself.

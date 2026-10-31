@@ -1,6 +1,6 @@
 # Authentication and security
 
-Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `internal/httpapi/middleware.go` (security, sessions, limits), `internal/store/sessions.go`.
+Code: `internal/auth` (primitives), `internal/httpapi/endpoints/account` (the controllers), `internal/httpapi/credentials.go`, `sessions.go` and `middleware.go` (the checks, sessions and limits they share), `internal/store/sessions.go`.
 
 ## Passwords
 
@@ -8,13 +8,13 @@ Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `inte
 - Sign-up requires 12+ Unicode characters; every password is at most 128 UTF-8 bytes. Login only checks that cap, so seeded development accounts with a short `DEMO_PASSWORD` (`password`) can sign in. Emails are trimmed and lowercased; names are 1–80 characters.
 - Login against an unknown email still checks a dummy hash, and every failure gives the same message.
 - At most 4 password hashes run at once per process (503 when busy).
-- **Deleting a workspace or the account** also checks the current password, in the same request, the same way (`passwordConfirmed`: `auth:per-account`, behind `limitAuth`), so a stolen session can't destroy either ([Deleting](#deleting)).
+- **Deleting a workspace or the account** also checks the current password, in the same request, the same way (`PasswordConfirmed`: `auth:per-account`, behind `LimitAuth`), so a stolen session can't destroy either ([Deleting](#deleting)).
 - **Changing the password** (signed in) takes the current password twice: `POST /api/auth/password/verify` checks it so the web app can move on to the new one, and `PATCH /api/auth/password` checks it again, because nothing remembers that the first check passed. The new password follows the sign-up rule and must differ from the current one. Verifying, saving the new hash and deleting **every** session of the user's run in one transaction with the user row locked; then this browser gets a new session (cookie and CSRF token), like login. A wrong current password is 422 with `field`, not 401, which the web app treats as an expired session.
 - Plaintext passwords are never logged or stored.
 
 ## Password reset by link
 
-Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`, `internal/mail` (listener and mailbox). Plan: [plans/features/implemented/forgot-password.md](../../plans/features/implemented/forgot-password.md).
+Code: `internal/httpapi/endpoints/account/password_resets.go`, `internal/store/password_resets.go`, `internal/mail` (listener and mailbox). Plan: [plans/features/implemented/forgot-password.md](../../plans/features/implemented/forgot-password.md).
 
 1. **Request** (`POST /api/auth/password-reset {email}`): after the rate limits below, the API records `auth.password_reset.requested` with the email and IP and answers `202`. It doesn't look the account up, so the status, body and timing are the same for every email.
 2. **Listener** (`mail.password_reset`, run by the worker about a second later): for an email with an account, it makes a 256-bit token (`auth.Token`), stores only its SHA-256 digest in `password_resets` (one row per user, so a newer link replaces the older one), sends the link `APP_ORIGIN + /auth/forgot-password/<token>` with `mailer.Send`, and records `auth.password_reset.sent`. An email without an account gets nothing. Requests older than the link's 30-minute lifetime are dropped, since retries can run an hour later. The token is never in the database, an event or the server log.
@@ -27,11 +27,11 @@ Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`,
 
 ## Email verification
 
-Code: `internal/httpapi/registration.go` (sign-up), `email_verification.go` (signed in), `internal/store/registrations.go`, `email_verifications.go`, `internal/mail/registration.go` (both listeners), `internal/auth/email_code.go`, `internal/config/verification.go`. Plan: [plans/features/implemented/email-verification.md](../../plans/features/implemented/email-verification.md).
+Code: `internal/httpapi/endpoints/account/registrations.go` (sign-up), `endpoints/account/email_verification.go` (signed in), `internal/store/registrations.go`, `email_verifications.go`, `internal/mail/registration.go` (both listeners), `internal/auth/email_code.go`, `internal/config/verification.go`. Plan: [plans/features/implemented/email-verification.md](../../plans/features/implemented/email-verification.md).
 
 `EMAIL_VERIFICATION=on` (the default; refused with `MAIL_DRIVER=off`) proves every new account owns its email with a 6-digit code, and closes the last place that said whether an email has an account. `off` signs up as before: the account at once, unverified, and 409 "Unable to create this account…" for a taken email.
 
-**Signing up** (`internal/httpapi/registration.go`):
+**Signing up** (`internal/httpapi/endpoints/account/registrations.go`):
 
 1. **Register** (`POST /api/auth/register`, the same validation and limits, plus `register:per-email`): hashes the password, saves a row in `pending_registrations` (15 minutes), records `auth.registration.requested {email, ip}`, sets the **registration cookie** (`lewcontext_registration`, `__Host-` in production; a 256-bit token, HttpOnly, SameSite=Strict, 15 minutes) and answers 202 `{verificationRequired, email}`. **No account exists until the code is right**, so with verification on `users` only gains verified accounts.
 2. **Listener** (`mail.registration`, after the response): makes a code and stores its HMAC on the row (found by the requested event's `evt_` ID). For a new email it sends `verify-email` with the code. For an email that has an account it stores the HMAC of a code **nobody is sent** and emails **"You already have an account"** instead, with Sign in (`/auth/login?notice=account-exists`) and Reset password links and no code: nothing in sign-up can change an existing account. That email is capped at 5 a day per account (`account-exists:per-account`), in the listener, silently ([mail.md](mail.md#a-limit-in-a-listener)).
@@ -46,13 +46,13 @@ Code: `internal/httpapi/registration.go` (sign-up), `email_verification.go` (sig
 **Existing accounts** (made while it was off, or before it existed) have `email_verified_at` null:
 
 - **Account settings** (with verification on): the email's label says Verified or Not verified, and an unverified one offers **Verify email**: `POST /api/auth/email-verification` records `auth.email_verification.requested`, whose `mail.email_verification` listener emails a code (one per account in `email_verifications`, replacing the last); `PATCH … {code}` verifies (422 wrong, 410 ended, 409 already verified) and records `auth.email_verified {via: "code"}`. Limits: `email-verification:per-email` (3 an hour), `email-verification:global` (500 an hour), `email-code:per-email`.
-- **`EMAIL_VERIFICATION_EXISTING=required`**: such an account signs in as usual (password, then MFA), but `requireSession` refuses it every route with 403 `{verificationRequired: true}` except reading the session, signing out, signing out other sessions and the two verification routes, which `allowUnverified` marks in `routes.go` (`TestOnlyFiveRoutesAllowUnverified`). The web app sends it to `/app/verify-email`. Codes go out only when it presses Send code.
+- **`EMAIL_VERIFICATION_EXISTING=required`**: such an account signs in as usual (password, then MFA), but `RequireSession` refuses it every route with 403 `{verificationRequired: true}` except reading the session, signing out, signing out other sessions and the two verification routes, which `AllowUnverified` marks in `router/routes.go` (`TestOnlyFiveRoutesAllowUnverified`). The web app sends it to `/app/verify-email`. Codes go out only when it presses Send code.
 - **A completed password reset verifies the email** (`auth.email_verified {via: "password_reset"}`): the link went only to that inbox, and whoever uses it controls the account anyway.
 - **Admins' door isn't gated**; their app sessions are.
 
 ## Two-factor authentication
 
-Code: `internal/auth/totp.go`, `encrypt.go`, `recovery.go` (primitives), `internal/httpapi/mfa.go` (handlers), `internal/store/mfa.go`. Plan: [plans/features/implemented/mfa.md](../../plans/features/implemented/mfa.md).
+Code: `internal/auth/totp.go`, `encrypt.go`, `recovery.go` (primitives), `internal/httpapi/endpoints/account/mfa.go` and `recovery_codes.go` (the controllers), `internal/httpapi/second_factor.go` (checking codes and setting MFA up, shared with the admin door), `internal/store/mfa.go`. Plan: [plans/features/implemented/mfa.md](../../plans/features/implemented/mfa.md).
 
 Optional for every account (Account settings → Two-factor authentication → **Enable**): codes from an authenticator app (TOTP, RFC 6238), plus 10 single-use recovery codes.
 
@@ -95,9 +95,9 @@ Signed-in mutations also need `X-CSRF-Token`: an independent random token return
 
 Sign-in, sign-up (and its codes) and password reset are limited per IP, per account or email, and for everyone, and every signed-in request has a budget per user, with tighter limits on creating workspaces and projects and quotas on how many can exist. All of it is in [rate-limits.md](rate-limits.md). What matters here:
 
-- `auth:per-ip` (60 / 15 min) and `auth:per-account` (10 / 15 min) guard every password check: `limitAuth` (the IP limit and a hashing slot) and `accountLimit`. Both deletions and the signed-in password endpoints use the session user's email, so a stolen session can't guess the password faster than a login could.
+- `auth:per-ip` (60 / 15 min) and `auth:per-account` (10 / 15 min) guard every password check: `LimitAuth` (the IP limit and a hashing slot) and `AccountLimit`. Both deletions and the signed-in password endpoints use the session user's email, so a stolen session can't guess the password faster than a login could.
 - Logout, revoking other sessions, the password endpoints, turning MFA off and new recovery codes skip the signed-in budget, so a stolen session can't use it up to stop its owner.
-- **The client IP** is `clientIP(r)` (`httpapi/client_ip.go`), worked out once per request by `clientAddress`. It is the connection's address, unless `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` are set **and** the connection comes from a trusted proxy: then it is the header's address (`X-Forwarded-For` read from the right, skipping trusted proxies; the single-value headers only when they hold exactly one address). A header from any other connection is ignored, so a client can't forge one for fresh limits or fake audit IPs. Without the variables, everyone behind a proxy (and Vite's dev proxy) shares one IP. Per-IP limits count IPv6 clients by their /64. A scaled deployment still needs an edge limiter. Account lockout abuse is possible with this fixed-window design.
+- **The client IP** is `httpapi.ClientIP(r)` (`httpapi/client_ip.go`), worked out once per request by `ClientAddress`. It is the connection's address, unless `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` are set **and** the connection comes from a trusted proxy: then it is the header's address (`X-Forwarded-For` read from the right, skipping trusted proxies; the single-value headers only when they hold exactly one address). A header from any other connection is ignored, so a client can't forge one for fresh limits or fake audit IPs. Without the variables, everyone behind a proxy (and Vite's dev proxy) shares one IP. Per-IP limits count IPv6 clients by their /64. A scaled deployment still needs an edge limiter. Account lockout abuse is possible with this fixed-window design.
 
 ## Admin dashboard
 
@@ -135,8 +135,8 @@ Data belongs to workspaces; users reach a workspace through a `workspace_user` r
 
 A viewer reads everything except the member and invitation lists (which hold other people's emails) and changes nothing. For actions on another person's role, `Role.AssignableRoles()` also says which roles may be targeted: an owner any role, an admin only `member` and `viewer` (so only owners create admins or touch owners), others none. An action on a member needs the permission, and the target's current role (and, for a role change, the new one) in that list; otherwise 403. Acting on yourself goes through leaving, not `members/{usr}` (422).
 
-- **`requireWorkspace`** (after `requireSession`) checks the `{workspace}` ID's shape, then loads it through the session user's membership in one query. A non-member, a missing workspace and a malformed ID all get the same 404, so workspace IDs can't be probed. The workspace and role go in the request context (`currentWorkspace(r)`).
-- **`ws.Can(method, path, permission, handler)`** registers a workspace route behind `requirePermission`, which answers 403 when `currentWorkspace(r).Role.Can(permission)` is false. The `ws` group panics at startup on any other mutation (`Handle` with a method other than GET or HEAD), so a mutation can't ship without naming its permission; one every member may do names `auth.AnyMember`. Unknown roles grant nothing.
+- **`RequireWorkspace`** (after `RequireSession`) checks the `{workspace}` ID's shape, then loads it through the session user's membership in one query. A non-member, a missing workspace and a malformed ID all get the same 404, so workspace IDs can't be probed. The workspace and role go in the request context (`httpapi.Workspace(r)`).
+- **`ws.Can(method, path, permission, handler)`** registers a workspace route behind `RequirePermission`, which answers 403 when `httpapi.Workspace(r).Role.Can(permission)` is false. The `ws` group panics at startup on any other mutation (`Handle` with a method other than GET or HEAD), so a mutation can't ship without naming its permission; one every member may do names `auth.AnyMember`. Unknown roles grant nothing.
 - The workspace response carries `permissions` and `assignableRoles`, computed from the role, and the web app hides controls with `can(workspace, permission)` instead of keeping its own copy of the rules. The API is what enforces them.
 - Creating a workspace makes the creator its `owner`, in the same transaction.
 - **Members** (`internal/store/members.go`): changing a role, removing someone and leaving each run in one transaction that first locks the workspace row (`FOR UPDATE`), then re-reads the actor's role and the target's membership, so concurrent changes are serialised. A change that would leave no owner (demoting, removing or leaving as the only owner) is refused with 409 (`ErrLastOwner`); two owners demoting each other at once leave one. Promoting someone to owner, then stepping down, is how ownership moves. Workspace responses carry `canLeave` (false for the only owner) so the web app can say so before you try.
@@ -146,7 +146,7 @@ A viewer reads everything except the member and invitation lists (which hold oth
 
 ## Invitations
 
-Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `internal/mail/workspace_invitation.go` (the listener). Plan: [plans/features/implemented/workspace-invitations.md](../../plans/features/implemented/workspace-invitations.md).
+Code: `internal/httpapi/endpoints/workspace/invitations.go`, `internal/store/invitations.go`, `internal/mail/workspace_invitation.go` (the listener). Plan: [plans/features/implemented/workspace-invitations.md](../../plans/features/implemented/workspace-invitations.md).
 
 1. **Invite** (`POST …/invitations {email, role}`, `workspace.invitation.store`): the role must be in your `assignableRoles`, and never `owner` (invite as admin, then promote, so a link can't grant ownership). Under the workspace lock the store reads your role again, then refuses an existing member, a live invitation to the same email (an expired one is replaced), the 51st live one and the member quota (100 members plus live invitations). It records `workspace.invitation.created`, which queues the email. The answer is the same whether or not the email has an account.
 2. **Listener** (`mail.workspace_invitation`, about a second later): makes a 256-bit token (`auth.Token`), stores only its digest and `sent_at` on the row (replacing any earlier link), emails `APP_ORIGIN + /auth/invitations/<token>`, and records `workspace.invitation.sent`. An invitation revoked, accepted or expired meanwhile gets nothing.
@@ -172,7 +172,7 @@ Plan: [plans/features/implemented/deletion.md](../../plans/features/implemented/
 
 ## Protecting a new endpoint
 
-Register workspace routes in `workspaceRoutes` in `routes.go` (the `ws` group applies `requireSession` and `requireWorkspace`): reads with `ws.HandleFunc("GET", …)`, every mutation with `ws.Can(…, auth.<Permission>, …)`. A new permission goes in `internal/auth/permissions.go` (constant and `grants`) and in `permissions` in `apps/web/src/types/workspaces.ts`; tests check both. Add the route to the permission matrix (`workspaceRoutesMatrix`). Account routes use `requireSession`. Read the user from `current(r).User.ID` and the workspace from `currentWorkspace(r).ID`, never from the request, and pass them into every store query.
+Register workspace routes in `workspaceRoutes` in `router/routes.go` (the `ws` group applies `RequireSession` and `RequireWorkspace`): reads with `ws.HandleFunc("GET", …)`, every mutation with `ws.Can(…, auth.<Permission>, …)`. A new permission goes in `internal/auth/permissions.go` (constant and `grants`) and in `permissions` in `apps/web/src/types/workspaces.ts`; tests check both. Add the route to the permission matrix (`workspaceRoutesMatrix`). Account routes use `RequireSession`. Read the user from `httpapi.Session(r).User.ID` and the workspace from `httpapi.Workspace(r).ID`, never from the request, and pass them into every store query.
 
 ## Not implemented
 

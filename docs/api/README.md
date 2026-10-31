@@ -13,7 +13,11 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/admin` | The operator's commands, previewing unless confirmed: `grant`, `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
-| `internal/httpapi` | Routes (`routes.go`, API and pages), middleware, input validation, JSON responses |
+| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin key and gate (`admin.go`) |
+| `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
+| `internal/httpapi/router` | `routes.go`, the one registry of API routes and pages, with their middleware and limits (`router.New`) |
+| `internal/httpapi/{clientip,input,ratelimit}` | Leaves the core imports: resolving the client's address; query parameters, paging, public IDs, search terms and link tokens; what a rate limit is and the in-memory counter |
+| `internal/httpapi/apitest` | Helpers the integration tests share ([testing.md](testing.md)); only tests import it |
 | `internal/web` | Serving the embedded web build: prerendered pages, the SPA fallback, assets, page security headers and CSP hashes |
 | `internal/store` | Bun models and every query, scoped by the user's workspace membership |
 | `internal/auth` | Argon2id passwords, random tokens, digests, cookies, TOTP codes, recovery codes, emailed codes, and sealing secrets with `APP_KEY` (`Keys`) |
@@ -24,28 +28,28 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/prune` | `make prune`: one file per target (`events.go`) registering itself, plus the shared list, `-older-than` parsing and batched run |
 | `migrations` | SQL migration pairs, embedded into the binaries |
 
-`cmd/server` never imports `factory` or `seed`.
+`cmd/server` never imports `factory`, `seed` or `httpapi/apitest`. Areas never import each other, and the core imports none of them (`TestHTTPLayout`).
 
 ## Request flow
 
-`Routes()` sends `/api` and `/api/*` to the API; every other request goes to the pages ([below](#serving-the-web-app)).
+`router.New(s)` sends `/api` and `/api/*` to the API; every other request goes to the pages ([below](#serving-the-web-app)).
 
 ```
-clientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED_PROXIES), for pages too
-  → security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
-  → mux (routes.go)
-  → requireSession (cookie → session, CSRF on mutations) for private routes
-  → requireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
-  (or, under /api/admin: requireAdminKey → requireAdminSession; admin.md)
-  → requirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
-  → handler, e.g. projectHandlers.index (parse + validate) → store, e.g. IndexProjects (query scoped by workspace ID) → jsonResponse
+ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED_PROXIES), for pages too
+  → Security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
+  → mux (router/routes.go)
+  → RequireSession (cookie → session, CSRF on mutations) for private routes
+  → RequireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
+  (or, under /api/admin: RequireAdminKey → RequireAdminSession; admin.md)
+  → RequirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
+  → controller, e.g. workspace.Projects.Index (parse + validate) → store, e.g. h.Repo.IndexProjects (query scoped by workspace ID) → httpapi.JSON
 ```
 
-- Responses are JSON. Errors are `{"error": "message"}` with a generic message; details go to `slog` only (`internalError`).
-- Request bodies: `decode()` caps them at 16 KiB, rejects unknown fields and requires exactly one JSON object. `decodeValid(w, r, validProject, message)` decodes and validates in one step (400, or 422 with the message).
-- The session cookie: `s.sessionDigest(r)` is what the `sessions` table stores for it (logout, revoking other sessions, a password change); `s.sessionToken(r)` is the raw, well-formed cookie.
-- The signed-in session is `current(r)` inside handlers, and the workspace in the path `currentWorkspace(r)`.
-- Routes are grouped with `group(mux, prefix, middleware…)` in `routes.go`; `net/http` has no groups, so the helper prefixes each pattern and wraps its handler.
+- Responses are JSON. Errors are `{"error": "message"}` with a generic message; details go to `slog` only (`httpapi.InternalError`).
+- Request bodies: `httpapi.Decode` caps them at 16 KiB, rejects unknown fields and requires exactly one JSON object. `httpapi.DecodeValid(w, r, validProject, message)` decodes and validates in one step (400, or 422 with the message).
+- The session cookie: `h.SessionDigest(r)` is what the `sessions` table stores for it (logout, revoking other sessions, a password change); `s.sessionToken(r)` (core only) is the raw, well-formed cookie.
+- Controllers embed `*httpapi.Server`, so they reach the store as `h.Repo` and the config as `h.Config`. The signed-in session is `httpapi.Session(r)`, the workspace in the path `httpapi.Workspace(r)`, and the admin's session `httpapi.Admin(r)`. The context keys are unexported, so only the core's middleware can set them.
+- Routes are grouped with `group(mux, prefix, middleware…)` in `router/routes.go`; `net/http` has no groups, so the helper prefixes each pattern and wraps its handler.
 
 ## Serving the web app
 
@@ -57,7 +61,7 @@ clientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
 | `GET /assets/*` | The hashed file, `Cache-Control: public, max-age=31536000, immutable` |
 | `GET /favicon.svg` (other built files) | The file, `no-cache` |
 | `GET /` (prerendered pages) | Their HTML, `no-cache` |
-| `GET /app`, `/app/*` without a valid session | `302` to `/auth/login?next=<path and query>` (`requirePageSession`) |
+| `GET /app`, `/app/*` without a valid session | `302` to `/auth/login?next=<path and query>` (`RequirePageSession`) |
 | `GET /app/*`, `/auth/*` | `__spa-fallback.html`, `no-store`; the browser renders the page |
 | `GET /admin/<ADMIN_ROUTE_KEY>`, and `/admin/<key>/*` with an admin session (else `302` to `/admin/<key>`) | `__spa-fallback.html` with 200, `no-store`, `no-referrer`, `noindex` (`Pages.ServeAdmin`). A wrong key, or admin off, is the 404 below ([admin.md](admin.md#pages)) |
 | any other `GET` | `__spa-fallback.html` with status 404 (the app shows its not-found page) |

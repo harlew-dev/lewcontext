@@ -4,33 +4,40 @@ How things are named across the API and the web app. **New code follows this pag
 
 The vocabulary is Laravel's resource controller, used at the HTTP boundary and in the web app. The store uses data verbs.
 
-## HTTP routes and handlers (`internal/httpapi`)
+## Controllers (`internal/httpapi`)
 
-| Action | Method | Path | Does | Handler |
+| Action | Method | Path | Does | Controller method |
 | --- | --- | --- | --- | --- |
-| `index` | GET | `/things` | one page of the list | `things.index` |
-| `show` | GET | `/things/{thing}` | one record | `things.show` |
-| `store` | POST | `/things` | create, 201 with the record | `things.store` |
-| `update` | PATCH | `/things/{thing}` | change, 200 with the record | `things.update` |
-| `destroy` | DELETE | `/things/{thing}` | delete, 204 | `things.destroy` |
+| `index` | GET | `/things` | one page of the list | `Things.Index` |
+| `show` | GET | `/things/{thing}` | one record | `Things.Show` |
+| `store` | POST | `/things` | create, 201 with the record | `Things.Store` |
+| `update` | PATCH | `/things/{thing}` | change, 200 with the record | `Things.Update` |
+| `destroy` | DELETE | `/things/{thing}` | delete, 204 | `Things.Destroy` |
 
-- **Handlers for one resource are methods on a per-resource type**, in that resource's file:
+- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`.
+- **One controller per file, named after its resource:** `type Projects struct{ *httpapi.Server }` in `endpoints/workspace/projects.go`, `WorkspaceProjects` in `workspace_projects.go`. The file holds the controller, its input types and its validation. An area exports only its controllers.
+- **Its methods are the actions, exported**, each a `func(http.ResponseWriter, *http.Request)`. Helpers stay unexported:
 
   ```go
-  type projectHandlers struct{ *Server }
-  func (h projectHandlers) index(w http.ResponseWriter, r *http.Request) { … }
+  // endpoints/workspace/projects.go
+  type Projects struct{ *httpapi.Server }
+  func (h Projects) Index(w http.ResponseWriter, r *http.Request) { … }
 
-  // routes.go
-  projects := projectHandlers{s}
-  ws.HandleFunc("GET", "/projects", projects.index)
-  ws.Can("POST", "/projects", auth.ProjectStore, projects.store)
+  // router/routes.go
+  projects := workspace.Projects{Server: s}
+  ws.HandleFunc("GET", "/projects", projects.Index)
+  ws.Can("POST", "/projects", auth.ProjectStore, s.Limit(httpapi.ProjectPerUser, projects.Store))
   ```
 
+- **Every route is registered in `router/routes.go`**, the one registry, like Laravel's `routes/api.php`.
+- **A resource gets its own folder only when it has sub-resources:** if projects gain tasks and comments, `endpoints/workspace/project/` holds `Projects`, `Tasks` and `Comments`. Until then, an area is one folder.
+- **Areas never import each other.** What two areas share moves into the core (`httpapi`) or a leaf package (`input`, `ratelimit`, `clientip`). Only the router imports areas.
+- `TestHTTPLayout` (`httpapi/layout_test.go`) checks all of this, with the named actions and the support folders listed in it with their reasons.
 - **Paths** are plural nouns under their parent (`/api/workspaces/{workspace}/projects/{project}`), and path IDs are public IDs.
 - **`update` is always PATCH**, even when the body is the whole editable representation. PUT isn't used.
-- **A singleton resource** (one per parent, no ID in the path) uses the same actions: leaving a workspace is `membership.destroy` on `DELETE …/membership`.
-- **Anything else is a named verb**, as POST on the record or collection, with the verb as the handler name: `POST /api/invitations/accept` → `invitations.accept`. First check whether it's really a `store` or `destroy` of some other resource.
-- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `register/verify`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources; the account's own singletons there use the CRUD actions (`email-verification`: `store` sends a code, `update` verifies). The admin door's `/api/admin/login`, `/login/mfa` and `/logout` follow it (`adminAuthHandlers`); its resources are ordinary (`adminUserHandlers.index`, `.show`; `IndexAdminUsers`, `FindAdminWorkspace`).
+- **A singleton resource** (one per parent, no ID in the path) uses the same actions: leaving a workspace is `Membership.Destroy` on `DELETE …/membership`.
+- **Anything else is a named verb**, as POST on the record or collection, with the verb as the method name: `POST /api/invitations/accept` → `Invitations.Accept`. First check whether it's really a `store` or `destroy` of some other resource.
+- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `register/verify`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources (`account.Sessions.Login`, `account.Registrations.Verify`, `account.PasswordResets.Check`); the account's own singletons there use the CRUD actions (`email-verification`: `EmailVerification.Store` sends a code, `.Update` verifies). The admin door's `/api/admin/login`, `/login/mfa` and `/logout` follow it (`admin.Sessions`); its resources are ordinary (`admin.Users.Index`, `.Show`; `IndexAdminUsers`, `FindAdminWorkspace`).
 
 ## Store methods (`internal/store`)
 
@@ -90,21 +97,21 @@ A run of declarations of the same kind (the rate limits in `limits.go`, a `var (
 
 ```go
 var (
-	// authPerIP: everything that signs in or checks a password, per client IP.
-	authPerIP = rateLimit{…}
-	// authPerAccount: password guesses against one account, from any IP.
-	authPerAccount = rateLimit{…}
+	// AuthPerIP: everything that signs in or checks a password, per client IP.
+	AuthPerIP = ratelimit.Limit{…}
+	// AuthPerAccount: password guesses against one account, from any IP.
+	AuthPerAccount = ratelimit.Limit{…}
 
-	// registerPerEmail: sign-ups for one email, from any IP, with verification on.
+	// RegisterPerEmail: sign-ups for one email, from any IP, with verification on.
 	// Each one emails the address, a code or "you already have an account".
-	registerPerEmail = rateLimit{…}
-	// registerGlobal: accounts created by everyone.
+	RegisterPerEmail = ratelimit.Limit{…}
+	// RegisterGlobal: accounts created by everyone.
 	// Caps sign-ups during a distributed flood.
-	registerGlobal = rateLimit{…}
+	RegisterGlobal = ratelimit.Limit{…}
 )
 ```
 
 - **Comments are `//`**, never `/* */`, like every other comment in the code.
-- **A list that repeats the declarations** (`rateLimits`, beside them) follows the same groups and order, one line per group.
+- **A list that repeats the declarations** (`RateLimits`, beside them) follows the same groups and order, one line per group.
 - **A new declaration joins its group;** a new kind of thing starts a group of its own, after a blank line.
 

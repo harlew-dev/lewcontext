@@ -304,8 +304,8 @@ The app shell and API responses are never cached, while hashed assets are cached
 | Path | Contents |
 | --- | --- |
 | `cmd` | Server, migration and seed entrypoints |
-| `internal/httpapi/routes.go` | Every API route and its authentication requirement, plus the web app's page routes (signed-out `/app/*` requests go to login before any HTML is served) |
-| `internal/{auth,config,database,httpapi,store}` | Cryptography, validated configuration, Bun connection and migrator, HTTP boundary, Bun models and queries |
+| `internal/httpapi/router/routes.go` | Every API route and its authentication requirement, plus the web app's page routes (signed-out `/app/*` requests go to login before any HTML is served) |
+| `internal/{auth,config,database,httpapi,store}` | Cryptography, validated configuration, Bun connection and migrator, HTTP boundary (the core, with controllers in `httpapi/endpoints/<area>`), Bun models and queries |
 | `internal/web` | Serves the embedded web build: prerendered pages, the single-page-app fallback (404 for unknown URLs), cached assets, security headers, and a CSP with each HTML file's inline-script hashes |
 | `migrations` | Embedded Bun SQL migrations (`.tx.up.sql` / `.tx.down.sql` pairs) |
 
