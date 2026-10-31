@@ -25,6 +25,7 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 | --- | --- |
 | `docs/testing.md` | Local setup, `make dev`, `make build`/`make serve`, manual demo and failure checks |
 | `docs/naming.md` | Naming for routes, handlers, store methods, permissions, events, rate limits, client methods, page routes and components. **Applies to every change** |
+| `docs/deployment.md` | Production: image and commands, required config, migrating and releasing, several servers, proxies and client IPs, Cloudflare, email, security checklist |
 | `docs/api/README.md` | Go package layout, request flow, serving the web app, environment variables |
 | `docs/api/endpoints.md` | Every API endpoint, its protection and responses |
 | `docs/api/auth.md` | Passwords, password reset, sessions, CSRF, rate limits, headers, workspace roles |

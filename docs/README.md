@@ -32,6 +32,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 ## Everything else
 
 - [naming.md](naming.md): how routes, handlers, store methods, permissions, events, rate limits, client methods, page routes and components are named. Read it before adding any of them.
+- [deployment.md](deployment.md): deploying to production: the image and commands, required configuration, migrating and releasing, several servers, proxies and client IPs, Cloudflare, email, and a security checklist.
 - [testing.md](testing.md): local environment setup, running the dev server (`make dev`), building and running the production binary (`make build`, `make serve`), manual demo and failure checks.
 - [`plans/`](../plans): feature plans and the decisions behind them.
 
