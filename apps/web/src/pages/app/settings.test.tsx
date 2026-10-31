@@ -58,7 +58,16 @@ describe("profile", () => {
     renderPage();
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
+    // Disabled, it says why: on hover, and as its description.
+    expect(save).toHaveAccessibleDescription("No changes made");
+    fireEvent.mouseEnter(save.parentElement!);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "No changes made",
+    );
+    type("Name", " ");
+    expect(save).toHaveAccessibleDescription("Fill in required fields");
     type("Name", "  Augusta Ada King ");
+    expect(save).not.toHaveAccessibleDescription();
     fireEvent.click(save);
     expect(await screen.findByText("Profile updated.")).toBeInTheDocument();
     expect(api.sent("PATCH")[0]).toEqual({
@@ -87,6 +96,13 @@ describe("profile", () => {
     expect(email).toHaveAttribute("data-blurred");
     // A click anywhere on the blurred text reveals it too.
     fireEvent.click(screen.getByText(session.user.email));
+    expect(email).not.toHaveAttribute("data-blurred");
+    // And so does a click on its "Click to reveal" tooltip.
+    fireEvent.click(screen.getByRole("button", { name: "Hide email address" }));
+    fireEvent.mouseEnter(screen.getByText(session.user.email).parentElement!);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Click to reveal");
+    fireEvent.click(within(tooltip).getByRole("button"));
     expect(email).not.toHaveAttribute("data-blurred");
     expect(email).toHaveAttribute("readonly");
     expect(email).not.toBeDisabled();

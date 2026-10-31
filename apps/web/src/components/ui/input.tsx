@@ -76,7 +76,7 @@ export type InputProps = Omit<
   // Something sensitive but not secret, e.g. an email address: it's in the
   // page, blurred unreadable until shown. A secret stays out of the page
   // instead (a masked value, or Reveal). With `onReveal`, clicking anywhere
-  // on it calls that, with a "Click to reveal" tooltip; keyboard users need
+  // on it, or on its "Click to reveal" tooltip, calls that; keyboard users need
   // another way, such as an eye InputButton.
   blurred?: boolean;
   onReveal?: () => void;
@@ -155,7 +155,7 @@ function BlurredText({
       </span>
     );
   return (
-    <Tooltip content="Click to reveal">
+    <Tooltip content="Click to reveal" onClick={onReveal}>
       <button
         type="button"
         data-slot="blurred"

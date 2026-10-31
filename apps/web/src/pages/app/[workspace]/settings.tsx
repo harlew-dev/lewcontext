@@ -109,6 +109,9 @@ function RenameForm() {
           type="submit"
           loading={rename.loading}
           disabled={clean === null || clean === workspace.name}
+          disabledReason={
+            clean === null ? "Fill in required fields" : "No changes made"
+          }
         >
           Save
         </Button>

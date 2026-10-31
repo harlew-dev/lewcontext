@@ -88,6 +88,7 @@ function NewWorkspace() {
             className="w-full"
             loading={create.loading}
             disabled={!create.valid}
+            disabledReason="Fill in required fields"
           >
             Create workspace
           </Button>

@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode, type Ref } from "react";
+import { forwardRef, useId, type ReactNode, type Ref } from "react";
 import {
   Button as BaseButton,
   type ButtonProps as BaseButtonProps,
@@ -6,6 +6,7 @@ import {
 import { slot } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
 import { Link } from "./link";
+import { Tooltip } from "./tooltip";
 const styles = {
   base: [
     "relative isolate inline-flex items-baseline justify-center gap-x-2 rounded-lg border text-base/6 font-semibold",
@@ -72,6 +73,9 @@ export type ButtonProps = Style & {
   className?: string;
   children: ReactNode;
   loading?: boolean;
+  // Why it's disabled, e.g. "No changes made": a tooltip while it's disabled
+  // (not loading), and its description for screen readers.
+  disabledReason?: string;
 } & (ButtonElementProps | LinkElementProps);
 function buttonClasses({ color, outline, plain }: Style, className?: string) {
   return cx(
@@ -89,10 +93,28 @@ const ButtonRoot = slot("button", "cursor-default");
 // focus-visible. With `href` it renders a React Router Link instead. Loading is drawn
 // here rather than with BaseUI's isLoading, which collapses the content to 0px.
 export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
-  { color, outline, plain, className, children, loading = false, ...props },
+  {
+    color,
+    outline,
+    plain,
+    className,
+    children,
+    loading = false,
+    disabledReason,
+    ...props
+  },
   ref,
 ) {
-  const classes = buttonClasses({ color, outline, plain } as Style, className);
+  const reasonId = useId();
+  const buttonProps = props as ButtonElementProps;
+  // With a reason the button always sits in the tooltip's wrapper, so
+  // becoming enabled doesn't remount it; className then places the wrapper.
+  const wrapped = props.href === undefined && disabledReason !== undefined;
+  const explained = wrapped && !!buttonProps.disabled && !loading;
+  const classes = buttonClasses(
+    { color, outline, plain } as Style,
+    wrapped ? undefined : className,
+  );
   if (props.href !== undefined)
     return (
       <Link
@@ -103,10 +125,10 @@ export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
         <TouchTarget>{children}</TouchTarget>
       </Link>
     );
-  const buttonProps = props as ButtonElementProps;
-  return (
+  const button = (
     <BaseButton
       {...buttonProps}
+      aria-describedby={explained ? reasonId : buttonProps["aria-describedby"]}
       ref={ref as Ref<HTMLButtonElement>}
       type={buttonProps.type ?? "button"}
       disabled={buttonProps.disabled || loading}
@@ -136,6 +158,25 @@ export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
         </span>
       )}
     </BaseButton>
+  );
+  if (!wrapped) return button;
+  // A disabled button gets no pointer events, so the tooltip hangs on a
+  // wrapper the button fills.
+  return (
+    <Tooltip content={disabledReason} disabled={!explained}>
+      <span
+        className={cx(
+          className,
+          "inline-flex *:flex-1",
+          explained && "*:pointer-events-none",
+        )}
+      >
+        {button}
+        <span id={reasonId} hidden>
+          {disabledReason}
+        </span>
+      </span>
+    </Tooltip>
   );
 });
 // Expands the hit area to at least 44×44px on touch devices.

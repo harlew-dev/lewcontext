@@ -167,6 +167,9 @@ function ProfileForm() {
           type="submit"
           loading={save.loading}
           disabled={clean === null || clean === session.user.name}
+          disabledReason={
+            clean === null ? "Fill in required fields" : "No changes made"
+          }
         >
           Save
         </Button>

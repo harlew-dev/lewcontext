@@ -30,6 +30,7 @@ Everything signed in and outside a dialog follows the settings rows: right-align
 
 - **Pending:** run the action through `useAction` and pass `loading={action.loading}` to its button, so a double click submits once ([api.md](api.md#changing-data)). Disable the form's fields while it runs (`disabled={action.loading}`).
 - **Nothing to save:** a settings Save is `disabled` until the value differs from what's saved and would be accepted (`disabled={clean === null || clean === saved}`).
+- **Say why it's disabled:** a button disabled by the form's state passes `disabledReason`, in one of two wordings: "No changes made" (nothing differs from what's saved) or "Fill in required fields" (something needed is empty or invalid), e.g. `disabledReason={clean === null ? "Fill in required fields" : "No changes made"}`. Not for `loading`, which explains itself.
 - **Submit buttons** are `type="submit"` inside a `<form onSubmit>`, so Enter submits. Other buttons in a form are plain buttons (`Button` defaults to `type="button"`).
 - **Errors:** a form's failure is an `ErrorNotice`; a one-off action with no fields reports its failure as `toast.error`. Successes are toasts ([design.md](design.md#toasts)).
 

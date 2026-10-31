@@ -156,6 +156,7 @@ function ProjectForm({
             type="submit"
             loading={save.loading}
             disabled={!form.name.trim()}
+            disabledReason="Fill in required fields"
           >
             {project ? "Save changes" : "Create project"}
           </Button>

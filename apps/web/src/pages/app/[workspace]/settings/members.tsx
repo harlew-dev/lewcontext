@@ -333,6 +333,7 @@ function RoleDialog({ open, member, onClose, onDone }: MemberDialogProps) {
             type="submit"
             loading={save.loading}
             disabled={role === member.role}
+            disabledReason="No changes made"
           >
             Save role
           </Button>
