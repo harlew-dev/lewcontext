@@ -67,6 +67,7 @@ export default function Dashboard() {
         page={list.data}
         loading={list.loading}
         onCreate={() => editor.setDialog("new")}
+        onEdit={editor.setDialog}
       />
       <ProjectDialog editor={editor} />
     </>
@@ -76,10 +77,12 @@ function RecentProjects({
   page,
   loading,
   onCreate,
+  onEdit,
 }: {
   page: Page<Project> | undefined;
   loading: boolean;
   onCreate: () => void;
+  onEdit: (project: Project) => void;
 }) {
   if (!page) return loading ? <ListSkeleton label="Loading projects" /> : null;
   if (!page.data.length) return <ProjectEmptyState onCreate={onCreate} />;
@@ -90,7 +93,11 @@ function RecentProjects({
       </TableHead>
       <TableBody>
         {page.data.map((project) => (
-          <ProjectRow key={project.id} project={project} />
+          <ProjectRow
+            key={project.id}
+            project={project}
+            onEdit={() => onEdit(project)}
+          />
         ))}
       </TableBody>
     </Table>

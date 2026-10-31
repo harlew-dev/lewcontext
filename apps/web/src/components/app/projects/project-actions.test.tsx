@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { SWRConfig } from "swr";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Table, TableBody, TableHead } from "@/components/ui/table";
 import { Toaster } from "@/components/ui/toast";
 import { paths } from "@/lib/api";
@@ -27,8 +27,9 @@ const list = (data: Project[]) => ({
     pages: { current: 1, total: 1, perPage: 20, items: data.length },
   },
 });
-// The workspace's project list, as the projects page loads it.
-function ProjectList() {
+// The workspace's project list, as the projects page loads it; Edit project
+// calls `onEdit` (the page opens its ProjectDialog).
+function ProjectList({ onEdit }: { onEdit: (project: Project) => void }) {
   const workspace = testWorkspace();
   const projects = useResource(paths.projects(workspace.id).index());
   return (
@@ -38,13 +39,13 @@ function ProjectList() {
       </TableHead>
       <TableBody>
         {projects.data?.data.map((p) => (
-          <ProjectRow key={p.id} project={p} />
+          <ProjectRow key={p.id} project={p} onEdit={() => onEdit(p)} />
         ))}
       </TableBody>
     </Table>
   );
 }
-function renderAs(role: Role) {
+function renderAs(role: Role, onEdit: (project: Project) => void = () => {}) {
   const workspace = testWorkspace(role);
   const first = {
     data: [workspace],
@@ -54,7 +55,7 @@ function renderAs(role: Role) {
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <WorkspaceProvider workspace={workspace} first={first}>
         <MemoryRouter>
-          <ProjectList />
+          <ProjectList onEdit={onEdit} />
         </MemoryRouter>
         <Toaster />
       </WorkspaceProvider>
@@ -63,20 +64,32 @@ function renderAs(role: Role) {
 }
 const projectsPath = "/api/workspaces/wsp_2yEHYLwiwPVhLW/projects";
 describe("ProjectActions", () => {
-  it.each(["member", "viewer"] as const)(
-    "isn't offered to a %s",
-    async (role) => {
-      stubApi({ [`GET ${projectsPath}`]: list([project]) });
-      renderAs(role);
-      expect(await screen.findByText("Research sprint")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Actions for Research sprint" }),
-      ).toBeNull();
-      expect(
-        screen.queryByRole("columnheader", { name: "Actions" }),
-      ).toBeNull();
-    },
-  );
+  it("isn't offered to a viewer", async () => {
+    stubApi({ [`GET ${projectsPath}`]: list([project]) });
+    renderAs("viewer");
+    expect(await screen.findByText("Research sprint")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Actions for Research sprint" }),
+    ).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).toBeNull();
+  });
+  it("offers a member Edit project but not Delete", async () => {
+    stubApi({ [`GET ${projectsPath}`]: list([project]) });
+    const onEdit = vi.fn();
+    renderAs("member", onEdit);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Actions for Research sprint",
+      }),
+    );
+    const edit = await screen.findByRole("menuitem", { name: "Edit project" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Delete project" }),
+    ).toBeNull();
+    fireEvent.click(edit);
+    // Items act once the menu has closed and focus is back on its button.
+    await vi.waitFor(() => expect(onEdit).toHaveBeenCalledWith(project));
+  });
   it("deletes a project from its row, after confirming, and refreshes the list", async () => {
     const api = stubApi({
       [`GET ${projectsPath}`]: [list([project]), list([])],

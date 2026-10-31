@@ -119,26 +119,38 @@ export function authPageState(state: unknown): AuthPageState {
     invitation: "invitation" in state && state.invitation === true,
   };
 }
-// Navigation state for onboarding: the name of the workspace just deleted,
-// when it was the account's last one (onboarding then says so; a toast would
-// be lost as the app layout unmounts).
-export type OnboardingState = { deletedWorkspace?: string };
+// Navigation state for onboarding: the name of the workspace just deleted or
+// left, when it was the account's last one (onboarding then says so; a toast
+// would be lost as the app layout unmounts).
+export type OnboardingState = {
+  deletedWorkspace?: string;
+  leftWorkspace?: string;
+};
 export function onboardingState(state: unknown): OnboardingState {
-  if (typeof state !== "object" || state === null) return {};
-  return "deletedWorkspace" in state &&
-    typeof state.deletedWorkspace === "string"
-    ? { deletedWorkspace: state.deletedWorkspace }
-    : {};
+  return {
+    deletedWorkspace: stringIn(state, "deletedWorkspace"),
+    leftWorkspace: stringIn(state, "leftWorkspace"),
+  };
 }
 // Navigation state for the signed-in layout: the workspace just joined from
-// an invitation, which the layout announces (the invitation page's own toast
-// would be lost as it unmounts).
-export type ArrivalState = { joinedWorkspace?: string };
+// an invitation, or just created (from onboarding or the switcher), which the
+// layout announces (onboarding's and the invitation page's own toasts would
+// be lost as they unmount).
+export type ArrivalState = {
+  joinedWorkspace?: string;
+  createdWorkspace?: string;
+};
 export function arrivalState(state: unknown): ArrivalState {
-  if (typeof state !== "object" || state === null) return {};
-  return "joinedWorkspace" in state && typeof state.joinedWorkspace === "string"
-    ? { joinedWorkspace: state.joinedWorkspace }
-    : {};
+  return {
+    joinedWorkspace: stringIn(state, "joinedWorkspace"),
+    createdWorkspace: stringIn(state, "createdWorkspace"),
+  };
+}
+// A string field of navigation state, which may be anything.
+function stringIn(state: unknown, key: string): string | undefined {
+  if (typeof state !== "object" || state === null) return undefined;
+  const value: unknown = Reflect.get(state, key);
+  return typeof value === "string" ? value : undefined;
 }
 // The login page, returning to `path` afterwards.
 export function loginPath(path: string): string {

@@ -46,6 +46,7 @@ import { cleanSearch, page, param, url } from "@/lib/pagination";
 import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
+import { useOpenCount } from "@/lib/use-open-count";
 import { useResource } from "@/lib/use-resource";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
 import {
@@ -93,8 +94,9 @@ function MemberList() {
   const refreshWorkspaces = useRefreshWorkspaces();
   const [action, setAction] = useState<MemberAction | null>(null);
   const [inviting, setInviting] = useState(false);
-  // Each opening of the invite dialog starts empty.
-  const [invites, setInvites] = useState(0);
+  // Each opening of a dialog starts afresh.
+  const invites = useOpenCount(inviting);
+  const actions = useOpenCount(action !== null);
   const refreshInvitations = useRefreshInvitations();
   // The last action stays rendered while its dialog animates out.
   const [shown, setShown] = useState<MemberAction | null>(null);
@@ -114,6 +116,11 @@ function MemberList() {
           <Text className="mt-1">Everyone with access to this workspace.</Text>
         </div>
         <div className="flex w-full items-end gap-3 sm:w-auto">
+          {can(workspace, "workspace.invitation.store") && (
+            <Button className="shrink-0" onClick={() => setInviting(true)}>
+              Invite
+            </Button>
+          )}
           <div className="w-full sm:w-64">
             <SearchField
               label="Search members"
@@ -126,17 +133,6 @@ function MemberList() {
               }
             />
           </div>
-          {can(workspace, "workspace.invitation.store") && (
-            <Button
-              className="shrink-0"
-              onClick={() => {
-                setInviting(true);
-                setInvites(invites + 1);
-              }}
-            >
-              Invite
-            </Button>
-          )}
         </div>
       </div>
       {can(workspace, "workspace.invitation.index") && <PendingInvitations />}
@@ -164,14 +160,14 @@ function MemberList() {
       {shown && (
         <>
           <RoleDialog
-            key={`role-${shown.member.id}`}
+            key={`role-${actions}`}
             open={action?.kind === "role"}
             member={shown.member}
             onClose={() => setAction(null)}
             onDone={done}
           />
           <RemoveDialog
-            key={`remove-${shown.member.id}`}
+            key={`remove-${actions}`}
             open={action?.kind === "remove"}
             member={shown.member}
             onClose={() => setAction(null)}
@@ -379,6 +375,7 @@ function PendingInvitations() {
   );
   const refresh = useRefreshInvitations();
   const [revoking, setRevoking] = useState<Invitation | null>(null);
+  const revokes = useOpenCount(revoking !== null);
   // The last one stays rendered while its dialog animates out.
   const [shown, setShown] = useState<Invitation | null>(null);
   if (revoking && revoking !== shown) setShown(revoking);
@@ -424,7 +421,7 @@ function PendingInvitations() {
       </Table>
       {shown && (
         <RevokeDialog
-          key={shown.id}
+          key={revokes}
           open={revoking !== null}
           invitation={shown}
           onClose={() => setRevoking(null)}

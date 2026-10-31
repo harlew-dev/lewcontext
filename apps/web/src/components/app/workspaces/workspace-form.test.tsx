@@ -78,8 +78,10 @@ describe("creating a workspace", () => {
     fireEvent.submit(submit().closest("form")!);
     release();
     await waitFor(() =>
+      // The workspace's layout toasts "Acme created." from this state.
       expect(navigate).toHaveBeenCalledWith(
         "/app/wsp_2yEHYLwiwPVhLW/dashboard",
+        { state: { createdWorkspace: "Acme" } },
       ),
     );
     const creates = api.sent("POST");

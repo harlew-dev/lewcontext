@@ -9,7 +9,9 @@ export function SettingsTabs({ current }: { current: "general" | "members" }) {
   if (!can(workspace, "workspace.member.index")) return null;
   return (
     <Navbar aria-label="Workspace settings" className="mt-4">
-      <NavbarSection>
+      {/* Pulled left by the items' padding, so the labels line up with the
+          content's edge (their hover background reaches into the margin). */}
+      <NavbarSection className="-ml-2">
         <NavbarItem
           href={routes.workspaces.edit(workspace.id)}
           current={current === "general"}

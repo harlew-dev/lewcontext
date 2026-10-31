@@ -8,6 +8,12 @@ import { LayoutGroup, motion } from "motion/react";
 import { cx } from "@/lib/cx";
 import { TouchTarget } from "./button";
 import { Clickable } from "./clickable";
+import {
+  Highlight,
+  HighlightProvider,
+  useHighlight,
+  useHighlightGroup,
+} from "./highlight";
 export function Navbar({
   className,
   ...props
@@ -31,14 +37,27 @@ export function NavbarDivider({
     />
   );
 }
+// Each section is a LayoutGroup, so its current-page indicator and hover
+// background (a Highlight on the item the mouse is over) slide between items.
 export function NavbarSection({
   className,
+  onPointerLeave,
   ...props
 }: ComponentPropsWithoutRef<"div">) {
   const id = useId();
+  const highlight = useHighlightGroup();
   return (
     <LayoutGroup id={id}>
-      <div {...props} className={cx(className, "flex items-center gap-3")} />
+      <HighlightProvider value={highlight}>
+        <div
+          {...props}
+          onPointerLeave={(event) => {
+            highlight.setActive(null);
+            onPointerLeave?.(event);
+          }}
+          className={cx(className, "flex items-center gap-3")}
+        />
+      </HighlightProvider>
     </LayoutGroup>
   );
 }
@@ -64,15 +83,17 @@ const itemClasses = cx(
   "*:not-nth-2:last:data-[slot=icon]:ml-auto *:not-nth-2:last:data-[slot=icon]:size-5 sm:*:not-nth-2:last:data-[slot=icon]:size-4",
   // Avatar
   "*:data-[slot=avatar]:-m-0.5 *:data-[slot=avatar]:size-7 *:data-[slot=avatar]:[--avatar-radius:var(--radius-md)] sm:*:data-[slot=avatar]:size-6",
-  // Hover
-  "data-hover:bg-zinc-950/5 data-hover:*:data-[slot=icon]:fill-zinc-950",
+  // Hover (the background comes from the section's sliding highlight, or from
+  // `hoverBackground` for items outside a section)
+  "data-hover:*:data-[slot=icon]:fill-zinc-950",
   // Active
   "data-active:bg-zinc-950/5 data-active:*:data-[slot=icon]:fill-zinc-950",
   // Dark mode
   "dark:text-white dark:*:data-[slot=icon]:fill-zinc-400",
-  "dark:data-hover:bg-white/5 dark:data-hover:*:data-[slot=icon]:fill-white",
+  "dark:data-hover:*:data-[slot=icon]:fill-white",
   "dark:data-active:bg-white/5 dark:data-active:*:data-[slot=icon]:fill-white",
 );
+const hoverBackground = "data-hover:bg-zinc-950/5 dark:data-hover:bg-white/5";
 type NavbarItemProps = {
   current?: boolean;
   className?: string;
@@ -86,8 +107,17 @@ type NavbarItemProps = {
 );
 export const NavbarItem = forwardRef<HTMLElement, NavbarItemProps>(
   function NavbarItem({ current, className, children, ...props }, ref) {
+    const highlight = useHighlight();
     return (
-      <span className={cx(className, "relative")}>
+      <span
+        className={cx(className, "relative")}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse") highlight.activate();
+        }}
+      >
+        {highlight.active && (
+          <Highlight className="bg-zinc-950/5 dark:bg-white/5" />
+        )}
         {current && (
           <motion.span
             layoutId="current-indicator"
@@ -96,7 +126,7 @@ export const NavbarItem = forwardRef<HTMLElement, NavbarItemProps>(
         )}
         <Clickable
           {...(props as ComponentPropsWithoutRef<"button">)}
-          className={itemClasses}
+          className={cx(itemClasses, !highlight.grouped && hoverBackground)}
           data-current={current ? "" : undefined}
           ref={ref}
         >

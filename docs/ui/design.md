@@ -9,6 +9,8 @@ Tailwind CSS v4 utilities in markup on top of BaseUI behaviour, in a Catalyst-li
 - **`className` is for placement and spacing.** Components merge it with `cx(className, own…)`, so don't pass utilities that compete with a component's own classes.
 - **Icons are Heroicons** (`@heroicons/react/16/solid` or `20/solid`). They carry `data-slot="icon"`, which the component styles size and colour.
 - **Respect reduced motion.** `MotionConfig reducedMotion="user"` covers motion, and plain transitions use `motion-reduce:` variants.
+- **Hover and focus backgrounds slide.** In a group of items (sidebar sections, tabs, menu items, listbox options) the hovered or focused item's background is one shared `Highlight` (`components/ui/highlight.tsx`) that slides from item to item ([Sliding highlight](#sliding-highlight)).
+- **Pages fade in.** `PageTransition` (`components/layout/page-transition.tsx`) fades a new page's content in and lifts it 6px over 200 ms with CSS `@starting-style` (Tailwind's `starting:`), so it needs no JavaScript and leaves no transform behind. The app layout keys it by pathname (a new search or page number isn't a new page) and `AuthLayout` wraps each sign-in page in it. Browsers without `@starting-style`, and reduced motion, show the page at once.
 
 ## BaseUI underneath
 
@@ -43,8 +45,9 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
 | `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
-| `feedback.tsx` | `Notice variant` (`error` alert, `success` status, `info` status in blue: the invitation callout), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
+| `feedback.tsx` | `Notice variant` (`error` alert, `success` status, `info` status in blue: the invitation callout, `warning` note in amber: what a confirmation will do, read with the dialog rather than announced), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |
+| `highlight.tsx` | `Highlight className slide` (the sliding background; `slide={false}` draws it in place) · `useHighlightGroup`, `HighlightProvider`, `useHighlight` ([Sliding highlight](#sliding-highlight)) |
 | `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled`, `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors) |
 | `input.tsx` / `textarea.tsx` | `Input`, `InputGroup` (leading icon, or `InputActions` at the end: `InputLock label` for a read-only value that can't change (`label` says why; default "Can’t be changed"), `InputButton aria-label onClick` for an icon action such as Copy; at most two) · `Textarea` |
 | `tooltip.tsx` | `Tooltip content placement` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref |
@@ -85,9 +88,28 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 
 - `onConfirm` runs through `useAction`: the button shows `loading`, a double click confirms once, and Cancel, Escape and the backdrop do nothing until it settles. The fields are disabled meanwhile.
 - A failure keeps the dialog open with the error (`ErrorNotice`) and the typed fields. Success closes it, then calls `onConfirmed`.
-- Key the dialog per opening (`key={opened}`) when it has fields, so each opening starts empty.
+- Key the dialog per opening with `useOpenCount(open)` (`lib/use-open-count.ts`): `key={opened}`, so each opening starts empty, without the last opening's values or error. A dialog keyed by its target instead (`"new"`, a project ID) keeps whatever was typed last time; that was the "forms don't reset after submit" bug.
+- A dialog whose consequences need to stand out puts them in a `<Notice variant="warning">` at the top of its fields, with a short `description` saying what to do (Delete workspace). Type-to-confirm labels show the name as `“<Code>Acme</Code>”`.
 - Labels name what they act on: "Delete project", "Delete workspace", "Delete account", never a bare "Delete".
 - Destructive actions sit in a danger zone at the bottom of settings (`SettingsSection variant="danger"` with `DangerAction` rows), or as a `DropdownItem variant="danger"` in a ⋯ menu (`ProjectActions`).
+
+## Sliding highlight
+
+`components/ui/highlight.tsx` draws one background per group that slides to the hovered or focused item (a `motion` `layoutId` with a short spring), as the sidebar does.
+
+| Where | Group | Which item has it | Colour |
+| --- | --- | --- | --- |
+| `SidebarSection`, `NavbarSection` (tabs, the top bar) | `useHighlightGroup()` in its own `LayoutGroup`; cleared when the pointer leaves the section | the item the mouse is over (`useHighlight().activate()` on `pointerenter`) | `bg-zinc-950/5` / `dark:bg-white/5` |
+| `DropdownMenu` | the same; cleared when focus leaves the items | the focused item (items take focus on hover, so pointer and keyboard agree) | `bg-zinc-950/5` / `dark:bg-white/10`; a default item's icon darkens |
+| `Listbox` | none needed: its own `LayoutGroup` | the option BaseUI marks `$isHighlighted` (`ListboxOptionContent` renders it) | `bg-zinc-950/5` / `dark:bg-white/10` |
+
+- **The selected option stays blue.** In a `Listbox` the chosen option has a static `bg-blue-500` background with white text and its check mark, above the grey highlight (`-z-5` over `-z-10`), so hovering it changes nothing and the grey slides beneath it.
+- **Nothing slides while a listbox opens.** BaseUI positions the panel during its first frames, and a highlight measured before that would slide in from where the panel started. So for its first 150 ms (`settleTime`, `listbox.tsx`) the highlight is drawn in place (`<Highlight slide={false}>`), and then remounts in place as the sliding one.
+
+- **Items outside a group** (a `SidebarItem` or `NavbarItem` not in a section) keep a plain `data-hover:` background.
+- **Under the text while it slides.** In menus and listboxes the highlight is `-z-10` inside the panel's `isolate` stacking context, so it passes beneath every item's text. Don't make an item `isolate`: the highlight would then paint over the items before it mid-slide. In the sidebar and tabs it comes before the item's `relative` link in the DOM instead.
+- **Forced colours** hide it (`forced-colors:hidden`); the items' own `forced-colors:` backgrounds apply.
+- **Reduced motion** (`MotionConfig`) moves it without sliding.
 
 ## Toasts
 
@@ -95,7 +117,8 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 
 - **Successes** of any action are toasts: "Workspace renamed.", "Project created.", "All other sessions have been signed out."
 - **Errors** stay inline when the action is a form (`<ErrorNotice error={action.error}>` beside its fields, see [api.md](api.md#changing-data)), and load failures keep their `Notice` with Retry. An action that is only a button, with no fields (sign out, sign out other sessions), reports its error as `toast.error`.
-- A toast belongs to the `Toaster` that was mounted last. A toast shown just before navigating to a page outside the app layout (onboarding, login) is lost with the layout, and React Router commits a redirect after `navigate()` resolves. Say it on the next page instead, through navigation state: login's "Your account has been deleted.", onboarding's "<workspace> deleted.".
+- A toast belongs to the `Toaster` that was mounted last. A toast shown just before navigating to a page outside the app layout (onboarding, login) is lost with the layout, and React Router commits a redirect after `navigate()` resolves. Say it on the next page instead, through navigation state: login's "Your account has been deleted.", onboarding's "<workspace> deleted." and "You left <workspace>.". Arriving in the app layout from outside it works the same way: `arrivalState` carries `joinedWorkspace` or `createdWorkspace`, and the layout's `ArrivalToast` shows "You joined Acme." or "Acme created." (creating from the switcher uses the same form, so it goes this way too).
+- **Every finished action says so.** Creating, renaming, leaving and deleting a workspace; creating, editing and deleting a project; inviting, changing a role, removing a member, revoking an invitation; profile, password and other sessions. Signing out and deleting the account end on login, which is its own confirmation (login says the account was deleted).
 - A toast hides after 5 seconds, paused while it's hovered or focused. Pass `{ duration }` in milliseconds to change that, or `Infinity` to keep it until dismissed.
 - It's BaseUI's `toaster` (timer, stacking) with its slots replaced by `slot()`: a zinc panel with the `Notice` variant's icon and role (`messageVariants` in `feedback.tsx`, so the two stay alike), fading and sliding on `data-closed`. BaseUI's close icon can't be reached by keyboard, so the toast renders our `DismissButton` instead.
 - `<Toaster />` is mounted by `pages/app/layout.tsx` and onboarding only, so signing out unmounts it and any open toasts. Calling `toast` where no `Toaster` is mounted throws in development (in tests, render a `<Toaster />`).
@@ -113,7 +136,7 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 
 ## Feature components (`components/app/<feature>`)
 
-- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`; with `project.destroy`, a last column with `ProjectActions`), `ProjectActions` (the ⋯ menu: Delete project, with a confirmation; also in the project page's header), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
+- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`; for members who may edit or delete projects (`hasProjectActions`), a last column with `ProjectActions`, whose Edit project calls the row's `onEdit`), `ProjectActions` (the ⋯ menu: Edit project with `onEdit` and `project.update`, Delete project with `project.destroy` and a confirmation; also in the project page's header, which has no separate Edit button), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
 - **`workspaces`**, shared by onboarding, the switcher and workspace settings: `WorkspaceAvatar` (the name's first letter; also in the account's last-owner warning), `WorkspaceNameField`, `useCreateWorkspace` and `CreateWorkspaceDialog`.
 - **`invitations`**, shared by the invitation page, login and register: `InvitationCallout` (an `info` Notice, "<workspace> has invited you to join." with who invited you and the role; a skeleton while checking, an error for a dead link) and `withArticle(role)`.
 - **`account`**, shared by account settings, onboarding and the reset link page: `PasswordField`, `NewPasswordFields`, and `DeleteAccountDialog` (password confirmation; a 409 goes to `onLastOwner`).

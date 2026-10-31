@@ -7,7 +7,7 @@ import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Divider } from "@/components/ui/divider";
-import { ErrorNotice } from "@/components/ui/feedback";
+import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import {
   ErrorMessage,
   Field,
@@ -26,13 +26,15 @@ import {
   DangerAction,
   SettingsSection,
 } from "@/components/ui/settings-section";
-import { Strong } from "@/components/ui/text";
+import { Code } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ApiError, errorMessage, useApi } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { routes, type OnboardingState } from "@/lib/routes";
+import { useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
+import { useOpenCount } from "@/lib/use-open-count";
 import {
   useRefreshWorkspaces,
   useWorkspace,
@@ -198,19 +200,30 @@ function DangerZone() {
     </SettingsSection>
   );
 }
-// Leaving takes you out of the workspace at once; /app then opens your next
-// workspace, or onboarding when there is none. The dialog stays busy until
-// that page has loaded. The only owner doesn't see it: they can't leave.
+// Leaving takes you out of the workspace at once, then opens your next
+// workspace with a toast, or onboarding (which says so itself) when there is
+// none. The dialog stays busy until that page has loaded. The only owner
+// doesn't see it: they can't leave.
 function LeaveAction() {
   const api = useApi();
   const workspace = useWorkspace();
   const refresh = useRefreshWorkspaces();
+  const list = useWorkspaceList();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  // Each opening starts without the last one's error.
+  const opened = useOpenCount(open);
   async function leave() {
     await api.workspaces().leave(workspace.id);
+    const next = list.items.find((other) => other.id !== workspace.id);
     refresh();
-    await navigate(routes.app);
+    if (next) {
+      await navigate(routes.dashboard(next.id));
+      toast.success(`You left ${workspace.name}.`);
+      return;
+    }
+    const state: OnboardingState = { leftWorkspace: workspace.name };
+    await navigate(routes.onboarding, { state });
   }
   return (
     <>
@@ -224,6 +237,7 @@ function LeaveAction() {
         }
       />
       <ConfirmationDialog
+        key={opened}
         open={open}
         onClose={() => setOpen(false)}
         title={`Leave ${workspace.name}?`}
@@ -280,6 +294,7 @@ function DeleteWorkspaceDialog({
   const workspace = useWorkspace();
   const refresh = useRefreshWorkspaces();
   const list = useWorkspaceList();
+  const session = useSession();
   const navigate = useNavigate();
   const [typed, setTyped] = useState("");
   const [password, setPassword] = useState("");
@@ -308,20 +323,35 @@ function DeleteWorkspaceDialog({
     <ConfirmationDialog
       open={open}
       onClose={onClose}
-      title={`Delete ${workspace.name}?`}
-      description="This permanently deletes the workspace, its projects and every membership, for everyone in it. It can’t be undone."
+      title={`Delete “${workspace.name}”?`}
+      description="Type its name and your password to confirm."
       confirm="Delete workspace"
       variant="danger"
       disabled={typed.trim() !== workspace.name || password === ""}
       onConfirm={destroy}
       onError={showOnField}
     >
+      <Notice variant="warning" className="mb-6">
+        This permanently deletes the workspace, its projects and every
+        membership, for everyone in it. It can’t be undone.
+      </Notice>
+      {/* Tells password managers which account the password belongs to, so
+          they don't fill the email into the name field. */}
+      <input
+        type="email"
+        name="username"
+        autoComplete="username"
+        value={session.user.email}
+        readOnly
+        hidden
+      />
       <FieldGroup>
         <Field>
           <Label>
-            Type <Strong>{workspace.name}</Strong> to confirm
+            Type “<Code>{workspace.name}</Code>” to confirm
           </Label>
           <Input
+            name="confirm-workspace-name"
             autoComplete="off"
             autoFocus
             invalid={Boolean(fieldErrors.name)}

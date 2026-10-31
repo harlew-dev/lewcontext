@@ -49,8 +49,11 @@ export default function Onboarding({ loaderData }: Route.ComponentProps) {
 }
 function NewWorkspace() {
   const create = useCreateWorkspace();
-  // Workspace settings send you here after deleting your last workspace.
-  const { deletedWorkspace } = onboardingState(useLocation().state);
+  // Workspace settings send you here after deleting or leaving your last
+  // workspace.
+  const { deletedWorkspace, leftWorkspace } = onboardingState(
+    useLocation().state,
+  );
   return (
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
@@ -61,6 +64,9 @@ function NewWorkspace() {
         <form onSubmit={create.submit} className="grid grid-cols-1 gap-8">
           {deletedWorkspace && (
             <Notice variant="success">{deletedWorkspace} deleted.</Notice>
+          )}
+          {leftWorkspace && (
+            <Notice variant="success">You left {leftWorkspace}.</Notice>
           )}
           <div className="space-y-2">
             <Heading>New workspace</Heading>

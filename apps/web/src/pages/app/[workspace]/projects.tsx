@@ -92,7 +92,12 @@ export default function ProjectIndex() {
             }
           />
         }
-        row={(project) => <ProjectRow project={project} />}
+        row={(project) => (
+          <ProjectRow
+            project={project}
+            onEdit={() => editor.setDialog(project)}
+          />
+        )}
         rowKey={(project) => project.id}
         href={(page) => projectsPath(workspace.id, { ...query, page })}
         empty={

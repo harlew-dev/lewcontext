@@ -18,16 +18,33 @@ import { testSession } from "@/test/session";
 import { testWorkspace } from "@/test/workspace";
 import type { Role, Workspace } from "@/types/workspaces";
 const session = testSession();
+const emptyPage = {
+  data: [],
+  pages: { current: 1, total: 1, perPage: 20, items: 0 },
+};
 // Stands in for onboarding, showing what workspace settings told it.
 function OnboardingProbe() {
-  const { deletedWorkspace } = onboardingState(useLocation().state);
+  const { deletedWorkspace, leftWorkspace } = onboardingState(
+    useLocation().state,
+  );
+  if (leftWorkspace) return <p>Onboarding after leaving {leftWorkspace}</p>;
   return <p>Onboarding after deleting {deletedWorkspace}</p>;
 }
-function renderAs(role: Role, overrides: Partial<Workspace> = {}) {
+// Another workspace the member is in, opened after leaving or deleting.
+const beta = testWorkspace("member", {
+  id: "wsp_3zFIZMxjxQWiMX",
+  name: "Beta",
+});
+function renderAs(
+  role: Role,
+  overrides: Partial<Workspace> = {},
+  others: Workspace[] = [],
+) {
   const workspace = testWorkspace(role, overrides);
+  const data = [workspace, ...others];
   const first = {
-    data: [workspace],
-    pages: { current: 1, total: 1, perPage: 20, items: 1 },
+    data,
+    pages: { current: 1, total: 1, perPage: 20, items: data.length },
   };
   return render(
     <SWRConfig value={{ provider: () => new Map() }}>
@@ -39,7 +56,10 @@ function renderAs(role: Role, overrides: Partial<Workspace> = {}) {
                 path="/app/:workspace/settings"
                 element={<WorkspaceEdit />}
               />
-              <Route path="/app" element={<p>Opening your next workspace</p>} />
+              <Route
+                path="/app/:workspace/dashboard"
+                element={<p>Opened the next workspace</p>}
+              />
               <Route path="/app/onboarding" element={<OnboardingProbe />} />
             </Routes>
           </MemoryRouter>
@@ -51,7 +71,10 @@ function renderAs(role: Role, overrides: Partial<Workspace> = {}) {
 }
 describe("workspace settings", () => {
   it("lets owners and admins rename the workspace", async () => {
-    const api = stubApi({ "*": { body: {} } });
+    const api = stubApi({
+      "PATCH /api/workspaces/wsp_2yEHYLwiwPVhLW": { body: {} },
+      "*": { body: emptyPage },
+    });
     renderAs("admin");
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
@@ -125,14 +148,15 @@ describe("workspace settings", () => {
   it("lets a viewer leave, then opens their next workspace", async () => {
     const api = stubApi({
       "DELETE /api/workspaces/wsp_2yEHYLwiwPVhLW/membership": { status: 204 },
+      // The switcher's list, as it refreshes.
       "*": {
         body: {
-          data: [],
-          pages: { current: 1, total: 1, perPage: 20, items: 0 },
+          data: [testWorkspace("viewer"), beta],
+          pages: { current: 1, total: 1, perPage: 20, items: 2 },
         },
       },
     });
-    renderAs("viewer");
+    renderAs("viewer", {}, [beta]);
     expect(screen.queryByRole("link", { name: "Members" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Leave workspace" }));
     const dialog = await screen.findByRole("dialog");
@@ -143,9 +167,25 @@ describe("workspace settings", () => {
       within(dialog).getByRole("button", { name: "Leave workspace" }),
     );
     expect(
-      await screen.findByText("Opening your next workspace"),
+      await screen.findByText("Opened the next workspace"),
     ).toBeInTheDocument();
+    expect(await screen.findByText("You left Acme.")).toBeInTheDocument();
     expect(api.sent("DELETE")).toHaveLength(1);
+  });
+  it("tells onboarding when you left your last workspace", async () => {
+    stubApi({
+      "DELETE /api/workspaces/wsp_2yEHYLwiwPVhLW/membership": { status: 204 },
+      "*": { body: emptyPage },
+    });
+    renderAs("member");
+    fireEvent.click(screen.getByRole("button", { name: "Leave workspace" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Leave workspace" }),
+    );
+    expect(
+      await screen.findByText("Onboarding after leaving Acme"),
+    ).toBeInTheDocument();
   });
   it("doesn't offer the only owner Leave, without loading members", () => {
     const api = stubApi({});
@@ -187,18 +227,16 @@ describe("workspace settings", () => {
         },
         { status: 204 },
       ],
-      "*": {
-        body: {
-          data: [],
-          pages: { current: 1, total: 1, perPage: 20, items: 0 },
-        },
-      },
+      "*": { body: emptyPage },
     });
     renderAs("owner");
     fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading")).toHaveTextContent(
-      "Delete Acme?",
+      "Delete “Acme”?",
+    );
+    expect(within(dialog).getByRole("note")).toHaveTextContent(
+      "It can’t be undone.",
     );
     const confirm = within(dialog).getByRole("button", {
       name: "Delete workspace",

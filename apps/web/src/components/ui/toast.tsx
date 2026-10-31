@@ -66,11 +66,13 @@ export function Toaster() {
     />
   );
 }
+// Toasts report finished actions; warnings and information stay inline.
+type ToastVariant = Extract<MessageVariant, "success" | "error">;
 let count = 0;
 // BaseUI keeps the timer (paused while hovered or focused) and the stack. Its
 // own close icon can't be reached by keyboard, so ours replaces it.
 function show(
-  variant: MessageVariant,
+  variant: ToastVariant,
   message: ReactNode,
   { duration = defaultDuration }: ToastOptions = {},
 ) {

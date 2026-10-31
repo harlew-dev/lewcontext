@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
+import { Toaster } from "@/components/ui/toast";
 import ProjectIndex from "@/pages/app/[workspace]/projects";
 import ProjectShow from "@/pages/app/[workspace]/projects/[project]";
 import { SessionProvider } from "@/lib/session";
@@ -49,6 +50,7 @@ function renderAs(role: Role, url: string) {
               />
             </Routes>
           </MemoryRouter>
+          <Toaster />
         </WorkspaceProvider>
       </SessionProvider>
     </SWRConfig>,
@@ -64,6 +66,29 @@ describe("projects for each role", () => {
     expect(
       screen.getByRole("button", { name: "New project" }),
     ).toBeInTheDocument();
+  });
+  it("opens New project empty again after creating one", async () => {
+    stubApi({
+      [`GET ${projects}`]: { body: page(project) },
+      [`POST ${projects}`]: { status: 201, body: project },
+    });
+    renderAs("member", "/app/wsp_2yEHYLwiwPVhLW/projects");
+    async function openNew() {
+      fireEvent.click(
+        await screen.findByRole("button", { name: "New project" }),
+      );
+      return within(await screen.findByRole("dialog"));
+    }
+    const first = await openNew();
+    fireEvent.change(first.getByLabelText("Project name"), {
+      target: { value: "Research sprint" },
+    });
+    fireEvent.click(first.getByRole("button", { name: "Create project" }));
+    expect(
+      await screen.findByText("Project created. A good start."),
+    ).toBeInTheDocument();
+    const second = await openNew();
+    expect(second.getByLabelText("Project name")).toHaveValue("");
   });
   it("shows viewers the list without New project", async () => {
     stubApi({ [`GET ${projects}`]: { body: page(project) } });
@@ -93,8 +118,15 @@ describe("projects for each role", () => {
       await screen.findByRole("heading", { name: "Research sprint" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Talk to our customers")).toBeInTheDocument();
+    // Edit project is in the ⋯ menu, which viewers don't get at all.
+    const menu = { name: "Actions for Research sprint" };
+    if (!edit) {
+      expect(screen.queryByRole("button", menu)).toBeNull();
+      return;
+    }
+    fireEvent.click(screen.getByRole("button", menu));
     expect(
-      Boolean(screen.queryByRole("button", { name: "Edit project" })),
-    ).toBe(edit);
+      await screen.findByRole("menuitem", { name: "Edit project" }),
+    ).toBeInTheDocument();
   });
 });

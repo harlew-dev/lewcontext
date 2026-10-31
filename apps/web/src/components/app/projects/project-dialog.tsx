@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cx } from "@/lib/cx";
 import { useApi } from "@/lib/api";
 import { useAction } from "@/lib/use-action";
+import { useOpenCount } from "@/lib/use-open-count";
 import { useWorkspace } from "@/lib/workspace";
 import {
   statuses,
@@ -37,15 +38,17 @@ const emptyProject: ProjectInput = {
   status: "Planned",
   color: "violet",
 };
-// Create/edit dialog driven by the page's project editor. The last target is
-// kept while the dialog animates out so its content doesn't change mid-exit.
+// Create/edit dialog driven by the page's project editor. Each opening starts
+// from the project (or empty), never from what was typed last time. The last
+// target is kept while the dialog animates out so its content doesn't change
+// mid-exit.
 export function ProjectDialog({ editor }: { editor: ProjectEditor }) {
   const [target, setTarget] = useState<Project | "new">("new");
   if (editor.dialog && editor.dialog !== target) setTarget(editor.dialog);
-  const key = target === "new" ? "new" : target.id;
+  const opened = useOpenCount(editor.dialog !== null);
   return (
     <ProjectForm
-      key={key}
+      key={opened}
       open={editor.dialog !== null}
       project={target === "new" ? undefined : target}
       onClose={() => editor.setDialog(null)}

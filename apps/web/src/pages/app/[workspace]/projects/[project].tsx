@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeftIcon, PencilSquareIcon } from "@heroicons/react/16/solid";
+import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import { ProjectActions } from "@/components/app/projects/project-actions";
 import {
   ProjectAvatar,
@@ -66,8 +66,8 @@ function ProjectContent({ id }: { id: string }) {
     </>
   );
 }
-// Without onEdit (members who can't edit projects) there's no Edit button;
-// the ⋯ menu (Delete) shows only to those who may delete it.
+// The ⋯ menu offers Edit project (with onEdit: members who may edit) and
+// Delete project (members who may delete); with neither there's no menu.
 function ProjectDetails({
   project,
   onEdit,
@@ -92,15 +92,11 @@ function ProjectDetails({
             </Text>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {onEdit && (
-            <Button outline onClick={onEdit}>
-              <PencilSquareIcon />
-              Edit project
-            </Button>
-          )}
-          <ProjectActions project={project} onDeleted={onDeleted} />
-        </div>
+        <ProjectActions
+          project={project}
+          onEdit={onEdit}
+          onDeleted={onDeleted}
+        />
       </div>
       <div className="mt-12">
         <Subheading>Details</Subheading>
@@ -110,7 +106,9 @@ function ProjectDetails({
             {project.description || "No description yet"}
           </DescriptionDetails>
           <DescriptionTerm>Status</DescriptionTerm>
-          <DescriptionDetails>{project.status}</DescriptionDetails>
+          <DescriptionDetails>
+            <ProjectStatusBadge status={project.status} />
+          </DescriptionDetails>
           <DescriptionTerm>Created</DescriptionTerm>
           <DescriptionDetails>
             {formatDate(project.createdAt, "long")}

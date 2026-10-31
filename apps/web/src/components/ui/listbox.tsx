@@ -1,12 +1,16 @@
 import {
   Children,
+  createContext,
   isValidElement,
+  useContext,
+  useEffect,
+  useId,
   useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 import { Select, type Option } from "baseui/select";
-import { useReducedMotion } from "motion/react";
+import { LayoutGroup, useReducedMotion } from "motion/react";
 import {
   popoverExit,
   popoverOverrides,
@@ -16,6 +20,7 @@ import {
 import { cx } from "@/lib/cx";
 import { usePopoverScrollLock } from "@/lib/scroll-lock";
 import { useField } from "./fieldset";
+import { Highlight } from "./highlight";
 // Listbox styles on BaseUI's Select, which provides the combobox
 // keyboard handling, popover positioning and option highlighting. The open
 // panel covers the button with the selected option over it (alignSelection).
@@ -113,29 +118,55 @@ const ListboxList = slot(
   "ul",
   "max-h-[min(20rem,calc(100dvh-2rem))] focus:outline-hidden",
 );
+// The highlighted (hovered or arrowed-to) option's background is a grey
+// Highlight that slides between options, and the selected option is blue
+// (ListboxOptionContent renders both). They sit at -z-10 and -z-5 in the
+// panel's `isolate` stacking context, so the grey passes under every option's
+// text, and under the blue, while it slides.
 const ListboxOptionItem = slot(
   "li",
   [
-    "group/option grid cursor-default grid-cols-[--spacing(5)_1fr] items-baseline gap-x-2 rounded-lg py-2.5 pr-3.5 pl-2 sm:grid-cols-[--spacing(4)_1fr] sm:py-1.5 sm:pr-3 sm:pl-1.5",
+    "group/option relative grid cursor-default grid-cols-[--spacing(5)_1fr] items-baseline gap-x-2 rounded-lg py-2.5 pr-3.5 pl-2 sm:grid-cols-[--spacing(4)_1fr] sm:py-1.5 sm:pr-3 sm:pl-1.5",
     "text-base/6 text-zinc-950 sm:text-sm/6 dark:text-white forced-colors:text-[CanvasText]",
-    "outline-hidden data-focus:bg-blue-500 data-focus:text-white",
+    "outline-hidden",
     "forced-color-adjust-none forced-colors:data-focus:bg-[Highlight] forced-colors:data-focus:text-[HighlightText]",
     "data-disabled:opacity-50",
   ].join(" "),
   { ignore: ["$isFocused"] },
 );
+// Whether the open panel has settled where BaseUI positions it, so the
+// highlight may slide (see `settleTime`).
+const SettledContext = createContext(false);
+// BaseUI positions the panel during its first frames (and it fades in for
+// 100 ms); until then the highlight is drawn in place, without sliding.
+const settleTime = 150;
 function ListboxOptionContent({
   $selected,
+  $isHighlighted,
   children,
 }: {
   $selected?: boolean;
+  $isHighlighted?: boolean;
   children?: ReactNode;
 }) {
+  const settled = useContext(SettledContext);
   return (
     <>
+      {$isHighlighted && (
+        <Highlight
+          slide={settled}
+          className="-z-10 bg-zinc-950/5 dark:bg-white/10"
+        />
+      )}
+      {$selected && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 -z-5 rounded-lg bg-blue-500 forced-colors:hidden"
+        />
+      )}
       {$selected && (
         <svg
-          className="relative size-5 self-center stroke-current sm:size-4"
+          className="relative size-5 self-center stroke-current text-white sm:size-4 forced-colors:text-[CanvasText]"
           viewBox="0 0 16 16"
           fill="none"
           aria-hidden="true"
@@ -150,7 +181,12 @@ function ListboxOptionContent({
       )}
       <span
         data-listbox-label
-        className="col-start-2 flex min-w-0 items-center *:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 sm:*:data-[slot=icon]:size-4 *:data-[slot=icon]:text-zinc-500 group-data-focus/option:*:data-[slot=icon]:text-white dark:*:data-[slot=icon]:text-zinc-400"
+        className={cx(
+          "col-start-2 flex min-w-0 items-center *:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 sm:*:data-[slot=icon]:size-4",
+          $selected
+            ? "text-white *:data-[slot=icon]:text-white forced-colors:text-[CanvasText]"
+            : "*:data-[slot=icon]:text-zinc-500 dark:*:data-[slot=icon]:text-zinc-400",
+        )}
       >
         {children}
       </span>
@@ -229,11 +265,18 @@ export function Listbox<T extends string>({
   "aria-label": ariaLabel,
 }: ListboxProps<T>) {
   const field = useField();
+  const id = useId();
   const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
+  const [settled, setSettled] = useState(false);
   // Nothing scrolls while open, as with a native select: the panel covers
   // the button, so scrolling would pull them apart.
   usePopoverScrollLock(open);
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => setSettled(true), settleTime);
+    return () => window.clearTimeout(timer);
+  }, [open]);
   const options: Option[] = Children.toArray(children)
     .filter(isValidElement<ListboxOptionProps<T>>)
     .map((option) => ({
@@ -244,50 +287,58 @@ export function Listbox<T extends string>({
   const renderLabel = ({ option }: { option?: Option }) =>
     option?.label as ReactNode;
   return (
-    <Select
-      onOpen={() => setOpen(true)}
-      onClose={() => setOpen(false)}
-      options={options}
-      value={options.filter((option) => option.id === value)}
-      onChange={({ value: selected }) => {
-        if (selected[0]) onChange(selected[0].id as T);
-      }}
-      clearable={false}
-      searchable={false}
-      backspaceRemoves={false}
-      disabled={disabled ?? field?.disabled}
-      error={invalid}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      aria-labelledby={ariaLabel ? undefined : field?.labelId}
-      aria-describedby={field?.describedBy}
-      getOptionLabel={renderLabel}
-      getValueLabel={renderLabel}
-      // BaseUI names the control "Selected <labelKey>. <aria-label>", so it
-      // needs the option's text, not its markup ("[object Object]").
-      labelKey="text"
-      overrides={{
-        Root: { component: ListboxRoot, props: { className } },
-        ControlContainer: { component: ListboxButton },
-        ValueContainer: { component: ListboxValueContainer },
-        SingleValue: { component: ListboxValue },
-        Placeholder: { component: ListboxPlaceholder },
-        InputContainer: { component: ListboxFocusTarget },
-        IconsContainer: { component: ListboxIcons },
-        SelectArrow: { component: ChevronUpDown },
-        Popover: {
-          props: {
-            animateOutTime: reducedMotion ? 0 : popoverExit,
-            popperOptions,
-            overrides: popoverOverrides,
-          },
-        },
-        DropdownContainer: { component: ListboxPanel },
-        Dropdown: { component: ListboxList },
-        DropdownListItem: { component: ListboxOptionItem },
-        OptionContent: { component: ListboxOptionContent },
-      }}
-    />
+    // Its own LayoutGroup, so the highlight never slides in from another one.
+    <LayoutGroup id={id}>
+      <SettledContext.Provider value={settled}>
+        <Select
+          onOpen={() => setOpen(true)}
+          onClose={() => {
+            setOpen(false);
+            setSettled(false);
+          }}
+          options={options}
+          value={options.filter((option) => option.id === value)}
+          onChange={({ value: selected }) => {
+            if (selected[0]) onChange(selected[0].id as T);
+          }}
+          clearable={false}
+          searchable={false}
+          backspaceRemoves={false}
+          disabled={disabled ?? field?.disabled}
+          error={invalid}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabel ? undefined : field?.labelId}
+          aria-describedby={field?.describedBy}
+          getOptionLabel={renderLabel}
+          getValueLabel={renderLabel}
+          // BaseUI names the control "Selected <labelKey>. <aria-label>", so it
+          // needs the option's text, not its markup ("[object Object]").
+          labelKey="text"
+          overrides={{
+            Root: { component: ListboxRoot, props: { className } },
+            ControlContainer: { component: ListboxButton },
+            ValueContainer: { component: ListboxValueContainer },
+            SingleValue: { component: ListboxValue },
+            Placeholder: { component: ListboxPlaceholder },
+            InputContainer: { component: ListboxFocusTarget },
+            IconsContainer: { component: ListboxIcons },
+            SelectArrow: { component: ChevronUpDown },
+            Popover: {
+              props: {
+                animateOutTime: reducedMotion ? 0 : popoverExit,
+                popperOptions,
+                overrides: popoverOverrides,
+              },
+            },
+            DropdownContainer: { component: ListboxPanel },
+            Dropdown: { component: ListboxList },
+            DropdownListItem: { component: ListboxOptionItem },
+            OptionContent: { component: ListboxOptionContent },
+          }}
+        />
+      </SettledContext.Provider>
+    </LayoutGroup>
   );
 }
 // The text inside an option's markup, e.g. "Planned" from

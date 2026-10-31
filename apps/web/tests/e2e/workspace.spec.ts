@@ -173,7 +173,10 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await expect(page).toHaveURL(
     new RegExp(`/app/${ws}/projects/prj_[0-9A-Za-z]{14}$`),
   );
-  await page.getByRole("button", { name: "Edit project" }).click();
+  await page
+    .getByRole("button", { name: "Actions for Launch the good stuff" })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit project" }).click();
   await dialog.getByRole("combobox").click();
   await page.getByRole("option", { name: "Completed", exact: true }).click();
   await dialog.getByRole("button", { name: "Save changes" }).click();
@@ -404,6 +407,9 @@ test("workspaces: switch, create, rename and copy the ID", async ({
   await expect(page).not.toHaveURL(`/app/${first}/dashboard`);
   await expect(page).toHaveURL(workspaceUrl);
   await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Second studio created." }),
+  ).toBeVisible();
   await expect(page.getByText("Room for your next big thing")).toBeVisible();
   // Both are listed, newest first, and switching is a link.
   await page.getByRole("button", { name: "Workspace menu" }).click();
@@ -561,9 +567,10 @@ test("other people's workspaces are not found until you're a member; members can
   await expect(
     page.getByRole("heading", { name: "Shared plans" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit project" })).toHaveCount(
-    0,
-  );
+  // Viewers may neither edit nor delete it, so there's no ⋯ menu.
+  await expect(
+    page.getByRole("button", { name: "Actions for Shared plans" }),
+  ).toHaveCount(0);
   const refused = await page.request.post(
     `/api/workspaces/${theirs}/projects`,
     {

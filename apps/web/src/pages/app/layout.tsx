@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Outlet, useLocation, useParams } from "react-router";
 import { ApplicationLayout } from "@/components/layout/application-layout";
+import { PageTransition } from "@/components/layout/page-transition";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { ListSkeleton } from "@/components/ui/feedback";
 import { Toaster, toast } from "@/components/ui/toast";
@@ -8,7 +9,7 @@ import { paths } from "@/lib/api";
 import { parsePublicId } from "@/lib/ids";
 import { signedInLoader } from "@/lib/loaders";
 import type { Page } from "@/lib/pagination";
-import { arrivalState } from "@/lib/routes";
+import { arrivalState, type ArrivalState } from "@/lib/routes";
 import { SessionProvider } from "@/lib/session";
 import { useResource } from "@/lib/use-resource";
 import { WorkspaceProvider, useWorkspaceList } from "@/lib/workspace";
@@ -27,12 +28,16 @@ export function shouldRevalidate() {
   return false;
 }
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
+  const { pathname } = useLocation();
   if ("unavailable" in loaderData) return <ServiceUnavailable />;
   return (
     <SessionProvider session={loaderData.session}>
       <CurrentWorkspace first={loaderData.workspaces}>
         <ApplicationLayout>
-          <Outlet />
+          {/* Each page fades in; a new query (search, page) isn't a new page. */}
+          <PageTransition key={pathname}>
+            <Outlet />
+          </PageTransition>
         </ApplicationLayout>
       </CurrentWorkspace>
       <Toaster />
@@ -40,19 +45,25 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     </SessionProvider>
   );
 }
-// Announces arriving from outside the layout, which couldn't toast itself
-// (its Toaster unmounts with it): the workspace just joined from an
-// invitation. Once per navigation, even when React runs effects twice in
-// development.
+// Announces arriving at a workspace, from pages outside the layout that
+// couldn't toast themselves (their Toaster unmounts with them): the workspace
+// just joined from an invitation, or just created (from onboarding, or the
+// switcher, which uses the same form). Once per navigation, even when React
+// runs effects twice in development.
 function ArrivalToast() {
   const location = useLocation();
-  const { joinedWorkspace } = arrivalState(location.state);
+  const message = arrivalMessage(arrivalState(location.state));
   const shown = useRef<string | null>(null);
   useEffect(() => {
-    if (!joinedWorkspace || shown.current === location.key) return;
+    if (!message || shown.current === location.key) return;
     shown.current = location.key;
-    toast.success(`You joined ${joinedWorkspace}.`);
-  }, [joinedWorkspace, location.key]);
+    toast.success(message);
+  }, [message, location.key]);
+  return null;
+}
+function arrivalMessage({ joinedWorkspace, createdWorkspace }: ArrivalState) {
+  if (joinedWorkspace) return `You joined ${joinedWorkspace}.`;
+  if (createdWorkspace) return `${createdWorkspace} created.`;
   return null;
 }
 // Provides the workspace in the URL, or the newest one on pages outside a

@@ -4,21 +4,29 @@ import {
   forwardRef,
   isValidElement,
   useContext,
+  useId,
   useState,
   type ComponentPropsWithoutRef,
   type ElementType,
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
 import { PLACEMENT, StatefulPopover } from "baseui/popover";
-import { useReducedMotion } from "motion/react";
+import { LayoutGroup, useReducedMotion } from "motion/react";
 import { popoverExit, popoverOverrides, popoverPanel } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
 import { ReturnFocus, focusedElement } from "@/lib/return-focus";
 import { usePopoverScrollLock } from "@/lib/scroll-lock";
 import { Button } from "./button";
+import {
+  Highlight,
+  HighlightProvider,
+  useHighlight,
+  useHighlightGroup,
+} from "./highlight";
 import { Link } from "./link";
 const placements = {
   bottom: PLACEMENT.bottom,
@@ -115,7 +123,38 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
           items.length;
   items[next]?.focus();
 }
+// The focused item's background is a Highlight that slides from item to item;
+// it goes when focus leaves the items.
 export function DropdownMenu({ className, children }: DropdownMenuProps) {
+  const id = useId();
+  const highlight = useHighlightGroup();
+  function leaveItems(event: FocusEvent<HTMLDivElement>) {
+    const next = event.relatedTarget;
+    const toItem =
+      next instanceof Element &&
+      event.currentTarget.contains(next) &&
+      next.closest('[role="menuitem"]') !== null;
+    if (!toItem) highlight.setActive(null);
+  }
+  return (
+    <LayoutGroup id={id}>
+      <HighlightProvider value={highlight}>
+        <MenuPanel className={className} onBlur={leaveItems}>
+          {children}
+        </MenuPanel>
+      </HighlightProvider>
+    </LayoutGroup>
+  );
+}
+function MenuPanel({
+  className,
+  onBlur,
+  children,
+}: {
+  className?: string;
+  onBlur: (event: FocusEvent<HTMLDivElement>) => void;
+  children: ReactNode;
+}) {
   return (
     <div
       role="menu"
@@ -125,6 +164,7 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
       data-autofocus
       data-popover-panel
       onKeyDown={moveFocus}
+      onBlur={onBlur}
       className={cx(
         className,
         "isolate w-max rounded-xl p-1",
@@ -141,24 +181,25 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
   );
 }
 // Headless UI marks the hovered or keyboard-active item with data-focus; here the
-// item takes real focus on hover, so `focus:` gives the same highlight.
+// item takes real focus on hover, so `focus:` gives the same highlight. Its
+// background is the menu's sliding grey Highlight (-z-10 in the menu's
+// `isolate` stacking context), so while it slides it passes under every
+// item's text.
 const itemClasses = cx(
-  "group cursor-default rounded-lg px-3.5 py-2.5 focus:outline-hidden sm:px-3 sm:py-1.5",
+  "group relative cursor-default rounded-lg px-3.5 py-2.5 focus:outline-hidden sm:px-3 sm:py-1.5",
   "text-left text-base/6 sm:text-sm/6 forced-colors:text-[CanvasText]",
-  "focus:bg-blue-500 focus:text-white",
   "disabled:opacity-50",
   "forced-color-adjust-none forced-colors:focus:bg-[Highlight] forced-colors:focus:text-[HighlightText] forced-colors:focus:*:data-[slot=icon]:text-[HighlightText]",
   "col-span-full grid grid-cols-[auto_1fr_1.5rem_0.5rem_auto] items-center supports-[grid-template-columns:subgrid]:grid-cols-subgrid",
   "*:data-[slot=icon]:col-start-1 *:data-[slot=icon]:row-start-1 *:data-[slot=icon]:mr-2.5 *:data-[slot=icon]:-ml-0.5 *:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:mr-2 sm:*:data-[slot=icon]:size-4",
-  "focus:*:data-[slot=icon]:text-white dark:focus:text-white dark:focus:*:data-[slot=icon]:text-white",
   "*:data-[slot=avatar]:mr-2.5 *:data-[slot=avatar]:-ml-1 *:data-[slot=avatar]:size-6 sm:*:data-[slot=avatar]:mr-2 sm:*:data-[slot=avatar]:size-5",
 );
-// Text and icon colours for each item variant, before focus turns them white;
-// "danger" is for destructive actions (Delete), and for Sign out in the
-// account menus.
+// Text and icon colours for each item variant (a focused default item's icon
+// darkens, as in the sidebar); "danger" is for destructive actions (Delete),
+// and for Sign out in the account menus.
 const itemVariants = {
   default:
-    "text-zinc-950 *:data-[slot=icon]:text-zinc-500 dark:text-white dark:*:data-[slot=icon]:text-zinc-400",
+    "text-zinc-950 *:data-[slot=icon]:text-zinc-500 focus:*:data-[slot=icon]:text-zinc-950 dark:text-white dark:*:data-[slot=icon]:text-zinc-400 dark:focus:*:data-[slot=icon]:text-white",
   danger:
     "text-red-600 *:data-[slot=icon]:text-red-500 dark:text-red-400 dark:*:data-[slot=icon]:text-red-400",
 };
@@ -181,12 +222,24 @@ export function DropdownItem({
   onClick,
   keepOpen = false,
   variant = "default",
+  children,
   ...props
 }: DropdownItemProps) {
   const { close } = useContext(DropdownContext);
+  const highlight = useHighlight();
+  const content = (
+    <>
+      {highlight.active && (
+        <Highlight className="-z-10 bg-zinc-950/5 dark:bg-white/10" />
+      )}
+      {children}
+    </>
+  );
   const shared = {
     role: "menuitem",
     className: cx(className, itemClasses, itemVariants[variant]),
+    children: content,
+    onFocus: () => highlight.activate(),
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) =>
       event.currentTarget.focus(),
     onClick: (event: MouseEvent<HTMLElement>) => {

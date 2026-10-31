@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   CheckCircleIcon,
+  ExclamationTriangleIcon,
   InformationCircleIcon,
   XCircleIcon,
   XMarkIcon,
@@ -13,7 +14,8 @@ import { Subheading } from "./heading";
 import { Text } from "./text";
 // How each kind of message is marked and announced: errors as alerts,
 // successes and information as polite status updates. Notice and toast share
-// these.
+// these. A warning says what an action will do (in a confirmation), so it's a
+// note, read with the dialog rather than announced.
 export const messageVariants = {
   error: {
     icon: XCircleIcon,
@@ -30,6 +32,11 @@ export const messageVariants = {
     role: "status",
     iconColor: "*:data-[slot=icon]:fill-blue-500",
   },
+  warning: {
+    icon: ExclamationTriangleIcon,
+    role: "note",
+    iconColor: "*:data-[slot=icon]:fill-amber-500",
+  },
 } as const;
 export type MessageVariant = keyof typeof messageVariants;
 const noticeColors: Record<MessageVariant, string> = {
@@ -38,6 +45,8 @@ const noticeColors: Record<MessageVariant, string> = {
   success:
     "bg-lime-50 text-lime-800 ring-lime-600/15 dark:bg-lime-400/10 dark:text-lime-300 dark:ring-lime-400/20",
   info: "bg-blue-50 text-blue-800 ring-blue-600/15 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/20",
+  warning:
+    "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20",
 };
 // The close button on a Notice or toast.
 export function DismissButton({ onClick }: { onClick: () => void }) {

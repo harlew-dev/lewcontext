@@ -1,9 +1,7 @@
 import {
-  createContext,
   forwardRef,
   useContext,
   useId,
-  useState,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
@@ -11,6 +9,12 @@ import { LayoutGroup, motion } from "motion/react";
 import { cx } from "@/lib/cx";
 import { TouchTarget } from "./button";
 import { Clickable } from "./clickable";
+import {
+  Highlight,
+  HighlightProvider,
+  useHighlight,
+  useHighlightGroup,
+} from "./highlight";
 import { SidebarToggleContext, useCloseSidebar } from "./sidebar-context";
 export function Sidebar({
   className,
@@ -62,34 +66,29 @@ export function SidebarFooter({
     />
   );
 }
-// Which item in a section the mouse is over; its hover background is one shared
-// element that slides between items (like the current-page indicator).
-const SectionHoverContext = createContext<{
-  hovered: string | null;
-  setHovered: (id: string | null) => void;
-} | null>(null);
 // Each section is a LayoutGroup, so its current-page indicator and hover
-// background slide between items (the app layout route stays mounted).
+// background (a Highlight on the item the mouse is over) slide between items
+// (the app layout route stays mounted).
 export function SidebarSection({
   className,
   onPointerLeave,
   ...props
 }: ComponentPropsWithoutRef<"div">) {
   const id = useId();
-  const [hovered, setHovered] = useState<string | null>(null);
+  const highlight = useHighlightGroup();
   return (
     <LayoutGroup id={id}>
-      <SectionHoverContext.Provider value={{ hovered, setHovered }}>
+      <HighlightProvider value={highlight}>
         <div
           {...props}
           data-slot="section"
           onPointerLeave={(event) => {
-            setHovered(null);
+            highlight.setActive(null);
             onPointerLeave?.(event);
           }}
           className={cx(className, "flex flex-col gap-0.5")}
         />
-      </SectionHoverContext.Provider>
+      </HighlightProvider>
     </LayoutGroup>
   );
 }
@@ -170,11 +169,13 @@ type SidebarItemProps = {
 export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(
   function SidebarItem({ current, className, children, ...props }, ref) {
     const closeSidebar = useCloseSidebar();
-    const section = useContext(SectionHoverContext);
-    const itemId = useId();
+    const highlight = useHighlight();
     const shared = {
       // `relative` keeps the label above the absolutely positioned highlight.
-      className: cx(itemClasses, section ? "relative" : hoverBackground),
+      className: cx(
+        itemClasses,
+        highlight.grouped ? "relative" : hoverBackground,
+      ),
       "data-current": current ? "" : undefined,
       "aria-current": current ? ("page" as const) : undefined,
     };
@@ -182,15 +183,11 @@ export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(
       <span
         className={cx(className, "relative")}
         onPointerEnter={(event) => {
-          if (event.pointerType === "mouse") section?.setHovered(itemId);
+          if (event.pointerType === "mouse") highlight.activate();
         }}
       >
-        {section?.hovered === itemId && (
-          <motion.span
-            layoutId="hover-background"
-            transition={{ type: "spring", bounce: 0.15, duration: 0.3 }}
-            className="absolute inset-0 rounded-lg bg-zinc-950/5 dark:bg-white/5"
-          />
+        {highlight.active && (
+          <Highlight className="bg-zinc-950/5 dark:bg-white/5" />
         )}
         {current && (
           <motion.span
