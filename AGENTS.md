@@ -104,6 +104,11 @@ Before claiming completion, run relevant checks and report failures:
 ## Working on this computer
 
 - PostgreSQL runs in Docker (`compose.yaml`, `make db`; `docker compose ps` shows it). Reuse that container; never install a second DB server. Restart a running process after config changes instead of duplicating it.
+- **Other agents may be running tests on the same machine**, in this checkout or another worktree. Be aware of that before starting a heavy run (`make test`, `make test-e2e`, `make build`):
+  - Check what's already running: test processes (`go test`, Playwright, Vitest, a test server) and the ports you plan to use.
+  - Take the machine's CPU and memory limits into account to avoid overloading it. Running several suites at once can make every run slow and flaky, so if the machine is already busy, wait for a run to finish before starting yours. A single focused test (`go test ./internal/mail -run TestX`) is fine at any time.
+  - Start long runs in the background and wait for the result. Don't start a second copy of a run you already have going.
+  - Never stop, restart, reuse or kill a server, container or test run you didn't start.
 - Use the using-the-browser skill and Playwright tools for web flows; desktop tools for other applications/visual artifact handoff. Do not touch windows you did not open.
 - Show the result with a saved screenshot or published file in the user's Artifacts panel.
 - Keep scope to the request. Do not push, merge, force-push, delete branches, or perform destructive operations unless explicitly asked. No external messages without authorization.
