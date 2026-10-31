@@ -38,6 +38,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
 | `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` | both password endpoints, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
+| `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
 | `workspace.renamed` | `workspace`, `changes.name` (`from`, `to`) | `RenameWorkspace`, only when the name changed |
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
@@ -49,7 +50,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 - **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted`, and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `auth.rate_limited`, so a flood writes one row.
-- Project and workspace names and descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
+- Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
 
 ## Listeners
 

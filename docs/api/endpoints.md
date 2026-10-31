@@ -8,6 +8,7 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/auth/register` | Origin, JSON, rate limit | 201 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie |
 | POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie |
 | GET | `/api/auth/me` | Session | `{user, csrfToken, expiresAt, signedInAt}` |
+| PATCH | `/api/auth/me` | Session, CSRF, Origin | 200 with the updated user. Body `{name}` (trimmed, 1–80 characters, no control characters); the email address can't change, so other fields are rejected (400) |
 | POST | `/api/auth/logout` | Session, CSRF, Origin | 204; session revoked, cookie cleared |
 | DELETE | `/api/auth/sessions` | Session, CSRF, Origin | 204; every other session revoked |
 | POST | `/api/auth/password/verify` | Session, CSRF, Origin, rate limit | 204 if `{password}` is the current password; 422 with `field: "password"` if not |

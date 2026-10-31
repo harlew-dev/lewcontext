@@ -27,6 +27,7 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.Handle("POST /api/auth/register", s.limitAuth(http.HandlerFunc(s.register)))
 	mux.Handle("POST /api/auth/login", s.limitAuth(http.HandlerFunc(s.login)))
 	mux.Handle("GET /api/auth/me", s.requireSession(http.HandlerFunc(s.me)))
+	mux.Handle("PATCH /api/auth/me", s.requireSession(http.HandlerFunc(s.updateProfile)))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.logout)))
 	mux.Handle("DELETE /api/auth/sessions", s.requireSession(http.HandlerFunc(s.revokeOthers)))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.

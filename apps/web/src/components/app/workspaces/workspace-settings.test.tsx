@@ -50,10 +50,21 @@ describe("workspace settings", () => {
     expect(rename.body).toEqual({ name: "Acme Inc" });
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
-  it("shows members the name without a form", () => {
+  it("shows members the name, locked, without a form", () => {
     renderAs("member");
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-    expect(screen.getByText("Acme")).toBeInTheDocument();
+    const name = screen.getByLabelText("Name");
+    expect(name).toHaveValue("Acme");
+    expect(name).toHaveAttribute("readonly");
+    expect(name).not.toBeDisabled();
+    expect(
+      screen.getByRole("img", {
+        name: "Only owners and admins can rename this",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Workspace IDs can’t be changed" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Only owners and admins can rename this workspace."),
     ).toBeInTheDocument();

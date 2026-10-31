@@ -26,6 +26,28 @@ func (s *Store) FindUser(ctx context.Context, email string) (User, string, error
 	return a.User, a.PasswordHash, err
 }
 
+// UpdateProfile saves the user's name and records auth.profile_updated when
+// it changed.
+func (s *Store) UpdateProfile(ctx context.Context, u User, name string) (User, error) {
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var before string
+		if err := tx.NewSelect().Model((*User)(nil)).Column("name").Where("id = ?", u.ID).For("UPDATE").Scan(ctx, &before); err != nil {
+			return err
+		}
+		u.Name = name
+		if _, err := tx.NewUpdate().Model(&u).Column("name").Where("id = ?", u.ID).Exec(ctx); err != nil {
+			return err
+		}
+		changes := events.Changes{}
+		changes.Add("name", before, u.Name)
+		if len(changes) == 0 {
+			return nil
+		}
+		return s.record(ctx, tx, events.ProfileUpdated{User: u.PublicID, Changes: changes}, EventScope{UserID: u.ID})
+	})
+	return u, err
+}
+
 // PasswordHash returns the user's stored password hash.
 func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) {
 	var hash string

@@ -7,11 +7,18 @@ import { Divider } from "@/components/ui/divider";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
-import { Input } from "@/components/ui/input";
+import {
+  Input,
+  InputActions,
+  InputButton,
+  InputGroup,
+  InputLock,
+} from "@/components/ui/input";
 import { SettingsSection } from "@/components/ui/settings-section";
-import { Strong, Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useApi } from "@/lib/api";
+import { cx } from "@/lib/cx";
 import { useAction } from "@/lib/use-action";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
 import { canManage, workspaceName, type Role } from "@/types/workspaces";
@@ -38,9 +45,15 @@ export default function WorkspaceSettings() {
         {canManage(workspace.role) ? (
           <RenameForm key={workspace.id} />
         ) : (
-          <Text>
-            <Strong>{workspace.name}</Strong>
-          </Text>
+          <Field>
+            <Label>Name</Label>
+            <InputGroup>
+              <Input readOnly value={workspace.name} />
+              <InputActions>
+                <InputLock label="Only owners and admins can rename this" />
+              </InputActions>
+            </InputGroup>
+          </Field>
         )}
       </SettingsSection>
       <Divider className="my-10" soft />
@@ -48,7 +61,11 @@ export default function WorkspaceSettings() {
         title="Workspace ID"
         description="Use it to refer to this workspace, for example when asking for help."
       >
-        <CopyField label="Workspace ID" value={workspace.id} />
+        <CopyField
+          label="Workspace ID"
+          value={workspace.id}
+          lock="Workspace IDs can’t be changed"
+        />
       </SettingsSection>
       <Divider className="my-10" soft />
       <SettingsSection
@@ -100,10 +117,20 @@ function RenameForm() {
     </form>
   );
 }
-// A read-only value with a Copy button. Where the clipboard isn't available
-// the field stays selectable, so the value can still be copied by hand.
-function CopyField({ label, value }: { label: string; value: string }) {
+// A read-only value with a Copy button inside the input, and a lock saying
+// why it can't change (`lock`). Where the clipboard isn't available the field
+// stays selectable, so the value can still be copied by hand.
+function CopyField({
+  label,
+  value,
+  lock,
+}: {
+  label: string;
+  value: string;
+  lock: string;
+}) {
   const [status, setStatus] = useState("");
+  const copied = status === "Copied";
   async function copy() {
     try {
       await navigator.clipboard.writeText(value);
@@ -114,22 +141,33 @@ function CopyField({ label, value }: { label: string; value: string }) {
   }
   return (
     <div className="space-y-2">
-      <div className="flex items-end gap-2">
-        <Field className="flex-1">
-          <Label className="sr-only">{label}</Label>
+      <Field>
+        <Label className="sr-only">{label}</Label>
+        <InputGroup>
           <Input
             readOnly
             value={value}
             className="font-mono"
             onFocus={(e) => e.currentTarget.select()}
           />
-        </Field>
-        <Button outline onClick={copy} aria-label={`Copy ${label}`}>
-          {status === "Copied" ? <CheckIcon /> : <DocumentDuplicateIcon />}
-          Copy
-        </Button>
-      </div>
-      <p role="status" className="text-sm/6 text-zinc-500 dark:text-zinc-400">
+          <InputActions>
+            <Tooltip content={copied ? "Copied" : "Copy"}>
+              <InputButton aria-label={`Copy ${label}`} onClick={copy}>
+                {copied ? <CheckIcon /> : <DocumentDuplicateIcon />}
+              </InputButton>
+            </Tooltip>
+            <InputLock label={lock} />
+          </InputActions>
+        </InputGroup>
+      </Field>
+      {/* "Copied" shows in the tooltip; screen readers hear it from here. */}
+      <p
+        role="status"
+        className={cx(
+          "text-sm/6 text-zinc-500 dark:text-zinc-400",
+          copied && "sr-only",
+        )}
+      >
         {status}
       </p>
     </div>

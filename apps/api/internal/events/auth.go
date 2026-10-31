@@ -82,3 +82,11 @@ type PasswordChanged struct {
 }
 
 func (PasswordChanged) EventName() string { return "auth.password_changed" }
+
+// ProfileUpdated: a user changed their account's name.
+type ProfileUpdated struct {
+	User    string  `json:"user"`
+	Changes Changes `json:"changes"`
+}
+
+func (ProfileUpdated) EventName() string { return "auth.profile_updated" }

@@ -70,7 +70,8 @@ function AccountDropdownMenu({
   onHelp,
 }: Pick<DropdownMenuProps, "anchor"> & {
   onSignOut: () => void;
-  onHelp: () => void;
+  // Shows "Getting started"; left out where the sidebar already has it.
+  onHelp?: () => void;
 }) {
   return (
     <DropdownMenu className="min-w-64" anchor={anchor}>
@@ -78,10 +79,12 @@ function AccountDropdownMenu({
         <ShieldCheckIcon />
         <DropdownLabel>Account & security</DropdownLabel>
       </DropdownItem>
-      <DropdownItem onClick={onHelp}>
-        <LightBulbIcon />
-        <DropdownLabel>Getting started</DropdownLabel>
-      </DropdownItem>
+      {onHelp && (
+        <DropdownItem onClick={onHelp}>
+          <LightBulbIcon />
+          <DropdownLabel>Getting started</DropdownLabel>
+        </DropdownItem>
+      )}
       <DropdownDivider />
       <DropdownItem onClick={onSignOut}>
         <ArrowRightStartOnRectangleIcon />
@@ -247,11 +250,16 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       toast.error(errorMessage(e));
     }
   }
-  const accountMenu = (anchor: DropdownMenuProps["anchor"]) => (
+  // On desktop "Getting started" sits in the sidebar just above the account
+  // menu, so only the mobile navbar's menu repeats it.
+  const accountMenu = (
+    anchor: DropdownMenuProps["anchor"],
+    { help }: { help: boolean },
+  ) => (
     <AccountDropdownMenu
       anchor={anchor}
       onSignOut={signOut}
-      onHelp={() => setHelp(true)}
+      onHelp={help ? () => setHelp(true) : undefined}
     />
   );
   return (
@@ -274,7 +282,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
                 <NavbarLabel>{session.user.name}</NavbarLabel>
                 <ChevronDownIcon />
               </DropdownButton>
-              {accountMenu("bottom end")}
+              {accountMenu("bottom end", { help: true })}
             </Dropdown>
           </NavbarSection>
         </Navbar>
@@ -333,7 +341,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
                 </span>
                 <ChevronUpIcon />
               </DropdownButton>
-              {accountMenu("top start")}
+              {accountMenu("top start", { help: false })}
             </Dropdown>
           </SidebarFooter>
         </Sidebar>

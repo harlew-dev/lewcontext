@@ -2,11 +2,6 @@ import { useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  DescriptionDetails,
-  DescriptionList,
-  DescriptionTerm,
-} from "@/components/ui/description-list";
-import {
   Dialog,
   DialogActions,
   DialogBody,
@@ -23,12 +18,17 @@ import {
   Label,
 } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
-import { Input } from "@/components/ui/input";
+import {
+  Input,
+  InputActions,
+  InputGroup,
+  InputLock,
+} from "@/components/ui/input";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { ApiError, errorMessage, useApi } from "@/lib/api";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { useRenewSession, useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
 export default function AccountSettings() {
@@ -39,18 +39,9 @@ export default function AccountSettings() {
       <Divider className="my-10 mt-6" />
       <SettingsSection
         title="Profile"
-        description="The name and email address on your account."
+        description="Your name, and the email address you sign in with."
       >
-        <DescriptionList>
-          <DescriptionTerm>Name</DescriptionTerm>
-          <DescriptionDetails>{session.user.name}</DescriptionDetails>
-          <DescriptionTerm>Email address</DescriptionTerm>
-          <DescriptionDetails>{session.user.email}</DescriptionDetails>
-          <DescriptionTerm>Member since</DescriptionTerm>
-          <DescriptionDetails>
-            {formatDate(session.user.createdAt, "long")}
-          </DescriptionDetails>
-        </DescriptionList>
+        <ProfileForm key={session.user.id} />
       </SettingsSection>
       <Divider className="my-10" soft />
       <SettingsSection
@@ -67,6 +58,69 @@ export default function AccountSettings() {
         <SessionControls />
       </SettingsSection>
     </div>
+  );
+}
+const maxName = 80;
+// The trimmed name, or null when it's empty or too long for the API.
+function cleanName(value: string): string | null {
+  const name = value.trim();
+  const length = Array.from(name).length;
+  return length >= 1 && length <= maxName ? name : null;
+}
+// Saves the name, then renews the session with the updated user so the new
+// name shows everywhere. The email address is how the user signs in, so it
+// can't be changed here.
+function ProfileForm() {
+  const api = useApi();
+  const session = useSession();
+  const renew = useRenewSession();
+  const [name, setName] = useState(session.user.name);
+  const save = useAction((clean: string) =>
+    api.auth().updateProfile({ name: clean }),
+  );
+  const clean = cleanName(name);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (clean === null) return;
+    const result = await save.run(clean);
+    if (!result.ok) return;
+    renew({ ...session, user: result.value });
+    setName(result.value.name);
+    toast.success("Profile updated.");
+  }
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <FieldGroup>
+        <Field disabled={save.loading}>
+          <Label>Name</Label>
+          <Input
+            name="name"
+            autoComplete="name"
+            required
+            maxLength={maxName}
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+          />
+        </Field>
+        <Field>
+          <Label>Email address</Label>
+          <InputGroup>
+            <Input type="email" value={session.user.email} readOnly />
+            <InputActions>
+              <InputLock label="Your sign-in email can’t be changed" />
+            </InputActions>
+          </InputGroup>
+        </Field>
+      </FieldGroup>
+      <Button
+        type="submit"
+        loading={save.loading}
+        disabled={clean === null || clean === session.user.name}
+      >
+        Save
+      </Button>
+      <ErrorNotice error={save.error} />
+    </form>
   );
 }
 function PasswordControls() {

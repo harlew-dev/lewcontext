@@ -23,7 +23,7 @@ type Event interface {
 // Catalogue lists every event type, for tests and docs.
 var Catalogue = []Event{
 	Registered{}, LoginAttempted{}, LoggedIn{}, RateLimited{}, LoggedOut{},
-	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{},
+	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
 	WorkspaceCreated{}, WorkspaceRenamed{},
 	ProjectCreated{}, ProjectUpdated{},
 }

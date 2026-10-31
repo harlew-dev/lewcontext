@@ -22,6 +22,7 @@ Pinned at `baseui` 18.2.0 with React 18.3.1. BaseUI 18 needs React 18, which is 
 | `Input`, `Textarea` | `Input`, `Textarea` | The input; `Field` wires id, description and disabled state |
 | `Select` | `Listbox` | Combobox keyboard handling, option highlighting, popover positioning |
 | `Popover` (`StatefulPopover`) | `Dropdown` | Click trigger, positioning, focus lock, Escape and outside-click dismissal, menu ARIA |
+| `Tooltip` (`StatefulTooltip`) | `Tooltip` (`tooltip.tsx`) | Hover and keyboard-focus trigger with delays, positioning, Escape, `role="tooltip"` and `aria-describedby` |
 | `Modal` | `Dialog` | Focus lock, Escape, backdrop click, enter/leave timing |
 | `Drawer` | the mobile sidebar (`sidebar-layout.tsx`) | The same as `Modal`, sliding from the left |
 | `toaster` | `toast`, `Toaster` | Timer (paused on hover/focus) and the stack |

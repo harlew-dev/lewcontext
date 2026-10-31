@@ -13,6 +13,7 @@ export const authRoutes = {
   password: () => "/api/auth/password",
   verifyPassword: () => "/api/auth/password/verify",
 };
+export type ProfileInput = { name: string };
 export type PasswordChange = { currentPassword: string; newPassword: string };
 export function auth(http: Http) {
   return {
@@ -26,6 +27,9 @@ export function auth(http: Http) {
         password,
       }),
     logout: () => http.send<void>("POST", authRoutes.logout(), {}),
+    // Saves the user's name; the email address can't change.
+    updateProfile: ({ name }: ProfileInput) =>
+      http.send<User>("PATCH", authRoutes.me(), { name }),
     // Checks the current password; failures are an ApiError with field "password".
     verifyPassword: (password: string) =>
       http.send<void>("POST", authRoutes.verifyPassword(), { password }),
