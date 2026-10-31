@@ -5,40 +5,14 @@ import (
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/router"
-	"lewcontext/api/internal/web"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-	"testing/fstest"
 )
-
-// A minimal web build: the homepage and the SPA fallback.
-func testPages(t *testing.T) *web.Pages {
-	t.Helper()
-	pages, err := web.New(fstest.MapFS{
-		"index.html":          {Data: []byte("<html><body>home</body></html>")},
-		"__spa-fallback.html": {Data: []byte("<html><body>app shell</body></html>")},
-	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pages
-}
-
-func get(h http.Handler, method, target string, cookie *http.Cookie) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, target, nil)
-	if cookie != nil {
-		r.AddCookie(cookie)
-	}
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	return w
-}
 
 func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 	s, db := server(t)
-	s.Pages = testPages(t)
+	s.Pages = apitest.Pages(t)
 	h := router.New(s)
 	f := factory.TestFaker(t)
 	ctx := context.Background()
@@ -46,7 +20,7 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 
 	// A valid session gets the app shell; the browser renders the page.
 	for _, target := range []string{"/app", "/app/settings", "/app/wsp_2yEHYLwiwPVhLW/projects?page=2"} {
-		w := get(h, "GET", target, session.Cookie())
+		w := apitest.Get(h, "GET", target, session.Cookie())
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "app shell") {
 			t.Fatalf("signed in %s: %d %q", target, w.Code, w.Body.String())
 		}
@@ -60,7 +34,7 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 		visitors[name] = stale.Cookie()
 	}
 	for name, cookie := range visitors {
-		w := get(h, "GET", "/app/wsp_2yEHYLwiwPVhLW/projects?page=2", cookie)
+		w := apitest.Get(h, "GET", "/app/wsp_2yEHYLwiwPVhLW/projects?page=2", cookie)
 		want := "/auth/login?next=%2Fapp%2Fwsp_2yEHYLwiwPVhLW%2Fprojects%3Fpage%3D2"
 		if w.Code != http.StatusFound || w.Header().Get("Location") != want {
 			t.Errorf("%s: want 302 to %s, got %d %q", name, want, w.Code, w.Header().Get("Location"))
@@ -72,7 +46,7 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 
 	// Public and guest pages need no session.
 	for target, want := range map[string]string{"/": "home", "/auth/login?next=%2Fapp": "app shell"} {
-		if w := get(h, "GET", target, nil); w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+		if w := apitest.Get(h, "GET", target, nil); w.Code != 200 || !strings.Contains(w.Body.String(), want) {
 			t.Errorf("signed out %s: %d %q", target, w.Code, w.Body.String())
 		}
 	}
@@ -80,27 +54,27 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 
 func TestAPIAndPagesStayApart(t *testing.T) {
 	s, db := server(t)
-	s.Pages = testPages(t)
+	s.Pages = apitest.Pages(t)
 	h := router.New(s)
 	session := apitest.SignedIn(t, db, factory.TestFaker(t))
 
 	// Unknown API paths are API 404s, never the app shell.
 	for _, target := range []string{"/api/nowhere", "/api/workspaces/wsp_2yEHYLwiwPVhLW/nothing"} {
-		w := get(h, "GET", target, session.Cookie())
+		w := apitest.Get(h, "GET", target, session.Cookie())
 		if w.Code != 404 || strings.Contains(w.Body.String(), "app shell") || w.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s: %d %v %q", target, w.Code, w.Header(), w.Body.String())
 		}
 	}
-	// Pages only answer GET and HEAD.
-	if w := get(h, "POST", "/app/settings", session.Cookie()); w.Code != http.StatusMethodNotAllowed {
+	// apitest.Pages only answer GET and HEAD.
+	if w := apitest.Get(h, "POST", "/app/settings", session.Cookie()); w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST /app/settings = %d", w.Code)
 	}
-	if w := get(h, "HEAD", "/app/settings", session.Cookie()); w.Code != 200 {
+	if w := apitest.Get(h, "HEAD", "/app/settings", session.Cookie()); w.Code != 200 {
 		t.Errorf("HEAD /app/settings = %d", w.Code)
 	}
 	// Without a web build the API runs alone.
 	s.Pages = nil
-	if w := get(router.New(s), "GET", "/app/settings", session.Cookie()); w.Code != 404 {
+	if w := apitest.Get(router.New(s), "GET", "/app/settings", session.Cookie()); w.Code != 404 {
 		t.Errorf("API-only GET /app/settings = %d", w.Code)
 	}
 }

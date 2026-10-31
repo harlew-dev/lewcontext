@@ -1,4 +1,4 @@
-package httpapi_test
+package workspace_test
 
 import (
 	"context"
@@ -74,7 +74,7 @@ func TestDeleteWorkspace(t *testing.T) {
 	apitest.Call(t, m.h, "DELETE", path, deleteWorkspaceBody(name, factory.DefaultPassword), admin.CSRFToken, admin.Cookie(), 403)
 	wrongName := apitest.Call(t, m.h, "DELETE", path, deleteWorkspaceBody("Not "+name, factory.DefaultPassword), owner.CSRFToken, owner.Cookie(), 422)
 	wrongPassword := apitest.Call(t, m.h, "DELETE", path, deleteWorkspaceBody(name, "not my password"), owner.CSRFToken, owner.Cookie(), 422)
-	if errorField(t, wrongName) != "name" || errorField(t, wrongPassword) != "password" {
+	if apitest.ErrorField(t, wrongName) != "name" || apitest.ErrorField(t, wrongPassword) != "password" {
 		t.Fatalf("fields: %s / %s", wrongName.Body.String(), wrongPassword.Body.String())
 	}
 	apitest.Call(t, m.h, "DELETE", path, `{"name":"x","password":"y","force":true}`, owner.CSRFToken, owner.Cookie(), 400)
@@ -160,7 +160,7 @@ func TestDeleteAccount(t *testing.T) {
 	apitest.Call(t, h, "DELETE", "/api/auth/me", deleteAccountBody(factory.DefaultPassword), "", owner.Cookie(), 403)
 	apitest.Call(t, h, "DELETE", "/api/auth/me", deleteAccountBody(factory.DefaultPassword), owner.CSRFToken, nil, 401)
 	wrong := apitest.Call(t, h, "DELETE", "/api/auth/me", deleteAccountBody("not my password"), owner.CSRFToken, owner.Cookie(), 422)
-	if errorField(t, wrong) != "password" {
+	if apitest.ErrorField(t, wrong) != "password" {
 		t.Fatalf("wrong password: %s", wrong.Body.String())
 	}
 

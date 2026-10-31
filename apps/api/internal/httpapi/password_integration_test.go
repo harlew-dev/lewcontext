@@ -16,8 +16,6 @@ import (
 	"testing"
 )
 
-const newPassword = "a brand new passphrase"
-
 // storedPasswordIs reports whether the user's stored hash matches password.
 func storedPasswordIs(t *testing.T, db bun.IDB, userID int64, password string) bool {
 	t.Helper()
@@ -26,20 +24,6 @@ func storedPasswordIs(t *testing.T, db bun.IDB, userID int64, password string) b
 		t.Fatal(err)
 	}
 	return auth.CheckPassword(password, hash)
-}
-
-// errorField reads the field an error response is about.
-func errorField(t *testing.T, w *httptest.ResponseRecorder) string {
-	t.Helper()
-	var body struct{ Field string }
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	return body.Field
-}
-
-func changeBody(current, next string) string {
-	return fmt.Sprintf(`{"currentPassword":%q,"newPassword":%q}`, current, next)
 }
 
 func TestVerifyPassword(t *testing.T) {
@@ -52,7 +36,7 @@ func TestVerifyPassword(t *testing.T) {
 	apitest.Call(t, h, "POST", "/api/auth/password/verify", body, "", cookie, 403)
 	apitest.Call(t, h, "POST", "/api/auth/password/verify", body, session.CSRFToken, cookie, 204)
 	wrong := apitest.Call(t, h, "POST", "/api/auth/password/verify", `{"password":"not my password"}`, session.CSRFToken, cookie, 422)
-	if errorField(t, wrong) != "password" || !strings.Contains(wrong.Body.String(), httpapi.WrongCurrentPassword) {
+	if apitest.ErrorField(t, wrong) != "password" || !strings.Contains(wrong.Body.String(), httpapi.WrongCurrentPassword) {
 		t.Fatalf("wrong password error: %s", wrong.Body.String())
 	}
 	apitest.Call(t, h, "POST", "/api/auth/password/verify", `{"password":""}`, session.CSRFToken, cookie, 422)
@@ -72,19 +56,19 @@ func TestChangePassword(t *testing.T) {
 	const path = "/api/auth/password"
 
 	// Both password routes are updates, so PATCH; PUT isn't routed.
-	apitest.Call(t, h, "PUT", path, changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, cookie, 405)
+	apitest.Call(t, h, "PUT", path, apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), session.CSRFToken, cookie, 405)
 	apitest.Call(t, h, "PUT", "/api/auth/password-reset", `{"token":"x","newPassword":"y"}`, "", nil, 405)
-	apitest.Call(t, h, "PATCH", path, changeBody(factory.DefaultPassword, newPassword), "", nil, 401)
-	apitest.Call(t, h, "PATCH", path, changeBody(factory.DefaultPassword, newPassword), "", cookie, 403)
+	apitest.Call(t, h, "PATCH", path, apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), "", nil, 401)
+	apitest.Call(t, h, "PATCH", path, apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), "", cookie, 403)
 	for _, tc := range []struct{ body, field string }{
-		{changeBody("not my password", newPassword), "currentPassword"},
-		{changeBody("", newPassword), "currentPassword"},
-		{changeBody(factory.DefaultPassword, "too short"), "newPassword"},
-		{changeBody(factory.DefaultPassword, strings.Repeat("x", 129)), "newPassword"},
-		{changeBody(factory.DefaultPassword, factory.DefaultPassword), "newPassword"},
+		{apitest.ChangeBody("not my password", apitest.NewPassword), "currentPassword"},
+		{apitest.ChangeBody("", apitest.NewPassword), "currentPassword"},
+		{apitest.ChangeBody(factory.DefaultPassword, "too short"), "newPassword"},
+		{apitest.ChangeBody(factory.DefaultPassword, strings.Repeat("x", 129)), "newPassword"},
+		{apitest.ChangeBody(factory.DefaultPassword, factory.DefaultPassword), "newPassword"},
 	} {
 		refused := apitest.Call(t, h, "PATCH", path, tc.body, session.CSRFToken, cookie, 422)
-		if errorField(t, refused) != tc.field {
+		if apitest.ErrorField(t, refused) != tc.field {
 			t.Fatalf("%s: want field %s: %s", tc.body, tc.field, refused.Body.String())
 		}
 	}
@@ -94,7 +78,7 @@ func TestChangePassword(t *testing.T) {
 	}
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", other.Cookie(), 200)
 
-	changed := apitest.Call(t, h, "PATCH", path, changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, cookie, 200)
+	changed := apitest.Call(t, h, "PATCH", path, apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), session.CSRFToken, cookie, 200)
 	var signed apitest.SessionResponse
 	if err := json.Unmarshal(changed.Body.Bytes(), &signed); err != nil {
 		t.Fatal(err)
@@ -103,19 +87,19 @@ func TestChangePassword(t *testing.T) {
 	if rotated.Value == cookie.Value || signed.CSRF == "" || signed.CSRF == session.CSRFToken || signed.User.PublicID == "" || apitest.NumericID.MatchString(changed.Body.String()) {
 		t.Fatalf("session not rotated: %s", changed.Body.String())
 	}
-	if !storedPasswordIs(t, db, session.UserID, newPassword) {
+	if !storedPasswordIs(t, db, session.UserID, apitest.NewPassword) {
 		t.Fatal("new password not saved")
 	}
 	// Every earlier session is gone; the new one works with its CSRF token.
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", cookie, 401)
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", other.Cookie(), 401)
-	apitest.Call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, newPassword), signed.CSRF, rotated, 204)
+	apitest.Call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, apitest.NewPassword), signed.CSRF, rotated, 204)
 	// Another account is untouched.
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", stranger.Cookie(), 200)
 
 	email := apitest.EmailOf(t, db, session.UserID)
 	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, factory.DefaultPassword), "", nil, 401)
-	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, newPassword), "", nil, 200)
+	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, apitest.NewPassword), "", nil, 200)
 }
 
 // Password checks share the account's sign-in limit.
@@ -131,7 +115,7 @@ func TestPasswordRateLimit(t *testing.T) {
 	if locked.Header().Get("Retry-After") != "900" {
 		t.Fatal("rate-limited check without Retry-After")
 	}
-	apitest.Call(t, h, "PATCH", "/api/auth/password", changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, session.Cookie(), 429)
+	apitest.Call(t, h, "PATCH", "/api/auth/password", apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), session.CSRFToken, session.Cookie(), 429)
 	if !storedPasswordIs(t, db, session.UserID, factory.DefaultPassword) {
 		t.Fatal("rate-limited change altered the password")
 	}
@@ -141,7 +125,7 @@ func TestPasswordRateLimit(t *testing.T) {
 func TestPasswordChangeNeedsOrigin(t *testing.T) {
 	s, db := server(t)
 	session := apitest.SignedIn(t, db, factory.TestFaker(t))
-	r := httptest.NewRequest("PATCH", "/api/auth/password", strings.NewReader(changeBody(factory.DefaultPassword, newPassword)))
+	r := httptest.NewRequest("PATCH", "/api/auth/password", strings.NewReader(apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword)))
 	r.Header.Set("Origin", "https://evil.test")
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-CSRF-Token", session.CSRFToken)

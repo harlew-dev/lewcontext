@@ -58,15 +58,15 @@ func adminCall(t *testing.T, h http.Handler, method, path, body, csrf string, wa
 }
 
 // withAdmin is a user with MFA on who is an admin.
-func withAdmin(t *testing.T, db bun.IDB, f *gofakeit.Faker) mfaAccount {
+func withAdmin(t *testing.T, db bun.IDB, f *gofakeit.Faker) apitest.MFAAccount {
 	t.Helper()
-	a := withMFA(t, db, f)
+	a := apitest.WithMFA(t, db, f)
 	apitest.Must(factory.Admins.State(factory.AdminFor(a.User.ID)).CreateOne(context.Background(), db, f))(t)
 	return a
 }
 
 // adminSignedIn is a live admin session, without the sign-in endpoints.
-func adminSignedIn(t *testing.T, db bun.IDB, f *gofakeit.Faker) (mfaAccount, factory.AdminSession) {
+func adminSignedIn(t *testing.T, db bun.IDB, f *gofakeit.Faker) (apitest.MFAAccount, factory.AdminSession) {
 	t.Helper()
 	a := withAdmin(t, db, f)
 	session := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(a.User.ID)).CreateOne(context.Background(), db, f))(t)
@@ -76,7 +76,7 @@ func adminSignedIn(t *testing.T, db bun.IDB, f *gofakeit.Faker) (mfaAccount, fac
 // adminLogin runs the door's password step and returns its answer.
 func adminLogin(t *testing.T, h http.Handler, email string, want int) *httptest.ResponseRecorder {
 	t.Helper()
-	return adminCall(t, h, "POST", "/api/admin/login", loginBody(email), "", want)
+	return adminCall(t, h, "POST", "/api/admin/login", apitest.LoginBody(email), "", want)
 }
 
 // adminRoutesList is every admin API route, for the key and session checks.
@@ -169,16 +169,16 @@ func TestAdminLoginRefusals(t *testing.T) {
 	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
-	notAdmin := withMFA(t, db, f)
+	notAdmin := apitest.WithMFA(t, db, f)
 	noMFA := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
 	apitest.Must(factory.Admins.State(factory.AdminFor(noMFA.ID)).State(factory.ClosedSetupWindow).CreateOne(ctx, db, f))(t)
 	admin := withAdmin(t, db, f)
 
 	cases := map[string]struct{ body, result string }{
-		"not an admin":         {loginBody(notAdmin.User.Email), "not_admin"},
-		"an admin without MFA": {loginBody(noMFA.Email), "mfa_off"},
+		"not an admin":         {apitest.LoginBody(notAdmin.User.Email), "not_admin"},
+		"an admin without MFA": {apitest.LoginBody(noMFA.Email), "mfa_off"},
 		"a wrong password":     {fmt.Sprintf(`{"email":%q,"password":"not the password"}`, admin.User.Email), "wrong_password"},
-		"an unknown email":     {loginBody("nobody@example.test"), "unknown_account"},
+		"an unknown email":     {apitest.LoginBody("nobody@example.test"), "unknown_account"},
 		"a malformed email":    {`{"email":"nope","password":"x"}`, ""},
 	}
 	var first string
@@ -187,7 +187,7 @@ func TestAdminLoginRefusals(t *testing.T) {
 		if first == "" {
 			first = w.Body.String()
 		}
-		if w.Body.String() != first || cookieNamed(w, auth.AdminMFACookieName(false)) != nil || cookieNamed(w, auth.AdminCookieName(false)) != nil {
+		if w.Body.String() != first || apitest.CookieNamed(w, auth.AdminMFACookieName(false)) != nil || apitest.CookieNamed(w, auth.AdminCookieName(false)) != nil {
 			t.Fatalf("%s: %s %v", name, w.Body.String(), w.Result().Cookies())
 		}
 	}
@@ -216,10 +216,10 @@ func TestAdminLogin(t *testing.T) {
 	a := withAdmin(t, db, f)
 
 	w := adminLogin(t, h, a.User.Email, 200)
-	if strings.TrimSpace(w.Body.String()) != `{"mfaRequired":true}` || cookieNamed(w, auth.AdminCookieName(false)) != nil {
+	if strings.TrimSpace(w.Body.String()) != `{"mfaRequired":true}` || apitest.CookieNamed(w, auth.AdminCookieName(false)) != nil {
 		t.Fatalf("the password step: %s", w.Body.String())
 	}
-	challenge := cookieNamed(w, auth.AdminMFACookieName(false))
+	challenge := apitest.CookieNamed(w, auth.AdminMFACookieName(false))
 	if challenge == nil || !challenge.HttpOnly || challenge.SameSite != http.SameSiteStrictMode || challenge.MaxAge != 300 {
 		t.Fatalf("challenge cookie: %+v", challenge)
 	}
@@ -228,16 +228,16 @@ func TestAdminLogin(t *testing.T) {
 	}
 	// The app's login can't use the door's challenge, even in its cookie.
 	appCookie := &http.Cookie{Name: auth.MFACookieName(false), Value: challenge.Value}
-	apitest.Call(t, h, "POST", "/api/auth/login/mfa", codeBody(a.codeAt(0)), "", appCookie, 401)
+	apitest.Call(t, h, "POST", "/api/auth/login/mfa", apitest.CodeBody(a.CodeAt(0)), "", appCookie, 401)
 	// The setup step refuses a code challenge, and ends it.
 	adminCall(t, h, "POST", "/api/admin/login/mfa/setup", "{}", "", 401, challenge)
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(a.codeAt(0)), "", 401, challenge)
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(a.CodeAt(0)), "", 401, challenge)
 
-	challenge = cookieNamed(adminLogin(t, h, a.User.Email, 200), auth.AdminMFACookieName(false))
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody("000000"), "", 422, challenge)
-	w = adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(a.codeAt(0)), "", 200, challenge)
-	cookie := cookieNamed(w, auth.AdminCookieName(false))
-	if cookie == nil || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookieNamed(w, auth.CookieName(false)) != nil {
+	challenge = apitest.CookieNamed(adminLogin(t, h, a.User.Email, 200), auth.AdminMFACookieName(false))
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody("000000"), "", 422, challenge)
+	w = adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(a.CodeAt(0)), "", 200, challenge)
+	cookie := apitest.CookieNamed(w, auth.AdminCookieName(false))
+	if cookie == nil || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || apitest.CookieNamed(w, auth.CookieName(false)) != nil {
 		t.Fatalf("admin cookie: %+v, all %v", cookie, w.Result().Cookies())
 	}
 	var res apitest.SessionResponse
@@ -256,20 +256,20 @@ func TestAdminLogin(t *testing.T) {
 	if strings.Join(steps, ",") != "admin_login false,admin_login true" {
 		t.Fatalf("mfa checks: %v", steps)
 	}
-	if len(apitest.EventsNamed(t, db, "auth.logged_in")) != 0 || countRows(t, db, "sessions", a.User.ID) != 0 {
+	if len(apitest.EventsNamed(t, db, "auth.logged_in")) != 0 || apitest.CountRows(t, db, "sessions", a.User.ID) != 0 {
 		t.Fatal("the admin door started an app session")
 	}
 	// The challenge worked once.
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(a.codeAt(1)), "", 401, challenge)
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(a.CodeAt(1)), "", 401, challenge)
 
 	// An app login's challenge can't finish an admin sign-in.
 	login := apitest.Must(factory.MFAChallenges.State(factory.ChallengeFor(a.User.ID)).CreateOne(ctx, db, f))(t)
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(a.codeAt(1)), "", 401, login.AdminCookie())
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(a.CodeAt(1)), "", 401, login.AdminCookie())
 
 	// Someone who stops being an admin between the two steps is refused.
-	challenge = cookieNamed(adminLogin(t, h, a.User.Email, 200), auth.AdminMFACookieName(false))
+	challenge = apitest.CookieNamed(adminLogin(t, h, a.User.Email, 200), auth.AdminMFACookieName(false))
 	must2(s.Repo.RevokeAdmin(ctx, a.User.Email))(t)
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(a.codeAt(1)), "", 401, challenge)
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(a.CodeAt(1)), "", 401, challenge)
 }
 
 // An admin without MFA sets it up at their first admin sign-in, only inside
@@ -292,26 +292,26 @@ func TestAdminFirstSignInSetsUpMFA(t *testing.T) {
 	if strings.TrimSpace(w.Body.String()) != `{"mfaSetupRequired":true}` {
 		t.Fatalf("the password step: %s", w.Body.String())
 	}
-	challenge := cookieNamed(w, auth.AdminMFACookieName(false))
+	challenge := apitest.CookieNamed(w, auth.AdminMFACookieName(false))
 	if challenge.MaxAge != 900 {
 		t.Fatalf("setup challenge: %+v", challenge)
 	}
 	// The setup challenge can't be answered by the app's login.
-	apitest.Call(t, h, "POST", "/api/auth/login/mfa", codeBody("123456"), "", &http.Cookie{Name: auth.MFACookieName(false), Value: challenge.Value}, 401)
+	apitest.Call(t, h, "POST", "/api/auth/login/mfa", apitest.CodeBody("123456"), "", &http.Cookie{Name: auth.MFACookieName(false), Value: challenge.Value}, 401)
 
 	w = adminCall(t, h, "POST", "/api/admin/login/mfa/setup", "{}", "", 200, challenge)
 	var setup struct{ Secret, URI string }
 	apitest.Must(0, json.Unmarshal(w.Body.Bytes(), &setup))(t)
 	secret := apitest.Must(base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(setup.Secret))(t)
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody("000000"), "", 422, challenge)
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody("000000"), "", 422, challenge)
 	code := auth.TOTPCode(secret, auth.TOTPStep(time.Now()))
-	w = adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(code), "", 201, challenge)
+	w = adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(code), "", 201, challenge)
 	var done struct {
 		RecoveryCodes []string   `json:"recoveryCodes"`
 		User          store.User `json:"user"`
 	}
 	apitest.Must(0, json.Unmarshal(w.Body.Bytes(), &done))(t)
-	if len(done.RecoveryCodes) != 10 || done.User.MFAEnabledAt == nil || cookieNamed(w, auth.AdminCookieName(false)) == nil {
+	if len(done.RecoveryCodes) != 10 || done.User.MFAEnabledAt == nil || apitest.CookieNamed(w, auth.AdminCookieName(false)) == nil {
 		t.Fatalf("setup done: %s", w.Body.String())
 	}
 	admin := apitest.Must(s.Repo.FindAdmin(ctx, user.ID))(t)
@@ -321,7 +321,7 @@ func TestAdminFirstSignInSetsUpMFA(t *testing.T) {
 	apitest.OnlyEvent(t, db, "auth.mfa.enabled")
 	apitest.OnlyEvent(t, db, "admin.logged_in")
 	// The app's sign-in now asks for a code too.
-	startMFALogin(t, h, user.Email)
+	apitest.StartMFALogin(t, h, user.Email)
 	// And the next admin sign-in asks for a code, not a setup.
 	if w := adminLogin(t, h, user.Email, 200); strings.TrimSpace(w.Body.String()) != `{"mfaRequired":true}` {
 		t.Fatalf("second admin sign-in: %s", w.Body.String())
@@ -332,12 +332,12 @@ func TestAdminFirstSignInSetsUpMFA(t *testing.T) {
 	if admin := apitest.Must(s.Repo.FindAdmin(ctx, user.ID))(t); !admin.SetupOpen() {
 		t.Fatalf("reset didn't reopen the window: %+v", admin)
 	}
-	challenge = cookieNamed(adminLogin(t, h, user.Email, 200), auth.AdminMFACookieName(false))
+	challenge = apitest.CookieNamed(adminLogin(t, h, user.Email, 200), auth.AdminMFACookieName(false))
 	adminCall(t, h, "POST", "/api/admin/login/mfa/setup", "{}", "", 200, challenge)
 
 	// The window closing mid-setup refuses both steps.
 	apitest.Must(db.NewUpdate().TableExpr("admins").Set("mfa_setup_until = now() - interval '1 second'").Where("user_id = ?", user.ID).Exec(ctx))(t)
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody("123456"), "", 401, challenge)
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody("123456"), "", 401, challenge)
 	adminLogin(t, h, user.Email, 401)
 	if e := apitest.EventsNamed(t, db, "admin.login_attempted"); e[len(e)-1].Payload["result"] != "mfa_off" {
 		t.Fatalf("outside the window: %+v", e[len(e)-1])
@@ -379,11 +379,11 @@ func TestAdminSessions(t *testing.T) {
 	// At most two per admin: a third sign-in drops the oldest.
 	apitest.Must(db.NewDelete().TableExpr("admin_sessions").Where("token_hash <> ?", auth.Digest(session.Token)).Exec(ctx))(t)
 	second := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(a.User.ID)).CreateOne(ctx, db, f))(t)
-	challenge := cookieNamed(adminLogin(t, h, a.User.Email, 200), auth.AdminMFACookieName(false))
-	adminCall(t, h, "POST", "/api/admin/login/mfa", codeBody(a.codeAt(0)), "", 200, challenge)
+	challenge := apitest.CookieNamed(adminLogin(t, h, a.User.Email, 200), auth.AdminMFACookieName(false))
+	adminCall(t, h, "POST", "/api/admin/login/mfa", apitest.CodeBody(a.CodeAt(0)), "", 200, challenge)
 	adminCall(t, h, "GET", "/api/admin/me", "", "", 401, session.Cookie())
 	adminCall(t, h, "GET", "/api/admin/me", "", "", 200, second.Cookie())
-	if n := countRows(t, db, "admin_sessions", a.User.ID); n != 2 {
+	if n := apitest.CountRows(t, db, "admin_sessions", a.User.ID); n != 2 {
 		t.Fatalf("%d admin sessions", n)
 	}
 
@@ -394,7 +394,7 @@ func TestAdminSessions(t *testing.T) {
 	// Admins can't turn MFA off.
 	app = apitest.Must(factory.SessionFor(ctx, db, f, a.User.ID))(t)
 	w := apitest.Call(t, h, "DELETE", "/api/auth/mfa", fmt.Sprintf(`{"password":%q,"code":%q}`, factory.DefaultPassword, a.Codes[0].Code), app.CSRFToken, app.Cookie(), 409)
-	if !strings.Contains(w.Body.String(), "Admins must keep two-factor authentication on.") || countRows(t, db, "mfa_totp", a.User.ID) != 1 {
+	if !strings.Contains(w.Body.String(), "Admins must keep two-factor authentication on.") || apitest.CountRows(t, db, "mfa_totp", a.User.ID) != 1 {
 		t.Fatalf("turning MFA off as an admin: %s", w.Body.String())
 	}
 }
@@ -405,8 +405,8 @@ func TestLosingAdminEndsAdminSessions(t *testing.T) {
 	s, db := server(t)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
-	ends := map[string]func(a mfaAccount){
-		"revoking admin": func(a mfaAccount) {
+	ends := map[string]func(a apitest.MFAAccount){
+		"revoking admin": func(a apitest.MFAAccount) {
 			_, revoked := must2(s.Repo.RevokeAdmin(ctx, a.User.Email))(t)
 			if revoked != 1 {
 				t.Fatalf("revoked %d", revoked)
@@ -415,27 +415,27 @@ func TestLosingAdminEndsAdminSessions(t *testing.T) {
 				t.Fatalf("admin.revoked: %+v", e)
 			}
 		},
-		"a password change": func(a mfaAccount) {
+		"a password change": func(a apitest.MFAAccount) {
 			user := store.User{ID: a.User.ID, PublicID: a.User.PublicID}
 			apitest.Must(0, s.Repo.ChangePassword(ctx, user, "", func(string) (string, error) { return "new-hash", nil }))(t)
 		},
-		"a password reset": func(a mfaAccount) {
+		"a password reset": func(a apitest.MFAAccount) {
 			reset := apitest.Must(factory.PasswordResets.State(factory.ResetFor(a.User.ID)).CreateOne(ctx, db, f))(t)
 			apitest.Must(s.Repo.ResetPassword(ctx, auth.Digest(reset.Token), "new-hash"))(t)
 		},
-		"an MFA reset": func(a mfaAccount) { apitest.Must(s.Repo.ResetMFA(ctx, a.User.Email))(t) },
-		"deleting the account": func(a mfaAccount) {
+		"an MFA reset": func(a apitest.MFAAccount) { apitest.Must(s.Repo.ResetMFA(ctx, a.User.Email))(t) },
+		"deleting the account": func(a apitest.MFAAccount) {
 			apitest.Must(0, s.Repo.DeleteAccount(ctx, store.User{ID: a.User.ID, PublicID: a.User.PublicID}))(t)
 		},
 	}
 	for name, end := range ends {
 		a, _ := adminSignedIn(t, db, f)
 		end(a)
-		if n := countRows(t, db, "admin_sessions", a.User.ID); n != 0 {
+		if n := apitest.CountRows(t, db, "admin_sessions", a.User.ID); n != 0 {
 			t.Fatalf("%s kept %d admin sessions", name, n)
 		}
 	}
-	if _, _, err := s.Repo.RevokeAdmin(ctx, withMFA(t, db, f).User.Email); !errors.Is(err, store.ErrNotAdmin) {
+	if _, _, err := s.Repo.RevokeAdmin(ctx, apitest.WithMFA(t, db, f).User.Email); !errors.Is(err, store.ErrNotAdmin) {
 		t.Fatalf("revoking a non-admin: %v", err)
 	}
 }
@@ -464,7 +464,7 @@ func TestAdminLogout(t *testing.T) {
 	adminCall(t, h, "POST", "/api/admin/logout", "", "", 403, session.Cookie())
 	adminCall(t, h, "POST", "/api/admin/logout", "", app.CSRFToken, 403, session.Cookie())
 	w := adminCall(t, h, "POST", "/api/admin/logout", "", session.CSRFToken, 204, session.Cookie(), app.Cookie())
-	if c := cookieNamed(w, auth.AdminCookieName(false)); c == nil || c.MaxAge >= 0 {
+	if c := apitest.CookieNamed(w, auth.AdminCookieName(false)); c == nil || c.MaxAge >= 0 {
 		t.Fatalf("cookie not cleared: %+v", c)
 	}
 	adminCall(t, h, "GET", "/api/admin/me", "", "", 401, session.Cookie())

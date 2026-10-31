@@ -1,8 +1,12 @@
-package httpapi
+// Package workspace answers the endpoints inside a workspace, /api/workspaces
+// and /api/invitations: one controller per resource, registered in
+// httpapi/router.
+package workspace
 
 import (
 	"errors"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -25,7 +29,7 @@ func validWorkspace(in *store.WorkspaceInput) bool {
 }
 
 // Workspaces are the /api/workspaces routes (router/routes.go).
-type Workspaces struct{ *Server }
+type Workspaces struct{ *httpapi.Server }
 
 // workspaceFilter reads the listing's "canLeave" parameter. Only "false" (the
 // workspaces you're the only owner of, which block deleting your account) has
@@ -44,59 +48,59 @@ func workspaceFilter(params map[string]string) (store.WorkspaceFilter, bool) {
 func (h Workspaces) Index(w http.ResponseWriter, r *http.Request) {
 	params, ok := input.Query(r, "page", "perPage", "canLeave")
 	if !ok {
-		Fail(w, 400, "Invalid query parameters.")
+		httpapi.Fail(w, 400, "Invalid query parameters.")
 		return
 	}
 	req, ok := input.Page(params)
 	if !ok {
-		Fail(w, 400, "Invalid page.")
+		httpapi.Fail(w, 400, "Invalid page.")
 		return
 	}
 	filter, ok := workspaceFilter(params)
 	if !ok {
-		Fail(w, 400, "Invalid canLeave filter.")
+		httpapi.Fail(w, 400, "Invalid canLeave filter.")
 		return
 	}
-	page, err := h.Repo.IndexWorkspaces(r.Context(), Session(r).User.ID, filter, req)
+	page, err := h.Repo.IndexWorkspaces(r.Context(), httpapi.Session(r).User.ID, filter, req)
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, page)
+	httpapi.JSON(w, 200, page)
 }
 func (h Workspaces) Show(w http.ResponseWriter, r *http.Request) {
-	JSON(w, 200, Workspace(r))
+	httpapi.JSON(w, 200, httpapi.Workspace(r))
 }
 func (h Workspaces) Store(w http.ResponseWriter, r *http.Request) {
-	in, ok := DecodeValid(w, r, validWorkspace, invalidWorkspace)
+	in, ok := httpapi.DecodeValid(w, r, validWorkspace, invalidWorkspace)
 	if !ok {
 		return
 	}
-	workspace, err := h.Repo.CreateWorkspace(r.Context(), Session(r).User.ID, in)
+	workspace, err := h.Repo.CreateWorkspace(r.Context(), httpapi.Session(r).User.ID, in)
 	var quota store.QuotaError
 	if errors.As(err, &quota) {
-		Fail(w, 422, "You can own up to "+thousands(quota.Max)+" workspaces.")
+		httpapi.Fail(w, 422, "You can own up to "+thousands(quota.Max)+" workspaces.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 201, workspace)
+	httpapi.JSON(w, 201, workspace)
 }
 func (h Workspaces) Update(w http.ResponseWriter, r *http.Request) {
-	in, ok := DecodeValid(w, r, validWorkspace, invalidWorkspace)
+	in, ok := httpapi.DecodeValid(w, r, validWorkspace, invalidWorkspace)
 	if !ok {
 		return
 	}
-	current := Workspace(r)
+	current := httpapi.Workspace(r)
 	workspace, err := h.Repo.RenameWorkspace(r.Context(), current.ID, in)
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	workspace.Role, workspace.CanLeave = current.Role, current.CanLeave
-	JSON(w, 200, workspace)
+	httpapi.JSON(w, 200, workspace)
 }
 
 // workspaceDeletion confirms deleting a workspace: its name, typed, and the
@@ -111,13 +115,13 @@ type workspaceDeletion struct {
 // so a tab opened before a rename can't delete it under its old name.
 func (h Workspaces) Destroy(w http.ResponseWriter, r *http.Request) {
 	var in workspaceDeletion
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	workspace := Workspace(r)
+	workspace := httpapi.Workspace(r)
 	name := strings.TrimSpace(in.Name)
 	if name != workspace.Name {
-		FailField(w, 422, "name", wrongWorkspaceName)
+		httpapi.FailField(w, 422, "name", wrongWorkspaceName)
 		return
 	}
 	if !h.PasswordConfirmed(w, r, in.Password, events.PasswordStepDestroyWorkspace) {
@@ -125,11 +129,11 @@ func (h Workspaces) Destroy(w http.ResponseWriter, r *http.Request) {
 	}
 	err := h.Repo.DeleteWorkspace(r.Context(), workspace, name)
 	if errors.Is(err, store.ErrWrongName) {
-		FailField(w, 422, "name", wrongWorkspaceName)
+		httpapi.FailField(w, 422, "name", wrongWorkspaceName)
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	w.WriteHeader(204)

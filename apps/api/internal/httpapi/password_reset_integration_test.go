@@ -6,7 +6,6 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
-	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/apitest"
@@ -22,37 +21,12 @@ import (
 	"time"
 )
 
-// mailbox is a mail driver that keeps what it's given.
-type mailbox struct {
-	mu   sync.Mutex
-	sent []mail.Message
-}
-
-func (b *mailbox) Deliver(_ context.Context, m mail.Message) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.sent = append(b.sent, m)
-	return nil
-}
-
 // mailServer is an integration server whose reset links and invitations go
 // to a mailbox when deliver runs the worker once, as the server's worker would.
-func mailServer(t *testing.T) (s *httpapi.Server, db *bun.DB, box *mailbox, deliver func()) {
+func mailServer(t *testing.T) (s *httpapi.Server, db *bun.DB, box *apitest.Mailbox, deliver func()) {
 	t.Helper()
 	s, db = server(t)
-	box = &mailbox{}
-	bus := events.NewBus()
-	mailer := apitest.Must(mail.New(box, "lewcontext"))(t)
-	events.Listen(bus, "mail.password_reset", mail.PasswordReset(s.Repo, mailer, s.Config.Origin))
-	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(s.Repo, mailer, s.Config.Origin))
-	s.Repo.Listeners = bus
-	worker := &events.Worker{Bus: bus, Queue: s.Repo}
-	deliver = func() {
-		t.Helper()
-		if _, err := worker.RunOnce(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-	}
+	box, deliver = apitest.Mail(t, s.Repo, s.Config.Origin)
 	return s, db, box, deliver
 }
 
@@ -76,10 +50,6 @@ func requestReset(t *testing.T, h http.Handler, email string, want int) *httptes
 
 func resetBody(token, password string) string {
 	return fmt.Sprintf(`{"token":%q,"newPassword":%q}`, token, password)
-}
-
-func checkBody(token string) string {
-	return fmt.Sprintf(`{"token":%q}`, token)
 }
 
 // hasReset reports whether the user has a live or expired reset link stored.
@@ -108,15 +78,15 @@ func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
 		requested[0].IP != "127.0.0.1" || !apitest.Is(requested[0].UserID, 0) || !apitest.Is(requested[0].ActorID, 0) {
 		t.Fatalf("requested events: %+v", requested)
 	}
-	if len(box.sent) != 0 {
+	if len(box.Sent) != 0 {
 		t.Fatal("mail sent before the worker ran")
 	}
 
 	deliver()
-	if len(box.sent) != 1 || box.sent[0].To != user.Email || box.sent[0].Subject != "Reset your password" {
-		t.Fatalf("sent: %+v", box.sent)
+	if len(box.Sent) != 1 || box.Sent[0].To != user.Email || box.Sent[0].Subject != "Reset your password" {
+		t.Fatalf("sent: %+v", box.Sent)
 	}
-	token := tokenIn(t, box.sent[0])
+	token := tokenIn(t, box.Sent[0])
 	var stored string
 	if err := db.NewSelect().TableExpr("password_resets").Column("token_hash").Where("user_id = ?", user.ID).Scan(context.Background(), &stored); err != nil {
 		t.Fatal(err)
@@ -141,18 +111,18 @@ func TestPasswordResetSetsANewPassword(t *testing.T) {
 	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
 	requestReset(t, h, user.Email, 202)
 	deliver()
-	token := tokenIn(t, box.sent[0])
+	token := tokenIn(t, box.Sent[0])
 
-	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", checkBody(token), "", nil, 204)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(token), "", nil, 204)
 	short := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, "too short"), "", nil, 422)
-	if errorField(t, short) != "newPassword" || !storedPasswordIs(t, db, user.ID, factory.DefaultPassword) {
+	if apitest.ErrorField(t, short) != "newPassword" || !storedPasswordIs(t, db, user.ID, factory.DefaultPassword) {
 		t.Fatal("a short password was accepted or changed something")
 	}
-	done := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, newPassword), "", nil, 200)
+	done := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, apitest.NewPassword), "", nil, 200)
 	if strings.TrimSpace(done.Body.String()) != fmt.Sprintf(`{"email":%q}`, user.Email) {
 		t.Fatalf("reset response: %s", done.Body.String())
 	}
-	if !storedPasswordIs(t, db, user.ID, newPassword) || hasReset(t, db, user.ID) {
+	if !storedPasswordIs(t, db, user.ID, apitest.NewPassword) || hasReset(t, db, user.ID) {
 		t.Fatal("password not saved, or the link outlived its use")
 	}
 	// Every session ends, including any an attacker held.
@@ -162,12 +132,12 @@ func TestPasswordResetSetsANewPassword(t *testing.T) {
 		t.Fatalf("completed event: %+v", completed)
 	}
 	// The link works once.
-	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", checkBody(token), "", nil, 422)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(token), "", nil, 422)
 	again := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, "yet another passphrase"), "", nil, 422)
-	if errorField(t, again) != "token" || !storedPasswordIs(t, db, user.ID, newPassword) {
+	if apitest.ErrorField(t, again) != "token" || !storedPasswordIs(t, db, user.ID, apitest.NewPassword) {
 		t.Fatal("a used link worked again")
 	}
-	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, newPassword), "", nil, 200)
+	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, apitest.NewPassword), "", nil, 200)
 	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword), "", nil, 401)
 }
 
@@ -179,27 +149,27 @@ func TestPasswordResetLinkLifetime(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	for _, token := range []string{"", "short", strings.Repeat("!", 43), strings.Repeat("a", 44)} {
-		apitest.Call(t, h, "POST", "/api/auth/password-reset/check", checkBody(token), "", nil, 422)
-		apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, newPassword), "", nil, 422)
+		apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(token), "", nil, 422)
+		apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, apitest.NewPassword), "", nil, 422)
 	}
 	expiredUser := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
 	expired := apitest.Must(factory.PasswordResets.State(factory.ResetFor(expiredUser.ID)).State(factory.ExpiredReset).CreateOne(ctx, db, f))(t)
-	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", checkBody(expired.Token), "", nil, 422)
-	apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(expired.Token, newPassword), "", nil, 422)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(expired.Token), "", nil, 422)
+	apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(expired.Token, apitest.NewPassword), "", nil, 422)
 
 	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
 	requestReset(t, h, user.Email, 202)
 	deliver()
 	requestReset(t, h, user.Email, 202)
 	deliver()
-	first, second := tokenIn(t, box.sent[0]), tokenIn(t, box.sent[1])
-	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", checkBody(first), "", nil, 422)
-	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", checkBody(second), "", nil, 204)
+	first, second := tokenIn(t, box.Sent[0]), tokenIn(t, box.Sent[1])
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(first), "", nil, 422)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(second), "", nil, 204)
 
 	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
-	apitest.Call(t, h, "PATCH", "/api/auth/password", changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, session.Cookie(), 200)
+	apitest.Call(t, h, "PATCH", "/api/auth/password", apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), session.CSRFToken, session.Cookie(), 200)
 	apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(second, "an attacker's passphrase"), "", nil, 422)
-	if !storedPasswordIs(t, db, user.ID, newPassword) {
+	if !storedPasswordIs(t, db, user.ID, apitest.NewPassword) {
 		t.Fatal("a link from before the change undid it")
 	}
 }

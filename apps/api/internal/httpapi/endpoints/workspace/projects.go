@@ -1,8 +1,9 @@
-package httpapi
+package workspace
 
 import (
 	"database/sql"
 	"errors"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -31,99 +32,99 @@ func projectID(r *http.Request) (string, bool) {
 }
 
 // Projects are the …/projects routes inside a workspace (router/routes.go).
-type Projects struct{ *Server }
+type Projects struct{ *httpapi.Server }
 
 func (h Projects) Index(w http.ResponseWriter, r *http.Request) {
 	params, ok := input.Query(r, "page", "perPage", "q", "status", "sort")
 	if !ok {
-		Fail(w, 400, "Invalid query parameters.")
+		httpapi.Fail(w, 400, "Invalid query parameters.")
 		return
 	}
 	req, ok := input.Page(params)
 	if !ok {
-		Fail(w, 400, "Invalid page.")
+		httpapi.Fail(w, 400, "Invalid page.")
 		return
 	}
 	filter, ok := input.ProjectFilter(params)
 	if !ok {
-		Fail(w, 400, "Check the search, status, and sort.")
+		httpapi.Fail(w, 400, "Check the search, status, and sort.")
 		return
 	}
-	page, err := h.Repo.IndexProjects(r.Context(), Workspace(r).ID, filter, req)
+	page, err := h.Repo.IndexProjects(r.Context(), httpapi.Workspace(r).ID, filter, req)
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, page)
+	httpapi.JSON(w, 200, page)
 }
 func (h Projects) Show(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		Fail(w, 404, "Project not found.")
+		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
-	p, err := h.Repo.FindProject(r.Context(), Workspace(r).ID, id)
+	p, err := h.Repo.FindProject(r.Context(), httpapi.Workspace(r).ID, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		Fail(w, 404, "Project not found.")
+		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, p)
+	httpapi.JSON(w, 200, p)
 }
 func (h Projects) Store(w http.ResponseWriter, r *http.Request) {
-	in, ok := DecodeValid(w, r, validProject, invalidProject)
+	in, ok := httpapi.DecodeValid(w, r, validProject, invalidProject)
 	if !ok {
 		return
 	}
-	p, err := h.Repo.CreateProject(r.Context(), Workspace(r), in)
+	p, err := h.Repo.CreateProject(r.Context(), httpapi.Workspace(r), in)
 	var quota store.QuotaError
 	if errors.As(err, &quota) {
-		Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" projects.")
+		httpapi.Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" projects.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 201, p)
+	httpapi.JSON(w, 201, p)
 }
 func (h Projects) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		Fail(w, 404, "Project not found.")
+		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
-	in, ok := DecodeValid(w, r, validProject, invalidProject)
+	in, ok := httpapi.DecodeValid(w, r, validProject, invalidProject)
 	if !ok {
 		return
 	}
-	p, err := h.Repo.UpdateProject(r.Context(), Workspace(r), id, in)
+	p, err := h.Repo.UpdateProject(r.Context(), httpapi.Workspace(r), id, in)
 	if errors.Is(err, sql.ErrNoRows) {
-		Fail(w, 404, "Project not found.")
+		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, p)
+	httpapi.JSON(w, 200, p)
 }
 func (h Projects) Destroy(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		Fail(w, 404, "Project not found.")
+		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
-	err := h.Repo.DeleteProject(r.Context(), Workspace(r), id)
+	err := h.Repo.DeleteProject(r.Context(), httpapi.Workspace(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
-		Fail(w, 404, "Project not found.")
+		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	w.WriteHeader(204)

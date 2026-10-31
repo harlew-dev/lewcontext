@@ -77,7 +77,7 @@ func TestAdminEvents(t *testing.T) {
 		t.Fatalf("every event but admin reads, newest first: %v, want %v (next %v)", got, newestFirst, all.Next)
 	}
 
-	// Pages follow the cursor: no row twice or missing, even sharing a time.
+	// apitest.Pages follow the cursor: no row twice or missing, even sharing a time.
 	var walked []string
 	query := "?perPage=2"
 	for pages := 0; ; pages++ {

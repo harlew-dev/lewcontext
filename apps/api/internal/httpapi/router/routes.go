@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/endpoints/workspace"
 	"net/http"
 	"strings"
 )
@@ -71,10 +72,10 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 		verificationRoutes(s, mux)
 	}
 	// An invitation link's page checks it signed out, and accepts it signed in.
-	invitations := httpapi.Invitations{Server: s}
+	invitations := workspace.Invitations{Server: s}
 	mux.HandleFunc("POST /api/invitations/check", invitations.Check)
 	mux.Handle("POST /api/invitations/accept", s.RequireSession(http.HandlerFunc(invitations.Accept)))
-	workspaces := httpapi.Workspaces{Server: s}
+	workspaces := workspace.Workspaces{Server: s}
 	mux.Handle("GET /api/workspaces", s.RequireSession(http.HandlerFunc(workspaces.Index)))
 	mux.Handle("POST /api/workspaces", s.RequireSession(s.Limit(httpapi.WorkspacePerUser, workspaces.Store)))
 
@@ -177,11 +178,11 @@ func (w *jsonNotFound) Write(body []byte) (int, error) {
 // it needs (auth/permissions.go), or the server won't start.
 func workspaceRoutes(s *httpapi.Server, ws routeGroup) {
 	ws.requirePermissions = true
-	workspaces := httpapi.Workspaces{Server: s}
-	projects := httpapi.Projects{Server: s}
-	members := httpapi.Members{Server: s}
-	membership := httpapi.Membership{Server: s}
-	invitations := httpapi.Invitations{Server: s}
+	workspaces := workspace.Workspaces{Server: s}
+	projects := workspace.Projects{Server: s}
+	members := workspace.Members{Server: s}
+	membership := workspace.Membership{Server: s}
+	invitations := workspace.Invitations{Server: s}
 	ws.HandleFunc("GET", "", workspaces.Show)
 	ws.Can("PATCH", "", auth.WorkspaceUpdate, workspaces.Update)
 	// Deleting checks the owner's password, so it shares sign-in's limits.

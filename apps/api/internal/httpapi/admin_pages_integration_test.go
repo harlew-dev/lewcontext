@@ -18,7 +18,7 @@ import (
 // one the app shell with the admin pages' stricter headers.
 func TestAdminPages(t *testing.T) {
 	s, db := server(t)
-	s.Pages = testPages(t)
+	s.Pages = apitest.Pages(t)
 	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
@@ -28,21 +28,21 @@ func TestAdminPages(t *testing.T) {
 	off.Pages = s.Pages
 	key := factory.AdminRouteKey
 
-	nowhere := get(h, "GET", "/nowhere", nil)
+	nowhere := apitest.Get(h, "GET", "/nowhere", nil)
 	if nowhere.Code != 404 {
 		t.Fatalf("/nowhere: %d", nowhere.Code)
 	}
 	wrong := []string{"/admin", "/admin/", "/admin/x", "/admin/x/users", "/admin/" + key + "x", "/admin/" + strings.ToUpper(key) + "/users", "/admin/" + key[:len(key)-1]}
 	for _, target := range wrong {
-		sameAnswer(t, target, get(h, "GET", target, session.Cookie()), nowhere)
-		sameAnswer(t, target+" (admin off)", get(router.New(off), "GET", target, session.Cookie()), nowhere)
+		sameAnswer(t, target, apitest.Get(h, "GET", target, session.Cookie()), nowhere)
+		sameAnswer(t, target+" (admin off)", apitest.Get(router.New(off), "GET", target, session.Cookie()), nowhere)
 	}
 	for _, target := range []string{"/admin/" + key, "/admin/" + key + "/users"} {
-		sameAnswer(t, target+" (admin off)", get(router.New(off), "GET", target, session.Cookie()), nowhere)
+		sameAnswer(t, target+" (admin off)", apitest.Get(router.New(off), "GET", target, session.Cookie()), nowhere)
 	}
 
 	// The sign-in page needs no session.
-	w := get(h, "GET", "/admin/"+key, nil)
+	w := apitest.Get(h, "GET", "/admin/"+key, nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "app shell") {
 		t.Fatalf("sign-in page: %d", w.Code)
 	}
@@ -50,17 +50,17 @@ func TestAdminPages(t *testing.T) {
 
 	// Inner pages need an admin session: an app session doesn't count.
 	for _, cookie := range []*http.Cookie{nil, app.Cookie()} {
-		w := get(h, "GET", "/admin/"+key+"/users/usr_2yEHYLwiwPVhLW", cookie)
+		w := apitest.Get(h, "GET", "/admin/"+key+"/users/usr_2yEHYLwiwPVhLW", cookie)
 		if w.Code != 302 || w.Header().Get("Location") != "/admin/"+key || strings.Contains(w.Body.String(), "app shell") {
 			t.Fatalf("inner page without an admin session: %d %v", w.Code, w.Header())
 		}
 		checkAdminHeaders(t, "redirect", w)
 	}
 	stale := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(session.UserID)).State(factory.AdminIdle).CreateOne(ctx, db, f))(t)
-	if w := get(h, "GET", "/admin/"+key+"/users", stale.Cookie()); w.Code != 302 {
+	if w := apitest.Get(h, "GET", "/admin/"+key+"/users", stale.Cookie()); w.Code != 302 {
 		t.Fatalf("an idle admin session: %d", w.Code)
 	}
-	w = get(h, "GET", "/admin/"+key+"/workspaces", session.Cookie())
+	w = apitest.Get(h, "GET", "/admin/"+key+"/workspaces", session.Cookie())
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "app shell") {
 		t.Fatalf("inner page with an admin session: %d", w.Code)
 	}

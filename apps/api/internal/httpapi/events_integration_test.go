@@ -121,14 +121,14 @@ func TestPasswordEvents(t *testing.T) {
 		apitest.Call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, password), session.CSRFToken, cookie, want)
 	}
 	change := func(current, next string, want int) {
-		apitest.Call(t, h, "PATCH", "/api/auth/password", changeBody(current, next), session.CSRFToken, cookie, want)
+		apitest.Call(t, h, "PATCH", "/api/auth/password", apitest.ChangeBody(current, next), session.CSRFToken, cookie, want)
 	}
 	verify("not my password", 422)
 	verify(factory.DefaultPassword, 204)
-	change("not my password", newPassword, 422)
+	change("not my password", apitest.NewPassword, 422)
 	change(factory.DefaultPassword, factory.DefaultPassword, 422) // unchanged: the check passed
 	change(factory.DefaultPassword, "too short", 422)             // refused before any check
-	change(factory.DefaultPassword, newPassword, 200)
+	change(factory.DefaultPassword, apitest.NewPassword, 200)
 	checks := apitest.EventsNamed(t, db, "auth.password_checked")
 	want := []struct {
 		ok   bool
@@ -144,7 +144,7 @@ func TestPasswordEvents(t *testing.T) {
 		}
 	}
 	e := apitest.OnlyEvent(t, db, "auth.password_changed")
-	if !apitest.Is(e.UserID, session.UserID) || !apitest.Is(e.ActorID, session.UserID) || e.Payload["otherSessionsRevoked"] != float64(1) || strings.Contains(e.Raw, newPassword) {
+	if !apitest.Is(e.UserID, session.UserID) || !apitest.Is(e.ActorID, session.UserID) || e.Payload["otherSessionsRevoked"] != float64(1) || strings.Contains(e.Raw, apitest.NewPassword) {
 		t.Fatalf("password changed: %+v", e)
 	}
 	apitest.CheckPayloadIDs(t, db)

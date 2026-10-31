@@ -29,7 +29,7 @@ func TestWriteBudget(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	spent, other := apitest.SignedIn(t, db, f), apitest.SignedIn(t, db, f)
-	publicID := publicIDOf(t, s, spent.UserID)
+	publicID := apitest.PublicIDOf(t, s.Repo.DB, spent.UserID)
 	apitest.Must(factory.RateLimits.State(factory.ForLimit("api:per-user", publicID)).State(factory.Exhausted(300)).CreateOne(ctx, db, f))(t)
 	refused := apitest.Call(t, h, "POST", "/api/workspaces", newWorkspace, spent.CSRFToken, spent.Cookie(), 429)
 	apitest.RetryWithin(t, refused, 15*time.Minute)
@@ -46,16 +46,6 @@ func TestWriteBudget(t *testing.T) {
 	apitest.Call(t, h, "POST", "/api/workspaces", newWorkspace, other.CSRFToken, other.Cookie(), 201)
 }
 
-// publicIDOf is the user's usr_ ID.
-func publicIDOf(t *testing.T, s *httpapi.Server, userID int64) string {
-	t.Helper()
-	var id string
-	if err := s.Repo.DB.NewSelect().TableExpr("users").Column("public_id").Where("id = ?", userID).Scan(context.Background(), &id); err != nil {
-		t.Fatal(err)
-	}
-	return id
-}
-
 // With the write budget used up, the owner can still sign the session out,
 // revoke the others and change the password.
 func TestRecoveryRoutesAreUnmetered(t *testing.T) {
@@ -65,7 +55,7 @@ func TestRecoveryRoutesAreUnmetered(t *testing.T) {
 	f := factory.TestFaker(t)
 	session := apitest.SignedIn(t, db, f)
 	workspace := apitest.OwnedWorkspace(t, db, f, session.UserID)
-	apitest.Must(factory.RateLimits.State(factory.ForLimit("api:per-user", publicIDOf(t, s, session.UserID))).State(factory.Exhausted(300)).CreateOne(ctx, db, f))(t)
+	apitest.Must(factory.RateLimits.State(factory.ForLimit("api:per-user", apitest.PublicIDOf(t, s.Repo.DB, session.UserID))).State(factory.Exhausted(300)).CreateOne(ctx, db, f))(t)
 	apitest.Call(t, h, "POST", apitest.WorkspacePath(workspace.PublicID, "/projects"), newProject, session.CSRFToken, session.Cookie(), 429)
 	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 204)
 	apitest.Call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, factory.DefaultPassword), session.CSRFToken, session.Cookie(), 204)
@@ -86,19 +76,9 @@ func TestBudgetCountsAfterCSRF(t *testing.T) {
 	for range 3 {
 		apitest.Call(t, router.New(s), "POST", "/api/workspaces", newWorkspace, "wrong", session.Cookie(), 403)
 	}
-	if n := countRateLimits(t, s, "api:per-user:%"); n != 0 {
+	if n := apitest.CountRateLimits(t, s.Repo.DB, "api:per-user:%"); n != 0 {
 		t.Fatalf("forged requests counted: %d", n)
 	}
-}
-
-// countRateLimits counts the counters whose key matches pattern.
-func countRateLimits(t *testing.T, s *httpapi.Server, pattern string) int {
-	t.Helper()
-	n, err := s.Repo.DB.NewSelect().TableExpr("rate_limits").Where("key LIKE ?", pattern).Count(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return int(n)
 }
 
 // Creating workspaces and projects has a limit of its own per user.
@@ -108,7 +88,7 @@ func TestCreateLimits(t *testing.T) {
 		s, db := server(t)
 		f := factory.TestFaker(t)
 		session, other := apitest.SignedIn(t, db, f), apitest.SignedIn(t, db, f)
-		apitest.Must(factory.RateLimits.State(factory.ForLimit("workspace:per-user", publicIDOf(t, s, session.UserID))).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+		apitest.Must(factory.RateLimits.State(factory.ForLimit("workspace:per-user", apitest.PublicIDOf(t, s.Repo.DB, session.UserID))).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 		refused := apitest.Call(t, router.New(s), "POST", "/api/workspaces", newWorkspace, session.CSRFToken, session.Cookie(), 429)
 		apitest.RetryWithin(t, refused, time.Hour)
 		if e := apitest.Reached(t, s.Repo.DB, "workspace:per-user:block"); !apitest.Is(e.UserID, session.UserID) || e.Payload["workspace"] != nil {
@@ -121,7 +101,7 @@ func TestCreateLimits(t *testing.T) {
 		f := factory.TestFaker(t)
 		session := apitest.SignedIn(t, db, f)
 		first, second := apitest.OwnedWorkspace(t, db, f, session.UserID), apitest.OwnedWorkspace(t, db, f, session.UserID)
-		apitest.Must(factory.RateLimits.State(factory.ForLimit("project:per-user", publicIDOf(t, s, session.UserID))).State(factory.Exhausted(99)).CreateOne(ctx, db, f))(t)
+		apitest.Must(factory.RateLimits.State(factory.ForLimit("project:per-user", apitest.PublicIDOf(t, s.Repo.DB, session.UserID))).State(factory.Exhausted(99)).CreateOne(ctx, db, f))(t)
 		apitest.Call(t, router.New(s), "POST", apitest.WorkspacePath(first.PublicID, "/projects"), newProject, session.CSRFToken, session.Cookie(), 201)
 		apitest.Call(t, router.New(s), "POST", apitest.WorkspacePath(second.PublicID, "/projects"), newProject, session.CSRFToken, session.Cookie(), 429)
 		e := apitest.Reached(t, s.Repo.DB, "project:per-user:block")
@@ -145,12 +125,12 @@ func TestRegistrationLimits(t *testing.T) {
 		refused := apitest.Call(t, router.New(s), "POST", "/api/auth/register", register("new@example.com"), "", nil, 429)
 		apitest.RetryWithin(t, refused, time.Hour)
 		apitest.Reached(t, s.Repo.DB, "register:per-ip:block")
-		if n := countRateLimits(t, s, "register:global"); n != 0 {
+		if n := apitest.CountRateLimits(t, s.Repo.DB, "register:global"); n != 0 {
 			t.Fatal("a request refused per IP spent the global limit")
 		}
 		// A malformed body doesn't count either.
 		apitest.Call(t, router.New(s), "POST", "/api/auth/register", register("not an email"), "", nil, 422)
-		if n := countRateLimits(t, s, "register:%"); n != 1 {
+		if n := apitest.CountRateLimits(t, s.Repo.DB, "register:%"); n != 1 {
 			t.Fatalf("%d register counters", n)
 		}
 	})
@@ -178,9 +158,9 @@ func TestRateLimitsOff(t *testing.T) {
 	s := apitest.Must(httpapi.New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", AppKey: factory.AppKey, RateLimits: config.RateLimitsOff}))(t)
 	f := factory.TestFaker(t)
 	session := apitest.SignedIn(t, db, f)
-	apitest.Must(factory.RateLimits.State(factory.ForLimit("workspace:per-user", publicIDOf(t, s, session.UserID))).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+	apitest.Must(factory.RateLimits.State(factory.ForLimit("workspace:per-user", apitest.PublicIDOf(t, s.Repo.DB, session.UserID))).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
 	apitest.Call(t, router.New(s), "POST", "/api/workspaces", newWorkspace, session.CSRFToken, session.Cookie(), 201)
-	if n := countRateLimits(t, s, "%"); n != 1 {
+	if n := apitest.CountRateLimits(t, s.Repo.DB, "%"); n != 1 {
 		t.Fatalf("counted with limits off: %d counters", n)
 	}
 	for range store.MaxOwnedWorkspaces - 1 {

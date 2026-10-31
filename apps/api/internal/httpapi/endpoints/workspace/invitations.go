@@ -1,10 +1,11 @@
-package httpapi
+package workspace
 
 import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -36,25 +37,25 @@ func invitationID(r *http.Request) (string, bool) {
 
 // Invitations are a workspace's …/invitations routes and the
 // account-level /api/invitations/check and /accept (router/routes.go).
-type Invitations struct{ *Server }
+type Invitations struct{ *httpapi.Server }
 
 func (h Invitations) Index(w http.ResponseWriter, r *http.Request) {
 	params, ok := input.Query(r, "page", "perPage")
 	if !ok {
-		Fail(w, 400, "Invalid query parameters.")
+		httpapi.Fail(w, 400, "Invalid query parameters.")
 		return
 	}
 	req, ok := input.Page(params)
 	if !ok {
-		Fail(w, 400, "Invalid page.")
+		httpapi.Fail(w, 400, "Invalid page.")
 		return
 	}
-	page, err := h.Repo.IndexInvitations(r.Context(), Workspace(r).ID, req)
+	page, err := h.Repo.IndexInvitations(r.Context(), httpapi.Workspace(r).ID, req)
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, page)
+	httpapi.JSON(w, 200, page)
 }
 
 // Store invites someone. Without email delivery there's nobody to send the
@@ -62,40 +63,40 @@ func (h Invitations) Index(w http.ResponseWriter, r *http.Request) {
 // whether or not the email has an account.
 func (h Invitations) Store(w http.ResponseWriter, r *http.Request) {
 	if h.Config.MailDriver == config.MailOff {
-		Fail(w, 503, "Invitations aren’t available on this server.")
+		httpapi.Fail(w, 503, "Invitations aren’t available on this server.")
 		return
 	}
 	var in invitationInput
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !ValidEmail(&in.Email) {
-		FailField(w, 422, "email", "Enter a valid email address.")
+	if !httpapi.ValidEmail(&in.Email) {
+		httpapi.FailField(w, 422, "email", "Enter a valid email address.")
 		return
 	}
 	role, ok := auth.ParseRole(in.Role)
 	if !ok || role == auth.RoleOwner {
-		FailField(w, 422, "role", invitationRole)
+		httpapi.FailField(w, 422, "role", invitationRole)
 		return
 	}
-	if !Workspace(r).Role.Manages(role) {
-		Fail(w, 403, "You don’t have permission to do that in this workspace.")
+	if !httpapi.Workspace(r).Role.Manages(role) {
+		httpapi.Fail(w, 403, "You don’t have permission to do that in this workspace.")
 		return
 	}
 	// Only valid requests spend the invited address's limit and the one
 	// shared by everyone, in that order (invitation:per-user came first).
-	if !h.Allow(w, r, InvitationPerEmail, InvitationPerEmail.Key(in.Email)) {
+	if !h.Allow(w, r, httpapi.InvitationPerEmail, httpapi.InvitationPerEmail.Key(in.Email)) {
 		return
 	}
-	if !h.Allow(w, r, InvitationGlobal, InvitationGlobal.Everyone()) {
+	if !h.Allow(w, r, httpapi.InvitationGlobal, httpapi.InvitationGlobal.Everyone()) {
 		return
 	}
-	inv, err := h.Repo.CreateInvitation(r.Context(), Workspace(r), Session(r).User.ID, store.InvitationInput{Email: in.Email, Role: role})
+	inv, err := h.Repo.CreateInvitation(r.Context(), httpapi.Workspace(r), httpapi.Session(r).User.ID, store.InvitationInput{Email: in.Email, Role: role})
 	if err != nil {
 		failInvitation(w, err)
 		return
 	}
-	JSON(w, 201, inv)
+	httpapi.JSON(w, 201, inv)
 }
 
 // failInvitation answers the errors creating an invitation can end in.
@@ -103,13 +104,13 @@ func failInvitation(w http.ResponseWriter, err error) {
 	var quota store.QuotaError
 	switch {
 	case errors.Is(err, store.ErrAlreadyMember):
-		FailField(w, 422, "email", "Already a member of this workspace.")
+		httpapi.FailField(w, 422, "email", "Already a member of this workspace.")
 	case errors.Is(err, store.ErrAlreadyInvited):
-		FailField(w, 422, "email", "Already invited. Revoke it to send a new one.")
+		httpapi.FailField(w, 422, "email", "Already invited. Revoke it to send a new one.")
 	case errors.Is(err, store.ErrTooManyInvitations):
-		Fail(w, 422, "A workspace can have up to "+strconv.Itoa(store.MaxPendingInvitations)+" pending invitations. Revoke some to send more.")
+		httpapi.Fail(w, 422, "A workspace can have up to "+strconv.Itoa(store.MaxPendingInvitations)+" pending invitations. Revoke some to send more.")
 	case errors.As(err, &quota):
-		Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" members, counting pending invitations.")
+		httpapi.Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" members, counting pending invitations.")
 	default:
 		failMembership(w, err)
 	}
@@ -119,12 +120,12 @@ func failInvitation(w http.ResponseWriter, err error) {
 func (h Invitations) Destroy(w http.ResponseWriter, r *http.Request) {
 	id, ok := invitationID(r)
 	if !ok {
-		Fail(w, 404, "Invitation not found.")
+		httpapi.Fail(w, 404, "Invitation not found.")
 		return
 	}
-	err := h.Repo.RevokeInvitation(r.Context(), Workspace(r), Workspace(r).Role, id)
+	err := h.Repo.RevokeInvitation(r.Context(), httpapi.Workspace(r), httpapi.Workspace(r).Role, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		Fail(w, 404, "Invitation not found.")
+		httpapi.Fail(w, 404, "Invitation not found.")
 		return
 	}
 	if err != nil {
@@ -138,26 +139,26 @@ func (h Invitations) Destroy(w http.ResponseWriter, r *http.Request) {
 // works signed out, so it shares sign-in's IP limit, as the reset check does.
 func (h Invitations) Check(w http.ResponseWriter, r *http.Request) {
 	var in invitationToken
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
+	if !h.Allow(w, r, httpapi.AuthPerIP, httpapi.AuthPerIP.IPKey(httpapi.ClientIP(r))) {
 		return
 	}
 	if !input.Token(in.Token) {
-		FailField(w, 422, "token", invitationInvalid)
+		httpapi.FailField(w, 422, "token", invitationInvalid)
 		return
 	}
 	preview, err := h.Repo.CheckInvitation(r.Context(), auth.Digest(in.Token))
 	if errors.Is(err, store.ErrInvitationInvalid) {
-		FailField(w, 422, "token", invitationInvalid)
+		httpapi.FailField(w, 422, "token", invitationInvalid)
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
-	JSON(w, 200, preview)
+	httpapi.JSON(w, 200, preview)
 }
 
 // Accept adds the signed-in user to the invitation's workspace. It needs the
@@ -165,25 +166,25 @@ func (h Invitations) Check(w http.ResponseWriter, r *http.Request) {
 // the invited one: registering or signing in never joins a workspace alone.
 func (h Invitations) Accept(w http.ResponseWriter, r *http.Request) {
 	var in invitationToken
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
 	if !input.Token(in.Token) {
-		FailField(w, 422, "token", invitationInvalid)
+		httpapi.FailField(w, 422, "token", invitationInvalid)
 		return
 	}
-	workspace, err := h.Repo.AcceptInvitation(r.Context(), auth.Digest(in.Token), Session(r).User)
+	workspace, err := h.Repo.AcceptInvitation(r.Context(), auth.Digest(in.Token), httpapi.Session(r).User)
 	var quota store.QuotaError
 	switch {
 	case errors.Is(err, store.ErrInvitationInvalid):
-		FailField(w, 422, "token", invitationInvalid)
+		httpapi.FailField(w, 422, "token", invitationInvalid)
 	case errors.Is(err, store.ErrWrongInvitee):
-		Fail(w, 403, "This invitation was sent to a different email address.")
+		httpapi.Fail(w, 403, "This invitation was sent to a different email address.")
 	case errors.As(err, &quota):
-		Fail(w, 422, "This workspace is full. Ask whoever invited you to make room.")
+		httpapi.Fail(w, 422, "This workspace is full. Ask whoever invited you to make room.")
 	case err != nil:
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 	default:
-		JSON(w, 200, workspace)
+		httpapi.JSON(w, 200, workspace)
 	}
 }

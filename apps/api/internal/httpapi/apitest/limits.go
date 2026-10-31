@@ -1,6 +1,7 @@
 package apitest
 
 import (
+	"context"
 	"github.com/uptrace/bun"
 	"net/http/httptest"
 	"strconv"
@@ -27,4 +28,14 @@ func Reached(t *testing.T, db bun.IDB, limit string) Event {
 		t.Fatalf("want %s: %+v", limit, e)
 	}
 	return e
+}
+
+// CountRateLimits counts the counters whose key matches pattern.
+func CountRateLimits(t *testing.T, db bun.IDB, pattern string) int {
+	t.Helper()
+	n, err := db.NewSelect().TableExpr("rate_limits").Where("key LIKE ?", pattern).Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(n)
 }

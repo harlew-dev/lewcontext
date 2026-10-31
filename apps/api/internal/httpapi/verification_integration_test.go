@@ -107,7 +107,7 @@ func newestEvent(t *testing.T, db bun.IDB, name string) (string, time.Time) {
 // without it.
 func mustCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *http.Cookie {
 	t.Helper()
-	c := cookieNamed(w, name)
+	c := apitest.CookieNamed(w, name)
 	if c == nil {
 		t.Fatalf("no %s cookie in %v", name, w.Result().Cookies())
 	}
@@ -164,12 +164,12 @@ func TestSignUpWithAnEmailedCode(t *testing.T) {
 	if !strings.Contains(checked.Body.String(), `"email":"ada@example.com"`) {
 		t.Fatalf("check %s", checked.Body.String())
 	}
-	wrong := apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(wrongCode(code)), "", cookie, 422)
+	wrong := apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(wrongCode(code)), "", cookie, 422)
 	if !strings.Contains(wrong.Body.String(), `"field":"code"`) {
 		t.Fatalf("wrong %s", wrong.Body.String())
 	}
 	// Spaces and a hyphen are fine.
-	done := apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(code[:3]+" "+code[3:]), "", cookie, 201)
+	done := apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(code[:3]+" "+code[3:]), "", cookie, 201)
 	var signed apitest.SessionResponse
 	_ = json.Unmarshal(done.Body.Bytes(), &signed)
 	if signed.User.Email != "ada@example.com" || signed.User.EmailVerifiedAt == nil || signed.CSRF == "" {
@@ -190,7 +190,7 @@ func TestSignUpWithAnEmailedCode(t *testing.T) {
 	// The password typed at sign-up signs in.
 	apitest.Call(t, h, "POST", "/api/auth/login", `{"email":"ada@example.com","password":"correct horse battery staple"}`, "", nil, 200)
 	// The sign-up is used up.
-	apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(code), "", cookie, 401)
+	apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(code), "", cookie, 401)
 	if n := apitest.Must(db.NewSelect().TableExpr("pending_registrations").Count(context.Background()))(t); n != 0 {
 		t.Fatalf("%d sign-ups left", n)
 	}
@@ -257,7 +257,7 @@ func TestSignUpLooksTheSameForATakenEmail(t *testing.T) {
 		r.tables["resend"] = log.during(func() { r.resend = apitest.Send(h, "POST", "/api/auth/register/resend", "{}", "", cookie) })
 		deliverSignUp(t, s, box)
 		r.tables["verify"] = log.during(func() {
-			r.verify = apitest.Send(h, "POST", "/api/auth/register/verify", codeBody("000000"), "", cookie)
+			r.verify = apitest.Send(h, "POST", "/api/auth/register/verify", apitest.CodeBody("000000"), "", cookie)
 		})
 		return r
 	}
@@ -300,9 +300,9 @@ func TestSignUpLooksTheSameForATakenEmail(t *testing.T) {
 		cookie := signUp(t, h, email)
 		deliverSignUp(t, s, box)
 		for range auth.EmailCodeMaxAttempts - 1 {
-			apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody("000000"), "", cookie, 422)
+			apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody("000000"), "", cookie, 422)
 		}
-		apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody("000000"), "", cookie, 401)
+		apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody("000000"), "", cookie, 401)
 	}
 	if countUsers(t, db, "nobody@example.com") != 0 {
 		t.Fatal("an account was made")
@@ -353,12 +353,12 @@ func TestSignUpCodeBelongsToItsBrowser(t *testing.T) {
 		t.Skip("the two codes matched by chance")
 	}
 	// The newest email's code, typed in the owner's browser, fails.
-	apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(strangerCode), "", owner, 422)
-	apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(ownerCode), "", owner, 201)
+	apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(strangerCode), "", owner, 422)
+	apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(ownerCode), "", owner, 201)
 	// The account has the owner's password, and every other sign-up for the
 	// email is gone.
 	apitest.Call(t, h, "POST", "/api/auth/login", `{"email":"ada@example.com","password":"correct horse battery staple"}`, "", nil, 200)
-	apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(strangerCode), "", strangerCookie, 401)
+	apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(strangerCode), "", strangerCookie, 401)
 	if countUsers(t, db, "ada@example.com") != 1 {
 		t.Fatal("two accounts")
 	}
@@ -371,31 +371,31 @@ func TestSignUpCodeEnds(t *testing.T) {
 	f := factory.TestFaker(t)
 	t.Run("without a cookie, or a live sign-up", func(t *testing.T) {
 		for _, path := range []string{"check", "resend", "verify"} {
-			apitest.Call(t, h, "POST", "/api/auth/register/"+path, codeBody("123456"), "", nil, 401)
+			apitest.Call(t, h, "POST", "/api/auth/register/"+path, apitest.CodeBody("123456"), "", nil, 401)
 		}
 		expired := apitest.Must(factory.PendingRegistrations.State(factory.ExpiredRegistration).CreateOne(ctx, db, f))(t)
-		apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(expired.Code), "", expired.Cookie(), 401)
+		apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(expired.Code), "", expired.Cookie(), 401)
 	})
 	t.Run("a new code replaces the old", func(t *testing.T) {
 		cookie := signUp(t, h, "resend@example.com")
 		deliverSignUp(t, s, box)
 		first := box.code(t)
-		apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(wrongCode(first)), "", cookie, 422)
+		apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(wrongCode(first)), "", cookie, 422)
 		resent := apitest.Call(t, h, "POST", "/api/auth/register/resend", "{}", "", cookie, 202)
 		mustCookie(t, resent, auth.RegistrationCookieName(false))
 		// Until the listener runs there's no code, and the old one is gone.
-		apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(first), "", cookie, 422)
+		apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(first), "", cookie, 422)
 		deliverSignUp(t, s, box)
 		second := box.code(t)
 		if first != second {
-			apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(first), "", cookie, 422)
+			apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(first), "", cookie, 422)
 		}
-		apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(second), "", cookie, 201)
+		apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(second), "", cookie, 201)
 	})
 	t.Run("an account made meanwhile", func(t *testing.T) {
 		pending := apitest.Must(factory.PendingRegistrations.CreateOne(ctx, db, f))(t)
 		apitest.Must(factory.Users.State(func(u *factory.User) { u.Email = pending.Email }).CreateOne(ctx, db, f))(t)
-		w := apitest.Call(t, h, "POST", "/api/auth/register/verify", codeBody(pending.Code), "", pending.Cookie(), 409)
+		w := apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(pending.Code), "", pending.Cookie(), 409)
 		if !strings.Contains(w.Body.String(), "You already have an account") || countUsers(t, db, pending.Email) != 1 {
 			t.Fatalf("409 %s", w.Body.String())
 		}
@@ -418,7 +418,7 @@ func TestSignUpLimits(t *testing.T) {
 				t.Fatalf("refused %s", refused.Body.String())
 			}
 			apitest.Reached(t, s.Repo.DB, "register:per-email:block")
-			if n := countRateLimits(t, s, "register:global"); n != 0 {
+			if n := apitest.CountRateLimits(t, s.Repo.DB, "register:global"); n != 0 {
 				t.Fatal("a request refused per email spent the global limit")
 			}
 		}
@@ -428,7 +428,7 @@ func TestSignUpLimits(t *testing.T) {
 		f := factory.TestFaker(t)
 		pending := apitest.Must(factory.PendingRegistrations.CreateOne(ctx, db, f))(t)
 		apitest.Must(factory.RateLimits.State(factory.ForLimit("email-code:per-email", pending.Email)).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
-		refused := apitest.Call(t, router.New(s), "POST", "/api/auth/register/verify", codeBody(pending.Code), "", pending.Cookie(), 429)
+		refused := apitest.Call(t, router.New(s), "POST", "/api/auth/register/verify", apitest.CodeBody(pending.Code), "", pending.Cookie(), 429)
 		apitest.RetryWithin(t, refused, 24*time.Hour)
 		apitest.Reached(t, s.Repo.DB, "email-code:per-email:block")
 		if countUsers(t, db, pending.Email) != 0 {
@@ -467,15 +467,15 @@ func TestVerifyingAnExistingAccount(t *testing.T) {
 	if !strings.Contains(me.Body.String(), `"emailVerifiedAt":null`) || !strings.Contains(me.Body.String(), `"emailVerification":"optional"`) {
 		t.Fatalf("me %s", me.Body.String())
 	}
-	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody("123456"), session.CSRFToken, session.Cookie(), 410)
+	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody("123456"), session.CSRFToken, session.Cookie(), 410)
 	apitest.Call(t, h, "POST", "/api/auth/email-verification", "{}", session.CSRFToken, session.Cookie(), 202)
 	deliverVerification(t, s, box, user.PublicID)
 	if box.last(t).To != user.Email || box.last(t).Template != mail.VerifyEmail || strings.Contains(box.last(t).HTML, user.Name) {
 		t.Fatalf("sent %+v", box.last(t))
 	}
 	code := box.code(t)
-	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody(wrongCode(code)), session.CSRFToken, session.Cookie(), 422)
-	done := apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody(code), session.CSRFToken, session.Cookie(), 200)
+	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody(wrongCode(code)), session.CSRFToken, session.Cookie(), 422)
+	done := apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody(code), session.CSRFToken, session.Cookie(), 200)
 	if strings.Contains(done.Body.String(), `"emailVerifiedAt":null`) {
 		t.Fatalf("verify %s", done.Body.String())
 	}
@@ -483,17 +483,17 @@ func TestVerifyingAnExistingAccount(t *testing.T) {
 		t.Fatalf("verified %+v", e)
 	}
 	apitest.Call(t, h, "POST", "/api/auth/email-verification", "{}", session.CSRFToken, session.Cookie(), 409)
-	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody(code), session.CSRFToken, session.Cookie(), 409)
+	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody(code), session.CSRFToken, session.Cookie(), 409)
 
 	t.Run("five wrong codes end it", func(t *testing.T) {
 		other := apitest.Must(factory.Users.State(factory.Unverified).CreateOne(ctx, db, f))(t)
 		session := apitest.Must(factory.SessionFor(ctx, db, f, other.ID))(t)
 		code := apitest.Must(factory.EmailVerifications.State(factory.VerificationFor(other.ID)).CreateOne(ctx, db, f))(t)
 		for range auth.EmailCodeMaxAttempts - 1 {
-			apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody(wrongCode(code.Code)), session.CSRFToken, session.Cookie(), 422)
+			apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody(wrongCode(code.Code)), session.CSRFToken, session.Cookie(), 422)
 		}
-		apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody(wrongCode(code.Code)), session.CSRFToken, session.Cookie(), 410)
-		apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody(code.Code), session.CSRFToken, session.Cookie(), 410)
+		apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody(wrongCode(code.Code)), session.CSRFToken, session.Cookie(), 410)
+		apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody(code.Code), session.CSRFToken, session.Cookie(), 410)
 	})
 	t.Run("a password reset verifies the email", func(t *testing.T) {
 		other := apitest.Must(factory.Users.State(factory.Unverified).CreateOne(ctx, db, f))(t)
@@ -541,7 +541,7 @@ func TestUnverifiedAccountsMustVerify(t *testing.T) {
 		t.Fatalf("me %s", me.Body.String())
 	}
 	apitest.Call(t, h, "POST", "/api/auth/email-verification", "{}", session.CSRFToken, session.Cookie(), 202)
-	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", codeBody("000000"), session.CSRFToken, session.Cookie(), 410)
+	apitest.Call(t, h, "PATCH", "/api/auth/email-verification", apitest.CodeBody("000000"), session.CSRFToken, session.Cookie(), 410)
 	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 204)
 	apitest.Call(t, h, "POST", "/api/auth/logout", "", session.CSRFToken, session.Cookie(), 204)
 

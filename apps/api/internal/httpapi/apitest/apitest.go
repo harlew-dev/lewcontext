@@ -131,3 +131,23 @@ func OwnedWorkspace(t *testing.T, db bun.IDB, f *gofakeit.Faker, userID int64) f
 func WorkspacePath(publicID, rest string) string {
 	return "/api/workspaces/" + publicID + rest
 }
+
+// PublicIDOf is the user's usr_ ID.
+func PublicIDOf(t *testing.T, db bun.IDB, userID int64) string {
+	t.Helper()
+	var id string
+	if err := db.NewSelect().TableExpr("users").Column("public_id").Where("id = ?", userID).Scan(context.Background(), &id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// CountRows counts the user's rows in table.
+func CountRows(t *testing.T, db bun.IDB, table string, userID int64) int {
+	t.Helper()
+	n, err := db.NewSelect().TableExpr("?", bun.Ident(table)).Where("user_id = ?", userID).Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(n)
+}

@@ -7,7 +7,6 @@ import (
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 )
 
@@ -125,15 +124,6 @@ var RateLimits = []ratelimit.Limit{
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
-}
-
-// thousands writes n with a comma between thousands: 1000 is "1,000".
-func thousands(n int) string {
-	digits := strconv.Itoa(n)
-	for i := len(digits) - 3; i > 0; i -= 3 {
-		digits = digits[:i] + "," + digits[i:]
-	}
-	return digits
 }
 
 // Allow counts a request against l under key and answers 429 (503 with busy

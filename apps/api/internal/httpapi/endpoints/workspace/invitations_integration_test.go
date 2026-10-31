@@ -1,4 +1,4 @@
-package httpapi_test
+package workspace_test
 
 import (
 	"context"
@@ -81,7 +81,7 @@ func TestCreateInvitation(t *testing.T) {
 	owner := apitest.SignedIn(t, db, f)
 	workspace := apitest.OwnedWorkspace(t, db, f, owner.UserID)
 	path := apitest.WorkspacePath(workspace.PublicID, "/invitations")
-	ownerID := publicIDOf(t, s, owner.UserID)
+	ownerID := apitest.PublicIDOf(t, s.Repo.DB, owner.UserID)
 
 	t.Run("owners invite any role but owner", func(t *testing.T) {
 		for _, role := range []auth.Role{auth.RoleAdmin, auth.RoleMember, auth.RoleViewer} {
@@ -198,11 +198,11 @@ func TestInvitationCaps(t *testing.T) {
 		_ = json.Unmarshal(ninetyNinth.Body.Bytes(), &revoke)
 		apitest.Call(t, router.New(s), "DELETE", path+"/"+fmt.Sprint(revoke["id"]), "", owner.CSRFToken, owner.Cookie(), 204)
 		_, late := sessionFor(t, db, f, "late@example.com")
-		apitest.Call(t, router.New(s), "POST", "/api/invitations/accept", checkBody(sent.Token), late.CSRFToken, late.Cookie(), 200)
+		apitest.Call(t, router.New(s), "POST", "/api/invitations/accept", apitest.TokenBody(sent.Token), late.CSRFToken, late.Cookie(), 200)
 		// Full without this invitation (filled some other way): accepting is refused.
 		over := apitest.Must(factory.InvitationsTo(workspace.ID).State(factory.Sent).State(factory.InvitedAs("over@example.com", auth.RoleMember)).CreateOne(ctx, db, f))(t)
 		_, overSession := sessionFor(t, db, f, "over@example.com")
-		w = apitest.Call(t, router.New(s), "POST", "/api/invitations/accept", checkBody(over.Token), overSession.CSRFToken, overSession.Cookie(), 422)
+		w = apitest.Call(t, router.New(s), "POST", "/api/invitations/accept", apitest.TokenBody(over.Token), overSession.CSRFToken, overSession.Cookie(), 422)
 		if !strings.Contains(w.Body.String(), "This workspace is full") {
 			t.Fatalf("accept over the quota: %s", w.Body.String())
 		}
@@ -213,13 +213,13 @@ func TestInvitationCaps(t *testing.T) {
 		owner := apitest.SignedIn(t, db, f)
 		workspace := apitest.OwnedWorkspace(t, db, f, owner.UserID)
 		path := apitest.WorkspacePath(workspace.PublicID, "/invitations")
-		apitest.Must(factory.RateLimits.State(factory.ForLimit("invitation:per-user", publicIDOf(t, s, owner.UserID))).State(factory.Exhausted(20)).CreateOne(ctx, db, f))(t)
+		apitest.Must(factory.RateLimits.State(factory.ForLimit("invitation:per-user", apitest.PublicIDOf(t, s.Repo.DB, owner.UserID))).State(factory.Exhausted(20)).CreateOne(ctx, db, f))(t)
 		refused := apitest.Call(t, router.New(s), "POST", path, invite("a@example.com", auth.RoleMember), owner.CSRFToken, owner.Cookie(), 429)
 		if !strings.Contains(refused.Body.String(), "Too many requests") {
 			t.Fatalf("refusal: %s", refused.Body.String())
 		}
 		apitest.Reached(t, s.Repo.DB, "invitation:per-user:block")
-		if countRateLimits(t, s, "invitation:per-email:%") != 0 || countRateLimits(t, s, "invitation:global") != 0 {
+		if apitest.CountRateLimits(t, s.Repo.DB, "invitation:per-email:%") != 0 || apitest.CountRateLimits(t, s.Repo.DB, "invitation:global") != 0 {
 			t.Fatal("refused per user, but counted for the address or for everyone")
 		}
 		other := apitest.SignedIn(t, db, f)
@@ -282,10 +282,10 @@ func TestInvitationLink(t *testing.T) {
 	path := apitest.WorkspacePath(workspace.PublicID, "/invitations")
 	apitest.Call(t, h, "POST", path, invite("bob@example.com", auth.RoleMember), owner.CSRFToken, owner.Cookie(), 201)
 	deliver()
-	if len(box.sent) != 1 || box.sent[0].To != "bob@example.com" {
-		t.Fatalf("sent %+v", box.sent)
+	if len(box.Sent) != 1 || box.Sent[0].To != "bob@example.com" {
+		t.Fatalf("sent %+v", box.Sent)
 	}
-	token := invitationTokenIn(t, box.sent[0])
+	token := invitationTokenIn(t, box.Sent[0])
 	var digest string
 	var sentAt bool
 	if err := db.NewSelect().TableExpr("workspace_invitations").ColumnExpr("token_hash, sent_at IS NOT NULL").Scan(ctx, &digest, &sentAt); err != nil {
@@ -300,14 +300,14 @@ func TestInvitationLink(t *testing.T) {
 
 	t.Run("check shows it, signed out", func(t *testing.T) {
 		var preview map[string]any
-		_ = json.Unmarshal(apitest.Call(t, h, "POST", "/api/invitations/check", checkBody(token), "", nil, 200).Body.Bytes(), &preview)
+		_ = json.Unmarshal(apitest.Call(t, h, "POST", "/api/invitations/check", apitest.TokenBody(token), "", nil, 200).Body.Bytes(), &preview)
 		ws, _ := preview["workspace"].(map[string]any)
 		by, _ := preview["invitedBy"].(map[string]any)
 		if ws["name"] != workspace.Name || by["email"] != apitest.EmailOf(t, db, owner.UserID) || preview["email"] != "bob@example.com" || preview["role"] != "member" {
 			t.Fatalf("preview: %+v", preview)
 		}
 		for _, bad := range []string{"short", strings.Repeat("A", 43)} {
-			w := apitest.Call(t, h, "POST", "/api/invitations/check", checkBody(bad), "", nil, 422)
+			w := apitest.Call(t, h, "POST", "/api/invitations/check", apitest.TokenBody(bad), "", nil, 422)
 			if !strings.Contains(w.Body.String(), `"field":"token"`) {
 				t.Fatalf("bad token: %s", w.Body.String())
 			}
@@ -324,16 +324,16 @@ func TestInvitationLink(t *testing.T) {
 	})
 	t.Run("another account can't accept it", func(t *testing.T) {
 		eve := apitest.SignedIn(t, db, f)
-		w := apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(token), eve.CSRFToken, eve.Cookie(), 403)
+		w := apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(token), eve.CSRFToken, eve.Cookie(), 403)
 		if !strings.Contains(w.Body.String(), "different email") || countInvitations(t, db, workspace.ID) != 1 || roleIn(t, db, workspace.ID, eve.UserID) != "" {
 			t.Fatalf("accepted by someone else: %s", w.Body.String())
 		}
-		apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(token), "", nil, 401)
-		apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(token), "wrong", eve.Cookie(), 403)
+		apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(token), "", nil, 401)
+		apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(token), "wrong", eve.Cookie(), 403)
 	})
 	t.Run("the invitee accepts once", func(t *testing.T) {
 		bob := apitest.Must(factory.SessionFor(ctx, db, f, apitest.IDOf(t, db, "users", userPublicIDByEmail(t, db, "bob@example.com"))))(t)
-		w := apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(token), bob.CSRFToken, bob.Cookie(), 200)
+		w := apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(token), bob.CSRFToken, bob.Cookie(), 200)
 		var joined store.Workspace
 		_ = json.Unmarshal(w.Body.Bytes(), &joined)
 		if joined.PublicID != workspace.PublicID || joined.Role != auth.RoleMember || roleIn(t, db, workspace.ID, bob.UserID) != auth.RoleMember || countInvitations(t, db, workspace.ID) != 0 {
@@ -343,8 +343,8 @@ func TestInvitationLink(t *testing.T) {
 		if !apitest.Is(e.ActorID, bob.UserID) || !apitest.Is(e.UserID, bob.UserID) || !apitest.Is(e.WorkspaceID, workspace.ID) || e.Payload["role"] != "member" {
 			t.Fatalf("accepted: %+v", e)
 		}
-		apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(token), bob.CSRFToken, bob.Cookie(), 422)
-		apitest.Call(t, h, "POST", "/api/invitations/check", checkBody(token), "", nil, 422)
+		apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(token), bob.CSRFToken, bob.Cookie(), 422)
+		apitest.Call(t, h, "POST", "/api/invitations/check", apitest.TokenBody(token), "", nil, 422)
 	})
 	t.Run("revoked before sending: no email", func(t *testing.T) {
 		w := apitest.Call(t, h, "POST", path, invite("carol@example.com", auth.RoleViewer), owner.CSRFToken, owner.Cookie(), 201)
@@ -352,8 +352,8 @@ func TestInvitationLink(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &inv)
 		apitest.Call(t, h, "DELETE", path+"/"+fmt.Sprint(inv["id"]), "", owner.CSRFToken, owner.Cookie(), 204)
 		deliver()
-		if len(box.sent) != 1 {
-			t.Fatalf("a revoked invitation was sent: %d", len(box.sent))
+		if len(box.Sent) != 1 {
+			t.Fatalf("a revoked invitation was sent: %d", len(box.Sent))
 		}
 	})
 	t.Run("a newer email replaces the link", func(t *testing.T) {
@@ -361,7 +361,7 @@ func TestInvitationLink(t *testing.T) {
 		if _, err := s.Repo.IssueInvitationToken(ctx, inv.PublicID, auth.Digest("a-newer-token")); err != nil {
 			t.Fatal(err)
 		}
-		apitest.Call(t, h, "POST", "/api/invitations/check", checkBody(inv.Token), "", nil, 422)
+		apitest.Call(t, h, "POST", "/api/invitations/check", apitest.TokenBody(inv.Token), "", nil, 422)
 	})
 }
 
@@ -392,14 +392,14 @@ func TestAcceptInvitation(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		inv := sent("late@example.com", auth.RoleMember, factory.ExpiredInvitation)
 		_, late := sessionFor(t, db, f, "late@example.com")
-		apitest.Call(t, h, "POST", "/api/invitations/check", checkBody(inv.Token), "", nil, 422)
-		apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(inv.Token), late.CSRFToken, late.Cookie(), 422)
+		apitest.Call(t, h, "POST", "/api/invitations/check", apitest.TokenBody(inv.Token), "", nil, 422)
+		apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(inv.Token), late.CSRFToken, late.Cookie(), 422)
 	})
 	t.Run("a member keeps their role", func(t *testing.T) {
 		inv := sent("already@example.com", auth.RoleViewer)
 		user, session := sessionFor(t, db, f, "already@example.com")
 		apitest.Must(factory.MemberOf(ctx, db, f, user.ID, workspace.ID, auth.RoleAdmin))(t)
-		apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(inv.Token), session.CSRFToken, session.Cookie(), 200)
+		apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(inv.Token), session.CSRFToken, session.Cookie(), 200)
 		if roleIn(t, db, workspace.ID, user.ID) != auth.RoleAdmin {
 			t.Fatal("accepting changed an existing member's role")
 		}
@@ -410,7 +410,7 @@ func TestAcceptInvitation(t *testing.T) {
 			inv := sent(email, auth.RoleMember)
 			_, session := sessionFor(t, db, f, email)
 			statuses := concurrently(2, func(int) int {
-				return apitest.Send(h, "POST", "/api/invitations/accept", checkBody(inv.Token), session.CSRFToken, session.Cookie()).Code
+				return apitest.Send(h, "POST", "/api/invitations/accept", apitest.TokenBody(inv.Token), session.CSRFToken, session.Cookie()).Code
 			})
 			slices.Sort(statuses)
 			if !slices.Equal(statuses, []int{200, 422}) {
@@ -425,7 +425,7 @@ func TestAcceptInvitation(t *testing.T) {
 			user, session := sessionFor(t, db, f, email)
 			statuses := concurrently(2, func(i int) int {
 				if i == 0 {
-					return apitest.Send(h, "POST", "/api/invitations/accept", checkBody(inv.Token), session.CSRFToken, session.Cookie()).Code
+					return apitest.Send(h, "POST", "/api/invitations/accept", apitest.TokenBody(inv.Token), session.CSRFToken, session.Cookie()).Code
 				}
 				return apitest.Send(h, "DELETE", apitest.WorkspacePath(workspace.PublicID, "/invitations/"+inv.PublicID), "", owner.CSRFToken, owner.Cookie()).Code
 			})
@@ -444,9 +444,9 @@ func TestAcceptInvitation(t *testing.T) {
 		if _, err := s.Repo.IssueInvitationToken(ctx, fmt.Sprint(inv["id"]), auth.Digest(token)); err != nil {
 			t.Fatal(err)
 		}
-		apitest.Call(t, h, "DELETE", apitest.WorkspacePath(workspace.PublicID, "/members/"+publicIDOf(t, s, admin.UserID)), "", owner.CSRFToken, owner.Cookie(), 204)
+		apitest.Call(t, h, "DELETE", apitest.WorkspacePath(workspace.PublicID, "/members/"+apitest.PublicIDOf(t, s.Repo.DB, admin.UserID)), "", owner.CSRFToken, owner.Cookie(), 204)
 		user, session := sessionFor(t, db, f, "from-admin@example.com")
-		apitest.Call(t, h, "POST", "/api/invitations/accept", checkBody(token), session.CSRFToken, session.Cookie(), 200)
+		apitest.Call(t, h, "POST", "/api/invitations/accept", apitest.TokenBody(token), session.CSRFToken, session.Cookie(), 200)
 		if roleIn(t, db, workspace.ID, user.ID) != auth.RoleViewer {
 			t.Fatal("not joined")
 		}
@@ -484,6 +484,6 @@ func TestRevokeInvitation(t *testing.T) {
 	if !apitest.Is(e.ActorID, owner.UserID) || e.Payload["email"] != "dan@example.com" || e.Payload["invitation"] != inv.PublicID {
 		t.Fatalf("revoked: %+v", e)
 	}
-	apitest.Call(t, h, "POST", "/api/invitations/check", checkBody(inv.Token), "", nil, 422)
+	apitest.Call(t, h, "POST", "/api/invitations/check", apitest.TokenBody(inv.Token), "", nil, 422)
 	apitest.Call(t, h, "DELETE", apitest.WorkspacePath(workspace.PublicID, "/invitations/"+inv.PublicID), "", owner.CSRFToken, owner.Cookie(), 404)
 }
