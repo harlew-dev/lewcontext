@@ -98,7 +98,7 @@ test("two-factor authentication: enable with a hidden QR code, sign in with a co
     .inputValue();
   expect(key).toMatch(/^[A-Z2-7 ]{39}$/);
   await dialog.getByLabel("Code from your app").fill(codeFor(key, 0));
-  await dialog.getByRole("button", { name: "Verify" }).click();
+  // The sixth digit submits.
 
   // The recovery codes: saved before the dialog lets go.
   const done = dialog.getByRole("button", { name: "I’ve saved these codes" });
@@ -125,7 +125,7 @@ test("two-factor authentication: enable with a hidden QR code, sign in with a co
     ),
   ).toBe(false);
   await page.getByLabel("Authentication code").fill(codeFor(key, 1));
-  await page.getByRole("button", { name: "Verify" }).click();
+  // The sixth digit submits.
   await expect(page).toHaveURL(/\/dashboard$/);
 
   // A recovery code instead, once.
@@ -141,7 +141,10 @@ test("two-factor authentication: enable with a hidden QR code, sign in with a co
   await page.goto("/app/settings");
   await page.getByRole("button", { name: "Disable" }).click();
   await dialog.getByLabel("Your password").fill(password);
-  await dialog.getByLabel("Authentication or recovery code").fill(codes[1]);
+  await dialog
+    .getByRole("button", { name: "Lost your device? Use a recovery code" })
+    .click();
+  await dialog.getByLabel("Recovery code").fill(codes[1]);
   await dialog
     .getByRole("button", { name: "Disable two-factor authentication" })
     .click();

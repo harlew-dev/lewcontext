@@ -42,7 +42,7 @@ import {
   DangerAction,
   SettingsSection,
 } from "@/components/ui/settings-section";
-import { Text } from "@/components/ui/text";
+import { Text, TextButton } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -549,6 +549,48 @@ function EnableMfaDialog({
     </Dialog>
   );
 }
+// A code from the authenticator app (six boxes) or, after "Lost your
+// device?", a recovery code: either one confirms disabling MFA or replacing
+// the recovery codes. Switching clears what was typed.
+function AppOrRecoveryCode({
+  value,
+  onChange,
+  error,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  disabled: boolean;
+}) {
+  const [recovery, setRecovery] = useState(false);
+  return (
+    <div className="space-y-3">
+      <CodeField
+        key={recovery ? "recovery" : "app"}
+        label={recovery ? "Recovery code" : "Authentication code"}
+        value={value}
+        onChange={onChange}
+        error={error}
+        disabled={disabled}
+        recovery={recovery}
+      />
+      <Text>
+        <TextButton
+          disabled={disabled}
+          onClick={() => {
+            setRecovery(!recovery);
+            onChange("");
+          }}
+        >
+          {recovery
+            ? "Use your authenticator app instead"
+            : "Lost your device? Use a recovery code"}
+        </TextButton>
+      </Text>
+    </div>
+  );
+}
 // Turning MFA off takes the password and a code (an authenticator or a
 // recovery code), so a stolen session can't do it.
 function DisableMfaDialog({
@@ -595,13 +637,11 @@ function DisableMfaDialog({
           error={fieldErrors.password}
           disabled={false}
         />
-        <CodeField
-          label="Authentication or recovery code"
+        <AppOrRecoveryCode
           value={code}
           onChange={setCode}
           error={fieldErrors.code}
           disabled={false}
-          recovery
         />
       </FieldGroup>
     </ConfirmationDialog>
@@ -679,13 +719,11 @@ function RecoveryCodesDialog({
                 error={fieldErrors.password}
                 disabled={create.loading}
               />
-              <CodeField
-                label="Authentication or recovery code"
+              <AppOrRecoveryCode
                 value={code}
                 onChange={setCode}
                 error={fieldErrors.code}
                 disabled={create.loading}
-                recovery
               />
             </FieldGroup>
           )}

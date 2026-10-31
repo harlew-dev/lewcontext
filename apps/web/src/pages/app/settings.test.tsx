@@ -390,12 +390,10 @@ describe("two-factor authentication", () => {
     expect(document.body.innerHTML).not.toContain(setup.secret);
 
     type("Code from your app", "000000");
-    fireEvent.click(dialog.getByRole("button", { name: "Verify" }));
     expect(
       await dialog.findByText("That code didn’t work."),
     ).toBeInTheDocument();
     type("Code from your app", "123456");
-    fireEvent.click(dialog.getByRole("button", { name: "Verify" }));
     const done = await dialog.findByRole("button", {
       name: "I’ve saved these codes",
     });
@@ -436,7 +434,12 @@ describe("two-factor authentication", () => {
     });
     expect(confirm).toBeDisabled();
     type("Your password", "correct horse");
-    type("Authentication or recovery code", "k7p2m-x9qfr");
+    fireEvent.click(
+      dialog.getByRole("button", {
+        name: "Lost your device? Use a recovery code",
+      }),
+    );
+    type("Recovery code", "k7p2m-x9qfr");
     fireEvent.click(confirm);
     expect(
       await dialog.findByText("That code didn’t work."),
@@ -467,7 +470,7 @@ describe("two-factor authentication", () => {
     );
     const dialog = within(await screen.findByRole("dialog"));
     type("Your password", "correct horse");
-    type("Authentication or recovery code", "123456");
+    type("Authentication code", "123456");
     fireEvent.click(dialog.getByRole("button", { name: "Create new codes" }));
     const done = await dialog.findByRole("button", {
       name: "I’ve saved these codes",

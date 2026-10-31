@@ -19,6 +19,7 @@ import {
   InputButton,
   InputGroup,
 } from "@/components/ui/input";
+import { OtpInput } from "@/components/ui/otp-input";
 import { Reveal } from "@/components/ui/reveal";
 import { Text, TextButton } from "@/components/ui/text";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -82,6 +83,7 @@ export function MfaScanStep({
         onChange={onCodeChange}
         error={error}
         disabled={disabled}
+        autoSubmit
       />
     </div>
   );
@@ -170,7 +172,9 @@ function SetupKey({ secret }: { secret: string }) {
     </div>
   );
 }
-// A code field: an authenticator code (or, where allowed, a recovery code).
+// A code field: an authenticator code in six boxes (OtpInput), or with
+// `recovery` a recovery code in a text field. `autoSubmit` submits the form
+// at the sixth digit, where the code is the form's only field.
 export function CodeField({
   label,
   description,
@@ -180,6 +184,7 @@ export function CodeField({
   disabled,
   autoFocus = false,
   recovery = false,
+  autoSubmit = false,
 }: {
   label: string;
   description?: string;
@@ -190,23 +195,34 @@ export function CodeField({
   autoFocus?: boolean;
   // Recovery codes are letters and digits; authenticator codes only digits.
   recovery?: boolean;
+  autoSubmit?: boolean;
 }) {
   return (
     <Field disabled={disabled}>
       <Label>{label}</Label>
       {description && <Description>{description}</Description>}
-      <Input
-        name="code"
-        inputMode={recovery ? "text" : "numeric"}
-        autoComplete={recovery ? "off" : "one-time-code"}
-        autoFocus={autoFocus}
-        required
-        maxLength={recovery ? 32 : 7}
-        invalid={Boolean(error)}
-        className="font-mono"
-        value={value}
-        onChange={(e) => onChange(e.currentTarget.value)}
-      />
+      {recovery ? (
+        <Input
+          name="code"
+          autoComplete="off"
+          autoFocus={autoFocus}
+          required
+          maxLength={32}
+          invalid={Boolean(error)}
+          className="font-mono"
+          value={value}
+          onChange={(e) => onChange(e.currentTarget.value)}
+        />
+      ) : (
+        <OtpInput
+          name="code"
+          autoFocus={autoFocus}
+          autoSubmit={autoSubmit}
+          invalid={Boolean(error)}
+          value={value}
+          onChange={onChange}
+        />
+      )}
       {error && <ErrorMessage role="alert">{error}</ErrorMessage>}
     </Field>
   );

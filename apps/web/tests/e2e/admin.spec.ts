@@ -112,7 +112,7 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
     .getByLabel("Setup key", { exact: true })
     .inputValue();
   await page.getByLabel("Code from your app").fill(codeFor(setupKey, 0));
-  await page.getByRole("button", { name: "Verify" }).click();
+  // The sixth digit submits.
   const done = page.getByRole("button", { name: "I’ve saved these codes" });
   await expect(done).toBeDisabled();
   await page.getByRole("button", { name: "Reveal recovery codes" }).click();
@@ -148,7 +148,7 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
     page.getByRole("heading", { name: "Two-factor authentication" }),
   ).toBeVisible();
   await page.getByLabel("Authentication code").fill(codeFor(setupKey, 1));
-  await page.getByRole("button", { name: "Verify" }).click();
+  // The sixth digit submits.
   await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
   expect(errors).toEqual([]);
 

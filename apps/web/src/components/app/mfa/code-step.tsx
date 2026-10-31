@@ -65,6 +65,7 @@ export function CodeStep({
         error={fieldError}
         disabled={loading}
         recovery={recovery}
+        autoSubmit
         autoFocus
       />
       <Button type="submit" className="w-full" loading={loading}>

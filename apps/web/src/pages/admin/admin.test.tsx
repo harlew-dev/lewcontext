@@ -141,12 +141,10 @@ describe("the admin door", () => {
       await screen.findByRole("heading", { name: "Two-factor authentication" }),
     ).toBeInTheDocument();
     type("Authentication code", "000000");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(
       await screen.findByText("That code didn’t work."),
     ).toBeInTheDocument();
     type("Authentication code", "123456");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(
       await screen.findByRole("heading", { name: "Users" }),
     ).toBeInTheDocument();
@@ -196,7 +194,6 @@ describe("the admin door", () => {
     ).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(secret);
     type("Code from your app", "123456");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(
       await screen.findByRole("heading", { name: "Save your recovery codes" }),
     ).toBeInTheDocument();
@@ -236,7 +233,6 @@ describe("the admin door", () => {
       name: "Set up two-factor authentication",
     });
     type("Code from your app", "123456");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(
       await screen.findByText(
         "Your sign-in expired. Enter your password again.",

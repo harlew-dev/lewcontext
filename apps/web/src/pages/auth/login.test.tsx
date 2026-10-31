@@ -46,17 +46,16 @@ describe("signing in with two-factor authentication", () => {
     expect(field).toHaveAttribute("autocomplete", "one-time-code");
 
     type("Authentication code", "000000");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "That code didn’t work.",
     );
     type("Authentication code", "123 456");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    // Only the digits are kept, and the sixth submits.
     expect(await screen.findByText("Account settings")).toBeInTheDocument();
     expect(api.sent("POST").map((r) => r.body)).toEqual([
       { email: "ada@example.com", password: "correct horse" },
       { code: "000000" },
-      { code: "123 456" },
+      { code: "123456" },
     ]);
   });
   it("takes a recovery code instead", async () => {
@@ -88,7 +87,6 @@ describe("signing in with two-factor authentication", () => {
     signIn();
     await screen.findByLabelText("Authentication code");
     type("Authentication code", "000000");
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(
       await screen.findByText(
         "Too many wrong codes. Enter your password again.",
