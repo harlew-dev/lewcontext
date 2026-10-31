@@ -348,7 +348,7 @@ Before deploying to production:
 
 - Set `APP_ENV=production` and an HTTPS `APP_ORIGIN`.
 - Use a restricted database role with `sslmode=verify-full`.
-- Terminate TLS at a trusted reverse proxy and expose only the Go server behind it. The production session cookie uses the `__Host-` prefix and the Secure flag.
+- Terminate TLS at a trusted reverse proxy and expose only the Go server behind it. The production session cookie uses the `__Host-` prefix and the Secure flag. Set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` so per-IP limits and events see the real client address ([deployment](docs/deployment.md#behind-a-proxy-or-load-balancer)).
 - Do not use the demo credentials.
 
 > [!IMPORTANT]

@@ -10,17 +10,18 @@ import (
 // Routes is the single registry of API endpoints and their authorization
 // requirements and rate limits, and of the web app's pages when Pages is set.
 // Every route behind requireSession has a budget (limits.go); routes that
-// create rows also name their own limit with s.limit.
+// create rows also name their own limit with s.limit. The client's address is
+// worked out first (clientAddress), once for both.
 func (s *Server) Routes() http.Handler {
 	api := s.security(s.apiRoutes())
 	pages := s.pageRoutes()
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return s.clientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			api.ServeHTTP(w, r)
 			return
 		}
 		pages.ServeHTTP(w, r)
-	})
+	}))
 }
 
 // apiRoutes are the JSON endpoints under /api.

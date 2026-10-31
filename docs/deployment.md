@@ -37,6 +37,7 @@ make build                                                     # or, without Doc
 | `DATABASE_URL` | `postgresql://lewcontext:…@db.internal:5432/lewcontext?sslmode=verify-full` | **`sslmode=verify-full` is required.** For a provider with its own CA, mount the CA file and add `&sslrootcert=/path/to/ca.pem` |
 | `API_ADDR` | `0.0.0.0:3000` (the image's default) | The listen address. Bind it to a private interface the proxy can reach, never directly to the internet without TLS in front |
 | `MAIL_DRIVER` | `off` (the production default) | There is no email delivery yet. `file` (the development mailbox) is refused in production. With `off`, password reset answers 503 |
+| `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 
 `RATE_LIMITS` must stay unset (or `on`): `off`, for the end-to-end tests, is refused in production. The server refuses to start if any of these rules is broken, rather than starting insecurely. `DEMO_PASSWORD`, `MAIL_FILE` and `API_URL` are for development only.
 
@@ -44,7 +45,6 @@ make build                                                     # or, without Doc
 
 | Variable | Plan | Notes |
 | --- | --- | --- |
-| `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | [client-ip](../plans/features/client-ip.md) | The real client IP behind a proxy. Set both or neither |
 | `PER_IP_LIMITS` | [captcha-challenges](../plans/features/captcha-challenges.md) | `off` only if the proxy can't send the client's IP at all |
 | `CAPTCHA_PROVIDER`, `CAPTCHA_SITE_KEY`, `CAPTCHA_SECRET_KEY` | [captcha-challenges](../plans/features/captcha-challenges.md) | `turnstile` with real keys, or `off`. It must be set explicitly in production, and Cloudflare's test keys are refused |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID` | [captcha-challenges](../plans/features/captcha-challenges.md) (future use case) | Only for the edge-protection listener, which isn't built |
@@ -90,23 +90,25 @@ With N servers, these allow N times as much. That is fine for load protection.
 
 ## Behind a proxy or load balancer
 
-TLS ends at the proxy, so the server sees every connection coming from the proxy's address. **Today the server ignores forwarded-IP headers**, so behind a proxy:
+TLS ends at the proxy, so the server sees every connection coming from the proxy's address. Unless told otherwise, it uses that address, so behind a proxy:
 
 - every per-IP limit (`auth:per-ip`, 60 sign-in attempts per 15 minutes; `register:per-ip`, 10 sign-ups an hour) is shared by all users together. Signed-in limits count by user, so they aren't affected;
 - audit events record the proxy's address.
 
-That is acceptable for a small deployment, but plan around it.
-
-**Planned ([client-ip](../plans/features/client-ip.md)):** set `CLIENT_IP_HEADER` to the header your proxy writes, and `TRUSTED_PROXIES` to the addresses the proxy connects from. The header is believed only on connections from those addresses, because anyone can send a forged one. `X-Forwarded-For` is read from the right, skipping your own proxies.
+To fix that, set `CLIENT_IP_HEADER` to the header your proxy writes the client's address in, and `TRUSTED_PROXIES` to the addresses or CIDR ranges the proxy connects from (comma-separated). The header is believed **only** on connections from those addresses, because anyone can send a forged one. `X-Forwarded-For` is read from the right, skipping your own proxies, so entries a client adds at the left are never chosen. Plan: [client-ip](../plans/features/client-ip.md).
 
 | Setup | `CLIENT_IP_HEADER` | `TRUSTED_PROXIES` | Proxy config |
 | --- | --- | --- | --- |
 | nginx or Caddy on the same machine | `X-Forwarded-For` | `127.0.0.1/32,::1/128` | nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` (Caddy sets it by default) |
-| Cloud load balancer in a private network | `X-Forwarded-For` | the load balancer's subnet | |
+| nginx with `X-Real-IP` | `X-Real-IP` | `127.0.0.1/32,::1/128` | `proxy_set_header X-Real-IP $remote_addr;`: the proxy must **overwrite** a single-value header, never pass on the client's own |
+| Cloud load balancer in a private network | `X-Forwarded-For` | the load balancer's subnet, e.g. `10.0.0.0/16` | |
 | Cloudflare → server | `CF-Connecting-IP` | Cloudflare's ranges from <https://www.cloudflare.com/ips-v4> and <https://www.cloudflare.com/ips-v6>. Recheck these occasionally, because Cloudflare does change them | firewall the server to Cloudflare's ranges only |
-| Cloudflare Tunnel | `CF-Connecting-IP` | `127.0.0.1/32,::1/128` | no open inbound port |
+| Cloudflare Tunnel (`cloudflared` on the same machine) | `CF-Connecting-IP` | `127.0.0.1/32,::1/128` | no open inbound port |
 
-Never trust `0.0.0.0/0`: that is the same as believing the header from anyone, and the server will refuse it. Only use `PER_IP_LIMITS=off` if the proxy can't send the client's address at all. It switches every per-IP limit off, and sign-in then relies on per-account limits and the edge.
+- **Refused at startup:** one variable without the other, a header other than `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP` (any case; not RFC 7239 `Forwarded`), a range that doesn't parse, an IPv4-mapped IPv6 range (write it as IPv4), and `0.0.0.0/0` or `::/0`, which would be the same as believing the header from anyone. The server logs the header it uses when it starts.
+- **A header that doesn't parse** as an address falls back to the last trusted hop (or the connection), never to a value the client chose. At most 20 `X-Forwarded-For` entries are read; a single-value header with more than one value is ignored.
+- **IPv6 clients** are counted by their /64 in every per-IP limit, with or without a proxy. Events record the full address.
+- **Only use `PER_IP_LIMITS=off`** (**Planned**, [captcha-challenges](../plans/features/captcha-challenges.md)) if the proxy can't send the client's address at all. It switches every per-IP limit off, and sign-in then relies on per-account limits and the edge.
 
 Proxy timeouts should be at least the server's own: 15 s to read a request and 20 s to write a response.
 
@@ -143,7 +145,7 @@ A real mail driver (SMTP or a provider) is a future plan. Don't advertise passwo
 - [ ] Migrations frozen (append-only) before the first real data.
 - [ ] `prune` scheduled.
 - [ ] `seed` never run (it refuses in production anyway).
-- [ ] Behind a proxy: understood that per-IP limits are shared today; `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set once built.
+- [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
 - [ ] Turnstile keys are real (not Cloudflare's test keys), once built.
 - [ ] No secrets in the image or the repository: pass them as environment variables or through your platform's secret store.

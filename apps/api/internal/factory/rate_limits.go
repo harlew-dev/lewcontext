@@ -30,13 +30,14 @@ func ForAccount(email string) func(*RateLimit) {
 	return ForLimit("auth:per-account", email)
 }
 
-// ForIP counts sign-in attempts from a client address (auth:per-ip).
+// ForIP counts sign-in attempts from a client address (auth:per-ip): an IPv4
+// address, or an IPv6 /64 such as "2001:db8:1:2::/64", as the API counts them.
 func ForIP(ip string) func(*RateLimit) {
 	return ForLimit("auth:per-ip", ip)
 }
 
-// ForLimit counts hits against the named limit for subject: an IP, an email
-// or a user's public ID. An empty subject is a limit shared by everyone, such
+// ForLimit counts hits against the named limit for subject: an IP (as in
+// ForIP), an email or a user's public ID. An empty subject is a limit shared by everyone, such
 // as password-reset:global.
 func ForLimit(name, subject string) func(*RateLimit) {
 	if subject == "" {

@@ -27,9 +27,10 @@ request ─▶ security (Origin, content type) ─▶ requireSession (session, C
 ## Counting
 
 - **Fixed windows.** A key's count starts at the first hit and resets when its window ends. Successful requests count too.
-- **Signed in, counted by user;** signed out (register, login, password reset), by connection IP. Forwarded headers aren't trusted, so everyone behind one proxy shares an IP; counting signed-in traffic by IP would let one user lock out their whole office.
+- **Signed in, counted by user;** signed out (register, login, password reset), by client IP: `l.ipKey(r)`, never `l.key(clientIP(r))`. Counting signed-in traffic by IP would let one user lock out their whole office.
+- **The client IP** is the connection's address, or behind a proxy the one in `CLIENT_IP_HEADER`, believed only from `TRUSTED_PROXIES` ([auth.md](auth.md#rate-limits), [deployment](../deployment.md#behind-a-proxy-or-load-balancer)). Without them, everyone behind one proxy shares an IP. **IPv6 is counted by its /64** (`limitSubject`), since one user usually holds a whole /64 and could otherwise step around a limit by changing the last bits; IPv4 by the address.
 - **After the CSRF check.** A forged request, or one without the user's token, is refused before it counts, so another site can't spend someone's budget.
-- **In the database** (`rate_limits`: `key`, `hits`, `resets_at`), exact across servers, for writes, sign-in and mail. Keys are `<name>:<sha256 of the subject>` (an IP, an email or a user's `usr_` ID), or the bare name for a limit shared by everyone, so the table holds no addresses or IDs. The server's 15-minute cleanup deletes ended windows.
+- **In the database** (`rate_limits`: `key`, `hits`, `resets_at`), exact across servers, for writes, sign-in and mail. Keys are `<name>:<sha256 of the subject>` (an IPv4 address or IPv6 /64, an email or a user's `usr_` ID), or the bare name for a limit shared by everyone, so the table holds no addresses or IDs. The server's 15-minute cleanup deletes ended windows.
 - **In memory** (`memoryLimiter`) for reads only: no database write per request, but each server process counts on its own, so with N servers a user gets N times the read budget. Ended windows are swept at most once a minute.
 - **Order:** the budget first, then feature limits, and per-subject limits before shared ones, so a client its own limit refuses doesn't spend a limit shared by everyone.
 

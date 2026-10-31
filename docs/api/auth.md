@@ -50,11 +50,11 @@ Sign-in, sign-up and password reset are limited per IP, per account or email, an
 
 - `auth:per-ip` (60 / 15 min) and `auth:per-account` (10 / 15 min) guard every password check: `limitAuth` (the IP limit and a hashing slot) and `accountLimit`. Both deletions and the signed-in password endpoints use the session user's email, so a stolen session can't guess the password faster than a login could.
 - Logout, revoking other sessions and the password endpoints skip the signed-in budget, so a stolen session can't use it up to stop its owner.
-- Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's dev proxy) shares one IP quota. A scaled deployment needs a trusted edge limiter. Account lockout abuse is possible with this fixed-window design.
+- **The client IP** is `clientIP(r)` (`httpapi/client_ip.go`), worked out once per request by `clientAddress`. It is the connection's address, unless `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` are set **and** the connection comes from a trusted proxy: then it is the header's address (`X-Forwarded-For` read from the right, skipping trusted proxies; the single-value headers only when they hold exactly one address). A header from any other connection is ignored, so a client can't forge one for fresh limits or fake audit IPs. Without the variables, everyone behind a proxy (and Vite's dev proxy) shares one IP. Per-IP limits count IPv6 clients by their /64. A scaled deployment still needs an edge limiter. Account lockout abuse is possible with this fixed-window design.
 
 ## Audit trail
 
-Sign-ups, login attempts (with the email typed and the connection IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window (`rate_limit.reached`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window (`rate_limit.reached`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 

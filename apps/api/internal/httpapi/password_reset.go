@@ -57,9 +57,8 @@ func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 // one refused early doesn't spend the later ones: a single client can't use
 // up the limit shared by everyone. Unknown emails count like real ones.
 func (s *Server) allowPasswordResetRequest(w http.ResponseWriter, r *http.Request, email string) bool {
-	ip := clientIP(r)
-	return s.allow(w, r, authPerIP, authPerIP.key(ip)) &&
-		s.allow(w, r, passwordResetPerIP, passwordResetPerIP.key(ip)) &&
+	return s.allow(w, r, authPerIP, authPerIP.ipKey(r)) &&
+		s.allow(w, r, passwordResetPerIP, passwordResetPerIP.ipKey(r)) &&
 		s.allow(w, r, passwordResetPerEmail, passwordResetPerEmail.key(email)) &&
 		s.allow(w, r, passwordResetGlobal, passwordResetGlobal.everyone())
 }
@@ -71,7 +70,7 @@ func (s *Server) checkPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !s.allow(w, r, authPerIP, authPerIP.key(clientIP(r))) {
+	if !s.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
 		return
 	}
 	if !validResetToken(in.Token) {

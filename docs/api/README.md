@@ -30,7 +30,8 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 `Routes()` sends `/api` and `/api/*` to the API; every other request goes to the pages ([below](#serving-the-web-app)).
 
 ```
-security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
+clientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED_PROXIES), for pages too
+  → security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
   → mux (routes.go)
   → requireSession (cookie → session, CSRF on mutations) for private routes
   → requireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
@@ -73,6 +74,8 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `API_URL` | `http://127.0.0.1:8080` | Only for Vite's dev proxy (`make dev`, `make web`) |
 | `MAIL_DRIVER` | `file`; `off` in production | `file` writes email to `MAIL_FILE`; `off` sends nothing, so password reset answers 503. Production refuses `file` ([mail.md](mail.md)) |
 | `RATE_LIMITS` | `on` | `off` switches every rate limit off, for the end-to-end tests; quotas stay. Production refuses `off` ([rate-limits.md](rate-limits.md#switching-limits-off-for-tests-rate_limits)) |
+| `CLIENT_IP_HEADER` | (unset) | The header a proxy puts the client's address in: `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP`. Believed only on connections from `TRUSTED_PROXIES`; unset uses the connection's address ([deployment](../deployment.md#behind-a-proxy-or-load-balancer)) |
+| `TRUSTED_PROXIES` | (unset) | Comma-separated addresses or CIDR ranges the proxy connects from. Set with `CLIENT_IP_HEADER` or not at all; `0.0.0.0/0` and `::/0` are refused |
 | `MAIL_FILE` | `tmp/mail.log` | The development mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |

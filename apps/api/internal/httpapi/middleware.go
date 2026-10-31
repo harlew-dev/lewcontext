@@ -10,7 +10,6 @@ import (
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -26,15 +25,6 @@ func current(r *http.Request) store.Session { return r.Context().Value(sessionKe
 func optionalSession(r *http.Request) (store.Session, bool) {
 	session, ok := r.Context().Value(sessionKey{}).(store.Session)
 	return session, ok
-}
-
-// clientIP is the connection's address. Forwarded headers are not trusted.
-func clientIP(r *http.Request) string {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return ip
 }
 
 // currentWorkspace is the workspace in the path, set by requireWorkspace.
@@ -211,7 +201,7 @@ func requirePermission(p auth.Permission, next http.Handler) http.Handler {
 }
 func (s *Server) limitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.allow(w, r, authPerIP, authPerIP.key(clientIP(r))) {
+		if !s.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
 			return
 		}
 		select {

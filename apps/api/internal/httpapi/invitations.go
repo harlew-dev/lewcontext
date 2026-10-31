@@ -136,7 +136,7 @@ func (h invitationHandlers) check(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !h.allow(w, r, authPerIP, authPerIP.key(clientIP(r))) {
+	if !h.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
 		return
 	}
 	if !validResetToken(in.Token) {

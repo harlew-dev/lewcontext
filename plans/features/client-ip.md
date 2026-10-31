@@ -1,6 +1,6 @@
 # Client IP behind a proxy
 
-Status: **proposed 2026-10-31**, decisions to confirm. Fills in decision 13 of [CAPTCHA challenges](captcha-challenges.md). Used by every per-IP limit ([rate limits](rate-limits.md)) and by the `ip` field of events.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)), with every recommended decision taken. Docs: [deployment.md](../../docs/deployment.md#behind-a-proxy-or-load-balancer), [api/README.md](../../docs/api/README.md), [api/auth.md](../../docs/api/auth.md#rate-limits), [api/rate-limits.md](../../docs/api/rate-limits.md), [api/events.md](../../docs/api/events.md), [api/testing.md](../../docs/api/testing.md), `.env.example`, `README.md` and AGENTS.md. Fills in decision 13 of [CAPTCHA challenges](captcha-challenges.md). Used by every per-IP limit ([rate limits](rate-limits.md)) and by the `ip` field of events.
 
 ## Why
 
@@ -119,7 +119,7 @@ With Cloudflare, the server must also accept connections **only** from Cloudflar
 
 `docs/deployment.md` (proxies, the examples, locking the origin to Cloudflare), `docs/api/README.md` (env vars), `docs/api/auth.md` (replace "forwarded-IP headers are ignored, so everyone behind a reverse proxy shares one IP quota" with the trusted-proxy rule, plus IPv6 /64), `.env.example`, and AGENTS.md ("do not trust forwarding headers blindly" → "only from `TRUSTED_PROXIES`").
 
-## Decisions (to confirm)
+## Decisions
 
 | # | Question | Recommendation |
 | --- | --- | --- |
@@ -130,6 +130,15 @@ With Cloudflare, the server must also accept connections **only** from Cloudflar
 | 5 | IPv6 limit keys | Count by /64. This applies with or without a proxy. |
 | 6 | `PER_IP_LIMITS=off` | Keep it as the fallback for a proxy that can't send any client address. |
 | 7 | Cloudflare's ranges | Pasted into `TRUSTED_PROXIES` by the operator and rechecked occasionally, not fetched by the app at startup (no outbound call needed just to start). |
+
+## How the build differs
+
+- **Built before the CAPTCHA plan.** `PER_IP_LIMITS` and the CAPTCHA `remoteip` don't exist yet, so there is no startup warning about setting both, and decision 6 waits for that plan. `clientIP(r)` is what it will use.
+- **`limitSubject` is called through `rateLimit.ipKey(r)`** (`l.key(limitSubject(clientIP(r)))`), so per-IP call sites can't forget the /64.
+- **`TRUSTED_PROXIES` also refuses IPv4-mapped IPv6 ranges** (`::ffff:10.0.0.0/104`): addresses are unmapped before they're compared, so such a range would silently match nothing. Single addresses are unmapped, and ranges are stored masked (`10.1.2.3/16` is `10.1.0.0/16`).
+- **An empty `X-Forwarded-For` entry** (`a,,b`) counts as unparseable, so it stops at the last trusted hop too.
+- **The server logs the header** and how many trusted ranges it uses when it starts.
+- **`clientIP` outside `clientAddress`** (a handler tested without `Routes()`) gives the connection's address, the old behaviour.
 
 ## Not included
 

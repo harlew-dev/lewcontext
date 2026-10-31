@@ -32,7 +32,7 @@ type rateLimit struct {
 }
 
 var (
-	// Everything that signs in or checks a password, per connection IP.
+	// Everything that signs in or checks a password, per client IP.
 	authPerIP = rateLimit{name: "auth:per-ip", limit: 60, window: 15 * time.Minute, attempts: true}
 	// Password guesses against one account, from any IP.
 	authPerAccount = rateLimit{name: "auth:per-account", limit: 10, window: 15 * time.Minute, attempts: true}
@@ -90,6 +90,12 @@ var rateLimits = []rateLimit{
 // public ID), stored as a digest so the table holds no addresses or IDs.
 func (l rateLimit) key(subject string) string {
 	return l.name + ":" + auth.Digest(subject)
+}
+
+// ipKey is the rate_limits key for the request's client address
+// (limitSubject: an IPv4 address, or an IPv6 address's /64).
+func (l rateLimit) ipKey(r *http.Request) string {
+	return l.key(limitSubject(clientIP(r)))
 }
 
 // everyone is the rate_limits key of a limit shared by all requests.

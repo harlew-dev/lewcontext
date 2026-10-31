@@ -52,7 +52,7 @@ func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email stri
 // limits: per IP first, so a client refused there doesn't spend the limit
 // shared by everyone.
 func (s *Server) registrationLimit(w http.ResponseWriter, r *http.Request) bool {
-	return s.allow(w, r, registerPerIP, registerPerIP.key(clientIP(r))) &&
+	return s.allow(w, r, registerPerIP, registerPerIP.ipKey(r)) &&
 		s.allow(w, r, registerGlobal, registerGlobal.everyone())
 }
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {

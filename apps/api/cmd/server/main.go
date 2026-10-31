@@ -51,6 +51,9 @@ func run() error {
 	if c.RateLimits == config.RateLimitsOff {
 		slog.Warn("rate limits are off (RATE_LIMITS=off): for tests only")
 	}
+	if c.ClientIPHeader != "" {
+		slog.Info("client addresses come from a proxy header", "header", c.ClientIPHeader, "trustedProxies", len(c.TrustedProxies))
+	}
 	if err := servePages(api, c); err != nil {
 		return err
 	}
