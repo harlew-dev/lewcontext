@@ -106,9 +106,6 @@ describe("workspace settings", () => {
       expect(
         screen.getByRole("img", { name: "Workspace IDs can’t be changed" }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText("Only owners and admins can rename this workspace."),
-      ).toBeInTheDocument();
     },
   );
   it("copies the workspace ID and announces it", async () => {

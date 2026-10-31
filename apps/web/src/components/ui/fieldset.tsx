@@ -101,12 +101,13 @@ export function Field({
   }, [id, parts, disabled, register]);
   return (
     <FieldContext.Provider value={value}>
+      {/* A visually hidden label (sr-only) adds no space above the control. */}
       <div
         {...props}
         data-disabled={disabled ? "" : undefined}
         className={cx(
           className,
-          "[&>[data-slot=label]+[data-slot=control]]:mt-3 [&>[data-slot=label]+[data-slot=description]]:mt-1 [&>[data-slot=description]+[data-slot=control]]:mt-3 [&>[data-slot=control]+[data-slot=description]]:mt-3 [&>[data-slot=control]+[data-slot=error]]:mt-3 *:data-[slot=label]:font-medium",
+          "[&>[data-slot=label]:not(.sr-only)+[data-slot=control]]:mt-3 [&>[data-slot=label]:not(.sr-only)+[data-slot=description]]:mt-1 [&>[data-slot=description]+[data-slot=control]]:mt-3 [&>[data-slot=control]+[data-slot=description]]:mt-3 [&>[data-slot=control]+[data-slot=error]]:mt-3 *:data-[slot=label]:font-medium",
         )}
       />
     </FieldContext.Provider>

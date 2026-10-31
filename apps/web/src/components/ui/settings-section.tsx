@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { cx } from "@/lib/cx";
 import { Subheading } from "./heading";
 import { Text } from "./text";
-// A settings group: title and description on the left, content on the right
+// A settings group: title (and a description, only when the title and the
+// content don't already say enough) on the left, content on the right
 // (stacked on small screens). `stacked` puts the content under the title at
 // full width instead, for rows of actions. The "danger" variant is the danger
 // zone, always stacked: a red title, and the content in a red-tinted panel
@@ -15,7 +16,7 @@ export function SettingsSection({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   variant?: "default" | "danger";
   stacked?: boolean;
   children: ReactNode;
@@ -36,7 +37,7 @@ export function SettingsSection({
             title
           )}
         </Subheading>
-        <Text>{description}</Text>
+        {description && <Text>{description}</Text>}
       </div>
       {danger ? (
         <div className="divide-y divide-red-600/10 rounded-xl border border-red-600/20 bg-red-500/5 px-4 dark:divide-red-500/15 dark:border-red-500/25 dark:bg-red-500/10">

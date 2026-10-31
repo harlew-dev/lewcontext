@@ -574,7 +574,7 @@ test("other people's workspaces are not found until you're a member; members can
   );
   await page.goto(`/app/${theirs}/settings`);
   await expect(
-    page.getByText("Only owners and admins can rename this workspace."),
+    page.getByRole("img", { name: "Only owners and admins can rename this" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
   await page.getByRole("link", { name: "Projects", exact: true }).click();

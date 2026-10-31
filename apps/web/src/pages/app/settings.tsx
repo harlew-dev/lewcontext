@@ -65,31 +65,19 @@ export default function AccountSettings() {
     <div className="mx-auto max-w-4xl">
       <Heading>Account & security</Heading>
       <Divider className="my-10 mt-6" />
-      <SettingsSection
-        title="Profile"
-        description="Your name, and the email address you sign in with."
-      >
+      <SettingsSection title="Profile">
         <ProfileForm key={session.user.id} />
       </SettingsSection>
       <Divider className="my-10" soft />
-      <SettingsSection
-        title="Password"
-        description="Change your account password."
-      >
+      <SettingsSection title="Password">
         <PasswordControls />
       </SettingsSection>
       <Divider className="my-10" soft />
-      <SettingsSection
-        title="Two-factor authentication"
-        description="Ask for a code from an authenticator app when you sign in, as well as your password."
-      >
+      <SettingsSection title="Two-factor authentication">
         <MfaControls />
       </SettingsSection>
       <Divider className="my-10" soft />
-      <SettingsSection
-        title="Sign-in sessions"
-        description="You’re signed out automatically after 30 minutes of inactivity."
-      >
+      <SettingsSection title="Sign-in sessions">
         <SessionControls />
       </SettingsSection>
       <Divider className="my-10" soft />
@@ -112,7 +100,7 @@ function cleanName(value: string): string | null {
 }
 // Saves the name, then renews the session with the updated user so the new
 // name shows everywhere. The email address is how the user signs in, so it
-// can't be changed here; it starts masked, in case the screen is shared, and
+// can't be changed here; it starts blurred, in case the screen is shared, and
 // the eye shows it.
 function ProfileForm() {
   const api = useApi();
@@ -152,18 +140,16 @@ function ProfileForm() {
           <InputGroup>
             <Input
               type="email"
-              value={
-                emailVisible
-                  ? session.user.email
-                  : "•".repeat(session.user.email.length)
-              }
+              value={session.user.email}
               readOnly
+              blurred={!emailVisible}
+              onReveal={() => setEmailVisible(true)}
             />
             <InputActions>
-              <Tooltip content={emailVisible ? "Hide" : "Show"}>
+              <Tooltip content={emailVisible ? "Hide" : "Reveal"}>
                 <InputButton
                   aria-label={
-                    emailVisible ? "Hide email address" : "Show email address"
+                    emailVisible ? "Hide email address" : "Reveal email address"
                   }
                   aria-pressed={emailVisible}
                   onClick={() => setEmailVisible(!emailVisible)}

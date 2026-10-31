@@ -74,15 +74,20 @@ describe("profile", () => {
   it("shows the email address read-only, with a tooltip saying why", async () => {
     renderPage();
     const email = screen.getByLabelText("Email address");
-    // Masked until the eye shows it.
-    expect(email).toHaveValue("•".repeat(session.user.email.length));
-    fireEvent.click(screen.getByRole("button", { name: "Show email address" }));
+    // Sensitive, not secret: in the page, but blurred until the eye shows it.
     expect(email).toHaveValue(session.user.email);
+    expect(email).toHaveAttribute("data-blurred");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reveal email address" }),
+    );
+    expect(email).not.toHaveAttribute("data-blurred");
     const hide = screen.getByRole("button", { name: "Hide email address" });
     expect(hide).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(hide);
-    expect(email).toHaveValue("•".repeat(session.user.email.length));
-    fireEvent.click(screen.getByRole("button", { name: "Show email address" }));
+    expect(email).toHaveAttribute("data-blurred");
+    // A click anywhere on the blurred text reveals it too.
+    fireEvent.click(screen.getByText(session.user.email));
+    expect(email).not.toHaveAttribute("data-blurred");
     expect(email).toHaveAttribute("readonly");
     expect(email).not.toBeDisabled();
     expect(screen.queryByText("Member since")).toBeNull();

@@ -49,14 +49,7 @@ export default function WorkspaceEdit() {
       <Heading>Workspace settings</Heading>
       <SettingsTabs current="general" />
       <Divider className="my-10 mt-6" />
-      <SettingsSection
-        title="General"
-        description={
-          canRename
-            ? "The name everyone in this workspace sees."
-            : "Only owners and admins can rename this workspace."
-        }
-      >
+      <SettingsSection title="General">
         {canRename ? (
           <RenameForm key={workspace.id} />
         ) : (
@@ -72,10 +65,7 @@ export default function WorkspaceEdit() {
         )}
       </SettingsSection>
       <Divider className="my-10" soft />
-      <SettingsSection
-        title="Workspace ID"
-        description="Use it to refer to this workspace, for example when asking for help."
-      >
+      <SettingsSection title="Workspace ID">
         <CopyField
           label="Workspace ID"
           value={workspace.id}

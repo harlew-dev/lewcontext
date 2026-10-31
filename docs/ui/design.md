@@ -48,14 +48,14 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `feedback.tsx` | `Notice variant` (`error` alert, `success` status, `info` status in blue: the invitation callout, `warning` note in amber: what a confirmation will do, read with the dialog rather than announced), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |
 | `highlight.tsx` | `Highlight className slide` (the sliding background; `slide={false}` draws it in place) · `useHighlightGroup`, `HighlightProvider`, `useHighlight` ([Sliding highlight](#sliding-highlight)) |
-| `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled`, `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors) |
-| `input.tsx` / `textarea.tsx` | `Input`, `InputGroup` (leading icon, or `InputActions` at the end: `InputLock label` for a read-only value that can't change (`label` says why; default "Can’t be changed"), `InputButton aria-label onClick` for an icon action such as Copy; at most two) · `Textarea` |
+| `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled`, `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors; a `Label className="sr-only"` adds no space above the control, so a field beside a `SettingsSection` title lines up with it) |
+| `input.tsx` / `textarea.tsx` | `Input blurred onReveal` (a sensitive value drawn blurred over the input, `data-blurred`; with `onReveal`, a click anywhere on it reveals it, under a "Click to reveal" tooltip; [Secrets and sensitive values](#secrets-and-sensitive-values)), `InputGroup` (leading icon, or `InputActions` at the end: `InputLock label` for a read-only value that can't change (`label` says why; default "Can’t be changed"), `InputButton aria-label onClick` for an icon action such as Copy; at most two) · `Textarea` |
 | `tooltip.tsx` | `Tooltip content placement` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
 | `confirmation-dialog.tsx` | `ConfirmationDialog open onClose title description confirm variant disabled onConfirm onConfirmed onError` ([Confirmations](#confirmations)) |
 | `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current variant selected` (`danger`: red text and icon, for Delete, and Sign out in the account menus), `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
-| `settings-section.tsx` | `SettingsSection title description variant stacked` (account and workspace settings): content beside the title, or under it at full width with `stacked`; `variant="danger"` is the danger zone, always stacked, with a red title and the content in a red-tinted panel · `DangerAction title description action`: one row of that panel, text on the left and its button on the right (below on phones) |
+| `settings-section.tsx` | `SettingsSection title description variant stacked` (account and workspace settings; `description` is optional, see [Descriptions](#descriptions)): content beside the title, or under it at full width with `stacked`; `variant="danger"` is the danger zone, always stacked, with a red title and the content in a red-tinted panel · `DangerAction title description action`: one row of that panel, text on the left and its button on the right (below on phones) |
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
@@ -65,6 +65,21 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
 | `reveal.tsx` | `Reveal label hideLabel announcement placeholder onReveal`: keeps a secret (a QR code, recovery codes) off the page until asked for. Hidden, it renders only a blurred `placeholder` (`aria-hidden`) with the button over it, never the secret blurred; revealing moves focus to it and announces `announcement`; Hide puts it back. Key it to start hidden again |
 | `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` (`href` makes it a link; the sign-in pages link it to `/`) |
+
+## Descriptions
+
+A title doesn't need a description under it. Add one only when it tells the reader something they need that the title and the content beside it don't already make clear; never restate the title ("Password" → "Change your account password").
+
+- **Leave it out** for settings sections whose fields, buttons and lock tooltips explain themselves: General, Workspace ID, Profile, Password, Two-factor authentication, Sign-in sessions.
+- **Keep it** where it carries consequences or rules the reader can't infer: the danger zone (`SettingsSection variant="danger"` and every `DangerAction`), confirmation dialogs, and empty states.
+- A reason something can't be changed goes in its `InputLock` tooltip, not in a description.
+
+## Secrets and sensitive values
+
+Two kinds of value stay unreadable until asked for, in case the screen is shared or recorded, each behind an eye or a reveal button:
+
+- **Secrets** let someone into the account: a QR code, a setup key, recovery codes. They stay out of the page until shown: `Reveal` renders only a decoy placeholder, and a masked field holds bullets, never the value. Never blur a secret; a screenshot of a blur can be undone.
+- **Sensitive** values are personal but grant nothing alone: your email address in account settings. They're in the page, drawn blurred with `Input blurred`, so the field still reads as a normal field (not a password) and screen readers read it. Pass `onReveal` so a click on the field reveals it, and add an eye `InputButton` (tooltip "Reveal" / "Hide", `aria-pressed`) first in its `InputActions` for the keyboard. The blur is drawn over the input, not as a text shadow, which the input would clip to its line.
 
 ## Confirmations
 
