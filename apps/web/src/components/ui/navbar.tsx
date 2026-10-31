@@ -92,10 +92,18 @@ const itemClasses = cx(
   "dark:text-white dark:*:data-[slot=icon]:fill-zinc-400",
   "dark:data-hover:*:data-[slot=icon]:fill-white",
   "dark:data-active:bg-white/5 dark:data-active:*:data-[slot=icon]:fill-white",
+  // Selected: a menu button whose menu holds the current page (the account
+  // menu on account settings)
+  "data-selected:bg-zinc-950/5 data-selected:*:data-[slot=icon]:fill-zinc-950",
+  "dark:data-selected:bg-white/5 dark:data-selected:*:data-[slot=icon]:fill-white",
 );
 const hoverBackground = "data-hover:bg-zinc-950/5 dark:data-hover:bg-white/5";
+// `current`: this item's link is the current page (the sliding indicator).
+// `selected`: a grey background for a menu button whose menu holds the
+// current page; the menu marks the page itself.
 type NavbarItemProps = {
   current?: boolean;
+  selected?: boolean;
   className?: string;
   children: ReactNode;
 } & (
@@ -106,7 +114,10 @@ type NavbarItemProps = {
   | ({ href?: never } & Omit<ComponentPropsWithoutRef<"button">, "className">)
 );
 export const NavbarItem = forwardRef<HTMLElement, NavbarItemProps>(
-  function NavbarItem({ current, className, children, ...props }, ref) {
+  function NavbarItem(
+    { current, selected, className, children, ...props },
+    ref,
+  ) {
     const highlight = useHighlight();
     return (
       <span
@@ -128,6 +139,7 @@ export const NavbarItem = forwardRef<HTMLElement, NavbarItemProps>(
           {...(props as ComponentPropsWithoutRef<"button">)}
           className={cx(itemClasses, !highlight.grouped && hoverBackground)}
           data-current={current ? "" : undefined}
+          data-selected={selected ? "" : undefined}
           ref={ref}
         >
           <TouchTarget>{children}</TouchTarget>

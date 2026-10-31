@@ -67,9 +67,14 @@ function AccountDropdownMenu({
   // Shows "Getting started"; left out where the sidebar already has it.
   onHelp?: () => void;
 }) {
+  const current = useCurrentPath() === routes.settings;
   return (
     <DropdownMenu className="min-w-64" anchor={anchor}>
-      <DropdownItem href={routes.settings}>
+      <DropdownItem
+        href={routes.settings}
+        aria-current={current ? "page" : undefined}
+        selected={current}
+      >
         <ShieldCheckIcon />
         <DropdownLabel>Account & security</DropdownLabel>
       </DropdownItem>
@@ -88,7 +93,9 @@ function AccountDropdownMenu({
   );
 }
 // Workspace switcher: the current workspace, its settings, every workspace
-// the member belongs to and "New workspace…".
+// the member belongs to (a check on the current one) and "New workspace…". On
+// workspace settings (General or Members) its button is selected, and the
+// menu's highlight rests on Workspace settings.
 function WorkspaceDropdown({
   onCreate,
   className,
@@ -97,11 +104,15 @@ function WorkspaceDropdown({
   className?: string;
 }) {
   const workspace = useWorkspace();
+  const settings = routes.workspaces.edit(workspace.id);
+  const path = useCurrentPath();
+  const onSettings = path === settings || path.startsWith(`${settings}/`);
   return (
     <Dropdown>
       <DropdownButton
         as={SidebarItem}
         className={className}
+        selected={onSettings}
         aria-label="Workspace menu"
       >
         <WorkspaceAvatar workspace={workspace} />
@@ -109,7 +120,11 @@ function WorkspaceDropdown({
         <ChevronDownIcon />
       </DropdownButton>
       <DropdownMenu className="min-w-80 lg:min-w-64" anchor="bottom start">
-        <DropdownItem href={routes.workspaces.edit(workspace.id)}>
+        <DropdownItem
+          href={settings}
+          aria-current={onSettings ? "page" : undefined}
+          selected={onSettings}
+        >
           <Cog8ToothIcon />
           <DropdownLabel>Workspace settings</DropdownLabel>
         </DropdownItem>
@@ -236,6 +251,8 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
   const [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false);
   const currentPath = useCurrentPath();
+  // On account settings the account menu's buttons are selected.
+  const onAccount = currentPath === routes.settings;
   const userInitials = initials(session.user.name);
   async function signOut() {
     try {
@@ -268,6 +285,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
               <DropdownButton
                 as={NavbarItem}
                 className="min-w-0"
+                selected={onAccount}
                 aria-label="Account menu"
               >
                 <Avatar
@@ -319,7 +337,11 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
           </SidebarBody>
           <SidebarFooter className="max-lg:hidden">
             <Dropdown>
-              <DropdownButton as={SidebarItem} aria-label="Account menu">
+              <DropdownButton
+                as={SidebarItem}
+                selected={onAccount}
+                aria-label="Account menu"
+              >
                 <span className="flex min-w-0 items-center gap-3">
                   <Avatar
                     square

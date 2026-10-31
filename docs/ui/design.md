@@ -54,13 +54,13 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
 | `confirmation-dialog.tsx` | `ConfirmationDialog open onClose title description confirm variant disabled onConfirm onConfirmed onError` ([Confirmations](#confirmations)) |
-| `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current variant` (`danger`: red text and icon, for Delete, and Sign out in the account menus), `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
+| `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current variant selected` (`danger`: red text and icon, for Delete, and Sign out in the account menus), `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
 | `settings-section.tsx` | `SettingsSection title description variant stacked` (account and workspace settings): content beside the title, or under it at full width with `stacked`; `variant="danger"` is the danger zone, always stacked, with a red title and the content in a red-tinted panel · `DangerAction title description action`: one row of that panel, text on the left and its button on the right (below on phones) |
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
 | `search-field.tsx` | `SearchField label value onSearch`: updates the URL 300 ms after typing pauses ([pagination.md](pagination.md#url-state)) |
-| `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current`), `SidebarToggle` ([Sidebar layout](#sidebar-layout)) · `Navbar*` (`NavbarItem`, `NavbarLabel`) |
+| `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current selected`), `SidebarToggle` ([Sidebar layout](#sidebar-layout)) · `Navbar*` (`NavbarItem current selected`, `NavbarLabel`). `current`: the item's link is this page (the sliding indicator, `aria-current`); `selected`: a grey background for a menu button whose menu holds this page ([Where you are](#where-you-are)) |
 | `heading.tsx` / `text.tsx` | `Heading level`, `Subheading` · `Text`, `TextLink`, `Strong`, `Code` |
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
 | `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` (`href` makes it a link; the sign-in pages link it to `/`) |
@@ -100,11 +100,11 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 | Where | Group | Which item has it | Colour |
 | --- | --- | --- | --- |
 | `SidebarSection`, `NavbarSection` (tabs, the top bar) | `useHighlightGroup()` in its own `LayoutGroup`; cleared when the pointer leaves the section | the item the mouse is over (`useHighlight().activate()` on `pointerenter`) | `bg-zinc-950/5` / `dark:bg-white/5` |
-| `DropdownMenu` | the same; cleared when focus leaves the items | the focused item (items take focus on hover, so pointer and keyboard agree) | `bg-zinc-950/5` / `dark:bg-white/10`; a default item's icon darkens |
+| `DropdownMenu` | the same; cleared when focus leaves the items (the mouse leaving the menu hands focus back to its `selected` item, or else to the menu, as Headless UI does) | the focused item (items take focus on hover, so pointer and keyboard agree; the menu opens with its `selected` item focused) | `bg-zinc-950/5` / `dark:bg-white/10`; a default item's icon darkens |
 | `Listbox` | none needed: its own `LayoutGroup` | the option BaseUI marks `$isHighlighted` (`ListboxOptionContent` renders it) | `bg-zinc-950/5` / `dark:bg-white/10` |
 
 - **The selected option stays blue.** In a `Listbox` the chosen option has a static `bg-blue-500` background with white text and its check mark, above the grey highlight (`-z-5` over `-z-10`), so hovering it changes nothing and the grey slides beneath it.
-- **Nothing slides while a listbox opens.** BaseUI positions the panel during its first frames, and a highlight measured before that would slide in from where the panel started. So for its first 150 ms (`settleTime`, `listbox.tsx`) the highlight is drawn in place (`<Highlight slide={false}>`), and then remounts in place as the sliding one.
+- **Nothing slides while a menu or listbox opens.** BaseUI positions the panel during its first frames, and a highlight measured before that would slide in from where the panel started. So for its first 150 ms (`usePopoverSettled`, `lib/baseui.tsx`) the highlight is drawn in place (`<Highlight slide={false}>`), and then remounts in place as the sliding one.
 
 - **Items outside a group** (a `SidebarItem` or `NavbarItem` not in a section) keep a plain `data-hover:` background.
 - **Under the text while it slides.** In menus and listboxes the highlight is `-z-10` inside the panel's `isolate` stacking context, so it passes beneath every item's text. Don't make an item `isolate`: the highlight would then paint over the items before it mid-slide. In the sidebar and tabs it comes before the item's `relative` link in the DOM instead.
@@ -133,6 +133,15 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 - **Hidden means out of reach.** The hidden sidebar turns `invisible` (out of the tab order and the accessibility tree) once it has slid out, and visible at once when it returns; the top bar does the same while the sidebar is docked.
 - **Mobile:** a top bar with the menu button and the account menu (avatar, truncated name, chevron). The slide-over sidebar's close button sits where the desktop toggle does, beside the workspace menu (`SidebarToggleContext` tells `SidebarToggle` which sidebar it's in).
 - **Matching heights.** `SidebarToggle` is an icon-only `SidebarItem`, so it's exactly as tall as the workspace menu (36px, 44px on phones). Icon-only items keep their full-size icon: the trailing-chevron sizing skips an item whose icon is its only content (`*:not-nth-2:last:`), in both `SidebarItem` and `NavbarItem`.
+
+## Where you are
+
+The sidebar has only Overview and Projects (plus Getting started); the settings pages live in menus. So that you can still see where you are:
+
+- **A page in the sidebar** is its `SidebarItem current`: the indicator bar slides to it.
+- **A page in a menu** selects the menu's button (`DropdownButton as={SidebarItem | NavbarItem} selected`, a grey background). Workspace settings (General and Members) select the workspace menu; account settings select the account menu, in the sidebar footer and in the top bar (phones, or the desktop sidebar hidden). Inside the menu the page's item is `DropdownItem selected aria-current="page"`, a default focus: the menu opens with it focused (and so highlighted; Enter opens it, the arrow keys move on from it), hovering another item takes focus and the highlight away, and the mouse leaving the menu returns them to it.
+- **The workspace you're in** keeps its check in the switcher (and `aria-current`).
+- Don't add sidebar items for settings pages.
 
 ## Feature components (`components/app/<feature>`)
 

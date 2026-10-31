@@ -1,4 +1,10 @@
-import { forwardRef, type ElementType, type Ref } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useState,
+  type ElementType,
+  type Ref,
+} from "react";
 import { cx } from "./cx";
 type State = Record<string, unknown>;
 type SlotOptions = {
@@ -95,3 +101,20 @@ export const popoverPanel =
 // How long a popover takes to close (pass as animateOutTime); without it
 // BaseUI removes it at once.
 export const popoverExit = 100;
+// BaseUI positions a popover during its first frames, while it fades in. A
+// sliding Highlight measured before then would slide in from wherever the
+// panel first rendered, so until it has settled the highlight is drawn in
+// place (`<Highlight slide={settled}>`).
+export const popoverSettle = 150;
+export function usePopoverSettled(open: boolean): boolean {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => setSettled(true), popoverSettle);
+    return () => {
+      window.clearTimeout(timer);
+      setSettled(false);
+    };
+  }, [open]);
+  return settled;
+}

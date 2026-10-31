@@ -153,10 +153,18 @@ const itemClasses = cx(
   "dark:data-hover:*:data-[slot=icon]:fill-white",
   "dark:data-active:bg-white/5 dark:data-active:*:data-[slot=icon]:fill-white",
   "dark:data-current:*:data-[slot=icon]:fill-white",
+  // Selected: a menu button whose menu holds the current page (the workspace
+  // menu on workspace settings, the account menu on account settings)
+  "data-selected:bg-zinc-950/5 data-selected:*:data-[slot=icon]:fill-zinc-950",
+  "dark:data-selected:bg-white/5 dark:data-selected:*:data-[slot=icon]:fill-white",
 );
 const hoverBackground = "data-hover:bg-zinc-950/5 dark:data-hover:bg-white/5";
+// `current`: this item's link is the current page (the sliding indicator).
+// `selected`: a grey background for a menu button whose menu holds the
+// current page; the menu marks the page itself.
 type SidebarItemProps = {
   current?: boolean;
+  selected?: boolean;
   className?: string;
   children: ReactNode;
 } & (
@@ -167,7 +175,10 @@ type SidebarItemProps = {
   | ({ href?: never } & Omit<ComponentPropsWithoutRef<"button">, "className">)
 );
 export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(
-  function SidebarItem({ current, className, children, ...props }, ref) {
+  function SidebarItem(
+    { current, selected, className, children, ...props },
+    ref,
+  ) {
     const closeSidebar = useCloseSidebar();
     const highlight = useHighlight();
     const shared = {
@@ -177,6 +188,7 @@ export const SidebarItem = forwardRef<HTMLElement, SidebarItemProps>(
         highlight.grouped ? "relative" : hoverBackground,
       ),
       "data-current": current ? "" : undefined,
+      "data-selected": selected ? "" : undefined,
       "aria-current": current ? ("page" as const) : undefined,
     };
     return (

@@ -3,7 +3,6 @@ import {
   createContext,
   isValidElement,
   useContext,
-  useEffect,
   useId,
   useState,
   type ComponentPropsWithoutRef,
@@ -16,6 +15,7 @@ import {
   popoverOverrides,
   popoverPanel,
   slot,
+  usePopoverSettled,
 } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
 import { usePopoverScrollLock } from "@/lib/scroll-lock";
@@ -135,11 +135,8 @@ const ListboxOptionItem = slot(
   { ignore: ["$isFocused"] },
 );
 // Whether the open panel has settled where BaseUI positions it, so the
-// highlight may slide (see `settleTime`).
+// highlight may slide (`usePopoverSettled`).
 const SettledContext = createContext(false);
-// BaseUI positions the panel during its first frames (and it fades in for
-// 100 ms); until then the highlight is drawn in place, without sliding.
-const settleTime = 150;
 function ListboxOptionContent({
   $selected,
   $isHighlighted,
@@ -268,15 +265,10 @@ export function Listbox<T extends string>({
   const id = useId();
   const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
-  const [settled, setSettled] = useState(false);
   // Nothing scrolls while open, as with a native select: the panel covers
   // the button, so scrolling would pull them apart.
   usePopoverScrollLock(open);
-  useEffect(() => {
-    if (!open) return;
-    const timer = window.setTimeout(() => setSettled(true), settleTime);
-    return () => window.clearTimeout(timer);
-  }, [open]);
+  const settled = usePopoverSettled(open);
   const options: Option[] = Children.toArray(children)
     .filter(isValidElement<ListboxOptionProps<T>>)
     .map((option) => ({
@@ -292,10 +284,7 @@ export function Listbox<T extends string>({
       <SettledContext.Provider value={settled}>
         <Select
           onOpen={() => setOpen(true)}
-          onClose={() => {
-            setOpen(false);
-            setSettled(false);
-          }}
+          onClose={() => setOpen(false)}
           options={options}
           value={options.filter((option) => option.id === value)}
           onChange={({ value: selected }) => {

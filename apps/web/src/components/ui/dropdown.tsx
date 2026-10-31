@@ -4,19 +4,27 @@ import {
   forwardRef,
   isValidElement,
   useContext,
+  useEffect,
   useId,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type ElementType,
   type FocusEvent,
   type KeyboardEvent,
+  type PointerEvent,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
 import { PLACEMENT, StatefulPopover } from "baseui/popover";
 import { LayoutGroup, useReducedMotion } from "motion/react";
-import { popoverExit, popoverOverrides, popoverPanel } from "@/lib/baseui";
+import {
+  popoverExit,
+  popoverOverrides,
+  popoverPanel,
+  usePopoverSettled,
+} from "@/lib/baseui";
 import { cx } from "@/lib/cx";
 import { ReturnFocus, focusedElement } from "@/lib/return-focus";
 import { usePopoverScrollLock } from "@/lib/scroll-lock";
@@ -39,8 +47,11 @@ const placements = {
 type Anchor = keyof typeof placements;
 // Long enough for the menu's exit animation and focus return.
 const afterClose = popoverExit + 50;
-const DropdownContext = createContext<{ close: () => void }>({
+// `settled`: the open menu has settled where BaseUI positions it, so its
+// highlight may slide (`usePopoverSettled`).
+const DropdownContext = createContext<{ close: () => void; settled: boolean }>({
   close: () => {},
+  settled: false,
 });
 export type DropdownMenuProps = {
   anchor?: Anchor;
@@ -61,6 +72,7 @@ export function Dropdown({ children }: { children: ReactNode }) {
   // The trigger, focused when the menu opens; focus returns to it on close.
   const [opener, setOpener] = useState<HTMLElement | null>(null);
   usePopoverScrollLock(open);
+  const settled = usePopoverSettled(open);
   if (!trigger || !menu) return null;
   return (
     <StatefulPopover
@@ -79,7 +91,7 @@ export function Dropdown({ children }: { children: ReactNode }) {
       returnFocus={false}
       overrides={popoverOverrides}
       content={({ close }) => (
-        <DropdownContext.Provider value={{ close }}>
+        <DropdownContext.Provider value={{ close, settled }}>
           {menu}
           <ReturnFocus opener={opener} />
         </DropdownContext.Provider>
@@ -99,6 +111,8 @@ type DropdownButtonProps = {
   // Button styles, when `as` is the default Button (e.g. a plain ⋯ trigger).
   plain?: true;
   outline?: true;
+  // When `as` is a SidebarItem or NavbarItem: its menu holds the current page.
+  selected?: boolean;
 };
 export const DropdownButton = forwardRef<HTMLElement, DropdownButtonProps>(
   function DropdownButton({ as, ...props }, ref) {
@@ -123,11 +137,26 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
           items.length;
   items[next]?.focus();
 }
+// Where focus starts when the menu opens, and returns when the mouse leaves
+// it: the `selected` item (the page you're on), or else the menu itself, so no
+// item is active until the pointer or arrow keys move to one (as Headless UI
+// does).
+function focusHome(menu: HTMLElement) {
+  const selected = menu.querySelector<HTMLElement>(
+    '[role="menuitem"][data-selected]',
+  );
+  (selected ?? menu).focus({ preventScroll: true });
+}
 // The focused item's background is a Highlight that slides from item to item;
 // it goes when focus leaves the items.
 export function DropdownMenu({ className, children }: DropdownMenuProps) {
   const id = useId();
   const highlight = useHighlightGroup();
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const menu = panel.current;
+    if (menu?.querySelector("[data-selected]")) focusHome(menu);
+  }, []);
   function leaveItems(event: FocusEvent<HTMLDivElement>) {
     const next = event.relatedTarget;
     const toItem =
@@ -139,32 +168,41 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
   return (
     <LayoutGroup id={id}>
       <HighlightProvider value={highlight}>
-        <MenuPanel className={className} onBlur={leaveItems}>
+        <MenuPanel
+          ref={panel}
+          className={className}
+          onBlur={leaveItems}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse") focusHome(event.currentTarget);
+          }}
+        >
           {children}
         </MenuPanel>
       </HighlightProvider>
     </LayoutGroup>
   );
 }
-function MenuPanel({
-  className,
-  onBlur,
-  children,
-}: {
-  className?: string;
-  onBlur: (event: FocusEvent<HTMLDivElement>) => void;
-  children: ReactNode;
-}) {
+const MenuPanel = forwardRef<
+  HTMLDivElement,
+  {
+    className?: string;
+    onBlur: (event: FocusEvent<HTMLDivElement>) => void;
+    onPointerLeave: (event: PointerEvent<HTMLDivElement>) => void;
+    children: ReactNode;
+  }
+>(function MenuPanel({ className, onBlur, onPointerLeave, children }, ref) {
   return (
     <div
+      ref={ref}
       role="menu"
-      // The popover's focus lock focuses the menu itself (data-autofocus), so no
-      // item is highlighted until the pointer or arrow keys move to one.
+      // The popover's focus lock focuses the menu itself (data-autofocus); then
+      // DropdownMenu moves focus to a `selected` item, if there is one.
       tabIndex={-1}
       data-autofocus
       data-popover-panel
       onKeyDown={moveFocus}
       onBlur={onBlur}
+      onPointerLeave={onPointerLeave}
       className={cx(
         className,
         "isolate w-max rounded-xl p-1",
@@ -179,7 +217,7 @@ function MenuPanel({
       {children}
     </div>
   );
-}
+});
 // Headless UI marks the hovered or keyboard-active item with data-focus; here the
 // item takes real focus on hover, so `focus:` gives the same highlight. Its
 // background is the menu's sliding grey Highlight (-z-10 in the menu's
@@ -203,6 +241,7 @@ const itemVariants = {
   danger:
     "text-red-600 *:data-[slot=icon]:text-red-500 dark:text-red-400 dark:*:data-[slot=icon]:text-red-400",
 };
+
 // Items close the menu when chosen, then act once it has closed and returned
 // focus to its trigger, so a dialog an item opens returns focus there too
 // (the item itself is gone by then). `keepOpen` items (e.g. "Show more") act
@@ -213,6 +252,10 @@ type DropdownItemProps = {
   onClick?: (event: MouseEvent<HTMLElement>) => void;
   "aria-current"?: "page";
   variant?: keyof typeof itemVariants;
+  // The page you're on (Workspace settings on workspace settings): the menu
+  // opens with it focused (and highlighted), and returns focus to it when the
+  // mouse leaves.
+  selected?: boolean;
 } & (
   | { href: string; keepOpen?: never }
   | { href?: never; disabled?: boolean; keepOpen?: boolean }
@@ -222,21 +265,26 @@ export function DropdownItem({
   onClick,
   keepOpen = false,
   variant = "default",
+  selected = false,
   children,
   ...props
 }: DropdownItemProps) {
-  const { close } = useContext(DropdownContext);
+  const { close, settled } = useContext(DropdownContext);
   const highlight = useHighlight();
   const content = (
     <>
       {highlight.active && (
-        <Highlight className="-z-10 bg-zinc-950/5 dark:bg-white/10" />
+        <Highlight
+          slide={settled}
+          className="-z-10 bg-zinc-950/5 dark:bg-white/10"
+        />
       )}
       {children}
     </>
   );
   const shared = {
     role: "menuitem",
+    "data-selected": selected ? "" : undefined,
     className: cx(className, itemClasses, itemVariants[variant]),
     children: content,
     onFocus: () => highlight.activate(),

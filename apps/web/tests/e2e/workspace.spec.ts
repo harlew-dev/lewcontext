@@ -263,6 +263,11 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await paginate(page, ws);
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Account & security" }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Account & security" }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Sign out other sessions" }).click();
   await expect(
     page.getByText("All other sessions have been signed out."),
@@ -424,6 +429,12 @@ test("workspaces: switch, create, rename and copy the ID", async ({
   await page.getByRole("button", { name: "Workspace menu" }).click();
   await page.getByRole("menuitem", { name: "Workspace settings" }).click();
   await expect(page).toHaveURL(`/app/${first}/settings`);
+  // The menu marks the page you're on.
+  await page.getByRole("button", { name: "Workspace menu" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Workspace settings" }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
   // The only owner can't leave (canLeave in the workspace response), so
   // Leave isn't offered.
   await expect(
