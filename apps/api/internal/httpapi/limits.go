@@ -26,6 +26,9 @@ type rateLimit struct {
 	// attempts makes a 429 say "Too many attempts" instead of "Too many
 	// requests": for limits on signing in and resetting a password.
 	attempts bool
+	// tooMany replaces a 429's "Too many requests." when what's counted
+	// isn't the requester, so the message says what was refused.
+	tooMany string
 	// inMemory counts in this process only: approximate (each server counts
 	// its own), but without a database write per request.
 	inMemory bool
@@ -68,6 +71,15 @@ var (
 	// Invitations sent by one user, across all of their workspaces: each one
 	// emails an address the inviter chooses.
 	invitationPerUser = rateLimit{name: "invitation:per-user", limit: 20, window: time.Hour}
+	// Invitations to one email, from any inviter and workspace: caps mail to
+	// one inbox. Counted for every address, registered or not, so the
+	// message says nothing about who has an account.
+	invitationPerEmail = rateLimit{
+		name:    "invitation:per-email",
+		limit:   5,
+		window:  time.Hour,
+		tooMany: "This email address has had too many invitations recently.",
+	}
 	// Invitations sent by everyone: caps mail during an abuse wave.
 	invitationGlobal = rateLimit{
 		name:   "invitation:global",
@@ -83,7 +95,7 @@ var rateLimits = []rateLimit{
 	passwordResetPerIP, passwordResetPerEmail, passwordResetGlobal,
 	registerPerIP, registerGlobal,
 	apiPerUser, apiReadPerUser, workspacePerUser, projectPerUser,
-	invitationPerUser, invitationGlobal,
+	invitationPerUser, invitationPerEmail, invitationGlobal,
 }
 
 // key is the rate_limits key for one subject (an IP, an email or a user's
@@ -108,6 +120,9 @@ func (l rateLimit) refusal(left time.Duration) string {
 	tooMany := "Too many requests."
 	if l.attempts {
 		tooMany = "Too many attempts."
+	}
+	if l.tooMany != "" {
+		tooMany = l.tooMany
 	}
 	return tooMany + " Try again in " + waitFor(left) + "."
 }

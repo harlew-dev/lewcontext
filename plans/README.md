@@ -16,7 +16,7 @@ Build them in this order. Each one assumes the ones above it are done, and later
 | 6 | [captcha-challenges](features/captcha-challenges.md): `:challenge` / `:block` levels, Turnstile, `ChallengeDialog`, `PER_IP_LIMITS` | 4, and 5 before any proxied deploy | decisions 1–3, 9, 10, 12–15, 18 agreed; 4–8, 11, 16, 17 to confirm |
 | 7 | [workspace-invitations](features/implemented/workspace-invitations.md): invite by email, pending list, accept by link, callout on sign-in | 1 (its event names), 3 (`ConfirmationDialog`), 4 (quota, limits); 6 optional (until then, `invitation:global` has only its block level) | implemented 2026-10-31 |
 | 8 | [test-environment](features/implemented/test-environment.md): a committed `.env.testing` for every test run, `lewcontext_test`, a port and database per e2e run (`E2E_PORT`, `auto`), Playwright starting the server | none | implemented 2026-10-31 |
-| 9 | [email-delivery](features/email-delivery.md): SMTP driver (`go-mail`), Mailpit, plain-text parts, `MAIL_DRIVER=smtp\|log\|off` | 8 | decisions confirmed |
+| 9 | [email-delivery](features/implemented/email-delivery.md): SMTP driver (`go-mail`), Mailpit, plain-text parts, `MAIL_DRIVER=smtp\|log\|off`, `invitation:per-email` | 8 | implemented 2026-10-31 |
 
 Implementing a plan:
 

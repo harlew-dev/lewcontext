@@ -10,8 +10,9 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 // Every setting in .env.testing replaces the environment's, however
 // Playwright is started, so a run never uses .env's values. Only the run's
 // E2E_PORT can come from the caller (make test-e2e E2E_PORT=…). The server's
-// address, its database (lewcontext_test_<port>) and the mailbox follow from
-// it, as scripts/serve-test.sh works them out.
+// address and its database (lewcontext_test_<port>) follow from it, as
+// scripts/serve-test.sh works them out. Mail is read from Mailpit
+// (MAILPIT_URL), which every run shares.
 function loadTestEnv(): string {
   const callerPort = process.env.E2E_PORT;
   const settings = parseEnv(
@@ -28,7 +29,6 @@ function loadTestEnv(): string {
   process.env.E2E_PORT = port;
   process.env.APP_ORIGIN = `http://localhost:${port}`;
   process.env.DATABASE_URL = database.toString();
-  process.env.MAIL_FILE = path.resolve(root, process.env.MAIL_FILE!);
   return process.env.APP_ORIGIN;
 }
 

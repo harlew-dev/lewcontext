@@ -43,6 +43,7 @@ if e2e_port_in_use "$port"; then
   e2e_clash "$port"
 fi
 e2e_require_database
+e2e_require_mailpit
 if [[ ! -x bin/api ]]; then
   echo "bin/api is missing: run make serve-test, which builds it first." >&2
   exit 1
@@ -59,5 +60,5 @@ fi
 (cd apps/api && DATABASE_URL="$database_url" go run ./cmd/migrate fresh -confirm)
 
 export DATABASE_URL="$database_url" API_ADDR="127.0.0.1:$port" APP_ORIGIN="http://localhost:$port"
-echo "E2E server: http://localhost:$port · database $database · mailbox $MAIL_FILE"
+echo "E2E server: http://localhost:$port · database $database · mail ${MAILPIT_URL:-$MAIL_FILE}"
 exec ./bin/api

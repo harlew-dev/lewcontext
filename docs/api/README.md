@@ -16,7 +16,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/web` | Serving the embedded web build: prerendered pages, the SPA fallback, assets, page security headers and CSP hashes |
 | `internal/store` | Bun models and every query, scoped by the user's workspace membership |
 | `internal/auth` | Argon2id passwords, random tokens, digests, cookies |
-| `internal/mail` | Email from embedded `html/template` files (`mailer.Send`), the development mailbox driver, and the password reset listener ([mail.md](mail.md)) |
+| `internal/mail` | Email from embedded templates (`mailer.Send`: an `html/template` part and a plain-text part), the SMTP driver and the development mailbox driver, and the reset and invitation listeners ([mail.md](mail.md)) |
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
@@ -72,11 +72,14 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `APP_ORIGIN` | `http://localhost:3000` | Exact origin allowed for mutations; HTTPS in production |
 | `API_ADDR` | `127.0.0.1:8080` | Listen address (loopback by default); `make serve` uses `127.0.0.1:3000` |
 | `API_URL` | `http://127.0.0.1:8080` | Only for Vite's dev proxy (`make dev`, `make web`) |
-| `MAIL_DRIVER` | `file`; `off` in production | `file` writes email to `MAIL_FILE`; `off` sends nothing, so password reset answers 503. Production refuses `file` ([mail.md](mail.md)) |
+| `MAIL_DRIVER` | `smtp` | `smtp` sends through `SMTP_HOST` (Mailpit locally); `log` writes email to `MAIL_FILE`; `off` sends nothing, so password reset and invitations answer 503. Production refuses `log` ([mail.md](mail.md)) |
+| `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | (required for `smtp`), `APP_NAME` | The sender: a bare address, and its display name |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | (required), 587/465, `starttls` | `SMTP_TLS` is `starttls`, `tls` or `none` (Mailpit only; refused in production and with credentials). `SMTP_PORT` is required with `none` ([mail.md](mail.md#smtp)) |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | (empty) | Both or neither; only over TLS. Never logged |
 | `RATE_LIMITS` | `on` | `off` switches every rate limit off, for the end-to-end tests; quotas stay. Production refuses `off` ([rate-limits.md](rate-limits.md#switching-limits-off-for-tests-rate_limits)) |
 | `CLIENT_IP_HEADER` | (unset) | The header a proxy puts the client's address in: `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP`. Believed only on connections from `TRUSTED_PROXIES`; unset uses the connection's address ([deployment](../deployment.md#behind-a-proxy-or-load-balancer)) |
 | `TRUSTED_PROXIES` | (unset) | Comma-separated addresses or CIDR ranges the proxy connects from. Set with `CLIENT_IP_HEADER` or not at all; `0.0.0.0/0` and `::/0` are refused |
-| `MAIL_FILE` | `tmp/mail.log` | The development mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
+| `MAIL_FILE` | `tmp/mail.log` | The `log` driver's mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
 

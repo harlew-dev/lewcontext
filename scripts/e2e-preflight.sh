@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The first step of make test-e2e, run before anything is built: checks the
-# test database is up, reserves the run's port (E2E_PORT, 3100 by default, or
-# auto for the first free one from 3101), then runs the command it's given
-# (Playwright) holding that reservation. A port another run has stops it at
+# test database and Mailpit are up, reserves the run's port (E2E_PORT, 3100 by
+# default, or auto for the first free one from 3101), then runs the command
+# it's given (Playwright) holding that reservation. A port another run has stops it at
 # once, with a free port to use instead. With E2E_REUSE=1 it reserves nothing:
 # Playwright tests the server you already started on E2E_PORT.
 set -euo pipefail
@@ -23,6 +23,7 @@ fi
 
 e2e_require_flock
 e2e_require_database
+e2e_require_mailpit
 
 if [[ $port == auto ]]; then
   port=""

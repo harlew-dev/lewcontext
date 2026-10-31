@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 const stamp = Date.now();
 const email = `e2e-${stamp}@lewcontext.test`;
 const returnEmail = `e2e-${stamp}-next@lewcontext.test`;
@@ -723,12 +722,23 @@ test("change password: checks the current one twice and signs out other sessions
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(workspaceUrl);
 });
-// The mailbox the e2e server writes email to: MAIL_FILE from .env.testing,
-// made absolute by playwright.config.ts.
-const mailbox = process.env.MAIL_FILE!;
+// Mailpit, where the e2e server's email lands (MAILPIT_URL, from .env.testing).
+const mailpit = process.env.MAILPIT_URL!;
+// The newest email Mailpit holds for `to`: its HTML and plain-text parts, or
+// nothing yet. Every run's recipients are unique, so other runs' mail never
+// matches.
+async function newestMailTo(
+  to: string,
+): Promise<{ HTML: string; Text: string } | undefined> {
+  const query = new URLSearchParams({ query: `to:"${to}"` });
+  const found = await (await fetch(`${mailpit}/api/v1/search?${query}`)).json();
+  const id = found.messages?.[0]?.ID;
+  if (!id) return undefined;
+  return (await fetch(`${mailpit}/api/v1/message/${id}`)).json();
+}
 // The path of the newest link of a kind (a reset link, or an invitation)
-// sent to `to`, once the server's worker has written it (it polls every
-// second).
+// sent to `to`, once the server's worker has sent it (it polls every second).
+// The plain-text part must carry the same link.
 async function mailedLink(
   to: string,
   kind: "forgot-password" | "invitations",
@@ -736,25 +746,15 @@ async function mailedLink(
   let link = "";
   await expect
     .poll(
-      () => {
-        let content = "";
-        try {
-          content = readFileSync(mailbox, "utf8");
-        } catch {
-          return "";
-        }
-        const messages = content
-          .split("\n==== ")
-          .filter((m) => m.includes(`To: ${to}\n`));
-        const match = messages
-          .at(-1)
-          ?.match(
-            new RegExp(`href="https?://[^/"]+(/auth/${kind}/[\\w-]{43})"`),
-          );
+      async () => {
+        const mail = await newestMailTo(to);
+        const match = mail?.HTML.match(
+          new RegExp(`href="https?://[^/"]+(/auth/${kind}/[\\w-]{43})"`),
+        );
         link = match?.[1] ?? "";
-        return link;
+        return link !== "" && mail!.Text.includes(link) ? link : "";
       },
-      { message: `a ${kind} link for ${to} in ${mailbox}`, timeout: 15000 },
+      { message: `a ${kind} link for ${to} in Mailpit`, timeout: 15000 },
     )
     .not.toBe("");
   return link;

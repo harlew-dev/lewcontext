@@ -23,7 +23,7 @@ Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`,
 
 - A link works once, for 30 minutes. A newer request, a reset or a signed-in password change ends it.
 - The link is built from `APP_ORIGIN`, never the request's `Host`. Tokens travel to the API only in JSON bodies. The page URL holds the token, so the 30-minute lifetime and single use limit what browser history can leak; pages send `strict-origin-when-cross-origin` referrers and load nothing from other sites, and Go keeps no access log.
-- **No email delivery yet.** `MAIL_DRIVER=file` (development) writes each email to `MAIL_FILE` ([mail.md](mail.md)). That file holds working links, so production refuses it; with `MAIL_DRIVER=off` (the production default) the request endpoint answers 503.
+- **Delivery:** over SMTP (`MAIL_DRIVER=smtp`; Mailpit locally), or the development mailbox (`log`, refused in production since it holds working links) ([mail.md](mail.md)). With `MAIL_DRIVER=off` the request endpoint answers 503.
 
 ## Sessions
 
@@ -105,8 +105,8 @@ Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `inter
 
 - **Joining is always deliberate.** Registering or signing in never looks up invitations: accepting needs the token, which only the invited inbox has, and the signed-in email must match. There is no email verification, so someone with a leaked link who registers the invited address first could still join; single use, the 7-day lifetime and revoking bound that.
 - **The token** works once, for 7 days, and only its digest is stored. It is in the page's path and in `?next=` for login and register (AGENTS.md names this exception), never in an API URL. A crafted `?next=` can't make anyone join: the page joins at once only with navigation state from its own buttons, and otherwise shows **Join**.
-- **The email** has a fixed subject, escapes every name ([mail.md](mail.md)), and shows the inviter's address so a misleading workspace name can be judged. With `MAIL_DRIVER=off` (production) inviting answers 503.
-- **Limits:** `invitation:per-user` (20 an hour), `invitation:global` (200 an hour, 503), 50 live invitations and the member quota ([rate-limits.md](rate-limits.md)).
+- **The email** has a fixed subject, escapes every name ([mail.md](mail.md)), and shows the inviter's address so a misleading workspace name can be judged. With `MAIL_DRIVER=off` inviting answers 503.
+- **Limits:** `invitation:per-user` (20 an hour), `invitation:per-email` (5 an hour to one address from any inviter or workspace, so the server can't flood an inbox; "This email address has had too many invitations recently."), `invitation:global` (200 an hour, 503), 50 live invitations and the member quota ([rate-limits.md](rate-limits.md)).
 - Expired invitations stay listed, as Expired, for 30 days; then `Store.Cleanup` deletes them. Accepted and revoked ones are deleted; their events keep the history.
 
 ## Deleting
@@ -125,6 +125,6 @@ Register workspace routes in `workspaceRoutes` in `routes.go` (the `ws` group ap
 
 ## Not implemented
 
-Email verification, email delivery (password reset links and invitations go to a development mailbox file only, so both are off in production), MFA/passkeys and OIDC. Don't describe them as existing. Before public use you'd also need email delivery, observability, backups, abuse monitoring and load testing.
+Email verification, MFA/passkeys and OIDC. Don't describe them as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need observability, backups, abuse monitoring and load testing.
 
 References: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

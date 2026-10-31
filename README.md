@@ -342,7 +342,7 @@ Before deploying to production:
 - Do not use the demo credentials.
 
 > [!IMPORTANT]
-> lewcontext does not implement password reset, verified email, MFA or OIDC federation.
+> lewcontext does not implement verified email, MFA or OIDC federation. Password reset links and workspace invitations are emailed over SMTP; locally they land in Mailpit at `http://localhost:8025`.
 
 ## Documentation
 

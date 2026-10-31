@@ -1,10 +1,10 @@
 # Email delivery over SMTP
 
-Status: **decisions confirmed 2026-10-31**, to implement after the test environment. Builds on [test environment](implemented/test-environment.md) (`.env.testing`, the test database, Playwright starting the server), which ships first. Completes what [forgot password](implemented/forgot-password.md) and [workspace invitations](implemented/workspace-invitations.md) left out: real delivery.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [api/mail.md](../../../docs/api/mail.md), [deployment.md](../../../docs/deployment.md#email), [api/README.md](../../../docs/api/README.md#environment), [api/auth.md](../../../docs/api/auth.md), [api/rate-limits.md](../../../docs/api/rate-limits.md), [api/events.md](../../../docs/api/events.md), [api/testing.md](../../../docs/api/testing.md), [testing.md](../../../docs/testing.md), [ui/testing.md](../../../docs/ui/testing.md), `README.md`, AGENTS.md, `.env.example`, `.env.testing`, `compose.yaml` and CI. Builds on [test environment](test-environment.md) (`.env.testing`, the test database, Playwright starting the server), which ships first. Completes what [forgot password](forgot-password.md) and [workspace invitations](workspace-invitations.md) left out: real delivery.
 
 ## Why
 
-Password reset and invitations work, but their emails only reach a development mailbox file (`MAIL_DRIVER=file`), which production refuses. Both features are therefore switched off in production and answer 503 ([deployment.md](../../docs/deployment.md#email)).
+Password reset and invitations work, but their emails only reach a development mailbox file (`MAIL_DRIVER=file`), which production refuses. Both features are therefore switched off in production and answer 503 ([deployment.md](../../../docs/deployment.md#email)).
 
 **The approach is one SMTP driver, not a provider's HTTP API:**
 
@@ -126,7 +126,32 @@ SMTP_PASSWORD=
 
 `mailedLink` in `workspace.spec.ts` polls `GET {MAILPIT_URL}/api/v1/search?query=to:"<address>"` for the newest message, fetches it (`/api/v1/message/{ID}`), and takes the link from the HTML part. It also checks the plain-text part has the same link. Each run's recipients are unique (`e2e-<timestamp>-…`), so messages from other runs or from development never match. Nothing needs clearing between runs.
 
-CI adds a `mailpit` service container with the same ports. The e2e preflight ([test environment](implemented/test-environment.md#running-several-at-once-e2e_port)) also checks that Mailpit answers at `MAILPIT_URL` and on `SMTP_PORT`, and if not, stops before the build with "Mailpit isn't running: start it with `make db`". Parallel runs share one Mailpit, since each finds its mail by its own recipients.
+CI adds a `mailpit` service container with the same ports. The e2e preflight ([test environment](test-environment.md#running-several-at-once-e2e_port)) also checks that Mailpit answers at `MAILPIT_URL` and on `SMTP_PORT`, and if not, stops before the build with "Mailpit isn't running: start it with `make db`". Parallel runs share one Mailpit, since each finds its mail by its own recipients.
+
+### Limits per recipient
+
+Once delivery is real, our server can be used to flood someone else's inbox. Password reset is already capped per address (`password-reset:per-email`, 3 an hour, counted when a link is asked for). Invitations aren't: they're limited per inviter (20 an hour) and for everyone (200 an hour), and a workspace holds one live invitation per address, but nothing caps how many one address receives across workspaces. One person owning 20 workspaces could send the same address 20 invitations an hour, more with several accounts.
+
+**New limit: `invitation:per-email`**, 5 an hour per invited address, across every workspace and inviter.
+
+- Counted at `POST …/invitations` once the body is valid, after `invitation:per-user` and before `invitation:global` (each stops at the first refusal, so an inviter refused by their own limit doesn't spend the recipient's). Keyed by the SHA-256 of the normalised email, like `password-reset:per-email`, so `rate_limits` holds no address.
+- Refused with 429 and `Retry-After`, in the same shape as the other limits: "This email address has had too many invitations recently. Try again in 40 minutes." The Invite dialog shows the API's message, as it does for other refusals. The first refusal in a window records `rate_limit.reached`, as for every limit.
+- **What the message reveals:** only that this address was invited several times in the last hour. It's counted for every address, registered or not, so it never shows whether someone has an account, and probing it costs the person asking from their own 20-an-hour limit. The number isn't in the message.
+- Five an hour leaves room for someone genuinely invited to several teams at once.
+
+**Limits are on requests, never on sends.** The mail driver and listeners don't delay, throttle or drop anything: what's queued is sent. Delaying sends was considered and rejected:
+
+- a delayed reset link is dead on arrival (30-minute lifetime, and each new one replaces the last);
+- the person asking is told it worked while nothing arrives, where a 429 says when to try again;
+- a per-recipient send budget would let an attacker spend a victim's budget with junk requests, holding back the security emails meant to warn them.
+
+**Every email type is one of three kinds**, written as a rule in [mail.md](../../../docs/api/mail.md):
+
+| Kind | Examples | Limit |
+| --- | --- | --- |
+| Asked for by a user, for themselves or someone else | password reset, invitations | A per-email limit on the request (`<feature>:per-email`), refused with 429 before anything is queued. A new email of this kind isn't done without one |
+| Security mail about the recipient's own account | password changed, new sign-in (future) | Never limited. The actions that trigger it (a password change, a sign-in) are already behind limits of their own |
+| Notifications about things in a workspace | a project or workspace deleted (future) | Not rate limited, because they matter. **Opt-in only: never subscribe anyone automatically.** A setting only the user can change, such as "Workspace notifications: All / Deletions only / None", off by default. Otherwise someone could add a person to 20 projects and delete them all, sending 20 emails the person never asked for |
 
 ## Security risks and how they're avoided
 
@@ -137,8 +162,9 @@ CI adds a `mailpit` service container with the same ports. The e2e preflight ([t
 | Header injection | From is validated at startup. To is checked by `Send`. Subjects are fixed. go-mail encodes headers. No user data in any header. |
 | HTML injection through names | Unchanged: `html/template` escapes the HTML part. The plain-text part shows names as typed, so a name containing a URL can be turned into a link by the mail client. That's the same as in the HTML part today, where clients link bare URLs in text. The emails say who sent them (the inviter's address) so a misleading name can be judged. |
 | Mailpit's inbox holding working links | Bound to `127.0.0.1`. Development and test only. Production refuses `none`, so it can't send to Mailpit there. |
-| Spam sent from our domain once delivery is real | Existing limits: reset per email, per IP and for everyone, and invitations per user, per workspace and for everyone ([rate-limits.md](../../docs/api/rate-limits.md)). CAPTCHA challenges are planned. Deployment docs require SPF, DKIM and DMARC through the provider. |
-| Turning email on in production changes what's exposed | Reset links and invitations become real. The rules around them (single use, digests only, 30-minute and 7-day lifetimes, no account lookup at sign-up) already assume a real inbox. AGENTS.md, [auth.md](../../docs/api/auth.md) and [deployment.md](../../docs/deployment.md) change from "no email delivery" to "SMTP when configured". Email verification, MFA and OIDC still don't exist. |
+| Spam sent from our domain once delivery is real | Existing limits: reset per email, per IP and for everyone, and invitations per user, per workspace and for everyone ([rate-limits.md](../../../docs/api/rate-limits.md)). CAPTCHA challenges are planned. Deployment docs require SPF, DKIM and DMARC through the provider. |
+| Turning email on in production changes what's exposed | Reset links and invitations become real. The rules around them (single use, digests only, 30-minute and 7-day lifetimes, no account lookup at sign-up) already assume a real inbox. AGENTS.md, [auth.md](../../../docs/api/auth.md) and [deployment.md](../../../docs/deployment.md) change from "no email delivery" to "SMTP when configured". Email verification, MFA and OIDC still don't exist. |
+| Our server used to flood one inbox | Every email asked for by a user has a per-email limit on the request: `password-reset:per-email` (existing) and `invitation:per-email` (new). Workspace notifications, once they exist, go only to people who opted in. |
 | A hanging SMTP server blocking the worker | The 30 s listener context covers the dial and the send. One slow message doesn't hold up other listeners in the batch. |
 
 ## Tests
@@ -155,6 +181,14 @@ CI adds a `mailpit` service container with the same ports. The e2e preflight ([t
   - port defaults by TLS mode;
   - no error message contains `SMTP_PASSWORD`'s value.
 - **Go integration:** unchanged. `mailServer(t)` already registers the listeners with an in-memory `mailbox` driver (the equivalent of Laravel's `Mail::fake()`). No Go test needs SMTP settings.
+- **Go integration (`invitation:per-email`):**
+  - the 6th invitation to one address within the hour is refused with 429, `Retry-After` and the message, even when it comes from different inviters and workspaces;
+  - it creates no invitation and queues no email, and the first refusal records `rate_limit.reached`;
+  - an address with no account is counted the same;
+  - an inviter refused by `invitation:per-user` doesn't spend the address's count;
+  - other addresses are unaffected;
+  - `TestRateLimitNames` accepts the new name.
+- **Vitest:** the Invite dialog shows the 429 message.
 - **Playwright:** the forgot-password and invitation flows read their links from Mailpit, so the real driver, Mailpit and both parts are exercised end to end, locally and in CI.
 
 ## Docs
@@ -164,6 +198,7 @@ CI adds a `mailpit` service container with the same ports. The e2e preflight ([t
 - `docs/api/README.md`: package table and environment variables.
 - `docs/api/auth.md`: the "no email delivery" lines.
 - `docs/api/events.md`: the listeners now send real email.
+- `docs/api/rate-limits.md`: the `invitation:per-email` row and the invitation order (`per-user` → `per-email` → `global`); `docs/api/auth.md` (invitations) likewise.
 - `docs/testing.md`: Mailpit in setup, `http://localhost:8025`.
 - `docs/ui/testing.md`: the mailbox is Mailpit.
 - `docs/api/testing.md`: SMTP driver tests.
@@ -186,6 +221,28 @@ CI adds a `mailpit` service container with the same ports. The e2e preflight ([t
 | 10 | Testing the driver | An in-process SMTP server in the Go test: no test SMTP variables, always runs in `make test`. Mailpit is covered by the e2e tests. |
 | 11 | Checking SMTP at startup | No. A mail outage shouldn't stop the app; the worker retries for an hour, and failures are logged. |
 | 12 | Extra headers | `Auto-Submitted: auto-generated`, and a Message-ID on the sender's domain. |
+| 13 | A per-recipient limit for invitations | `invitation:per-email`, 5 an hour, with a descriptive 429 ("This email address has had too many invitations recently. Try again in …"). **Confirmed.** |
+| 14 | Limits on requests or on sends | On requests only; nothing is delayed or dropped once queued. **Confirmed.** |
+| 15 | A rule for new emails | Asked-for mail needs a per-email request limit; security mail is never limited; workspace notifications aren't limited but are opt-in only, never automatic. In [mail.md](../../../docs/api/mail.md). **Confirmed.** |
+| 16 | A send-time safety net against our own bugs (e.g. 30 an hour per recipient, security mail exempt, logged and marked failed) | Skipped for now; see Optional features, skipped. **Confirmed.** |
+
+## How the build differs
+
+- **`go-mail` v0.8.1**, the release current at build time (the research looked at v0.7.x). It needs only `x/crypto` and `x/text`, which the module already had in newer versions.
+- **Mailpit is pinned to `v1.31.0`**, not the newest (`v1.33.0`, built that day): a release at least two weeks old, as for other dependencies. The search and message API the tests use is older than both.
+- **Config lives in `internal/config/mail.go`**, with `config.Mail` (driver, file, sender) and `config.SMTP` (host, port, TLS, credentials) embedded in `Config`. The old value `MAIL_DRIVER=file` is refused with a message saying it's now `log`, so an old `.env` fails clearly.
+- **A go-mail client per message** (listeners run concurrently), and a 10 s limit on each step of the SMTP conversation inside the listener's 30 s.
+- **No `User-Agent` or `X-Mailer` header**: go-mail adds one by default, naming itself; it's switched off. The Message-ID is 16 random bytes in hex on the sender's domain.
+- **The `log` mailbox writes the plain text, then `---- HTML` and the HTML.**
+- **`invitation:per-email`'s message** comes from a new optional `tooMany` field on `rateLimit`, which replaces "Too many requests." in its 429. The Invite dialog already showed refusals without a field inside itself, so only a test was added.
+- **The e2e helper also checks the plain-text part** carries the same link as the HTML.
+- **The Docker `app` container** sends to the `mailpit` service too, and waits for it to be healthy. With `MAIL_DRIVER=off` the server now logs that mail is off at startup.
+- **`README.md`** said password reset wasn't implemented; it now says what is.
+- **Verified:** `make test` (the SMTP driver against the in-process server, config rules, `invitation:per-email` across five inviters, the Invite dialog's refusal), `make check`, and `make test-e2e E2E_PORT=auto`: 13 passed, with reset and invitation emails sent over SMTP to Mailpit and their links read through its API.
+
+## Optional features, skipped
+
+- **A send-time safety net per recipient** (decision 16). A high cap, say 30 emails an hour to one address with security mail exempt, where going over logs an error and marks the delivery failed. It wouldn't be for abuse, which the request limits handle, but to stop a bug (a listener stuck in a loop) from flooding an inbox and hurting our sending reputation. Add it if a listener ever sends more than one email per event, or before notifications ship.
 
 ## Not included
 
@@ -196,3 +253,4 @@ CI adds a `mailpit` service container with the same ports. The e2e preflight ([t
 - **DKIM signing in the app** (the provider signs), and `SMTP_PASSWORD_FILE` for file-based secrets.
 - **Connection pooling, attachments, `List-Unsubscribe`, and marketing or bulk email.**
 - **Email verification**, which would build on this but changes sign-up. It needs its own plan.
+- **Workspace notification emails** and their subscription setting. The rule for them (opt-in only, not rate limited) is decided here; building them needs its own plan.

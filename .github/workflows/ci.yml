@@ -14,6 +14,11 @@ jobs:
           POSTGRES_DB: lewcontext_test
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      # The e2e server's email lands here, and the tests read it through the API
+      # (.env.testing: SMTP_PORT, MAILPIT_URL).
+      mailpit:
+        image: axllent/mailpit:v1.31.0
+        ports: ['1025:1025', '8025:8025']
     env:
       APP_NAME: lewcontext
     steps:

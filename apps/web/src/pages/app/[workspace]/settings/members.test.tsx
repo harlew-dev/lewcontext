@@ -262,6 +262,28 @@ describe("invitations", () => {
     // The pending list refreshes and shows the new invitation.
     expect(await screen.findByText("Sending…")).toBeVisible();
   });
+  it("shows a refusal for the address (invitation:per-email) and keeps the dialog", async () => {
+    const refusal =
+      "This email address has had too many invitations recently. Try again in 40 minutes.";
+    stubApi({
+      [`GET ${members}`]: { body: page },
+      [`GET ${invitations}`]: invitationPage([]),
+      [`POST ${invitations}`]: { status: 429, body: { error: refusal } },
+    });
+    renderAs("admin");
+    fireEvent.click(await screen.findByRole("button", { name: "Invite" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
+      target: { value: "bob@example.com" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Send invitation" }),
+    );
+    expect(await within(dialog).findByText(refusal)).toBeVisible();
+    expect(within(dialog).getByLabelText("Email")).toHaveValue(
+      "bob@example.com",
+    );
+  });
   it("lists pending invitations, revoking only roles you may give", async () => {
     const api = stubApi({
       [`GET ${members}`]: { body: page },

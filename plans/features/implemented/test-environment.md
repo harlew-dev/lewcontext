@@ -1,6 +1,6 @@
 # Test environment (`.env.testing`)
 
-Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [testing.md](../../../docs/testing.md#configuration), [api/testing.md](../../../docs/api/testing.md), [ui/testing.md](../../../docs/ui/testing.md#running-several-at-once), [api/database.md](../../../docs/api/database.md#test-databases), [api/README.md](../../../docs/api/README.md#environment), `README.md` and AGENTS.md. Comes before [email delivery](../email-delivery.md), which adds Mailpit's settings to `.env.testing` and has the end-to-end tests read mail from it.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [testing.md](../../../docs/testing.md#configuration), [api/testing.md](../../../docs/api/testing.md), [ui/testing.md](../../../docs/ui/testing.md#running-several-at-once), [api/database.md](../../../docs/api/database.md#test-databases), [api/README.md](../../../docs/api/README.md#environment), `README.md` and AGENTS.md. Comes before [email delivery](email-delivery.md), which adds Mailpit's settings to `.env.testing` and has the end-to-end tests read mail from it.
 
 ## Why
 
@@ -41,7 +41,7 @@ MAIL_FILE=tmp/mail-test.log
 - **One format that every reader understands.** `KEY=value`, `#` comments and blank lines. The Go loader, Node's `util.parseEnv`, bash's `source` and Make all read that the same way. Anything else (quotes, `export`, `$` expansion, a repeated key) is refused by the Go loader, and a test runs it over the committed file.
 - **`TEST_DATABASE_URL` goes away.** Tests use `DATABASE_URL` from this file, the same name the server uses, as in Laravel.
 - **Port 3100** so the e2e server runs beside `make dev`, `make serve` or the Docker `app` container on :3000. A second run at the same time picks another port with `E2E_PORT` ([below](#running-several-at-once-e2e_port)).
-- **Its own mailbox file** (`tmp/mail-test.log`) until [email delivery](../email-delivery.md) switches it to Mailpit.
+- **Its own mailbox file** (`tmp/mail-test.log`) until [email delivery](email-delivery.md) switches it to Mailpit.
 
 ### The test database
 
@@ -116,7 +116,7 @@ make test-e2e E2E_PORT=auto    # pick a free one (what AGENTS.md tells agents to
 ```
 
 - **`E2E_PORT` is the one value a caller can override in `.env.testing`.** `test-env.sh` keeps the caller's value (or the file's 3100) and derives `API_ADDR`, `APP_ORIGIN` and `DATABASE_URL` (`lewcontext_test_<port>`) for the e2e server and the spec. `playwright.config.ts` does the same for a direct `npx playwright test`. Everything else stays forced.
-- **Shared on purpose, at fixed ports:** the PostgreSQL container (with a unique database per run) and Mailpit, once [email delivery](../email-delivery.md) ships (each run finds its mail by its own unique recipient addresses). Go and Vitest runs already don't collide: Go tests use throwaway schemas.
+- **Shared on purpose, at fixed ports:** the PostgreSQL container (with a unique database per run) and Mailpit, once [email delivery](email-delivery.md) ships (each run finds its mail by its own unique recipient addresses). Go and Vitest runs already don't collide: Go tests use throwaway schemas.
 - **Preflight** (`scripts/e2e-preflight.sh`, the first step of `make test-e2e`, which takes under a second):
   1. **Services:** PostgreSQL answers at the URL's host and port (and Mailpit, once email delivery ships). Otherwise it stops with "The test database isn't running: start it with `make db`."
   2. **Reserves the port** with an exclusive lock on `/tmp/lewcontext-e2e-<port>.lock` (`flock -n`), held until the run ends, and checks nothing else listens on it. The lock covers the whole machine, so it works across git worktrees, and it's released automatically when the run ends or crashes.

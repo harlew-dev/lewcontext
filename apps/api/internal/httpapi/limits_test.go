@@ -52,6 +52,9 @@ func TestRetryAfterAndWaitFor(t *testing.T) {
 	if got := authPerIP.refusal(90 * time.Second); got != "Too many attempts. Try again in 2 minutes." {
 		t.Errorf("auth refusal: %q", got)
 	}
+	if got := invitationPerEmail.refusal(40 * time.Minute); got != "This email address has had too many invitations recently. Try again in 40 minutes." {
+		t.Errorf("invitation refusal: %q", got)
+	}
 	if got := apiPerUser.refusal(12 * time.Minute); got != "Too many requests. Try again in 12 minutes." {
 		t.Errorf("refusal: %q", got)
 	}

@@ -13,10 +13,8 @@ import (
 type Config struct {
 	DatabaseURL, Origin, Address string
 	Production                   bool
-	// MailDriver is how email is delivered: MailFile writes it to MailFile,
-	// a development mailbox; MailOff sends nothing, so password reset is
-	// unavailable.
-	MailDriver, MailFile string
+	// Mail is how email is delivered and who it comes from (mail.go).
+	Mail
 	// RateLimits is RateLimitsOff to switch every rate limit off, for the
 	// end-to-end tests; quotas and the hashing slots stay. Production
 	// refuses it.
@@ -29,28 +27,14 @@ type Config struct {
 }
 
 const (
-	MailFile = "file"
-	MailOff  = "off"
-)
-const (
 	RateLimitsOn  = "on"
 	RateLimitsOff = "off"
 )
 
 func Load() (Config, error) {
 	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Origin: env("APP_ORIGIN", "http://localhost:3000"), Address: env("API_ADDR", "127.0.0.1:8080"), Production: os.Getenv("APP_ENV") == "production"}
-	c.MailDriver = env("MAIL_DRIVER", MailFile)
-	if c.Production {
-		c.MailDriver = env("MAIL_DRIVER", MailOff)
-	}
-	c.MailFile = env("MAIL_FILE", "tmp/mail.log")
-	if c.MailDriver != MailFile && c.MailDriver != MailOff {
-		return c, errors.New("MAIL_DRIVER must be file or off")
-	}
-	// The mailbox holds working password reset links: anyone who can read it
-	// could take over any account.
-	if c.Production && c.MailDriver == MailFile {
-		return c, errors.New("MAIL_DRIVER=file is for development only; production has no email delivery yet, so use off")
+	if err := c.loadMail(); err != nil {
+		return c, err
 	}
 	c.RateLimits = env("RATE_LIMITS", RateLimitsOn)
 	if c.RateLimits != RateLimitsOn && c.RateLimits != RateLimitsOff {

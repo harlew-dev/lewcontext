@@ -24,6 +24,7 @@ make build                                                     # or, without Doc
 
 - **PostgreSQL 15+** reachable over TLS with a verifiable certificate. Use a dedicated role that owns the app's tables, not a superuser.
 - **Something that terminates HTTPS in front of the server.** The server only speaks plain HTTP, and production refuses an `http://` origin. That can be a reverse proxy (nginx, Caddy), a cloud load balancer, or Cloudflare. See [Behind a proxy](#behind-a-proxy-or-load-balancer).
+- **An SMTP provider** (Resend, Postmark, Amazon SES, Mailgun, …) and **outbound SMTP** from the server to it, on 587 or 465. Some hosts block outgoing SMTP ports on new accounts; ask them to open it. Or run with `MAIL_DRIVER=off` and no password reset or invitations. See [Email](#email).
 - **Outbound HTTPS** from the server to `challenges.cloudflare.com`, once CAPTCHA challenges are built (**Planned**).
 
 ## Configuration
@@ -36,10 +37,13 @@ make build                                                     # or, without Doc
 | `APP_ORIGIN` | `https://app.example.com` | The exact public origin: scheme and host, no trailing slash. **HTTPS is required.** Mutations from any other origin are refused, and every emailed link is built from it |
 | `DATABASE_URL` | `postgresql://lewcontext:…@db.internal:5432/lewcontext?sslmode=verify-full` | **`sslmode=verify-full` is required.** For a provider with its own CA, mount the CA file and add `&sslrootcert=/path/to/ca.pem` |
 | `API_ADDR` | `0.0.0.0:3000` (the image's default) | The listen address. Bind it to a private interface the proxy can reach, never directly to the internet without TLS in front |
-| `MAIL_DRIVER` | `off` (the production default) | There is no email delivery yet. `file` (the development mailbox) is refused in production. With `off`, password reset answers 503 |
+| `MAIL_DRIVER` | `smtp` (the default), or `off` | `smtp` needs the settings below, or the server refuses to start. `off` runs without email: password reset and invitations answer 503. `log` (the development mailbox) is refused in production |
+| `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | `no-reply@example.com`, `Example` | The sender. The address must be bare, on a domain your provider has verified. The name defaults to `APP_NAME` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | `smtp.resend.com`, `587`, `starttls` | `starttls` (port 587 by default) or `tls` (465). **`none` is refused in production.** Certificates are always verified |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | your provider's | Both or neither. **A secret:** pass it through your platform's secret store, not the image |
 | `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 
-`RATE_LIMITS` must stay unset (or `on`): `off`, for the end-to-end tests, is refused in production. The server refuses to start if any of these rules is broken, rather than starting insecurely. `DEMO_PASSWORD`, `MAIL_FILE` and `API_URL` are for development only.
+`RATE_LIMITS` must stay unset (or `on`): `off`, for the end-to-end tests, is refused in production. The server refuses to start if any of these rules is broken, rather than starting insecurely. `DEMO_PASSWORD`, `MAIL_FILE` and `API_URL` are for development only. Tests use the committed `.env.testing`, never production settings.
 
 ### Planned
 
@@ -130,12 +134,22 @@ These notes apply when the domain is proxied through Cloudflare.
 
 ## Email
 
-There is **no email delivery** yet. In production `MAIL_DRIVER` is `off`, so:
+Password reset links and workspace invitations go out over SMTP (`MAIL_DRIVER=smtp`, [api/mail.md](api/mail.md)). Any provider that accepts SMTP works; changing provider changes only these settings:
 
-- password reset answers 503 ("Password reset isn't available.");
-- inviting someone to a workspace answers 503 too, and the Invite dialog says "Invitations aren’t available on this server." ([auth.md](api/auth.md#invitations)).
+| Provider | `SMTP_HOST` | `SMTP_PORT` / `SMTP_TLS` | `SMTP_USERNAME` | `SMTP_PASSWORD` |
+| --- | --- | --- | --- | --- |
+| Resend | `smtp.resend.com` | `587` / `starttls`, or `465` / `tls` | `resend` | an API key |
+| Postmark | `smtp.postmarkapp.com` | `587` / `starttls` | a server API token | the same token |
+| Amazon SES | `email-smtp.<region>.amazonaws.com` | `587` / `starttls` | SES SMTP credentials (not IAM access keys) | |
+| Mailtrap's online sandbox (staging) | from your Mailtrap inbox | its settings | | |
 
-A real mail driver (SMTP or a provider) is a future plan. Don't advertise password reset or invitations on a production deployment until it exists.
+Check each provider's own docs for current values.
+
+- **Before the first email:** verify the sending domain with the provider and publish the DNS records it gives you: SPF, DKIM and a DMARC policy. Without them, mail lands in spam or is refused. The app doesn't sign mail itself; the provider does.
+- **If the provider is down,** emails wait and retry for about an hour (1 s, 10 s, 1 min, 10 min, 1 h), then are marked failed and logged as an error. Requests keep working: handlers only queue mail. Failures are in `event_deliveries.last_error`.
+- **Abuse:** each email someone can trigger has a per-recipient limit on the request (`password-reset:per-email`, 3 an hour; `invitation:per-email`, 5 an hour) besides the per-IP, per-user and global ones ([api/rate-limits.md](api/rate-limits.md)), so the server can't be used to flood an inbox.
+- **Without a provider,** set `MAIL_DRIVER=off`: password reset answers 503 ("Password reset isn't available.") and the Invite dialog says "Invitations aren’t available on this server." Don't advertise either feature then.
+- There is still **no email verification**: an account's address is whatever was typed at sign-up ([api/auth.md](api/auth.md)).
 
 ## Security checklist
 
@@ -147,6 +161,7 @@ A real mail driver (SMTP or a provider) is a future plan. Don't advertise passwo
 - [ ] `seed` never run (it refuses in production anyway).
 - [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
+- [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` deliberately.
 - [ ] Turnstile keys are real (not Cloudflare's test keys), once built.
 - [ ] No secrets in the image or the repository: pass them as environment variables or through your platform's secret store.
 - [ ] The server's own security headers aren't stripped or overridden by the proxy: CSP with script hashes, `X-Frame-Options: DENY`, HSTS, `no-store` caching on the app shell and API.

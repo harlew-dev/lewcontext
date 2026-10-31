@@ -106,16 +106,35 @@ func run() error {
 // requests for either.
 func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
 	if c.MailDriver == config.MailOff {
+		slog.Info("mail is off (MAIL_DRIVER=off): password reset and invitations are unavailable")
 		return nil
 	}
-	mailer, err := mail.New(&mail.FileDriver{Path: c.MailFile})
+	driver, err := mailDriver(c)
 	if err != nil {
 		return err
 	}
-	slog.Info("mail goes to the development mailbox", "file", c.MailFile)
+	mailer, err := mail.New(driver)
+	if err != nil {
+		return err
+	}
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
 	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(repository, mailer, c.Origin))
 	return nil
+}
+
+// mailDriver builds MAIL_DRIVER's driver and logs where mail goes: never the
+// SMTP credentials.
+func mailDriver(c config.Config) (mail.Driver, error) {
+	if c.MailDriver == config.MailLog {
+		slog.Info("mail goes to the development mailbox", "file", c.MailFile)
+		return &mail.FileDriver{Path: c.MailFile}, nil
+	}
+	slog.Info("mail goes out over SMTP", "host", c.SMTP.Host, "port", c.SMTP.Port, "tls", c.SMTP.TLS, "from", c.MailFromAddress)
+	return mail.NewSMTPDriver(mail.SMTPConfig{
+		Host: c.SMTP.Host, Port: c.SMTP.Port, TLS: c.SMTP.TLS,
+		Username: c.SMTP.Username, Password: c.SMTP.Password,
+		FromAddress: c.MailFromAddress, FromName: c.MailFromName,
+	})
 }
 
 // servePages adds the embedded web build. Production requires it; in

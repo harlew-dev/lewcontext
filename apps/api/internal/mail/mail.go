@@ -1,10 +1,12 @@
-// Package mail renders emails from HTML templates and hands them to a driver
-// that delivers them. The only driver so far is FileDriver, a development
-// mailbox; there is no email delivery yet.
+// Package mail renders emails from templates and hands them to a driver that
+// delivers them: SMTPDriver sends them through an SMTP server, FileDriver
+// appends them to a development mailbox.
 //
-// Templates are html/template files embedded in the binary: each email's file
-// defines its "title" and "content", which templates/layout.html wraps in the
-// shared document. html/template
+// Every email has an HTML part and a plain-text part. The HTML templates are
+// html/template files embedded in the binary: each email's file defines its
+// "title" and "content", which templates/layout.html wraps in the shared
+// document. The plain-text templates (templates/<name>.txt) are rendered in
+// text.go, the only file that may use text/template. html/template
 // escapes every value for where it appears (text, attribute, URL), so data
 // such as an account's name can't add markup or links. Data structs hold
 // plain strings: never convert a value to template.HTML, template.URL or the
@@ -22,7 +24,7 @@ import (
 	"strings"
 )
 
-//go:embed templates/*.html
+//go:embed templates/*.html templates/*.txt
 var files embed.FS
 
 // Template names an email: templates/<name>.html.
@@ -60,36 +62,43 @@ type WorkspaceInvitationData struct {
 type Message struct {
 	To, Subject string
 	Template    Template
-	HTML        string
+	HTML, Text  string
 }
 
-// Driver delivers rendered messages: FileDriver now, SMTP or a provider later.
+// Driver delivers rendered messages: SMTPDriver, or FileDriver in development.
 type Driver interface {
 	Deliver(ctx context.Context, m Message) error
 }
 
 type Mailer struct {
 	templates map[Template]*template.Template
+	texts     map[Template]textTemplate
 	driver    Driver
 }
 
-// New parses every template with the layout, so a broken or missing one
-// stops the server from starting rather than failing when an email is sent.
-// Each email is its own set, since each defines "title" and "content".
+// New parses every template, HTML with the layout and plain text, so a broken
+// or missing one stops the server from starting rather than failing when an
+// email is sent. Each email is its own set, since each defines "title" and
+// "content".
 func New(driver Driver) (*Mailer, error) {
 	templates := map[Template]*template.Template{}
+	texts := map[Template]textTemplate{}
 	for name := range subjects {
 		t, err := template.ParseFS(files, "templates/layout.html", "templates/"+fileName(name))
 		if err != nil {
 			return nil, fmt.Errorf("mail template %s is missing or broken: %w", fileName(name), err)
 		}
 		templates[name] = t.Option("missingkey=error")
+		if texts[name], err = parseText(files, name); err != nil {
+			return nil, err
+		}
 	}
-	return &Mailer{templates: templates, driver: driver}, nil
+	return &Mailer{templates: templates, texts: texts, driver: driver}, nil
 }
 
-// Send renders template t with data (its *Data struct) and delivers it to
-// the address to. Nothing is delivered if rendering fails.
+// Send renders template t with data (its *Data struct), both parts, and
+// delivers it to the address to. Nothing is delivered if either part fails to
+// render.
 func (m *Mailer) Send(ctx context.Context, to string, t Template, data any) error {
 	if !validRecipient(to) {
 		return errors.New("mail: invalid recipient address")
@@ -102,7 +111,11 @@ func (m *Mailer) Send(ctx context.Context, to string, t Template, data any) erro
 	if err := m.templates[t].ExecuteTemplate(&body, "layout.html", data); err != nil {
 		return fmt.Errorf("render mail %s: %w", t, err)
 	}
-	return m.driver.Deliver(ctx, Message{To: to, Subject: subject, Template: t, HTML: body.String()})
+	text, err := m.texts[t].render(data)
+	if err != nil {
+		return fmt.Errorf("render mail %s: %w", t, err)
+	}
+	return m.driver.Deliver(ctx, Message{To: to, Subject: subject, Template: t, HTML: body.String(), Text: text})
 }
 
 // validRecipient accepts a bare address (no display name) without line

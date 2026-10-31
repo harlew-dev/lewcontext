@@ -81,7 +81,11 @@ func (h invitationHandlers) store(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "You don’t have permission to do that in this workspace.")
 		return
 	}
-	// Only valid requests spend the limit shared by everyone.
+	// Only valid requests spend the invited address's limit and the one
+	// shared by everyone, in that order (invitation:per-user came first).
+	if !h.allow(w, r, invitationPerEmail, invitationPerEmail.key(in.Email)) {
+		return
+	}
 	if !h.allow(w, r, invitationGlobal, invitationGlobal.everyone()) {
 		return
 	}

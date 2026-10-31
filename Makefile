@@ -5,8 +5,8 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
-# Development email goes to one mailbox file whichever directory a target runs
-# from (MAIL_DRIVER=file). The e2e server has its own (.env.testing).
+# With MAIL_DRIVER=log, email goes to one mailbox file whichever directory a
+# target runs from. Normally it goes to Mailpit (make db): http://localhost:8025.
 MAIL_FILE ?= $(CURDIR)/tmp/mail.log
 export MAIL_FILE
 .PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
@@ -55,10 +55,11 @@ build: web-build
 serve: build
 	API_ADDR=127.0.0.1:3000 ./bin/api
 # Docker (compose.yaml): PostgreSQL 17 with pgvector, and the app built from the Dockerfile.
-# The database alone, for make dev and the tests on this machine. Also creates the Go tests'
-# database (lewcontext_test, .env.testing) if it's missing; e2e runs create their own.
+# The database and Mailpit (the local inbox, http://localhost:8025), for make dev and the tests
+# on this machine. Also creates the Go tests' database (lewcontext_test, .env.testing) if it's
+# missing; e2e runs create their own.
 db:
-	docker compose up -d --wait postgres
+	docker compose up -d --wait postgres mailpit
 	@docker compose exec -T postgres psql -U lewcontext -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'lewcontext_test'" | grep -q 1 || docker compose exec -T postgres createdb -U lewcontext lewcontext_test
 # The whole app in Docker on :3000 in one command (stop make dev / make serve first): starts the
 # database, builds the image, migrates and seeds, then starts the app once the schema is ready.

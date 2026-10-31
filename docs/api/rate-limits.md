@@ -45,6 +45,7 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | `workspace:per-user` | 10 / hour | session user | database | `POST /api/workspaces` | 429 |
 | `project:per-user` | 100 / hour | session user | database | `POST …/projects`, across all of the user's workspaces | 429 |
 | `invitation:per-user` | 20 / hour | session user | database | `POST …/invitations`, across all of the user's workspaces: each one emails an address the inviter chooses | 429 |
+| `invitation:per-email` | 5 / hour | invited email | database | `POST …/invitations`, once the body is valid, from any inviter or workspace: caps mail to one inbox. Counted for every address, registered or not | 429 "This email address has had too many invitations recently. Try again in …" |
 | `invitation:global` | 200 / hour | everyone | database | `POST …/invitations`, once the body is valid. Logs a warning | 503 "Invitations are busy. Try again later." |
 | `auth:per-ip` | 60 / 15 min | IP | database | `limitAuth`: register, login, both signed-in password endpoints, deleting a workspace or the account, the reset itself; directly on reset requests and checks | 429 |
 | `auth:per-account` | 10 / 15 min | email | database | `accountLimit`: register, login, both signed-in password endpoints and both deletions (the session user's email), so a stolen session can't guess faster than a login. Password reset never touches it | 429 |
@@ -54,7 +55,7 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | `password-reset:per-email` | 3 / hour | email | database | reset requests, known email or not: caps mail to one inbox | 429 |
 | `password-reset:global` | 100 / hour | everyone | database | reset requests: caps mail in a distributed flood. Logs a warning | 503 "Password reset is busy. Try again later." |
 
-Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `register:global`; an invitation `invitation:per-user` → `invitation:global`; a reset request `auth:per-ip` → `password-reset:per-ip` → `password-reset:per-email` → `password-reset:global`. Each stops at the first refusal.
+Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `register:global`; an invitation `invitation:per-user` → `invitation:per-email` → `invitation:global`; a reset request `auth:per-ip` → `password-reset:per-ip` → `password-reset:per-email` → `password-reset:global`. Each stops at the first refusal.
 
 **Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify` and `PATCH /api/auth/password` use `requireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes keep `auth:*` and the hashing slots; the other two only delete rows.
 

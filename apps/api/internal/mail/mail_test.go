@@ -70,9 +70,20 @@ func TestEveryTemplateRenders(t *testing.T) {
 		t.Fatalf("sent %d of %d", len(box.sent), len(subjects))
 	}
 	for _, msg := range box.sent {
-		if msg.Subject == "" || !strings.Contains(msg.HTML, "Ada") {
+		if msg.Subject == "" || !strings.Contains(msg.HTML, "Ada") || !strings.Contains(msg.Text, "Ada") {
 			t.Fatalf("%s rendered badly: %+v", msg.Template, msg)
 		}
+		// The plain-text part is text: the link as it is, and no markup.
+		if !strings.Contains(msg.Text, "http://localhost:3000/auth/") || strings.Contains(msg.Text, "<") {
+			t.Fatalf("%s plain text:\n%s", msg.Template, msg.Text)
+		}
+	}
+}
+
+// Every email needs its plain-text template; New fails without one.
+func TestMissingTextTemplate(t *testing.T) {
+	if _, err := parseText(files, Template("missing")); err == nil {
+		t.Fatal("parsed a template that doesn't exist")
 	}
 }
 
@@ -135,7 +146,8 @@ func TestSendRefusesBadInput(t *testing.T) {
 	}
 }
 
-// html/template is what escapes data; text/template would not.
+// html/template is what escapes data; text/template would not. Only text.go,
+// which renders the plain-text parts, may use it, and never for HTML.
 func TestNoTextTemplate(t *testing.T) {
 	sources, err := filepath.Glob("*.go")
 	if err != nil {
@@ -150,10 +162,17 @@ func TestNoTextTemplate(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, spec := range f.Imports {
-			if path, _ := strconv.Unquote(spec.Path.Value); path == "text/template" {
-				t.Errorf("%s imports text/template", source)
+			if path, _ := strconv.Unquote(spec.Path.Value); path == "text/template" && source != "text.go" {
+				t.Errorf("%s imports text/template; only text.go may", source)
 			}
 		}
+	}
+	text, err := os.ReadFile("text.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(text), ".html") {
+		t.Error("text.go mentions .html; it renders only .txt templates")
 	}
 }
 

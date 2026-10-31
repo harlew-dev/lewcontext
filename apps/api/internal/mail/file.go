@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// FileDriver appends each message to a file: the development mailbox, in
-// place of email delivery. The file holds working reset links, so it is
+// FileDriver appends each message to a file, its plain-text part and then its
+// HTML: the development mailbox (MAIL_DRIVER=log), in place of email delivery. The file holds working reset links, so it is
 // readable only by its owner, its contents never go to the server log, and
 // config refuses this driver in production.
 type FileDriver struct {
@@ -37,8 +37,8 @@ func (d *FileDriver) Deliver(ctx context.Context, m Message) error {
 		f.Close()
 		return err
 	}
-	_, err = fmt.Fprintf(f, "==== %s\nTo: %s\nSubject: %s\nTemplate: %s\n\n%s\n\n",
-		time.Now().UTC().Format(time.RFC3339), m.To, m.Subject, m.Template, m.HTML)
+	_, err = fmt.Fprintf(f, "==== %s\nTo: %s\nSubject: %s\nTemplate: %s\n\n%s\n---- HTML\n%s\n\n",
+		time.Now().UTC().Format(time.RFC3339), m.To, m.Subject, m.Template, m.Text, m.HTML)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}

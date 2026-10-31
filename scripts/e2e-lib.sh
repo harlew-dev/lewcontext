@@ -103,6 +103,18 @@ e2e_database_host() {
   echo "$host $port"
 }
 
+# e2e_require_mailpit: with MAIL_DRIVER=smtp the tests read their links from
+# Mailpit, so its SMTP port and its API must both answer.
+e2e_require_mailpit() {
+  [[ ${MAIL_DRIVER:-} == smtp ]] || return 0
+  local api="${MAILPIT_URL#*://}"
+  api="${api%%/*}"
+  if ! (exec 3<> "/dev/tcp/$SMTP_HOST/$SMTP_PORT") 2> /dev/null || ! (exec 3<> "/dev/tcp/${api%:*}/${api##*:}") 2> /dev/null; then
+    echo "Mailpit isn't running at $SMTP_HOST:$SMTP_PORT and $MAILPIT_URL: start it with make db." >&2
+    exit 1
+  fi
+}
+
 e2e_require_database() {
   local host port
   read -r host port <<< "$(e2e_database_host "$DATABASE_URL")"

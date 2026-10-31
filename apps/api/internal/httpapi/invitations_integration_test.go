@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 var invitationLink = regexp.MustCompile(`href="http://localhost:3000/auth/invitations/([A-Za-z0-9_-]{43})"`)
@@ -215,8 +216,8 @@ func TestInvitationCaps(t *testing.T) {
 			t.Fatalf("refusal: %s", refused.Body.String())
 		}
 		reached(t, s, "invitation:per-user:block")
-		if countRateLimits(t, s, "invitation:global") != 0 {
-			t.Fatal("refused per user, but counted for everyone")
+		if countRateLimits(t, s, "invitation:per-email:%") != 0 || countRateLimits(t, s, "invitation:global") != 0 {
+			t.Fatal("refused per user, but counted for the address or for everyone")
 		}
 		other := signedIn(t, db, f)
 		otherWorkspace := ownedWorkspace(t, db, f, other.UserID)
@@ -225,6 +226,34 @@ func TestInvitationCaps(t *testing.T) {
 		if !strings.Contains(busy.Body.String(), "Invitations are busy") || countInvitations(t, db, otherWorkspace.ID) != 0 {
 			t.Fatalf("busy: %s", busy.Body.String())
 		}
+	})
+	t.Run("per email, across inviters and workspaces", func(t *testing.T) {
+		s, db := integrationServer(t)
+		f := factory.TestFaker(t)
+		// Five owners of five workspaces invite one address, which has no account.
+		for range 5 {
+			owner := signedIn(t, db, f)
+			workspace := ownedWorkspace(t, db, f, owner.UserID)
+			call(t, s.Routes(), "POST", workspacePath(workspace.PublicID, "/invitations"), invite("target@example.com", auth.RoleMember), owner.CSRFToken, owner.Cookie(), 201)
+		}
+		sixth := signedIn(t, db, f)
+		workspace := ownedWorkspace(t, db, f, sixth.UserID)
+		path := workspacePath(workspace.PublicID, "/invitations")
+		refused := call(t, s.Routes(), "POST", path, invite("target@example.com", auth.RoleMember), sixth.CSRFToken, sixth.Cookie(), 429)
+		if !strings.Contains(refused.Body.String(), "This email address has had too many invitations recently. Try again in") {
+			t.Fatalf("refusal: %s", refused.Body.String())
+		}
+		retryWithin(t, refused, time.Hour)
+		reached(t, s, "invitation:per-email:block")
+		var everyone int
+		if err := db.NewSelect().TableExpr("rate_limits").Column("hits").Where("key = ?", "invitation:global").Scan(ctx, &everyone); err != nil {
+			t.Fatal(err)
+		}
+		if countInvitations(t, db, workspace.ID) != 0 || everyone != 5 {
+			t.Fatalf("the refused invitation was created, or counted for everyone (%d hits)", everyone)
+		}
+		// Other addresses are unaffected.
+		call(t, s.Routes(), "POST", path, invite("someone-else@example.com", auth.RoleMember), sixth.CSRFToken, sixth.Cookie(), 201)
 	})
 	t.Run("no email delivery", func(t *testing.T) {
 		s, db := integrationServer(t)

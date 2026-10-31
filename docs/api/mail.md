@@ -1,38 +1,51 @@
 # Mail
 
-Code: `internal/mail`. Plan: [plans/features/implemented/forgot-password.md](../../plans/features/implemented/forgot-password.md).
+Code: `internal/mail`. Plans: [forgot-password](../../plans/features/implemented/forgot-password.md), [email-delivery](../../plans/features/implemented/email-delivery.md).
 
-The API sends email through `mailer.Send(ctx, to, template, data)`. It renders an HTML template and hands the result to a driver. There is no real email delivery yet. The only driver is a development mailbox file, and production runs with mail off.
+The API sends email through `mailer.Send(ctx, to, template, data)`. It renders the email's HTML and plain-text parts from templates and hands them to a driver: SMTP (`MAIL_DRIVER=smtp`, the default), a development mailbox file (`log`), or nothing (`off`). In development and in the tests, SMTP goes to Mailpit, a local inbox at `http://localhost:8025`.
 
 ## Sending
 
 ```go
-mailer, _ := mail.New(&mail.FileDriver{Path: c.MailFile}) // cmd/server, at startup
+mailer, _ := mail.New(driver) // cmd/server, at startup: mail.NewSMTPDriver(…) or &mail.FileDriver{…}
 err := mailer.Send(ctx, user.Email, mail.ForgotPassword, mail.ForgotPasswordData{Name: user.Name, URL: link})
 ```
 
 - **Listeners send mail, handlers don't.** A handler records an event, and a listener on it sends the email ([events.md](events.md#listeners)), so a slow or failing driver never holds up a request and is retried.
 - **`to`** must be a bare address (no display name) with no CR or LF, so it can't add headers. Anything else is refused before rendering.
-- **Rendered first, then delivered.** If a template fails to render (the wrong data struct, for example), nothing is sent.
+- **Rendered first, then delivered.** If either part fails to render (the wrong data struct, for example), nothing is sent.
+
+## Who gets email, and how often
+
+Our server must never be usable to flood someone's inbox, and important mail must never be held back. So **limits go on the request that causes an email, never on sending it**: the driver and listeners don't delay, throttle or drop anything once it's queued. Every email type is one of three kinds, and a new one isn't done until it fits one:
+
+| Kind | Examples | Rule |
+| --- | --- | --- |
+| **Asked for by a user**, for themselves or someone else | password reset, invitations | A per-email limit on the request, `<feature>:per-email` ([rate-limits.md](rate-limits.md)), counted for every address whether or not it has an account, refused with 429 before anything is queued: `password-reset:per-email` (3 an hour) and `invitation:per-email` (5 an hour) |
+| **Security mail** about the recipient's own account | password changed, new sign-in (none yet) | Never limited: an attacker must not be able to spend a victim's budget and hold back the warning. The actions that trigger it are already limited |
+| **Notifications** about things in a workspace | a project or workspace deleted (none yet) | Not rate limited, because they matter, but **opt-in only: never subscribe anyone automatically.** Only the user can turn them on (a setting such as "Workspace notifications: All / Deletions only / None", off by default). Otherwise someone could add a person to 20 projects and delete them all, sending 20 emails they never asked for |
+
+Delaying sends by how many a recipient has had was considered and rejected: a delayed reset link arrives expired or replaced, the person who asked is told it worked while nothing arrives, and a send budget per recipient is exactly what an attacker would spend to suppress security mail.
 
 ## Templates
 
-`internal/mail/templates/<name>.html`, embedded in the binary with `//go:embed` (so they live inside the package, not at the repository root). `mail.New` parses them all at startup, and a missing or broken template stops the server from starting.
+`internal/mail/templates/<name>.html` and `<name>.txt`, embedded in the binary with `//go:embed` (so they live inside the package, not at the repository root). Every email has both: mail clients that don't show HTML show the plain text, and sending both lowers spam scores. `mail.New` parses them all at startup, and a missing or broken template, of either kind, stops the server from starting.
 
 | Template | Constant | Data | Subject |
 | --- | --- | --- | --- |
 | `forgot-password.html` | `mail.ForgotPassword` | `ForgotPasswordData{Name, URL}` | Reset your password |
 | `workspace-invitation.html` | `mail.WorkspaceInvitation` | `WorkspaceInvitationData{Workspace, Inviter, InviterEmail, Role, URL}` (`Role` with its article, "a member"; `Inviter` empty once that account is gone) | You’ve been invited to join a workspace |
 
-Every email shares `templates/layout.html`: the document, the grey page and the white card. Each email's file defines only its `title` and `content`, and `mail.New` parses each one with the layout as a set of its own.
+Every HTML email shares `templates/layout.html`: the document, the grey page and the white card. Each email's file defines only its `title` and `content`, and `mail.New` parses each one with the layout as a set of its own. The `.txt` files stand alone: the same words, the link written out, no markup.
 
 Placeholders use Go's syntax, `{{ .Name }}` and `{{ .URL }}`: the dot reads a field of the data struct.
 
 ### Adding one
 
-1. Write `templates/<name>.html`, defining `{{ define "title" }}` and `{{ define "content" }}`: inline styles only, no scripts, no remote images (they act as tracking pixels).
+1. Write `templates/<name>.html`, defining `{{ define "title" }}` and `{{ define "content" }}`: inline styles only, no scripts, no remote images (they act as tracking pixels). Write `templates/<name>.txt` with the same text and the link on a line of its own.
 2. Add a `Template` constant, its subject in `subjects`, and a `<Name>Data` struct of plain `string` fields.
 3. Add example data to `examples` in `mail_test.go`. `TestEveryTemplateRenders` fails without it.
+4. Decide its kind ([above](#who-gets-email-and-how-often)): asked-for mail gets a `<feature>:per-email` limit on the request that causes it, with an integration test; security mail gets none; notifications need an opt-in setting first.
 
 ## Keeping templates safe
 
@@ -41,15 +54,42 @@ An account's name is whatever the user typed, such as `<script>alert('XSS')</scr
 - **`html/template`, never `text/template`.** It escapes each value for where it appears: text, attribute, URL, CSS or JS. `<h1>Hack</h1>` becomes `&lt;h1&gt;Hack&lt;/h1&gt;` and shows as text. A `javascript:` value in `href` becomes `#ZgotmplZ`; only `http`, `https` and `mailto` links pass. `TestNoTextTemplate` checks the import.
 - **Never convert data to `template.HTML`, `template.URL`, `template.HTMLAttr`, `template.JS` or `template.CSS`.** Those types mean "already safe" and switch escaping off.
 - **Templates are trusted; data isn't.** That is `html/template`'s security model, so templates come only from the embedded files, never from the database or a request.
-- **No user data in headers.** Subjects are fixed strings in Go, not in the HTML file. They're mail headers, and HTML escaping would garble them (`&` → `&amp;`).
+- **No user data in headers.** Subjects are fixed strings in Go, not in the template files. They're mail headers, and HTML escaping would garble them (`&` → `&amp;`). The From header comes from config, the recipient is checked by `Send`, and nothing else is set from data.
+- **The plain-text part uses `text/template`,** in `text.go` only, which parses only `.txt` files (`TestNoTextTemplate` checks both). Plain text has no markup to inject, so nothing needs escaping, and names can't add lines: the API refuses control characters in them. A name containing a URL may be shown as a link by a mail client, as it may in the HTML part.
 
 ## Drivers
 
 | `MAIL_DRIVER` | Driver | Notes |
 | --- | --- | --- |
-| `file` (default outside production) | `FileDriver` | Appends each message to `MAIL_FILE` (`tmp/mail.log`; `make` uses the repository's `tmp/`): a `====` line, `To`, `Subject`, `Template`, then the HTML. The file is created `0600`, and the server log notes only that mail was written, never the body. **Refused in production:** it holds working reset links. |
-| `off` (default in production) | none | Nothing is sent. Neither listener is registered, and requests for a reset link or an invitation answer 503. |
+| `smtp` (the default, production included) | `SMTPDriver` (`smtp.go`, [`go-mail`](https://github.com/wneessen/go-mail)) | Sends each message over its own connection, within the listener's 30 s, with a 10 s limit on each step. See below |
+| `log` | `FileDriver` | Appends each message to `MAIL_FILE` (`tmp/mail.log`; `make` uses the repository's `tmp/`): a `====` line, `To`, `Subject`, `Template`, the plain text, then `---- HTML` and the HTML. The file is created `0600`, and the server log notes only that mail was written, never the body. **Refused in production:** it holds working reset links. For working without Docker |
+| `off` | none | Nothing is sent. Neither listener is registered, and requests for a reset link or an invitation answer 503. Production must say `off` explicitly to run without email |
 
-To read the mailbox: `tail -n 40 tmp/mail.log`. To see an email rendered, save its HTML to a `.html` file and open it. With `make docker-dev`, it's inside the container: `docker compose exec app cat /tmp/mail.log`.
+The old value `file` is refused with a message saying it's now `log`.
 
-A real driver (SMTP or a provider's API) implements `mail.Driver` and adds a `MAIL_DRIVER` value. It should also send a plain-text part, rendered from a `.txt` template.
+### SMTP
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `MAIL_FROM_ADDRESS` | (required) | A bare address, such as `no-reply@example.com`; the provider must have verified its domain |
+| `MAIL_FROM_NAME` | `APP_NAME` | The display name. Two variables rather than `Name <address>`, whose spaces bash and make read differently in `.env` |
+| `SMTP_HOST` | (required) | `127.0.0.1` for Mailpit |
+| `SMTP_TLS` | `starttls` | `starttls` (upgrade a plain connection; a server without STARTTLS gets nothing), `tls` (TLS from the start), or `none` (Mailpit only: refused in production, and refused anywhere with credentials) |
+| `SMTP_PORT` | 587 for `starttls`, 465 for `tls` | Required with `none` (Mailpit: 1025) |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | (empty) | Both or neither; sent with AUTH PLAIN, only over TLS. Some relays authorise by IP and need none |
+
+Startup refuses `smtp` without `SMTP_HOST` or `MAIL_FROM_ADDRESS`, and any rule above broken; messages name the setting, never its value, so the password can't reach a log. The startup log line names the host, port, TLS mode and sender, never the credentials.
+
+- **Certificates are always verified** against the system's roots, TLS 1.2 at least.
+- **Headers:** From (`MAIL_FROM_NAME <MAIL_FROM_ADDRESS>`), To, the fixed Subject, Date, a random Message-ID on the sender's domain, and `Auto-Submitted: auto-generated` (RFC 3834, so out-of-office replies don't answer). No `User-Agent`. The body is `multipart/alternative`: plain text, then HTML.
+- **A failure** (an unreachable server, a refused login, a 4xx or 5xx reply) returns an error, so the event worker retries: 1 s, 10 s, 1 min, 10 min, 1 h, then failed ([events.md](events.md#delivery-eventsworker)). A permanent refusal is retried too. The error goes into `event_deliveries.last_error`; an SMTP reply may name the recipient, never the password.
+- **A duplicate is harmless:** if the server accepted a message and the process stopped before the delivery was marked done, the listener runs again and sends a new link, which replaces the first.
+- **On success** the log says `mail sent` with the template and Message-ID: never the recipient or the body.
+
+### Reading mail locally
+
+`make db` starts Mailpit with the database (`compose.yaml`, `axllent/mailpit`, pinned). Every email the development server, the Docker `app` container or the e2e tests send lands at **`http://localhost:8025`**, rendered, with its plain text and headers. SMTP is on `127.0.0.1:1025`; both ports listen on localhost only, since the inbox holds working links. It keeps the newest 5000 messages. The e2e tests read it through its API (`/api/v1/search?query=to:"…"`, [../ui/testing.md](../ui/testing.md)).
+
+With `MAIL_DRIVER=log`: `tail -n 40 tmp/mail.log`. To see an email rendered, save its HTML to a `.html` file and open it.
+
+Mailtrap's online sandbox, or any provider, works with the same driver: only the SMTP settings change ([../deployment.md](../deployment.md#email)).
