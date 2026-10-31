@@ -17,15 +17,15 @@ func TestCredentialsValidation(t *testing.T) {
 		email, password string
 		want            bool
 	}{{" HELLO@example.com ", "a long safe passphrase", true}, {"Display <a@example.com>", "a long safe passphrase", false}, {"bad", "a long safe passphrase", false}, {"a@example.com", "short", true}, {"a@example.com", "", false}, {"a@example.com", strings.Repeat("x", 129), false}} {
-		in := credentials{Email: tc.email, Password: tc.password}
-		if validCredentials(&in) != tc.want {
+		in := Credentials{Email: tc.email, Password: tc.password}
+		if ValidCredentials(&in) != tc.want {
 			t.Errorf("unexpected validation for %s / %q", tc.email, tc.password)
 		}
 	}
 }
 func TestStrongPassword(t *testing.T) {
 	for password, want := range map[string]bool{"password": false, "elevenchars": false, "twelve chars": true, "ünïcödé pässwörd": true} {
-		if strongPassword(password) != want {
+		if StrongPassword(password) != want {
 			t.Errorf("strongPassword(%q) != %v", password, want)
 		}
 	}
@@ -43,7 +43,7 @@ func TestProjectValidation(t *testing.T) {
 }
 func TestOriginProtection(t *testing.T) {
 	s := &Server{Config: config.Config{Origin: "http://localhost:3000"}}
-	handler := s.security(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	handler := s.Security(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
 	for _, tc := range []struct {
 		origin, content, site string
 		want                  int
@@ -63,8 +63,8 @@ func TestStrictJSON(t *testing.T) {
 	for _, body := range []string{`{"unknown":1}`, `{} {}`, strings.Repeat("x", 20000)} {
 		r := httptest.NewRequest("POST", "/", strings.NewReader(body))
 		w := httptest.NewRecorder()
-		var in credentials
-		if decode(w, r, &in) {
+		var in Credentials
+		if Decode(w, r, &in) {
 			t.Fatal("bad JSON accepted")
 		}
 	}
@@ -109,13 +109,13 @@ func TestFactoriesMatchValidation(t *testing.T) {
 	}
 	for _, i := range factory.WorkspaceInvitations.Make(f, 500) {
 		email := i.Email
-		if !validEmail(&email) || email != i.Email || i.Role == auth.RoleOwner {
+		if !ValidEmail(&email) || email != i.Email || i.Role == auth.RoleOwner {
 			t.Fatalf("fake invitation rejected or changed by validation: %+v", i)
 		}
 	}
 	for _, u := range factory.Users.Make(f, 500) {
-		in := credentials{Name: u.Name, Email: u.Email, Password: factory.DefaultPassword}
-		if !validCredentials(&in) || in.Email != u.Email || utf8.RuneCountInString(u.Name) > 80 {
+		in := Credentials{Name: u.Name, Email: u.Email, Password: factory.DefaultPassword}
+		if !ValidCredentials(&in) || in.Email != u.Email || utf8.RuneCountInString(u.Name) > 80 {
 			t.Fatalf("fake user rejected or changed by validation: %+v", u)
 		}
 	}

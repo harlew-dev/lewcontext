@@ -1,4 +1,4 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
@@ -7,7 +7,9 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/input"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"slices"
@@ -28,17 +30,17 @@ type memberFixture struct {
 
 func newMemberFixture(t *testing.T) memberFixture {
 	t.Helper()
-	s, db := integrationServer(t)
+	s, db := server(t)
 	f := factory.TestFaker(t)
-	owner := signedIn(t, db, f)
-	return memberFixture{h: s.Routes(), db: db, f: f, owner: owner, workspace: ownedWorkspace(t, db, f, owner.UserID)}
+	owner := apitest.SignedIn(t, db, f)
+	return memberFixture{h: router.New(s), db: db, f: f, owner: owner, workspace: apitest.OwnedWorkspace(t, db, f, owner.UserID)}
 }
 
 // join signs a new user in and adds them with role.
 func (m memberFixture) join(t *testing.T, role auth.Role) factory.Session {
 	t.Helper()
-	session := signedIn(t, m.db, m.f)
-	must(factory.MemberOf(context.Background(), m.db, m.f, session.UserID, m.workspace.ID, role))(t)
+	session := apitest.SignedIn(t, m.db, m.f)
+	apitest.Must(factory.MemberOf(context.Background(), m.db, m.f, session.UserID, m.workspace.ID, role))(t)
 	return session
 }
 
@@ -53,7 +55,7 @@ func (m memberFixture) publicID(t *testing.T, session factory.Session) string {
 	return id
 }
 func (m memberFixture) path(rest string) string {
-	return workspacePath(m.workspace.PublicID, rest)
+	return apitest.WorkspacePath(m.workspace.PublicID, rest)
 }
 
 // roleOf is the user's role in the fixture's workspace, or "" when they
@@ -75,11 +77,11 @@ func (m memberFixture) roleOf(t *testing.T, userID int64) auth.Role {
 func listMembers(t *testing.T, m memberFixture, session factory.Session, query string) store.Page[store.Member] {
 	t.Helper()
 	var page store.Page[store.Member]
-	body := call(t, m.h, "GET", m.path("/members?"+query), "", "", session.Cookie(), 200).Body.Bytes()
+	body := apitest.Call(t, m.h, "GET", m.path("/members?"+query), "", "", session.Cookie(), 200).Body.Bytes()
 	if err := json.Unmarshal(body, &page); err != nil {
 		t.Fatal(err)
 	}
-	if numericID.Match(body) {
+	if apitest.NumericID.Match(body) {
 		t.Fatalf("internal ID in %s", body)
 	}
 	return page
@@ -89,8 +91,8 @@ func TestMemberList(t *testing.T) {
 	ctx := context.Background()
 	added := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	add := func(name string, role auth.Role) {
-		user := must(factory.Users.State(func(u *factory.User) { u.Name = name }).CreateOne(ctx, m.db, m.f))(t)
-		must(factory.WorkspaceUsers.State(func(w *factory.WorkspaceUser) {
+		user := apitest.Must(factory.Users.State(func(u *factory.User) { u.Name = name }).CreateOne(ctx, m.db, m.f))(t)
+		apitest.Must(factory.WorkspaceUsers.State(func(w *factory.WorkspaceUser) {
 			w.UserID, w.WorkspaceID, w.Role, w.CreatedAt = user.ID, m.workspace.ID, role, added
 		}).CreateOne(ctx, m.db, m.f))(t)
 	}
@@ -100,7 +102,7 @@ func TestMemberList(t *testing.T) {
 	add("Zoe 100% Admin", auth.RoleAdmin)
 	add("Ann_Owner", auth.RoleOwner)
 	// Someone in another workspace never appears.
-	ownedWorkspace(t, m.db, m.f, signedIn(t, m.db, m.f).UserID)
+	apitest.OwnedWorkspace(t, m.db, m.f, apitest.SignedIn(t, m.db, m.f).UserID)
 
 	page := listMembers(t, m, m.owner, "")
 	var names []string
@@ -152,7 +154,7 @@ func TestMemberList(t *testing.T) {
 		t.Fatal("admin sees a different list")
 	}
 	for _, query := range []string{"page=0", "sort=name", "q=" + strings.Repeat("x", 101), "q=a%00b"} {
-		call(t, m.h, "GET", m.path("/members?"+query), "", "", m.owner.Cookie(), 400)
+		apitest.Call(t, m.h, "GET", m.path("/members?"+query), "", "", m.owner.Cookie(), 400)
 	}
 }
 func TestChangeMemberRole(t *testing.T) {
@@ -160,7 +162,7 @@ func TestChangeMemberRole(t *testing.T) {
 	admin, member, viewer := m.join(t, auth.RoleAdmin), m.join(t, auth.RoleMember), m.join(t, auth.RoleViewer)
 	change := func(actor, target factory.Session, body string, want int) *store.Member {
 		t.Helper()
-		res := call(t, m.h, "PATCH", m.path("/members/"+m.publicID(t, target)), body, actor.CSRFToken, actor.Cookie(), want)
+		res := apitest.Call(t, m.h, "PATCH", m.path("/members/"+m.publicID(t, target)), body, actor.CSRFToken, actor.Cookie(), want)
 		var got store.Member
 		_ = json.Unmarshal(res.Body.Bytes(), &got)
 		return &got
@@ -186,13 +188,13 @@ func TestChangeMemberRole(t *testing.T) {
 	})
 	t.Run("the role change is recorded once, and not when unchanged", func(t *testing.T) {
 		change(m.owner, viewer, `{"role":"viewer"}`, 200)
-		if len(eventsNamed(t, m.db, "workspace.member.updated")) != 2 {
+		if len(apitest.EventsNamed(t, m.db, "workspace.member.updated")) != 2 {
 			t.Fatal("an unchanged role was recorded")
 		}
 		change(m.owner, viewer, `{"role":"admin"}`, 200)
-		found := eventsNamed(t, m.db, "workspace.member.updated")
+		found := apitest.EventsNamed(t, m.db, "workspace.member.updated")
 		e := found[len(found)-1]
-		if !is(e.ActorID, m.owner.UserID) || !is(e.UserID, viewer.UserID) || !is(e.WorkspaceID, m.workspace.ID) ||
+		if !apitest.Is(e.ActorID, m.owner.UserID) || !apitest.Is(e.UserID, viewer.UserID) || !apitest.Is(e.WorkspaceID, m.workspace.ID) ||
 			e.Payload["user"] != m.publicID(t, viewer) || e.Payload["workspace"] != m.workspace.PublicID ||
 			!strings.Contains(e.Raw, `"changes": {"role": {"to": "admin", "from": "viewer"}}`) {
 			t.Fatalf("event: %s", e.Raw)
@@ -214,11 +216,11 @@ func TestChangeMemberRole(t *testing.T) {
 			change(m.owner, viewer, body, 422)
 		}
 		change(m.owner, viewer, `{"role":"member","name":"x"}`, 400)
-		elsewhere := signedIn(t, m.db, m.f)
-		ownedWorkspace(t, m.db, m.f, elsewhere.UserID)
+		elsewhere := apitest.SignedIn(t, m.db, m.f)
+		apitest.OwnedWorkspace(t, m.db, m.f, elsewhere.UserID)
 		change(m.owner, elsewhere, `{"role":"member"}`, 404)
 		for _, id := range []string{"1", "usr_short", m.workspace.PublicID, "usr_00000000000000"} {
-			call(t, m.h, "PATCH", m.path("/members/"+id), `{"role":"member"}`, m.owner.CSRFToken, m.owner.Cookie(), 404)
+			apitest.Call(t, m.h, "PATCH", m.path("/members/"+id), `{"role":"member"}`, m.owner.CSRFToken, m.owner.Cookie(), 404)
 		}
 	})
 }
@@ -234,7 +236,7 @@ func TestOwnersDemotingEachOther(t *testing.T) {
 		for i, pair := range [][2]factory.Session{{m.owner, other}, {other, m.owner}} {
 			actor, target := pair[0], pair[1]
 			wg.Go(func() {
-				codes[i] = send(m.h, "PATCH", m.path("/members/"+ids[target.UserID]), `{"role":"member"}`, actor.CSRFToken, actor.Cookie()).Code
+				codes[i] = apitest.Send(m.h, "PATCH", m.path("/members/"+ids[target.UserID]), `{"role":"member"}`, actor.CSRFToken, actor.Cookie()).Code
 			})
 		}
 		wg.Wait()
@@ -250,9 +252,9 @@ func TestOwnersDemotingEachOther(t *testing.T) {
 		}
 		// Start the next round from the original owner.
 		if m.roleOf(t, m.owner.UserID) != auth.RoleOwner {
-			call(t, m.h, "PATCH", m.path("/members/"+m.publicID(t, m.owner)), `{"role":"owner"}`, other.CSRFToken, other.Cookie(), 200)
+			apitest.Call(t, m.h, "PATCH", m.path("/members/"+m.publicID(t, m.owner)), `{"role":"owner"}`, other.CSRFToken, other.Cookie(), 200)
 		}
-		call(t, m.h, "DELETE", m.path("/members/"+m.publicID(t, other)), "", m.owner.CSRFToken, m.owner.Cookie(), 204)
+		apitest.Call(t, m.h, "DELETE", m.path("/members/"+m.publicID(t, other)), "", m.owner.CSRFToken, m.owner.Cookie(), 204)
 	}
 }
 func TestRemoveMember(t *testing.T) {
@@ -260,9 +262,9 @@ func TestRemoveMember(t *testing.T) {
 	admin, member := m.join(t, auth.RoleAdmin), m.join(t, auth.RoleMember)
 	remove := func(actor, target factory.Session, want int) {
 		t.Helper()
-		call(t, m.h, "DELETE", m.path("/members/"+m.publicID(t, target)), "", actor.CSRFToken, actor.Cookie(), want)
+		apitest.Call(t, m.h, "DELETE", m.path("/members/"+m.publicID(t, target)), "", actor.CSRFToken, actor.Cookie(), want)
 	}
-	call(t, m.h, "GET", m.path(""), "", "", member.Cookie(), 200)
+	apitest.Call(t, m.h, "GET", m.path(""), "", "", member.Cookie(), 200)
 	remove(admin, m.owner, 403)
 	remove(admin, m.join(t, auth.RoleAdmin), 403)
 	remove(m.owner, m.owner, 422)
@@ -272,12 +274,12 @@ func TestRemoveMember(t *testing.T) {
 	if m.roleOf(t, member.UserID) != "" {
 		t.Fatal("still a member")
 	}
-	call(t, m.h, "GET", m.path(""), "", "", member.Cookie(), 404)
-	call(t, m.h, "GET", m.path("/projects"), "", "", member.Cookie(), 404)
-	call(t, m.h, "GET", "/api/auth/me", "", "", member.Cookie(), 200)
+	apitest.Call(t, m.h, "GET", m.path(""), "", "", member.Cookie(), 404)
+	apitest.Call(t, m.h, "GET", m.path("/projects"), "", "", member.Cookie(), 404)
+	apitest.Call(t, m.h, "GET", "/api/auth/me", "", "", member.Cookie(), 200)
 	remove(admin, member, 404)
-	e := onlyEvent(t, m.db, "workspace.member.removed")
-	if !is(e.ActorID, admin.UserID) || !is(e.UserID, member.UserID) || !is(e.WorkspaceID, m.workspace.ID) ||
+	e := apitest.OnlyEvent(t, m.db, "workspace.member.removed")
+	if !apitest.Is(e.ActorID, admin.UserID) || !apitest.Is(e.UserID, member.UserID) || !apitest.Is(e.WorkspaceID, m.workspace.ID) ||
 		e.Payload["user"] != m.publicID(t, member) || e.Payload["role"] != "member" || e.Payload["workspace"] != m.workspace.PublicID {
 		t.Fatalf("event: %s", e.Raw)
 	}
@@ -286,25 +288,25 @@ func TestRemoveMember(t *testing.T) {
 	second := m.join(t, auth.RoleOwner)
 	remove(m.owner, second, 204)
 	// Someone in another workspace is not found here.
-	elsewhere := signedIn(t, m.db, m.f)
-	ownedWorkspace(t, m.db, m.f, elsewhere.UserID)
+	elsewhere := apitest.SignedIn(t, m.db, m.f)
+	apitest.OwnedWorkspace(t, m.db, m.f, elsewhere.UserID)
 	remove(m.owner, elsewhere, 404)
-	checkPayloadIDs(t, m.db)
+	apitest.CheckPayloadIDs(t, m.db)
 }
 func TestLeaveWorkspace(t *testing.T) {
 	m := newMemberFixture(t)
 	viewer := m.join(t, auth.RoleViewer)
 	leave := func(session factory.Session, want int) {
 		t.Helper()
-		call(t, m.h, "DELETE", m.path("/membership"), "", session.CSRFToken, session.Cookie(), want)
+		apitest.Call(t, m.h, "DELETE", m.path("/membership"), "", session.CSRFToken, session.Cookie(), want)
 	}
 	leave(viewer, 204)
-	call(t, m.h, "GET", m.path(""), "", "", viewer.Cookie(), 404)
+	apitest.Call(t, m.h, "GET", m.path(""), "", "", viewer.Cookie(), 404)
 	if listWorkspaces(t, m.h, viewer.Cookie(), "").Pages.Items != 0 {
 		t.Fatal("left workspace still listed")
 	}
-	e := onlyEvent(t, m.db, "workspace.member.left")
-	if !is(e.ActorID, viewer.UserID) || !is(e.UserID, viewer.UserID) || !is(e.WorkspaceID, m.workspace.ID) ||
+	e := apitest.OnlyEvent(t, m.db, "workspace.member.left")
+	if !apitest.Is(e.ActorID, viewer.UserID) || !apitest.Is(e.UserID, viewer.UserID) || !apitest.Is(e.WorkspaceID, m.workspace.ID) ||
 		e.Payload["role"] != "viewer" || e.Payload["workspace"] != m.workspace.PublicID {
 		t.Fatalf("event: %s", e.Raw)
 	}
@@ -314,8 +316,8 @@ func TestLeaveWorkspace(t *testing.T) {
 		t.Helper()
 		var listed struct{ Data []workspaceAccess }
 		var one workspaceAccess
-		_ = json.Unmarshal(call(t, m.h, "GET", m.path(""), "", "", session.Cookie(), 200).Body.Bytes(), &one)
-		_ = json.Unmarshal(call(t, m.h, "GET", "/api/workspaces", "", "", session.Cookie(), 200).Body.Bytes(), &listed)
+		_ = json.Unmarshal(apitest.Call(t, m.h, "GET", m.path(""), "", "", session.Cookie(), 200).Body.Bytes(), &one)
+		_ = json.Unmarshal(apitest.Call(t, m.h, "GET", "/api/workspaces", "", "", session.Cookie(), 200).Body.Bytes(), &listed)
 		if len(listed.Data) != 1 || listed.Data[0].CanLeave != one.CanLeave {
 			t.Fatalf("list and show disagree: %+v, %+v", listed.Data, one)
 		}

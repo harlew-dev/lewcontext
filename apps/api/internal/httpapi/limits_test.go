@@ -15,7 +15,7 @@ func TestRateLimitNames(t *testing.T) {
 	seen := map[string]bool{}
 	// The one limit counted in a listener, not a request.
 	exists := mail.AccountExistsPerAccount
-	for _, l := range append(rateLimits, ratelimit.Limit{Name: exists.Name, Max: exists.Limit, Window: exists.Window}) {
+	for _, l := range append(RateLimits, ratelimit.Limit{Name: exists.Name, Max: exists.Limit, Window: exists.Window}) {
 		if !valid.MatchString(l.Name) {
 			t.Errorf("%q isn't <feature>:<counted by>", l.Name)
 		}

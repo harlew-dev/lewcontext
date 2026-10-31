@@ -1,9 +1,12 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"slices"
@@ -19,18 +22,18 @@ type mailFixture struct {
 
 // seedMail queues deliveries in every state, and the sent events behind the
 // volume, through factories.
-func seedMail(t *testing.T, s *Server) mailFixture {
+func seedMail(t *testing.T, s *httpapi.Server) mailFixture {
 	t.Helper()
 	ctx := context.Background()
-	db := s.Store.DB
+	db := s.Repo.DB
 	f := factory.TestFaker(t)
 	now := time.Now().Truncate(time.Microsecond)
 	event := func(name string, payload map[string]any, ago time.Duration) factory.Event {
 		e := factory.Events.State(factory.EventOf(name, payload)).State(func(e *factory.Event) { e.CreatedAt = now.Add(-ago) })
-		return must(e.CreateOne(ctx, db, f))(t)
+		return apitest.Must(e.CreateOne(ctx, db, f))(t)
 	}
 	deliver := func(e factory.Event, listener string, state func(*factory.EventDelivery)) {
-		must(factory.DeliveryOf(e.ID, listener).State(state).CreateOne(ctx, db, f))(t)
+		apitest.Must(factory.DeliveryOf(e.ID, listener).State(state).CreateOne(ctx, db, f))(t)
 	}
 	reset := "auth.password_reset.requested"
 	var m mailFixture
@@ -69,14 +72,24 @@ func TestAdminMail(t *testing.T) {
 	s, db, _, _ := mailServer(t)
 	s.Config.Mail = config.Mail{MailDriver: config.MailSMTP, MailFromAddress: "no-reply@example.test", MailFromName: "lewcontext",
 		SMTP: config.SMTP{Host: "smtp.example.test", Port: 587, TLS: config.SMTPStartTLS, Username: "relay-user", Password: "hunter2-secret"}}
-	h := s.Routes()
+	h := router.New(s)
 	admin, session := adminSignedIn(t, db, factory.TestFaker(t))
 	cookie := session.Cookie()
 	m := seedMail(t, s)
 
+	// driver is the summary's mail driver, which never holds the SMTP
+	// username or password.
+	type driver struct {
+		Driver      string `json:"driver"`
+		Host        string `json:"host"`
+		Port        int    `json:"port"`
+		TLS         string `json:"tls"`
+		FromAddress string `json:"fromAddress"`
+		FromName    string `json:"fromName"`
+	}
 	type summary struct {
-		Window string          `json:"window"`
-		Driver adminMailDriver `json:"driver"`
+		Window string `json:"window"`
+		Driver driver `json:"driver"`
 		store.AdminMailSummary
 	}
 	w := adminCall(t, h, "GET", "/api/admin/mail", "", "", 200, cookie)
@@ -128,7 +141,7 @@ func TestAdminMail(t *testing.T) {
 	for _, query := range []string{"?window=1h", "?window=24h&window=7d", "?status=failed"} {
 		adminCall(t, h, "GET", "/api/admin/mail"+query, "", "", 400, cookie)
 	}
-	viewed := eventsNamed(t, db, "admin.mail.viewed")
+	viewed := apitest.EventsNamed(t, db, "admin.mail.viewed")
 	if len(viewed) != 2 || viewed[0].Payload["window"] != "24h" || viewed[1].Payload["window"] != "7d" || viewed[0].Payload["admin"] != admin.User.PublicID {
 		t.Fatalf("admin.mail.viewed: %+v", viewed)
 	}
@@ -151,7 +164,7 @@ func deliveryKeys(page store.AdminDeliveryPage) []string {
 
 func TestAdminDeliveries(t *testing.T) {
 	s, db, _, _ := mailServer(t)
-	h := s.Routes()
+	h := router.New(s)
 	_, session := adminSignedIn(t, db, factory.TestFaker(t))
 	cookie := session.Cookie()
 	m := seedMail(t, s)
@@ -203,7 +216,7 @@ func TestAdminDeliveries(t *testing.T) {
 	} {
 		adminCall(t, h, "GET", "/api/admin/deliveries"+query, "", "", 400, cookie)
 	}
-	listed := eventsNamed(t, db, "admin.delivery.listed")
+	listed := apitest.EventsNamed(t, db, "admin.delivery.listed")
 	var failedFilter bool
 	for _, e := range listed {
 		if filters, _ := e.Payload["filters"].(map[string]any); filters["status"] == "failed" && filters["listener"] == nil {

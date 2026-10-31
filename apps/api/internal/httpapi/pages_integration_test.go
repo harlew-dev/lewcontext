@@ -1,8 +1,10 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/web"
 	"net/http"
 	"net/http/httptest"
@@ -35,12 +37,12 @@ func get(h http.Handler, method, target string, cookie *http.Cookie) *httptest.R
 }
 
 func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
-	server, db := integrationServer(t)
-	server.Pages = testPages(t)
-	h := server.Routes()
+	s, db := server(t)
+	s.Pages = testPages(t)
+	h := router.New(s)
 	f := factory.TestFaker(t)
 	ctx := context.Background()
-	session := signedIn(t, db, f)
+	session := apitest.SignedIn(t, db, f)
 
 	// A valid session gets the app shell; the browser renders the page.
 	for _, target := range []string{"/app", "/app/settings", "/app/wsp_2yEHYLwiwPVhLW/projects?page=2"} {
@@ -54,7 +56,7 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 	// and return to the page afterwards. No HTML is sent.
 	visitors := map[string]*http.Cookie{"no cookie": nil, "unknown token": factory.Sessions.Make(f, 1)[0].Cookie()}
 	for name, state := range map[string]func(*factory.Session){"idle": factory.Idle, "expired": factory.Expired} {
-		stale := must(factory.Sessions.State(func(s *factory.Session) { s.UserID = session.UserID }).State(state).CreateOne(ctx, db, f))(t)
+		stale := apitest.Must(factory.Sessions.State(func(s *factory.Session) { s.UserID = session.UserID }).State(state).CreateOne(ctx, db, f))(t)
 		visitors[name] = stale.Cookie()
 	}
 	for name, cookie := range visitors {
@@ -77,10 +79,10 @@ func TestSignedInPagesNeedASessionBeforeAnyHTML(t *testing.T) {
 }
 
 func TestAPIAndPagesStayApart(t *testing.T) {
-	server, db := integrationServer(t)
-	server.Pages = testPages(t)
-	h := server.Routes()
-	session := signedIn(t, db, factory.TestFaker(t))
+	s, db := server(t)
+	s.Pages = testPages(t)
+	h := router.New(s)
+	session := apitest.SignedIn(t, db, factory.TestFaker(t))
 
 	// Unknown API paths are API 404s, never the app shell.
 	for _, target := range []string{"/api/nowhere", "/api/workspaces/wsp_2yEHYLwiwPVhLW/nothing"} {
@@ -97,8 +99,8 @@ func TestAPIAndPagesStayApart(t *testing.T) {
 		t.Errorf("HEAD /app/settings = %d", w.Code)
 	}
 	// Without a web build the API runs alone.
-	server.Pages = nil
-	if w := get(server.Routes(), "GET", "/app/settings", session.Cookie()); w.Code != 404 {
+	s.Pages = nil
+	if w := get(router.New(s), "GET", "/app/settings", session.Cookie()); w.Code != 404 {
 		t.Errorf("API-only GET /app/settings = %d", w.Code)
 	}
 }

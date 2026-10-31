@@ -22,15 +22,15 @@ func validProfile(in *profileInput) bool {
 	n := utf8.RuneCountInString(in.Name)
 	return n >= 1 && n <= 80 && !strings.ContainsFunc(in.Name, unicode.IsControl)
 }
-func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
-	in, ok := decodeValid(w, r, validProfile, invalidProfile)
+func (h Me) Update(w http.ResponseWriter, r *http.Request) {
+	in, ok := DecodeValid(w, r, validProfile, invalidProfile)
 	if !ok {
 		return
 	}
-	user, err := s.Store.UpdateProfile(r.Context(), current(r).User, in.Name)
+	user, err := h.Repo.UpdateProfile(r.Context(), Session(r).User, in.Name)
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, user)
+	JSON(w, 200, user)
 }

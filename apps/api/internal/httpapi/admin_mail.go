@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// adminMailHandlers are the admin dashboard's Mail summary,
+// Mail is the admin dashboard's Mail summary,
 // /api/admin/mail, a singleton; the deliveries list is
-// adminDeliveryHandlers'. Every read is recorded (admin.mail.viewed,
+// Deliveries'. Every read is recorded (admin.mail.viewed,
 // admin.delivery.listed).
-type adminMailHandlers struct{ *Server }
+type Mail struct{ *Server }
 
-// adminDeliveryHandlers are the admin dashboard's /api/admin/deliveries.
-type adminDeliveryHandlers struct{ *Server }
+// Deliveries are the admin dashboard's /api/admin/deliveries.
+type Deliveries struct{ *Server }
 
 // mailWindows are the summary's windows, by their query value.
 var mailWindows = map[string]time.Duration{
@@ -48,7 +48,7 @@ type adminMail struct {
 	store.AdminMailSummary
 }
 
-func (h adminMailHandlers) driver() adminMailDriver {
+func (h Mail) driver() adminMailDriver {
 	c := h.Config.Mail
 	d := adminMailDriver{Driver: c.MailDriver}
 	if c.MailDriver == config.MailSMTP {
@@ -60,10 +60,10 @@ func (h adminMailHandlers) driver() adminMailDriver {
 	return d
 }
 
-func (h adminMailHandlers) show(w http.ResponseWriter, r *http.Request) {
+func (h Mail) Show(w http.ResponseWriter, r *http.Request) {
 	params, ok := input.Query(r, "window")
 	if !ok {
-		fail(w, 400, "Invalid query parameters.")
+		Fail(w, 400, "Invalid query parameters.")
 		return
 	}
 	window := params["window"]
@@ -72,20 +72,20 @@ func (h adminMailHandlers) show(w http.ResponseWriter, r *http.Request) {
 	}
 	length, ok := mailWindows[window]
 	if !ok {
-		fail(w, 400, "Check the window.")
+		Fail(w, 400, "Check the window.")
 		return
 	}
-	summary, err := h.Store.FindAdminMailSummary(r.Context(), time.Now().Add(-length), h.listeners())
+	summary, err := h.Repo.FindAdminMailSummary(r.Context(), time.Now().Add(-length), h.listeners())
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	e := events.AdminMailViewed{Admin: currentAdmin(r).User.PublicID, Window: window}
-	if err := h.Store.Record(r.Context(), e, store.EventScope{}); err != nil {
-		internalError(w, err)
+	e := events.AdminMailViewed{Admin: Admin(r).User.PublicID, Window: window}
+	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, adminMail{Window: window, Driver: h.driver(), AdminMailSummary: summary})
+	JSON(w, 200, adminMail{Window: window, Driver: h.driver(), AdminMailSummary: summary})
 }
 
 // deliveryCursor reads a deliveries cursor, evt_…:listener.
@@ -95,7 +95,7 @@ func deliveryCursor(raw string) (event, listener string, ok bool) {
 }
 
 // adminDeliveryQuery parses the deliveries list's query string.
-func (h adminDeliveryHandlers) query(r *http.Request) (store.AdminDeliveryFilter, int, events.DeliveryFilters, bool) {
+func (h Deliveries) query(r *http.Request) (store.AdminDeliveryFilter, int, events.DeliveryFilters, bool) {
 	var f store.AdminDeliveryFilter
 	params, ok := input.Query(r, "status", "listener", "from", "to", "before", "perPage")
 	if !ok {
@@ -118,25 +118,25 @@ func (h adminDeliveryHandlers) query(r *http.Request) (store.AdminDeliveryFilter
 	return f, perPage, used, valid
 }
 
-func (h adminDeliveryHandlers) index(w http.ResponseWriter, r *http.Request) {
+func (h Deliveries) Index(w http.ResponseWriter, r *http.Request) {
 	f, perPage, used, ok := h.query(r)
 	if !ok {
-		fail(w, 400, "Check the filters.")
+		Fail(w, 400, "Check the filters.")
 		return
 	}
-	page, err := h.Store.IndexAdminDeliveries(r.Context(), f, perPage)
+	page, err := h.Repo.IndexAdminDeliveries(r.Context(), f, perPage)
 	if errors.Is(err, store.ErrNoCursor) {
-		fail(w, 400, "That page is no longer available. Start from the newest deliveries.")
+		Fail(w, 400, "That page is no longer available. Start from the newest deliveries.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	e := events.AdminDeliveryListed{Admin: currentAdmin(r).User.PublicID, Filters: used}
-	if err := h.Store.Record(r.Context(), e, store.EventScope{}); err != nil {
-		internalError(w, err)
+	e := events.AdminDeliveryListed{Admin: Admin(r).User.PublicID, Filters: used}
+	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, page)
+	JSON(w, 200, page)
 }

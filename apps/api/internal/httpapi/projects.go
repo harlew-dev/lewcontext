@@ -30,100 +30,100 @@ func projectID(r *http.Request) (string, bool) {
 	return id, input.PublicID("prj", id)
 }
 
-// projectHandlers are the …/projects routes inside a workspace (routes.go).
-type projectHandlers struct{ *Server }
+// Projects are the …/projects routes inside a workspace (router/routes.go).
+type Projects struct{ *Server }
 
-func (h projectHandlers) index(w http.ResponseWriter, r *http.Request) {
+func (h Projects) Index(w http.ResponseWriter, r *http.Request) {
 	params, ok := input.Query(r, "page", "perPage", "q", "status", "sort")
 	if !ok {
-		fail(w, 400, "Invalid query parameters.")
+		Fail(w, 400, "Invalid query parameters.")
 		return
 	}
 	req, ok := input.Page(params)
 	if !ok {
-		fail(w, 400, "Invalid page.")
+		Fail(w, 400, "Invalid page.")
 		return
 	}
 	filter, ok := input.ProjectFilter(params)
 	if !ok {
-		fail(w, 400, "Check the search, status, and sort.")
+		Fail(w, 400, "Check the search, status, and sort.")
 		return
 	}
-	page, err := h.Store.IndexProjects(r.Context(), currentWorkspace(r).ID, filter, req)
+	page, err := h.Repo.IndexProjects(r.Context(), Workspace(r).ID, filter, req)
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, page)
+	JSON(w, 200, page)
 }
-func (h projectHandlers) show(w http.ResponseWriter, r *http.Request) {
+func (h Projects) Show(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		fail(w, 404, "Project not found.")
+		Fail(w, 404, "Project not found.")
 		return
 	}
-	p, err := h.Store.FindProject(r.Context(), currentWorkspace(r).ID, id)
+	p, err := h.Repo.FindProject(r.Context(), Workspace(r).ID, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		fail(w, 404, "Project not found.")
+		Fail(w, 404, "Project not found.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, p)
+	JSON(w, 200, p)
 }
-func (h projectHandlers) store(w http.ResponseWriter, r *http.Request) {
-	in, ok := decodeValid(w, r, validProject, invalidProject)
+func (h Projects) Store(w http.ResponseWriter, r *http.Request) {
+	in, ok := DecodeValid(w, r, validProject, invalidProject)
 	if !ok {
 		return
 	}
-	p, err := h.Store.CreateProject(r.Context(), currentWorkspace(r), in)
+	p, err := h.Repo.CreateProject(r.Context(), Workspace(r), in)
 	var quota store.QuotaError
 	if errors.As(err, &quota) {
-		fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" projects.")
+		Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" projects.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 201, p)
+	JSON(w, 201, p)
 }
-func (h projectHandlers) update(w http.ResponseWriter, r *http.Request) {
+func (h Projects) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		fail(w, 404, "Project not found.")
+		Fail(w, 404, "Project not found.")
 		return
 	}
-	in, ok := decodeValid(w, r, validProject, invalidProject)
+	in, ok := DecodeValid(w, r, validProject, invalidProject)
 	if !ok {
 		return
 	}
-	p, err := h.Store.UpdateProject(r.Context(), currentWorkspace(r), id, in)
+	p, err := h.Repo.UpdateProject(r.Context(), Workspace(r), id, in)
 	if errors.Is(err, sql.ErrNoRows) {
-		fail(w, 404, "Project not found.")
+		Fail(w, 404, "Project not found.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, p)
+	JSON(w, 200, p)
 }
-func (h projectHandlers) destroy(w http.ResponseWriter, r *http.Request) {
+func (h Projects) Destroy(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
-		fail(w, 404, "Project not found.")
+		Fail(w, 404, "Project not found.")
 		return
 	}
-	err := h.Store.DeleteProject(r.Context(), currentWorkspace(r), id)
+	err := h.Repo.DeleteProject(r.Context(), Workspace(r), id)
 	if errors.Is(err, sql.ErrNoRows) {
-		fail(w, 404, "Project not found.")
+		Fail(w, 404, "Project not found.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
 	w.WriteHeader(204)

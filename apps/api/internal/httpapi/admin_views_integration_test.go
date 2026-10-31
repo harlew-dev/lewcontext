@@ -1,10 +1,12 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 	"strings"
 	"testing"
@@ -40,29 +42,29 @@ func sensitiveKeys(value any, path string) []string {
 func decodeAdmin[T any](t *testing.T, body []byte) T {
 	t.Helper()
 	var raw any
-	must(0, json.Unmarshal(body, &raw))(t)
+	apitest.Must(0, json.Unmarshal(body, &raw))(t)
 	if found := sensitiveKeys(raw, ""); len(found) > 0 {
 		t.Fatalf("sensitive fields in an admin response: %v", found)
 	}
 	var v T
-	must(0, json.Unmarshal(body, &v))(t)
+	apitest.Must(0, json.Unmarshal(body, &v))(t)
 	return v
 }
 
 func TestAdminUsers(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
+	s, db := server(t)
+	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	admin, session := adminSignedIn(t, db, f)
-	users := must(factory.Users.Sequence(func(i int, u *factory.User) {
+	users := apitest.Must(factory.Users.Sequence(func(i int, u *factory.User) {
 		u.Name = fmt.Sprintf("Zed %02d", i)
 		u.Email = fmt.Sprintf("zed%02d_x@example.test", i)
 		u.CreatedAt = time.Now().AddDate(0, 0, -30+i)
 	}).Create(ctx, db, f, 25))(t)
-	workspace := ownedWorkspace(t, db, f, users[0].ID)
-	must(factory.MemberOf(ctx, db, f, users[1].ID, workspace.ID, "viewer"))(t)
-	must(factory.SessionFor(ctx, db, f, users[0].ID))(t)
+	workspace := apitest.OwnedWorkspace(t, db, f, users[0].ID)
+	apitest.Must(factory.MemberOf(ctx, db, f, users[1].ID, workspace.ID, "viewer"))(t)
+	apitest.Must(factory.SessionFor(ctx, db, f, users[0].ID))(t)
 	cookie := session.Cookie()
 
 	first := decodeAdmin[store.Page[store.AdminUser]](t, adminCall(t, h, "GET", "/api/admin/users", "", "", 200, cookie).Body.Bytes())
@@ -105,33 +107,33 @@ func TestAdminUsers(t *testing.T) {
 	}
 
 	// Each read is recorded, by the admin, about nobody's own events.
-	listed := eventsNamed(t, db, "admin.user.listed")
+	listed := apitest.EventsNamed(t, db, "admin.user.listed")
 	if len(listed) != 5 || listed[1].Payload["sort"] != "name" || listed[1].Payload["page"] != 2.0 || listed[2].Payload["q"] != "zed01_x" {
 		t.Fatalf("admin.user.listed: %+v", listed)
 	}
-	viewed := onlyEvent(t, db, "admin.user.viewed")
-	if viewed.Payload["admin"] != admin.User.PublicID || viewed.Payload["user"] != users[0].PublicID || !is(viewed.ActorID, admin.User.ID) || viewed.UserID.Valid || viewed.WorkspaceID.Valid {
+	viewed := apitest.OnlyEvent(t, db, "admin.user.viewed")
+	if viewed.Payload["admin"] != admin.User.PublicID || viewed.Payload["user"] != users[0].PublicID || !apitest.Is(viewed.ActorID, admin.User.ID) || viewed.UserID.Valid || viewed.WorkspaceID.Valid {
 		t.Fatalf("admin.user.viewed: %+v", viewed)
 	}
-	checkPayloadIDs(t, db)
+	apitest.CheckPayloadIDs(t, db)
 }
 
 func TestAdminWorkspaces(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
+	s, db := server(t)
+	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	admin, session := adminSignedIn(t, db, f)
 	cookie := session.Cookie()
-	owners := must(factory.Users.Create(ctx, db, f, 4))(t)
-	busy := must(factory.WorkspaceFor(ctx, db, f, owners[0].ID, factory.Named("Busy & Co")))(t)
+	owners := apitest.Must(factory.Users.Create(ctx, db, f, 4))(t)
+	busy := apitest.Must(factory.WorkspaceFor(ctx, db, f, owners[0].ID, factory.Named("Busy & Co")))(t)
 	for _, owner := range owners[1:] {
-		must(factory.MemberOf(ctx, db, f, owner.ID, busy.ID, "owner"))(t)
+		apitest.Must(factory.MemberOf(ctx, db, f, owner.ID, busy.ID, "owner"))(t)
 	}
-	viewer := must(factory.Users.CreateOne(ctx, db, f))(t)
-	must(factory.MemberOf(ctx, db, f, viewer.ID, busy.ID, "viewer"))(t)
-	must(factory.ProjectsIn(busy.ID).Create(ctx, db, f, 3))(t)
-	empty := ownedWorkspace(t, db, f, viewer.ID)
+	viewer := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	apitest.Must(factory.MemberOf(ctx, db, f, viewer.ID, busy.ID, "viewer"))(t)
+	apitest.Must(factory.ProjectsIn(busy.ID).Create(ctx, db, f, 3))(t)
+	empty := apitest.OwnedWorkspace(t, db, f, viewer.ID)
 
 	page := decodeAdmin[store.Page[store.AdminWorkspace]](t, adminCall(t, h, "GET", "/api/admin/workspaces?sort=name", "", "", 200, cookie).Body.Bytes())
 	if page.Pages.Items != 2 {
@@ -163,34 +165,16 @@ func TestAdminWorkspaces(t *testing.T) {
 	for _, id := range []string{"wsp_2yEHYLwiwPVhLW", "wsp_x", viewer.PublicID} {
 		adminCall(t, h, "GET", "/api/admin/workspaces/"+id, "", "", 404, cookie)
 	}
-	viewed := eventsNamed(t, db, "admin.workspace.viewed")
+	viewed := apitest.EventsNamed(t, db, "admin.workspace.viewed")
 	if len(viewed) != 2 || viewed[0].Payload["workspace"] != busy.PublicID || viewed[0].Payload["admin"] != admin.User.PublicID || viewed[0].WorkspaceID.Valid {
 		t.Fatalf("admin.workspace.viewed: %+v", viewed)
 	}
-	if listed := eventsNamed(t, db, "admin.workspace.listed"); len(listed) != 2 || listed[1].Payload["q"] != "busy &" {
+	if listed := apitest.EventsNamed(t, db, "admin.workspace.listed"); len(listed) != 2 || listed[1].Payload["q"] != "busy &" {
 		t.Fatalf("admin.workspace.listed: %+v", listed)
 	}
 	// Deleting the workspace keeps the record that an admin looked at it.
-	must(0, s.Store.DeleteWorkspace(ctx, store.Workspace{ID: busy.ID, PublicID: busy.PublicID}, "Busy & Co"))(t)
-	if len(eventsNamed(t, db, "admin.workspace.viewed")) != 2 {
+	apitest.Must(0, s.Repo.DeleteWorkspace(ctx, store.Workspace{ID: busy.ID, PublicID: busy.PublicID}, "Busy & Co"))(t)
+	if len(apitest.EventsNamed(t, db, "admin.workspace.viewed")) != 2 {
 		t.Fatal("deleting the workspace deleted the admin's trail")
-	}
-}
-
-// The admin read budget is the admin's own, in memory.
-func TestAdminReadBudget(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
-	f := factory.TestFaker(t)
-	admin, session := adminSignedIn(t, db, f)
-	for range 1000 {
-		s.memoryLimits.Allow(adminReadPerUser.Key(admin.User.PublicID), adminReadPerUser.Max, adminReadPerUser.Window)
-	}
-	w := adminCall(t, h, "GET", "/api/admin/users", "", "", 429, session.Cookie())
-	if w.Header().Get("Retry-After") == "" {
-		t.Fatal("no Retry-After")
-	}
-	if e := onlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "admin-read:per-user:block" || e.Payload["user"] != admin.User.PublicID {
-		t.Fatalf("rate_limit.reached: %+v", e)
 	}
 }

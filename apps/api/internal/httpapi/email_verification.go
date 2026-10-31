@@ -18,50 +18,50 @@ const (
 	emailCodeTooMany = "Too many wrong codes. Send a new one."
 )
 
-type emailVerificationHandlers struct{ *Server }
+type EmailVerification struct{ *Server }
 
-// store asks for a code. POST /api/auth/email-verification.
-func (h emailVerificationHandlers) store(w http.ResponseWriter, r *http.Request) {
-	user := current(r).User
+// Store asks for a code. POST /api/auth/email-verification.
+func (h EmailVerification) Store(w http.ResponseWriter, r *http.Request) {
+	user := Session(r).User
 	if user.EmailVerifiedAt != nil {
-		fail(w, 409, alreadyVerified)
+		Fail(w, 409, alreadyVerified)
 		return
 	}
-	if !h.allow(w, r, emailVerificationPerEmail, emailVerificationPerEmail.Key(user.Email)) ||
-		!h.allow(w, r, emailVerificationGlobal, emailVerificationGlobal.Everyone()) {
+	if !h.Allow(w, r, EmailVerificationPerEmail, EmailVerificationPerEmail.Key(user.Email)) ||
+		!h.Allow(w, r, EmailVerificationGlobal, EmailVerificationGlobal.Everyone()) {
 		return
 	}
-	if err := h.Store.Record(r.Context(), events.EmailVerificationRequested{User: user.PublicID}, store.EventScope{UserID: user.ID}); err != nil {
-		internalError(w, err)
+	if err := h.Repo.Record(r.Context(), events.EmailVerificationRequested{User: user.PublicID}, store.EventScope{UserID: user.ID}); err != nil {
+		InternalError(w, err)
 		return
 	}
 	w.WriteHeader(202)
 }
 
-// update verifies the email with the code. PATCH
+// Update verifies the email with the code. PATCH
 // /api/auth/email-verification.
-func (h emailVerificationHandlers) update(w http.ResponseWriter, r *http.Request) {
-	var in mfaCode
-	if !decode(w, r, &in) {
+func (h EmailVerification) Update(w http.ResponseWriter, r *http.Request) {
+	var in MFACode
+	if !Decode(w, r, &in) {
 		return
 	}
-	user := current(r).User
-	if !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.Key(user.Email)) {
+	user := Session(r).User
+	if !h.Allow(w, r, EmailCodePerEmail, EmailCodePerEmail.Key(user.Email)) {
 		return
 	}
-	result, err := h.Store.VerifyEmail(r.Context(), user.ID, h.emailCodeDigest(in.Code))
+	result, err := h.Repo.VerifyEmail(r.Context(), user.ID, h.EmailCodeDigest(in.Code))
 	switch {
 	case errors.Is(err, store.ErrAlreadyVerified):
-		fail(w, 409, alreadyVerified)
+		Fail(w, 409, alreadyVerified)
 	case errors.Is(err, store.ErrNoEmailVerification):
-		fail(w, 410, emailCodeEnded)
+		Fail(w, 410, emailCodeEnded)
 	case err != nil:
-		internalError(w, err)
+		InternalError(w, err)
 	case result.Ended:
-		fail(w, 410, emailCodeTooMany)
+		Fail(w, 410, emailCodeTooMany)
 	case !result.OK:
-		failField(w, 422, "code", wrongEmailCode)
+		FailField(w, 422, "code", wrongEmailCode)
 	default:
-		jsonResponse(w, 200, map[string]any{"user": result.User})
+		JSON(w, 200, map[string]any{"user": result.User})
 	}
 }

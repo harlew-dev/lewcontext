@@ -20,33 +20,33 @@ type sessionKey struct{}
 type workspaceKey struct{}
 
 // unverifiedKey marks a route an unverified account may use while
-// EMAIL_VERIFICATION_EXISTING=required (allowUnverified).
+// EMAIL_VERIFICATION_EXISTING=required (AllowUnverified).
 type unverifiedKey struct{}
 
-func current(r *http.Request) store.Session { return r.Context().Value(sessionKey{}).(store.Session) }
+func Session(r *http.Request) store.Session { return r.Context().Value(sessionKey{}).(store.Session) }
 
-// optionalSession is the request's session on routes that may run without
+// OptionalSession is the request's session on routes that may run without
 // one (the rate limiters).
-func optionalSession(r *http.Request) (store.Session, bool) {
+func OptionalSession(r *http.Request) (store.Session, bool) {
 	session, ok := r.Context().Value(sessionKey{}).(store.Session)
 	return session, ok
 }
 
-// currentWorkspace is the workspace in the path, set by requireWorkspace.
-func currentWorkspace(r *http.Request) store.Workspace {
+// Workspace is the workspace in the path, set by RequireWorkspace.
+func Workspace(r *http.Request) store.Workspace {
 	return r.Context().Value(workspaceKey{}).(store.Workspace)
 }
 
-// optionalWorkspace is the workspace in the path on routes that may run
+// OptionalWorkspace is the workspace in the path on routes that may run
 // without one (the rate limiters).
-func optionalWorkspace(r *http.Request) (store.Workspace, bool) {
+func OptionalWorkspace(r *http.Request) (store.Workspace, bool) {
 	workspace, ok := r.Context().Value(workspaceKey{}).(store.Workspace)
 	return workspace, ok
 }
 func unsafeMethod(method string) bool {
 	return method != "GET" && method != "HEAD" && method != "OPTIONS"
 }
-func (s *Server) security(next http.Handler) http.Handler {
+func (s *Server) Security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -54,14 +54,14 @@ func (s *Server) security(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		if unsafeMethod(r.Method) {
 			if r.Header.Get("Origin") != s.Config.Origin || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-				fail(w, 403, "Request origin is not allowed.")
+				Fail(w, 403, "Request origin is not allowed.")
 				return
 			}
 			// A DELETE may have no body; one that has a body sends JSON too.
 			if r.Method != "DELETE" || r.ContentLength != 0 {
 				media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || media != "application/json" {
-					fail(w, 415, "Content-Type must be application/json.")
+					Fail(w, 415, "Content-Type must be application/json.")
 					return
 				}
 			}
@@ -84,7 +84,7 @@ func (s *Server) session(r *http.Request) (store.Session, error) {
 	if !ok {
 		return store.Session{}, errNoSession
 	}
-	return s.Store.FindSession(r.Context(), auth.Digest(token))
+	return s.Repo.FindSession(r.Context(), auth.Digest(token))
 }
 
 // sessionToken is the request's session cookie, if it has a well-formed one
@@ -97,9 +97,9 @@ func (s *Server) sessionToken(r *http.Request) (string, bool) {
 	return cookie.Value, true
 }
 
-// sessionDigest is what the sessions table stores for the request's session
+// SessionDigest is what the sessions table stores for the request's session
 // cookie, or "" without one.
-func (s *Server) sessionDigest(r *http.Request) string {
+func (s *Server) SessionDigest(r *http.Request) string {
 	token, ok := s.sessionToken(r)
 	if !ok {
 		return ""
@@ -107,40 +107,40 @@ func (s *Server) sessionDigest(r *http.Request) string {
 	return auth.Digest(token)
 }
 
-// requireSession lets through requests with a live session, and a valid CSRF
+// RequireSession lets through requests with a live session, and a valid CSRF
 // token on mutations, then counts each against its user's budget (meter).
-func (s *Server) requireSession(next http.Handler) http.Handler {
+func (s *Server) RequireSession(next http.Handler) http.Handler {
 	return s.signedIn(next, true)
 }
 
-// requireSessionUnmetered is requireSession without the budget, for the
+// RequireSessionUnmetered is RequireSession without the budget, for the
 // recovery routes: signing out, revoking other sessions and changing the
 // password. Someone holding a stolen session then can't use up the owner's
 // budget to stop them. They only delete rows, or keep sign-in's limits.
-func (s *Server) requireSessionUnmetered(next http.Handler) http.Handler {
+func (s *Server) RequireSessionUnmetered(next http.Handler) http.Handler {
 	return s.signedIn(next, false)
 }
 func (s *Server) signedIn(next http.Handler, metered bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, err := s.session(r)
 		if errors.Is(err, errNoSession) {
-			fail(w, 401, "Please sign in to continue.")
+			Fail(w, 401, "Please sign in to continue.")
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			fail(w, 401, "Your session has expired. Please sign in again.")
+			Fail(w, 401, "Your session has expired. Please sign in again.")
 			return
 		}
 		if err != nil {
-			internalError(w, err)
+			InternalError(w, err)
 			return
 		}
 		if unsafeMethod(r.Method) && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(session.CSRF)) != 1 {
-			fail(w, 403, "Invalid CSRF token. Refresh and try again.")
+			Fail(w, 403, "Invalid CSRF token. Refresh and try again.")
 			return
 		}
 		if s.mustVerify(session.User) && r.Context().Value(unverifiedKey{}) == nil {
-			jsonResponse(w, 403, map[string]any{"error": "Verify your email to continue.", "verificationRequired": true})
+			JSON(w, 403, map[string]any{"error": "Verify your email to continue.", "verificationRequired": true})
 			return
 		}
 		ctx := context.WithValue(r.Context(), sessionKey{}, session)
@@ -158,22 +158,22 @@ func (s *Server) mustVerify(u store.User) bool {
 	return s.Config.RequireExisting && u.EmailVerifiedAt == nil
 }
 
-// allowUnverified lets an account that must verify its email (mustVerify)
+// AllowUnverified lets an account that must verify its email (mustVerify)
 // use the route: only reading the session, signing out, signing out other
-// sessions and verifying (routes.go). Every other signed-in route answers it
+// sessions and verifying (router/routes.go). Every other signed-in route answers it
 // 403 with verificationRequired, so a route added later is covered without
-// thinking about it. Wrap it around requireSession or its variants.
-func allowUnverified(next http.Handler) http.Handler {
+// thinking about it. Wrap it around RequireSession or its variants.
+func AllowUnverified(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), unverifiedKey{}, true)))
 	})
 }
 
-// requirePageSession sends visitors without a valid session from a signed-in
+// RequirePageSession sends visitors without a valid session from a signed-in
 // page (/app/*) to login, returning there afterwards, before any HTML is
 // served. If the database can't be reached the page is served anyway; its
 // own session check then shows the outage page.
-func (s *Server) requirePageSession(next http.Handler) http.Handler {
+func (s *Server) RequirePageSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
@@ -191,50 +191,50 @@ func (s *Server) requirePageSession(next http.Handler) http.Handler {
 	})
 }
 
-// requireWorkspace runs after requireSession. It loads the {workspace} in the
+// RequireWorkspace runs after RequireSession. It loads the {workspace} in the
 // path through the signed-in user's membership; a malformed ID, a missing
 // workspace and someone else's workspace all get the same 404.
-func (s *Server) requireWorkspace(next http.Handler) http.Handler {
+func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("workspace")
 		if !input.PublicID("wsp", id) {
-			fail(w, 404, "Workspace not found.")
+			Fail(w, 404, "Workspace not found.")
 			return
 		}
-		workspace, err := s.Store.FindWorkspace(r.Context(), current(r).User.ID, id)
+		workspace, err := s.Repo.FindWorkspace(r.Context(), Session(r).User.ID, id)
 		if errors.Is(err, sql.ErrNoRows) {
-			fail(w, 404, "Workspace not found.")
+			Fail(w, 404, "Workspace not found.")
 			return
 		}
 		if err != nil {
-			internalError(w, err)
+			InternalError(w, err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), workspaceKey{}, workspace)))
 	})
 }
 
-// requirePermission runs after requireWorkspace and refuses members whose
+// RequirePermission runs after RequireWorkspace and refuses members whose
 // role doesn't grant p (auth/permissions.go).
-func requirePermission(p auth.Permission, next http.Handler) http.Handler {
+func RequirePermission(p auth.Permission, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !currentWorkspace(r).Role.Can(p) {
-			fail(w, 403, "You don’t have permission to do that in this workspace.")
+		if !Workspace(r).Role.Can(p) {
+			Fail(w, 403, "You don’t have permission to do that in this workspace.")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
-func (s *Server) limitAuth(next http.Handler) http.Handler {
+func (s *Server) LimitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
+		if !s.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
 			return
 		}
 		select {
 		case s.authSlots <- struct{}{}:
 			defer func() { <-s.authSlots }()
 		default:
-			fail(w, 503, "Sign-in is busy. Please try again shortly.")
+			Fail(w, 503, "Sign-in is busy. Please try again shortly.")
 			return
 		}
 		next.ServeHTTP(w, r)

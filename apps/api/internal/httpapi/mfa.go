@@ -14,20 +14,20 @@ import (
 
 // Two-factor authentication (plans/features/mfa.md): an authenticator app's
 // codes (TOTP) plus single-use recovery codes. Setting it up is shared with
-// the admin door (admin_auth.go): beginMFASetup and confirmMFASetup take
+// the admin door (admin_auth.go): BeginMFASetup and ConfirmMFASetup take
 // the user, and each entry point finds the user its own way.
 
 const (
-	wrongMFACode    = "That code didn’t work. Enter the current code from your authenticator app, or a recovery code."
+	WrongMFACode    = "That code didn’t work. Enter the current code from your authenticator app, or a recovery code."
 	wrongSetupCode  = "That code didn’t match. Enter the current code from your authenticator app."
-	mfaSignInAgain  = "Your sign-in expired. Enter your password again."
-	mfaTooManyCodes = "Too many wrong codes. Enter your password again."
+	MFASignInAgain  = "Your sign-in expired. Enter your password again."
+	MFATooManyCodes = "Too many wrong codes. Enter your password again."
 )
 
-type mfaHandlers struct{ *Server }
-type recoveryCodeHandlers struct{ *Server }
+type MFA struct{ *Server }
+type RecoveryCodes struct{ *Server }
 
-type mfaCode struct {
+type MFACode struct {
 	Code string `json:"code"`
 }
 type mfaConfirmation struct {
@@ -35,77 +35,77 @@ type mfaConfirmation struct {
 	Code     string `json:"code"`
 }
 
-// setup starts setting up MFA once the password is confirmed: a new secret,
+// Setup starts setting up MFA once the password is confirmed: a new secret,
 // returned once for the QR code. POST /api/auth/mfa/setup.
-func (h mfaHandlers) setup(w http.ResponseWriter, r *http.Request) {
+func (h MFA) Setup(w http.ResponseWriter, r *http.Request) {
 	var in passwordCheck
-	if !decode(w, r, &in) {
+	if !Decode(w, r, &in) {
 		return
 	}
-	user := current(r).User
+	user := Session(r).User
 	if user.MFAEnabledAt != nil {
-		fail(w, 409, "Two-factor authentication is already on.")
+		Fail(w, 409, "Two-factor authentication is already on.")
 		return
 	}
-	if h.passwordConfirmed(w, r, in.Password, events.PasswordStepMFASetup) {
-		h.beginMFASetup(w, r, user)
+	if h.PasswordConfirmed(w, r, in.Password, events.PasswordStepMFASetup) {
+		h.BeginMFASetup(w, r, user)
 	}
 }
 
-// store turns MFA on with the first code from the authenticator, and returns
+// Store turns MFA on with the first code from the authenticator, and returns
 // the recovery codes, once. POST /api/auth/mfa.
-func (h mfaHandlers) store(w http.ResponseWriter, r *http.Request) {
-	var in mfaCode
-	if !decode(w, r, &in) {
+func (h MFA) Store(w http.ResponseWriter, r *http.Request) {
+	var in MFACode
+	if !Decode(w, r, &in) {
 		return
 	}
-	user := current(r).User
-	if !h.allow(w, r, mfaPerAccount, mfaPerAccount.Key(user.PublicID)) {
+	user := Session(r).User
+	if !h.Allow(w, r, MFAPerAccount, MFAPerAccount.Key(user.PublicID)) {
 		return
 	}
-	if codes, ok := h.confirmMFASetup(w, r, user, h.sessionDigest(r), in.Code); ok {
-		jsonResponse(w, 201, map[string]any{"recoveryCodes": codes})
+	if codes, ok := h.ConfirmMFASetup(w, r, user, h.SessionDigest(r), in.Code); ok {
+		JSON(w, 201, map[string]any{"recoveryCodes": codes})
 	}
 }
 
-// destroy turns MFA off, after the password and a second factor.
+// Destroy turns MFA off, after the password and a second factor.
 // DELETE /api/auth/mfa.
-func (h mfaHandlers) destroy(w http.ResponseWriter, r *http.Request) {
+func (h MFA) Destroy(w http.ResponseWriter, r *http.Request) {
 	var in mfaConfirmation
-	if !decode(w, r, &in) {
+	if !Decode(w, r, &in) {
 		return
 	}
 	user, ok := h.mfaConfirmed(w, r, in, events.PasswordStepMFADisable)
 	if !ok {
 		return
 	}
-	factor := h.secondFactor(user, in.Code)
-	used, err := h.Store.DisableMFA(r.Context(), user, factor)
+	factor := h.SecondFactor(user, in.Code)
+	used, err := h.Repo.DisableMFA(r.Context(), user, factor)
 	if h.answerFactor(w, r, user, factor, events.MFAStepDisable, used, err) {
 		w.WriteHeader(204)
 	}
 }
 
-// store replaces the recovery codes, after the password and a second factor,
+// Store replaces the recovery codes, after the password and a second factor,
 // and returns the new ones, once. POST /api/auth/mfa/recovery-codes.
-func (h recoveryCodeHandlers) store(w http.ResponseWriter, r *http.Request) {
+func (h RecoveryCodes) Store(w http.ResponseWriter, r *http.Request) {
 	var in mfaConfirmation
-	if !decode(w, r, &in) {
+	if !Decode(w, r, &in) {
 		return
 	}
 	user, ok := h.mfaConfirmed(w, r, in, events.PasswordStepRecoveryCodes)
 	if !ok {
 		return
 	}
-	codes, digests, err := h.newRecoveryCodes()
+	codes, digests, err := h.NewRecoveryCodes()
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	factor := h.secondFactor(user, in.Code)
-	used, err := h.Store.CreateRecoveryCodes(r.Context(), user, factor, digests)
+	factor := h.SecondFactor(user, in.Code)
+	used, err := h.Repo.CreateRecoveryCodes(r.Context(), user, factor, digests)
 	if h.answerFactor(w, r, user, factor, events.MFAStepRecoveryCodes, used, err) {
-		jsonResponse(w, 201, map[string]any{"recoveryCodes": codes})
+		JSON(w, 201, map[string]any{"recoveryCodes": codes})
 	}
 }
 
@@ -113,15 +113,15 @@ func (h recoveryCodeHandlers) store(w http.ResponseWriter, r *http.Request) {
 // before the code: MFA on, the password, and the account's code limit. It
 // returns false once it has answered.
 func (s *Server) mfaConfirmed(w http.ResponseWriter, r *http.Request, in mfaConfirmation, step string) (store.User, bool) {
-	user := current(r).User
+	user := Session(r).User
 	if user.MFAEnabledAt == nil {
-		fail(w, 409, "Two-factor authentication is off.")
+		Fail(w, 409, "Two-factor authentication is off.")
 		return user, false
 	}
-	if !s.passwordConfirmed(w, r, in.Password, step) {
+	if !s.PasswordConfirmed(w, r, in.Password, step) {
 		return user, false
 	}
-	return user, s.allow(w, r, mfaPerAccount, mfaPerAccount.Key(user.PublicID))
+	return user, s.Allow(w, r, MFAPerAccount, MFAPerAccount.Key(user.PublicID))
 }
 
 // answerFactor records the second-factor check a store call made and answers
@@ -129,162 +129,162 @@ func (s *Server) mfaConfirmed(w http.ResponseWriter, r *http.Request, in mfaConf
 // (who can't turn it off), 422 with field "code" for a wrong code. It returns true when the factor was right.
 func (s *Server) answerFactor(w http.ResponseWriter, r *http.Request, user store.User, f store.SecondFactor, step string, used store.FactorUsed, err error) bool {
 	if errors.Is(err, store.ErrMFANotEnabled) {
-		fail(w, 409, "Two-factor authentication is off.")
+		Fail(w, 409, "Two-factor authentication is off.")
 		return false
 	}
 	if errors.Is(err, store.ErrAdminNeedsMFA) {
-		fail(w, 409, "Admins must keep two-factor authentication on.")
+		Fail(w, 409, "Admins must keep two-factor authentication on.")
 		return false
 	}
 	if err != nil && !errors.Is(err, store.ErrWrongCode) {
-		internalError(w, err)
+		InternalError(w, err)
 		return false
 	}
-	if err := s.recordMFACheck(r, user, f, step, err == nil, used); err != nil {
-		internalError(w, err)
+	if err := s.RecordMFACheck(r, user, f, step, err == nil, used); err != nil {
+		InternalError(w, err)
 		return false
 	}
 	if err != nil {
-		failField(w, 422, "code", wrongMFACode)
+		FailField(w, 422, "code", WrongMFACode)
 		return false
 	}
 	return true
 }
 
-// beginMFASetup stores a new secret for user, sealed, and answers with it
+// BeginMFASetup stores a new secret for user, sealed, and answers with it
 // for the QR code: the only time it leaves the server. 409 while MFA is on.
-func (s *Server) beginMFASetup(w http.ResponseWriter, r *http.Request, user store.User) {
+func (s *Server) BeginMFASetup(w http.ResponseWriter, r *http.Request, user store.User) {
 	secret, err := auth.GenerateTOTPSecret()
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
 	sealed, err := s.keys.Seal(secret, user.ID)
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	err = s.Store.SetupMFA(r.Context(), user.ID, sealed)
+	err = s.Repo.SetupMFA(r.Context(), user.ID, sealed)
 	if errors.Is(err, store.ErrMFAEnabled) {
-		fail(w, 409, "Two-factor authentication is already on.")
+		Fail(w, 409, "Two-factor authentication is already on.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]string{
+	JSON(w, 200, map[string]string{
 		"secret": auth.EncodeTOTPSecret(secret),
 		"uri":    auth.TOTPURI(s.Config.AppName, user.Email, secret),
 	})
 }
 
-// confirmMFASetup turns MFA on for user with the pending secret's first
+// ConfirmMFASetup turns MFA on for user with the pending secret's first
 // code, signing out every session but sessionHash, and returns the new
 // recovery codes. It answers every refusal itself and then returns false.
-func (s *Server) confirmMFASetup(w http.ResponseWriter, r *http.Request, user store.User, sessionHash, code string) ([]string, bool) {
-	codes, digests, err := s.newRecoveryCodes()
+func (s *Server) ConfirmMFASetup(w http.ResponseWriter, r *http.Request, user store.User, sessionHash, code string) ([]string, bool) {
+	codes, digests, err := s.NewRecoveryCodes()
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return nil, false
 	}
 	factor := s.totpFactor(user, code)
-	err = s.Store.EnableMFA(r.Context(), user, sessionHash, factor, digests)
+	err = s.Repo.EnableMFA(r.Context(), user, sessionHash, factor, digests)
 	switch {
 	case errors.Is(err, store.ErrMFAEnabled):
-		fail(w, 409, "Two-factor authentication is already on.")
+		Fail(w, 409, "Two-factor authentication is already on.")
 		return nil, false
 	case errors.Is(err, store.ErrMFANotPending):
-		fail(w, 409, "Setup expired. Start again.")
+		Fail(w, 409, "Setup expired. Start again.")
 		return nil, false
 	case err != nil && !errors.Is(err, store.ErrWrongCode):
-		internalError(w, err)
+		InternalError(w, err)
 		return nil, false
 	}
-	if err := s.recordMFACheck(r, user, factor, events.MFAStepEnable, err == nil, store.FactorUsed{}); err != nil {
-		internalError(w, err)
+	if err := s.RecordMFACheck(r, user, factor, events.MFAStepEnable, err == nil, store.FactorUsed{}); err != nil {
+		InternalError(w, err)
 		return nil, false
 	}
 	if err != nil {
-		failField(w, 422, "code", wrongSetupCode)
+		FailField(w, 422, "code", wrongSetupCode)
 		return nil, false
 	}
 	return codes, true
 }
 
-// loginMFA finishes a sign-in whose password was right with its second
+// LoginMFA finishes a sign-in whose password was right with its second
 // factor: the challenge in the MFA cookie (login) and a code. POST
 // /api/auth/login/mfa.
-func (s *Server) loginMFA(w http.ResponseWriter, r *http.Request) {
-	var in mfaCode
-	if !decode(w, r, &in) {
+func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
+	var in MFACode
+	if !Decode(w, r, &in) {
 		return
 	}
-	if !s.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
+	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
 		return
 	}
-	hash, ok := s.mfaChallengeDigest(r)
+	hash, ok := h.MFAChallengeDigest(r)
 	if !ok {
-		s.endMFAChallenge(w, mfaSignInAgain)
+		h.EndMFAChallenge(w, MFASignInAgain)
 		return
 	}
-	user, err := s.Store.FindMFAChallenge(r.Context(), hash, store.ChallengeLogin)
+	user, err := h.Repo.FindMFAChallenge(r.Context(), hash, store.ChallengeLogin)
 	if errors.Is(err, store.ErrNoChallenge) {
-		s.endMFAChallenge(w, mfaSignInAgain)
+		h.EndMFAChallenge(w, MFASignInAgain)
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	if !s.allow(w, r, mfaPerAccount, mfaPerAccount.Key(user.PublicID)) {
+	if !h.Allow(w, r, MFAPerAccount, MFAPerAccount.Key(user.PublicID)) {
 		return
 	}
-	factor := s.secondFactor(user, in.Code)
-	result, err := s.Store.AnswerMFAChallenge(r.Context(), hash, store.ChallengeLogin, user.ID, factor)
+	factor := h.SecondFactor(user, in.Code)
+	result, err := h.Repo.AnswerMFAChallenge(r.Context(), hash, store.ChallengeLogin, user.ID, factor)
 	if errors.Is(err, store.ErrNoChallenge) {
-		s.endMFAChallenge(w, mfaSignInAgain)
+		h.EndMFAChallenge(w, MFASignInAgain)
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	if err := s.recordMFACheck(r, user, factor, events.MFAStepLogin, result.OK, result.FactorUsed); err != nil {
-		internalError(w, err)
+	if err := h.RecordMFACheck(r, user, factor, events.MFAStepLogin, result.OK, result.FactorUsed); err != nil {
+		InternalError(w, err)
 		return
 	}
 	switch {
 	case result.Ended:
-		s.endMFAChallenge(w, mfaTooManyCodes)
+		h.EndMFAChallenge(w, MFATooManyCodes)
 	case !result.OK:
-		failField(w, 422, "code", wrongMFACode)
+		FailField(w, 422, "code", WrongMFACode)
 	default:
-		s.clearMFACookie(w)
-		s.startSession(w, r, result.User, 200, events.LoggedIn{User: result.User.PublicID})
+		h.ClearMFACookie(w)
+		h.StartSession(w, r, result.User, 200, events.LoggedIn{User: result.User.PublicID})
 	}
 }
 
-// startMFAChallenge answers a login whose password was right but needs a
+// StartMFAChallenge answers a login whose password was right but needs a
 // second factor: no session yet, a challenge in the MFA cookie instead.
-func (s *Server) startMFAChallenge(w http.ResponseWriter, r *http.Request, user store.User, purpose string) {
+func (s *Server) StartMFAChallenge(w http.ResponseWriter, r *http.Request, user store.User, purpose string) {
 	token, err := auth.Token()
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
 	expires := time.Now().Add(auth.MFAChallengeLifetime)
-	if err := s.Store.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, expires); err != nil {
-		internalError(w, err)
+	if err := s.Repo.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, expires); err != nil {
+		InternalError(w, err)
 		return
 	}
 	http.SetCookie(w, auth.MFACookie(token, s.Config.Production))
-	jsonResponse(w, 200, map[string]bool{"mfaRequired": true})
+	JSON(w, 200, map[string]bool{"mfaRequired": true})
 }
 
-// mfaChallengeDigest is the stored digest of the MFA cookie's challenge
+// MFAChallengeDigest is the stored digest of the MFA cookie's challenge
 // token, when the cookie holds a well-formed one.
-func (s *Server) mfaChallengeDigest(r *http.Request) (string, bool) {
+func (s *Server) MFAChallengeDigest(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(auth.MFACookieName(s.Config.Production))
 	if err != nil || !input.Token(cookie.Value) {
 		return "", false
@@ -292,25 +292,25 @@ func (s *Server) mfaChallengeDigest(r *http.Request) (string, bool) {
 	return auth.Digest(cookie.Value), true
 }
 
-// endMFAChallenge sends the browser back to the password: 401, without the
+// EndMFAChallenge sends the browser back to the password: 401, without the
 // challenge cookie.
-func (s *Server) endMFAChallenge(w http.ResponseWriter, message string) {
-	s.clearMFACookie(w)
-	fail(w, 401, message)
+func (s *Server) EndMFAChallenge(w http.ResponseWriter, message string) {
+	s.ClearMFACookie(w)
+	Fail(w, 401, message)
 }
 
-func (s *Server) clearMFACookie(w http.ResponseWriter) {
+func (s *Server) ClearMFACookie(w http.ResponseWriter) {
 	expired := auth.MFACookie("", s.Config.Production)
 	expired.MaxAge = -1
 	expired.Expires = time.Unix(0, 0)
 	http.SetCookie(w, expired)
 }
 
-// secondFactor reads a code as typed: 6 digits (spaces allowed, as apps show
+// SecondFactor reads a code as typed: 6 digits (spaces allowed, as apps show
 // "123 456") are an authenticator code; anything shaped like a recovery code
 // is one. Anything else is an authenticator code that can't match, so it
 // counts as a wrong try like any other.
-func (s *Server) secondFactor(user store.User, code string) store.SecondFactor {
+func (s *Server) SecondFactor(user store.User, code string) store.SecondFactor {
 	if len(code) > 64 {
 		return s.totpFactor(user, "")
 	}
@@ -337,8 +337,8 @@ func (s *Server) totpFactor(user store.User, code string) store.SecondFactor {
 	}}
 }
 
-// newRecoveryCodes makes a set of recovery codes, as shown, and their digests.
-func (s *Server) newRecoveryCodes() ([]string, []string, error) {
+// NewRecoveryCodes makes a set of recovery codes, as shown, and their digests.
+func (s *Server) NewRecoveryCodes() ([]string, []string, error) {
 	codes, err := auth.GenerateRecoveryCodes()
 	if err != nil {
 		return nil, nil, err
@@ -351,8 +351,8 @@ func (s *Server) newRecoveryCodes() ([]string, []string, error) {
 	return codes, digests, nil
 }
 
-// recordMFACheck records auth.mfa.checked.
-func (s *Server) recordMFACheck(r *http.Request, user store.User, f store.SecondFactor, step string, ok bool, used store.FactorUsed) error {
+// RecordMFACheck records auth.mfa.checked.
+func (s *Server) RecordMFACheck(r *http.Request, user store.User, f store.SecondFactor, step string, ok bool, used store.FactorUsed) error {
 	e := events.MFAChecked{User: user.PublicID, OK: ok, Method: f.Method(), Step: step, RecoveryCodesLeft: used.RecoveryCodesLeft}
-	return s.Store.Record(r.Context(), e, store.EventScope{UserID: user.ID})
+	return s.Repo.Record(r.Context(), e, store.EventScope{UserID: user.ID})
 }

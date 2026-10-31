@@ -24,20 +24,20 @@ const (
 	registrationExists = "You already have an account. Sign in instead."
 )
 
-type registrationHandlers struct{ *Server }
+type Registrations struct{ *Server }
 
 // beginRegistration saves a valid sign-up until its code is entered, ties it
 // to this browser with the registration cookie, and answers 202 the same for
 // every email.
-func (s *Server) beginRegistration(w http.ResponseWriter, r *http.Request, in credentials, hash string) {
+func (s *Server) beginRegistration(w http.ResponseWriter, r *http.Request, in Credentials, hash string) {
 	token, err := auth.Token()
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
 	pending := store.NewRegistration{Email: in.Email, Name: in.Name, PasswordHash: hash, TokenHash: auth.Digest(token)}
-	if err := s.Store.CreatePendingRegistration(r.Context(), pending); err != nil {
-		internalError(w, err)
+	if err := s.Repo.CreatePendingRegistration(r.Context(), pending); err != nil {
+		InternalError(w, err)
 		return
 	}
 	http.SetCookie(w, auth.RegistrationCookie(token, s.Config.Production))
@@ -46,42 +46,42 @@ func (s *Server) beginRegistration(w http.ResponseWriter, r *http.Request, in cr
 
 // waitingForCode is the answer to a sign-up, or a new code, for email.
 func waitingForCode(w http.ResponseWriter, email string) {
-	jsonResponse(w, 202, map[string]any{"verificationRequired": true, "email": email})
+	JSON(w, 202, map[string]any{"verificationRequired": true, "email": email})
 }
 
-// check tells the code page which email its sign-up is waiting on, so a
+// Check tells the code page which email its sign-up is waiting on, so a
 // reload (a phone switching to the mail app) resumes it. POST
 // /api/auth/register/check.
-func (h registrationHandlers) check(w http.ResponseWriter, r *http.Request) {
-	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
+func (h Registrations) Check(w http.ResponseWriter, r *http.Request) {
+	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	pending, _, ok := h.pendingRegistration(w, r)
 	if ok {
-		jsonResponse(w, 200, pending)
+		JSON(w, 200, pending)
 	}
 }
 
-// resend gives the browser's sign-up a new code, counted like a sign-up.
+// Resend gives the browser's sign-up a new code, counted like a sign-up.
 // POST /api/auth/register/resend.
-func (h registrationHandlers) resend(w http.ResponseWriter, r *http.Request) {
-	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
+func (h Registrations) Resend(w http.ResponseWriter, r *http.Request) {
+	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	pending, digest, ok := h.pendingRegistration(w, r)
 	if !ok {
 		return
 	}
-	if !h.allow(w, r, registerPerEmail, registerPerEmail.Key(pending.Email)) || !h.allow(w, r, registerGlobal, registerGlobal.Everyone()) {
+	if !h.Allow(w, r, RegisterPerEmail, RegisterPerEmail.Key(pending.Email)) || !h.Allow(w, r, RegisterGlobal, RegisterGlobal.Everyone()) {
 		return
 	}
-	pending, err := h.Store.ResendPendingRegistration(r.Context(), digest)
+	pending, err := h.Repo.ResendPendingRegistration(r.Context(), digest)
 	if errors.Is(err, store.ErrNoRegistration) {
 		h.endRegistration(w, registrationEnded)
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
 	token, _ := r.Cookie(auth.RegistrationCookieName(h.Config.Production))
@@ -89,36 +89,36 @@ func (h registrationHandlers) resend(w http.ResponseWriter, r *http.Request) {
 	waitingForCode(w, pending.Email)
 }
 
-// verify finishes the browser's sign-up with its code: the right one
+// Verify finishes the browser's sign-up with its code: the right one
 // creates the account and signs it in. POST /api/auth/register/verify.
-func (h registrationHandlers) verify(w http.ResponseWriter, r *http.Request) {
-	var in mfaCode
-	if !decode(w, r, &in) {
+func (h Registrations) Verify(w http.ResponseWriter, r *http.Request) {
+	var in MFACode
+	if !Decode(w, r, &in) {
 		return
 	}
-	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
+	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	pending, digest, ok := h.pendingRegistration(w, r)
-	if !ok || !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.Key(pending.Email)) {
+	if !ok || !h.Allow(w, r, EmailCodePerEmail, EmailCodePerEmail.Key(pending.Email)) {
 		return
 	}
-	result, err := h.Store.CompleteRegistration(r.Context(), digest, h.emailCodeDigest(in.Code))
+	result, err := h.Repo.CompleteRegistration(r.Context(), digest, h.EmailCodeDigest(in.Code))
 	switch {
 	case errors.Is(err, store.ErrNoRegistration):
 		h.endRegistration(w, registrationEnded)
 	case err != nil:
-		internalError(w, err)
+		InternalError(w, err)
 	case result.Ended:
 		h.endRegistration(w, registrationCodes)
 	case !result.OK:
-		failField(w, 422, "code", wrongEmailCode)
+		FailField(w, 422, "code", wrongEmailCode)
 	case result.Exists:
 		h.clearRegistrationCookie(w)
-		fail(w, 409, registrationExists)
+		Fail(w, 409, registrationExists)
 	default:
 		h.clearRegistrationCookie(w)
-		h.startSession(w, r, result.User, 201, nil)
+		h.StartSession(w, r, result.User, 201, nil)
 	}
 }
 
@@ -131,22 +131,22 @@ func (s *Server) pendingRegistration(w http.ResponseWriter, r *http.Request) (st
 		return store.PendingRegistration{}, "", false
 	}
 	digest := auth.Digest(cookie.Value)
-	pending, err := s.Store.FindPendingRegistration(r.Context(), digest)
+	pending, err := s.Repo.FindPendingRegistration(r.Context(), digest)
 	if errors.Is(err, store.ErrNoRegistration) {
 		s.endRegistration(w, registrationEnded)
 		return pending, "", false
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return pending, "", false
 	}
 	return pending, digest, true
 }
 
-// emailCodeDigest is the HMAC of a code as typed. Anything that can't be a
+// EmailCodeDigest is the HMAC of a code as typed. Anything that can't be a
 // code still gets a digest, of a value no code has, so a malformed code is
 // compared like a wrong one.
-func (s *Server) emailCodeDigest(typed string) string {
+func (s *Server) EmailCodeDigest(typed string) string {
 	code, ok := auth.NormalizeEmailCode(typed)
 	if !ok {
 		code = "not a code"
@@ -158,7 +158,7 @@ func (s *Server) emailCodeDigest(typed string) string {
 // the registration cookie.
 func (s *Server) endRegistration(w http.ResponseWriter, message string) {
 	s.clearRegistrationCookie(w)
-	fail(w, 401, message)
+	Fail(w, 401, message)
 }
 
 func (s *Server) clearRegistrationCookie(w http.ResponseWriter) {

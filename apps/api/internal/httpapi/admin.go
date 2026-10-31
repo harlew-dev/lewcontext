@@ -19,37 +19,37 @@ import (
 
 type adminSessionKey struct{}
 
-// currentAdmin is the signed-in admin's session, set by requireAdminSession.
-func currentAdmin(r *http.Request) store.AdminSession {
+// Admin is the signed-in admin's session, set by RequireAdminSession.
+func Admin(r *http.Request) store.AdminSession {
 	return r.Context().Value(adminSessionKey{}).(store.AdminSession)
 }
 
-// optionalAdmin is the request's admin session on routes that may run
+// OptionalAdmin is the request's admin session on routes that may run
 // without one (the rate limiters).
-func optionalAdmin(r *http.Request) (store.AdminSession, bool) {
+func OptionalAdmin(r *http.Request) (store.AdminSession, bool) {
 	session, ok := r.Context().Value(adminSessionKey{}).(store.AdminSession)
 	return session, ok
 }
 
-// notFound is the answer to an unknown API route, and to every admin request
+// NotFound is the answer to an unknown API route, and to every admin request
 // without the right key, so the two can't be told apart.
-func notFound(w http.ResponseWriter, r *http.Request) {
-	fail(w, 404, "Not found.")
+func NotFound(w http.ResponseWriter, r *http.Request) {
+	Fail(w, 404, "Not found.")
 }
 
-// adminKeyHash is the digest of the current ADMIN_ROUTE_KEY, which each admin
+// AdminKeyHash is the digest of the current ADMIN_ROUTE_KEY, which each admin
 // session stores: rotating the key ends them all.
-func (s *Server) adminKeyHash() string {
+func (s *Server) AdminKeyHash() string {
 	return auth.Digest(s.Config.AdminRouteKey)
 }
 
-// requireAdminKey answers every /api/admin/ request whose X-Admin-Key isn't
+// RequireAdminKey answers every /api/admin/ request whose X-Admin-Key isn't
 // the configured key (or with admin off) exactly as an unknown API route,
 // before anything else is looked at.
-func (s *Server) requireAdminKey(next http.Handler) http.Handler {
+func (s *Server) RequireAdminKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !auth.AdminKeyMatches(r.Header.Get("X-Admin-Key"), s.Config.AdminRouteKey) {
-			notFound(w, r)
+			NotFound(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -65,34 +65,34 @@ func (s *Server) adminSession(r *http.Request) (store.AdminSession, error) {
 	if err != nil || len(cookie.Value) != 43 {
 		return store.AdminSession{}, errNoSession
 	}
-	return s.Store.FindAdminSession(r.Context(), auth.Digest(cookie.Value), s.adminKeyHash())
+	return s.Repo.FindAdminSession(r.Context(), auth.Digest(cookie.Value), s.AdminKeyHash())
 }
 
-// requireAdminSession runs after requireAdminKey. It lets through requests
+// RequireAdminSession runs after RequireAdminKey. It lets through requests
 // with a live admin session, and its CSRF token on mutations, and counts
 // reads against the admin's own budget (admin-read:per-user).
-func (s *Server) requireAdminSession(next http.Handler) http.Handler {
+func (s *Server) RequireAdminSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, err := s.adminSession(r)
 		if errors.Is(err, errNoSession) {
-			fail(w, 401, "Please sign in to continue.")
+			Fail(w, 401, "Please sign in to continue.")
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			fail(w, 401, "Your admin session has ended. Please sign in again.")
+			Fail(w, 401, "Your admin session has ended. Please sign in again.")
 			return
 		}
 		if err != nil {
-			internalError(w, err)
+			InternalError(w, err)
 			return
 		}
 		if unsafeMethod(r.Method) && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(session.CSRF)) != 1 {
-			fail(w, 403, "Invalid CSRF token. Refresh and try again.")
+			Fail(w, 403, "Invalid CSRF token. Refresh and try again.")
 			return
 		}
 		ctx := context.WithValue(r.Context(), adminSessionKey{}, session)
 		r = r.WithContext(events.WithActor(ctx, session.User.ID))
-		if !unsafeMethod(r.Method) && !s.allow(w, r, adminReadPerUser, adminReadPerUser.Key(session.User.PublicID)) {
+		if !unsafeMethod(r.Method) && !s.Allow(w, r, AdminReadPerUser, AdminReadPerUser.Key(session.User.PublicID)) {
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -102,7 +102,7 @@ func (s *Server) requireAdminSession(next http.Handler) http.Handler {
 // requireAdminPage sends visitors without a live admin session from an inner
 // admin page (/admin/<key>/<page>) to the admin sign-in page, before any
 // HTML is served. Run only once the key in the path is right. If the
-// database can't be reached the page is served anyway, as requirePageSession
+// database can't be reached the page is served anyway, as RequirePageSession
 // does.
 func (s *Server) requireAdminPage(w http.ResponseWriter, r *http.Request, key string) bool {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -128,11 +128,11 @@ func adminPageHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 }
 
-// adminPage serves /admin/{key} and /admin/{key}/{page...}. A wrong key (or
+// AdminPage serves /admin/{key} and /admin/{key}/{page...}. A wrong key (or
 // admin off) gets exactly what an unknown URL gets, with no query; the right
 // one the app shell, which renders the admin pages. Inner pages need an
 // admin session first.
-func (s *Server) adminPage(inner bool) http.Handler {
+func (s *Server) AdminPage(inner bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("key")
 		if !auth.AdminKeyMatches(key, s.Config.AdminRouteKey) {

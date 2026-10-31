@@ -1,4 +1,4 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/url"
@@ -30,22 +32,22 @@ func listEvents(t *testing.T, h http.Handler, cookie *http.Cookie, query string)
 }
 
 func TestAdminEvents(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
+	s, db := server(t)
+	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	admin, session := adminSignedIn(t, db, f)
 	cookie := session.Cookie()
-	ada := must(factory.Users.State(func(u *factory.User) { u.Name, u.Email = "Ada", "ada@example.test" }).CreateOne(ctx, db, f))(t)
-	bob := must(factory.Users.CreateOne(ctx, db, f))(t)
-	acme := must(factory.WorkspaceFor(ctx, db, f, ada.ID, factory.Named("Acme")))(t)
+	ada := apitest.Must(factory.Users.State(func(u *factory.User) { u.Name, u.Email = "Ada", "ada@example.test" }).CreateOne(ctx, db, f))(t)
+	bob := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	acme := apitest.Must(factory.WorkspaceFor(ctx, db, f, ada.ID, factory.Named("Acme")))(t)
 	now := time.Now().Truncate(time.Microsecond)
 	event := func(name string, payload map[string]any, at time.Duration, scope func(*factory.Event)) factory.Event {
 		e := factory.Events.State(factory.EventOf(name, payload)).State(func(e *factory.Event) {
 			e.CreatedAt, e.IP = now.Add(-at), ""
 			scope(e)
 		})
-		return must(e.CreateOne(ctx, db, f))(t)
+		return apitest.Must(e.CreateOne(ctx, db, f))(t)
 	}
 	none := func(*factory.Event) {}
 	attempt := event("auth.login_attempted", map[string]any{"email": "ada@example.test", "user": ada.PublicID, "result": "wrong_password"}, 5*time.Hour,
@@ -141,7 +143,7 @@ func TestAdminEvents(t *testing.T) {
 	}
 	p := rows[project.PublicID]
 	var payload map[string]any
-	must(0, json.Unmarshal(p.Payload, &payload))(t)
+	apitest.Must(0, json.Unmarshal(p.Payload, &payload))(t)
 	if p.Actor == nil || p.Actor.Name != "Ada" || p.Workspace == nil || p.Workspace.Name != "Acme" ||
 		payload["name"] != "Secret plan" || payload["description"] != "<script>launch</script>" {
 		t.Fatalf("project row: %+v %s", p, p.Payload)
@@ -151,42 +153,42 @@ func TestAdminEvents(t *testing.T) {
 	}
 
 	// A deleted workspace's events are still found, by the ID in their payload.
-	must(0, s.Store.DeleteWorkspace(ctx, store.Workspace{ID: acme.ID, PublicID: acme.PublicID}, "Acme"))(t)
+	apitest.Must(0, s.Repo.DeleteWorkspace(ctx, store.Workspace{ID: acme.ID, PublicID: acme.PublicID}, "Acme"))(t)
 	gone := listEvents(t, h, cookie, "?workspace="+acme.PublicID)
 	if len(gone.Data) != 5 || gone.Data[1].Workspace == nil || gone.Data[1].Workspace.PublicID != acme.PublicID || gone.Data[1].Workspace.Name != "" {
 		t.Fatalf("a deleted workspace's events: %+v", gone.Data)
 	}
 
 	// Each list read is recorded with its filters, by the admin, from their IP.
-	listed := eventsNamed(t, db, "admin.event.listed")
-	var emailSearch *storedEvent
+	listed := apitest.EventsNamed(t, db, "admin.event.listed")
+	var emailSearch *apitest.Event
 	for i, e := range listed {
 		if filters, _ := e.Payload["filters"].(map[string]any); filters["email"] == "ada@example.test" {
 			emailSearch = &listed[i]
 		}
 	}
-	if emailSearch == nil || !is(emailSearch.ActorID, admin.User.ID) || emailSearch.UserID.Valid || emailSearch.WorkspaceID.Valid ||
+	if emailSearch == nil || !apitest.Is(emailSearch.ActorID, admin.User.ID) || emailSearch.UserID.Valid || emailSearch.WorkspaceID.Valid ||
 		emailSearch.Payload["admin"] != admin.User.PublicID || emailSearch.IP != "127.0.0.1" {
 		t.Fatalf("the email search's record: %+v", emailSearch)
 	}
-	checkPayloadIDs(t, db)
+	apitest.CheckPayloadIDs(t, db)
 }
 
 // An event's detail: deliveries, the user agent and related events. Events
 // recorded in a request keep its IP in events.ip; a listener's have none.
 func TestAdminEventDetail(t *testing.T) {
 	s, db, _, deliver := mailServer(t)
-	h := s.Routes()
+	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	admin, session := adminSignedIn(t, db, f)
 	cookie := session.Cookie()
-	ada := must(factory.Users.CreateOne(ctx, db, f))(t)
+	ada := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
 
-	call(t, h, "POST", "/api/auth/password-reset", fmt.Sprintf(`{"email":%q}`, ada.Email), "", nil, 202)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset", fmt.Sprintf(`{"email":%q}`, ada.Email), "", nil, 202)
 	deliver()
-	requested := onlyEvent(t, db, "auth.password_reset.requested")
-	sent := onlyEvent(t, db, "auth.password_reset.sent")
+	requested := apitest.OnlyEvent(t, db, "auth.password_reset.requested")
+	sent := apitest.OnlyEvent(t, db, "auth.password_reset.sent")
 	if requested.IP != "127.0.0.1" || sent.IP != "" {
 		t.Fatalf("events.ip: requested %q, sent by the listener %q", requested.IP, sent.IP)
 	}
@@ -197,7 +199,7 @@ func TestAdminEventDetail(t *testing.T) {
 	requestID, sentID := page.Data[1].PublicID, page.Data[0].PublicID
 
 	detail := decodeAdmin[store.AdminEventDetail](t, adminCall(t, h, "GET", "/api/admin/events/"+requestID, "", "", 200, cookie).Body.Bytes())
-	if detail.UserAgent != testUserAgent || len(detail.Deliveries) != 1 || detail.Deliveries[0].Listener != "mail.password_reset" ||
+	if detail.UserAgent != apitest.UserAgent || len(detail.Deliveries) != 1 || detail.Deliveries[0].Listener != "mail.password_reset" ||
 		detail.Deliveries[0].Status != store.DeliveryDelivered || detail.Deliveries[0].DeliveredAt == nil || detail.Deliveries[0].Attempts != 1 {
 		t.Fatalf("the request's detail: %+v", detail)
 	}
@@ -211,14 +213,14 @@ func TestAdminEventDetail(t *testing.T) {
 	for _, id := range []string{"evt_2yEHYLwiwPVhLW", "evt_x", ada.PublicID} {
 		adminCall(t, h, "GET", "/api/admin/events/"+id, "", "", 404, cookie)
 	}
-	viewed := eventsNamed(t, db, "admin.event.viewed")
+	viewed := apitest.EventsNamed(t, db, "admin.event.viewed")
 	if len(viewed) != 2 || viewed[0].Payload["event"] != requestID || viewed[0].Payload["admin"] != admin.User.PublicID || viewed[0].UserID.Valid {
 		t.Fatalf("admin.event.viewed: %+v", viewed)
 	}
 
 	// Recorded outside a request (the CLI), an event has no IP.
-	must(0, s.Store.Record(ctx, events.AdminRevoked{User: ada.PublicID}, store.EventScope{UserID: ada.ID}))(t)
-	if e := onlyEvent(t, db, "admin.revoked"); e.IP != "" {
+	apitest.Must(0, s.Repo.Record(ctx, events.AdminRevoked{User: ada.PublicID}, store.EventScope{UserID: ada.ID}))(t)
+	if e := apitest.OnlyEvent(t, db, "admin.revoked"); e.IP != "" {
 		t.Fatalf("a CLI event's IP: %q", e.IP)
 	}
 }
@@ -226,16 +228,21 @@ func TestAdminEventDetail(t *testing.T) {
 // The catalogue lists the filters' names and isn't recorded.
 func TestAdminCatalogue(t *testing.T) {
 	s, db, _, _ := mailServer(t)
-	h := s.Routes()
+	h := router.New(s)
 	_, session := adminSignedIn(t, db, factory.TestFaker(t))
-	before := must(db.NewSelect().TableExpr("events").Count(context.Background()))(t)
-	c := decodeAdmin[adminCatalogue](t, adminCall(t, h, "GET", "/api/admin/catalogue", "", "", 200, session.Cookie()).Body.Bytes())
+	before := apitest.Must(db.NewSelect().TableExpr("events").Count(context.Background()))(t)
+	type catalogue struct {
+		Events    []string `json:"events"`
+		Limits    []string `json:"limits"`
+		Listeners []string `json:"listeners"`
+	}
+	c := decodeAdmin[catalogue](t, adminCall(t, h, "GET", "/api/admin/catalogue", "", "", 200, session.Cookie()).Body.Bytes())
 	if !slices.Contains(c.Events, "auth.login_attempted") || !slices.Contains(c.Events, "admin.event.listed") ||
 		!slices.Contains(c.Limits, "auth:per-ip") || !slices.Contains(c.Limits, "account-exists:per-account") ||
 		!slices.Equal(c.Listeners, []string{"mail.password_reset", "mail.workspace_invitation"}) {
 		t.Fatalf("catalogue: %+v", c)
 	}
-	if after := must(db.NewSelect().TableExpr("events").Count(context.Background()))(t); after != before {
+	if after := apitest.Must(db.NewSelect().TableExpr("events").Count(context.Background()))(t); after != before {
 		t.Fatalf("reading the catalogue recorded %d events", after-before)
 	}
 }
@@ -243,19 +250,19 @@ func TestAdminCatalogue(t *testing.T) {
 // A workspace's projects, with names and descriptions, filtered as the app's
 // list is.
 func TestAdminWorkspaceProjects(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
+	s, db := server(t)
+	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	admin, session := adminSignedIn(t, db, f)
 	cookie := session.Cookie()
-	owner := must(factory.Users.CreateOne(ctx, db, f))(t)
-	acme := ownedWorkspace(t, db, f, owner.ID)
-	other := ownedWorkspace(t, db, f, owner.ID)
-	must(factory.ProjectsIn(acme.ID).Sequence(func(i int, p *factory.Project) {
+	owner := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	acme := apitest.OwnedWorkspace(t, db, f, owner.ID)
+	other := apitest.OwnedWorkspace(t, db, f, owner.ID)
+	apitest.Must(factory.ProjectsIn(acme.ID).Sequence(func(i int, p *factory.Project) {
 		p.Name, p.Description, p.Status = fmt.Sprintf("Launch %d", i), "50% done", []string{"Planned", "In progress", "Completed"}[i%3]
 	}).Create(ctx, db, f, 5))(t)
-	must(factory.ProjectsIn(other.ID).Create(ctx, db, f, 2))(t)
+	apitest.Must(factory.ProjectsIn(other.ID).Create(ctx, db, f, 2))(t)
 
 	path := "/api/admin/workspaces/" + acme.PublicID + "/projects"
 	page := decodeAdmin[store.Page[store.Project]](t, adminCall(t, h, "GET", path+"?sort=name&perPage=2&page=2", "", "", 200, cookie).Body.Bytes())
@@ -274,7 +281,7 @@ func TestAdminWorkspaceProjects(t *testing.T) {
 	for _, id := range []string{"wsp_2yEHYLwiwPVhLW", "wsp_x", owner.PublicID} {
 		adminCall(t, h, "GET", "/api/admin/workspaces/"+id+"/projects", "", "", 404, cookie)
 	}
-	listed := eventsNamed(t, db, "admin.project.listed")
+	listed := apitest.EventsNamed(t, db, "admin.project.listed")
 	if len(listed) != 3 || listed[0].Payload["workspace"] != acme.PublicID || listed[0].Payload["sort"] != "name" ||
 		listed[1].Payload["status"] != "Planned" || listed[0].Payload["admin"] != admin.User.PublicID || listed[0].WorkspaceID.Valid {
 		t.Fatalf("admin.project.listed: %+v", listed)
@@ -283,9 +290,9 @@ func TestAdminWorkspaceProjects(t *testing.T) {
 
 // The new reads need an admin session, like every admin read.
 func TestAdminEventsAndMailNeedASession(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
-	app := signedIn(t, db, factory.TestFaker(t))
+	s, db := server(t)
+	h := router.New(s)
+	app := apitest.SignedIn(t, db, factory.TestFaker(t))
 	for _, path := range []string{"/api/admin/events", "/api/admin/events/evt_2yEHYLwiwPVhLW", "/api/admin/catalogue", "/api/admin/mail", "/api/admin/deliveries", "/api/admin/workspaces/wsp_2yEHYLwiwPVhLW/projects"} {
 		adminCall(t, h, "GET", path, "", "", 401)
 		adminCall(t, h, "GET", path, "", "", 401, app.Cookie())

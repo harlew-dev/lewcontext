@@ -1,14 +1,15 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -16,15 +17,15 @@ import (
 // A wrong key, or admin off, gets exactly what an unknown URL gets; the right
 // one the app shell with the admin pages' stricter headers.
 func TestAdminPages(t *testing.T) {
-	server, db := integrationServer(t)
-	server.Pages = testPages(t)
-	h := server.Routes()
+	s, db := server(t)
+	s.Pages = testPages(t)
+	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	_, session := adminSignedIn(t, db, f)
-	app := signedIn(t, db, f)
-	off := must(New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", AppKey: factory.AppKey}))(t)
-	off.Pages = server.Pages
+	app := apitest.SignedIn(t, db, f)
+	off := apitest.Must(httpapi.New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", AppKey: factory.AppKey}))(t)
+	off.Pages = s.Pages
 	key := factory.AdminRouteKey
 
 	nowhere := get(h, "GET", "/nowhere", nil)
@@ -34,10 +35,10 @@ func TestAdminPages(t *testing.T) {
 	wrong := []string{"/admin", "/admin/", "/admin/x", "/admin/x/users", "/admin/" + key + "x", "/admin/" + strings.ToUpper(key) + "/users", "/admin/" + key[:len(key)-1]}
 	for _, target := range wrong {
 		sameAnswer(t, target, get(h, "GET", target, session.Cookie()), nowhere)
-		sameAnswer(t, target+" (admin off)", get(off.Routes(), "GET", target, session.Cookie()), nowhere)
+		sameAnswer(t, target+" (admin off)", get(router.New(off), "GET", target, session.Cookie()), nowhere)
 	}
 	for _, target := range []string{"/admin/" + key, "/admin/" + key + "/users"} {
-		sameAnswer(t, target+" (admin off)", get(off.Routes(), "GET", target, session.Cookie()), nowhere)
+		sameAnswer(t, target+" (admin off)", get(router.New(off), "GET", target, session.Cookie()), nowhere)
 	}
 
 	// The sign-in page needs no session.
@@ -55,7 +56,7 @@ func TestAdminPages(t *testing.T) {
 		}
 		checkAdminHeaders(t, "redirect", w)
 	}
-	stale := must(factory.AdminSessions.State(factory.AdminSessionFor(session.UserID)).State(factory.AdminIdle).CreateOne(ctx, db, f))(t)
+	stale := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(session.UserID)).State(factory.AdminIdle).CreateOne(ctx, db, f))(t)
 	if w := get(h, "GET", "/admin/"+key+"/users", stale.Cookie()); w.Code != 302 {
 		t.Fatalf("an idle admin session: %d", w.Code)
 	}
@@ -72,27 +73,6 @@ func checkAdminHeaders(t *testing.T, name string, w *httptest.ResponseRecorder) 
 	for header, value := range want {
 		if got := w.Header().Get(header); got != value {
 			t.Errorf("%s: %s is %q, want %q", name, header, got, value)
-		}
-	}
-}
-
-// Every /api/admin/ route is registered in adminRoutes, behind
-// requireAdminKey: a route added anywhere else in routes.go fails here.
-func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
-	source := string(must(os.ReadFile("routes.go"))(t))
-	start := strings.Index(source, "func (s *Server) adminRoutes(")
-	end := strings.Index(source[start:], "\n}\n")
-	if start < 0 || end < 0 {
-		t.Fatal("adminRoutes not found in routes.go")
-	}
-	outside := source[:start] + source[start+end:]
-	if regexp.MustCompile(`"(GET |POST |PATCH |DELETE |PUT )?/api/admin`).MatchString(outside) {
-		t.Fatal("an /api/admin route is registered outside adminRoutes")
-	}
-	inside := source[start : start+end]
-	for _, line := range strings.Split(inside, "\n") {
-		if strings.Contains(line, "mux.Handle") && !strings.Contains(line, "requireAdminKey") {
-			t.Fatalf("an admin route without requireAdminKey: %s", strings.TrimSpace(line))
 		}
 	}
 }

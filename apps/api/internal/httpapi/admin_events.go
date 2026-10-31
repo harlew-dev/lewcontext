@@ -14,10 +14,10 @@ import (
 	"time"
 )
 
-// adminEventHandlers are the admin dashboard's /api/admin/events routes:
+// Events are the admin dashboard's /api/admin/events routes:
 // the audit trail, filtered and paged by a cursor. Every read is recorded
 // (admin.event.listed, .viewed) with the filters used.
-type adminEventHandlers struct{ *Server }
+type Events struct{ *Server }
 
 // Events list page sizes.
 const (
@@ -127,7 +127,7 @@ func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.Event
 	}
 	if used.Email != "" {
 		f.Email = used.Email
-		valid = valid && validEmail(&f.Email)
+		valid = valid && ValidEmail(&f.Email)
 		used.Email = f.Email
 	}
 	if used.IP != "" {
@@ -143,50 +143,50 @@ func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.Event
 	return f, perPage, used, valid
 }
 
-func (h adminEventHandlers) index(w http.ResponseWriter, r *http.Request) {
+func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 	f, perPage, used, ok := adminEventQuery(r)
 	if !ok {
-		fail(w, 400, "Check the filters.")
+		Fail(w, 400, "Check the filters.")
 		return
 	}
-	page, err := h.Store.IndexAdminEvents(r.Context(), f, perPage)
+	page, err := h.Repo.IndexAdminEvents(r.Context(), f, perPage)
 	if errors.Is(err, store.ErrNoCursor) {
-		fail(w, 400, "That page is no longer available. Start from the newest events.")
+		Fail(w, 400, "That page is no longer available. Start from the newest events.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	e := events.AdminEventListed{Admin: currentAdmin(r).User.PublicID, Filters: used}
-	if err := h.Store.Record(r.Context(), e, store.EventScope{}); err != nil {
-		internalError(w, err)
+	e := events.AdminEventListed{Admin: Admin(r).User.PublicID, Filters: used}
+	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, page)
+	JSON(w, 200, page)
 }
 
-func (h adminEventHandlers) show(w http.ResponseWriter, r *http.Request) {
+func (h Events) Show(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("event")
 	if !input.PublicID("evt", id) {
-		fail(w, 404, "Event not found.")
+		Fail(w, 404, "Event not found.")
 		return
 	}
-	event, err := h.Store.FindAdminEvent(r.Context(), id)
+	event, err := h.Repo.FindAdminEvent(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
-		fail(w, 404, "Event not found.")
+		Fail(w, 404, "Event not found.")
 		return
 	}
 	if err != nil {
-		internalError(w, err)
+		InternalError(w, err)
 		return
 	}
-	e := events.AdminEventViewed{Admin: currentAdmin(r).User.PublicID, Event: event.PublicID}
-	if err := h.Store.Record(r.Context(), e, store.EventScope{}); err != nil {
-		internalError(w, err)
+	e := events.AdminEventViewed{Admin: Admin(r).User.PublicID, Event: event.PublicID}
+	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
+		InternalError(w, err)
 		return
 	}
-	jsonResponse(w, 200, event)
+	JSON(w, 200, event)
 }
 
 // adminCatalogue is what the filters offer: every event, rate limit and
@@ -198,23 +198,23 @@ type adminCatalogue struct {
 	Listeners []string `json:"listeners"`
 }
 
-func (h adminEventHandlers) catalogue(w http.ResponseWriter, r *http.Request) {
+func (h Events) Catalogue(w http.ResponseWriter, r *http.Request) {
 	limits := []string{mail.AccountExistsPerAccount.Name}
-	for _, l := range rateLimits {
+	for _, l := range RateLimits {
 		limits = append(limits, l.Name)
 	}
 	slices.Sort(limits)
-	jsonResponse(w, 200, adminCatalogue{Events: catalogueNames(), Limits: limits, Listeners: h.listeners()})
+	JSON(w, 200, adminCatalogue{Events: catalogueNames(), Limits: limits, Listeners: h.listeners()})
 }
 
 // listeners names every registered listener, sorted.
 func (s *Server) listeners() []string {
 	names := []string{}
-	if s.Store.Listeners == nil {
+	if s.Repo.Listeners == nil {
 		return names
 	}
 	for _, event := range catalogueNames() {
-		names = append(names, s.Store.Listeners.ListenersFor(event)...)
+		names = append(names, s.Repo.Listeners.ListenersFor(event)...)
 	}
 	slices.Sort(names)
 	return slices.Compact(names)

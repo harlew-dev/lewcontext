@@ -1,4 +1,4 @@
-package httpapi
+package httpapi_test
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/url"
@@ -19,7 +21,7 @@ import (
 func listProjects(t *testing.T, h http.Handler, cookie *http.Cookie, path, query string) store.Page[store.Project] {
 	t.Helper()
 	var page store.Page[store.Project]
-	if err := json.Unmarshal(call(t, h, "GET", path+"?"+query, "", "", cookie, 200).Body.Bytes(), &page); err != nil {
+	if err := json.Unmarshal(apitest.Call(t, h, "GET", path+"?"+query, "", "", cookie, 200).Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
 	return page
@@ -51,15 +53,15 @@ func seedProjects(t *testing.T, db bun.IDB, f *gofakeit.Faker, workspaceID int64
 	}
 }
 func TestProjectPagination(t *testing.T) {
-	s, db := integrationServer(t)
-	h := s.Routes()
+	s, db := server(t)
+	h := router.New(s)
 	f := factory.TestFaker(t)
-	session := signedIn(t, db, f)
+	session := apitest.SignedIn(t, db, f)
 	cookie := session.Cookie()
-	workspace := ownedWorkspace(t, db, f, session.UserID)
-	path := workspacePath(workspace.PublicID, "/projects")
-	other := signedIn(t, db, f)
-	otherPath := workspacePath(ownedWorkspace(t, db, f, other.UserID).PublicID, "/projects")
+	workspace := apitest.OwnedWorkspace(t, db, f, session.UserID)
+	path := apitest.WorkspacePath(workspace.PublicID, "/projects")
+	other := apitest.SignedIn(t, db, f)
+	otherPath := apitest.WorkspacePath(apitest.OwnedWorkspace(t, db, f, other.UserID).PublicID, "/projects")
 	seedProjects(t, db, f, workspace.ID, 45)
 
 	t.Run("pages cover every project once for each sort", func(t *testing.T) {
@@ -136,8 +138,8 @@ func TestProjectPagination(t *testing.T) {
 	})
 	t.Run("rejects invalid parameters", func(t *testing.T) {
 		for _, query := range []string{"page=0", "page=10001", "perPage=101", "page=1&page=2", "sort=user_id", "status=Archived", "q=%00", "owner=1", "q=" + strings.Repeat("a", 101)} {
-			call(t, h, "GET", path+"?"+query, "", "", cookie, 400)
+			apitest.Call(t, h, "GET", path+"?"+query, "", "", cookie, 400)
 		}
-		call(t, h, "GET", path+"?page=0", "", "", nil, 401)
+		apitest.Call(t, h, "GET", path+"?page=0", "", "", nil, 401)
 	})
 }
