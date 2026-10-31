@@ -54,7 +54,7 @@ func (h AdminSessions) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		hash = h.dummyHash
+		hash = h.DummyHash()
 	}
 	valid := auth.CheckPassword(in.Password, hash)
 	result := adminLoginResult(known, valid, admin, adminErr)

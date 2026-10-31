@@ -1,4 +1,4 @@
-package httpapi_test
+package account_test
 
 import (
 	"bytes"

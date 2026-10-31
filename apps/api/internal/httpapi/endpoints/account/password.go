@@ -1,10 +1,10 @@
-package httpapi
+package account
 
 import (
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
-	"lewcontext/api/internal/store"
+	"lewcontext/api/internal/httpapi"
 	"net/http"
 )
 
@@ -14,8 +14,6 @@ import (
 // account's sign-in rate limit, so a stolen session can't guess the password.
 // Deleting a workspace or the account checks it the same way
 // (PasswordConfirmed).
-
-const WrongCurrentPassword = "Current password is incorrect."
 
 var (
 	errWrongPassword = errors.New("current password is incorrect")
@@ -32,11 +30,11 @@ type passwordChange struct {
 
 // Password is the signed-in account's password, /api/auth/password
 // (router/routes.go).
-type Password struct{ *Server }
+type Password struct{ *httpapi.Server }
 
 func (h Password) Verify(w http.ResponseWriter, r *http.Request) {
 	var in passwordCheck
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
 	if h.PasswordConfirmed(w, r, in.Password, events.PasswordStepVerify) {
@@ -44,58 +42,22 @@ func (h Password) Verify(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// PasswordConfirmed checks that password is the signed-in user's, for the
-// request step, counting against the account's sign-in limit and recording
-// auth.password_checked. When it isn't, it answers 422 with field
-// "password"; it returns false whenever it has answered. Routes using it run
-// behind LimitAuth.
-func (s *Server) PasswordConfirmed(w http.ResponseWriter, r *http.Request, password, step string) bool {
-	if !PasswordInBounds(password) {
-		FailField(w, 422, "password", WrongCurrentPassword)
-		return false
-	}
-	user := Session(r).User
-	if !s.AccountLimit(w, r, user.Email) {
-		return false
-	}
-	hash, err := s.Repo.FindPasswordHash(r.Context(), user.ID)
-	if err != nil {
-		InternalError(w, err)
-		return false
-	}
-	ok := auth.CheckPassword(password, hash)
-	if err := s.RecordPasswordCheck(r, user, ok, step); err != nil {
-		InternalError(w, err)
-		return false
-	}
-	if !ok {
-		FailField(w, 422, "password", WrongCurrentPassword)
-	}
-	return ok
-}
-
-// RecordPasswordCheck records auth.password_checked.
-func (s *Server) RecordPasswordCheck(r *http.Request, user store.User, ok bool, step string) error {
-	e := events.PasswordChecked{User: user.PublicID, OK: ok, Step: step}
-	return s.Repo.Record(r.Context(), e, store.EventScope{UserID: user.ID})
-}
-
 // Update saves the new password, signs out every session of the
 // user's, and starts a new one for this browser.
 func (h Password) Update(w http.ResponseWriter, r *http.Request) {
 	var in passwordChange
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !PasswordInBounds(in.CurrentPassword) {
-		FailField(w, 422, "currentPassword", WrongCurrentPassword)
+	if !httpapi.PasswordInBounds(in.CurrentPassword) {
+		httpapi.FailField(w, 422, "currentPassword", httpapi.WrongCurrentPassword)
 		return
 	}
-	if !PasswordInBounds(in.NewPassword) || !StrongPassword(in.NewPassword) {
-		FailField(w, 422, "newPassword", "Use a new password of 12–128 characters.")
+	if !httpapi.PasswordInBounds(in.NewPassword) || !httpapi.StrongPassword(in.NewPassword) {
+		httpapi.FailField(w, 422, "newPassword", "Use a new password of 12–128 characters.")
 		return
 	}
-	user := Session(r).User
+	user := httpapi.Session(r).User
 	if !h.AccountLimit(w, r, user.Email) {
 		return
 	}
@@ -112,17 +74,17 @@ func (h Password) Update(w http.ResponseWriter, r *http.Request) {
 	// the change has committed or rolled back.
 	if err == nil || errors.Is(err, errWrongPassword) || errors.Is(err, errSamePassword) {
 		if recordErr := h.RecordPasswordCheck(r, user, !errors.Is(err, errWrongPassword), events.PasswordStepUpdate); recordErr != nil {
-			InternalError(w, recordErr)
+			httpapi.InternalError(w, recordErr)
 			return
 		}
 	}
 	switch {
 	case errors.Is(err, errWrongPassword):
-		FailField(w, 422, "currentPassword", WrongCurrentPassword)
+		httpapi.FailField(w, 422, "currentPassword", httpapi.WrongCurrentPassword)
 	case errors.Is(err, errSamePassword):
-		FailField(w, 422, "newPassword", "Choose a password different from your current one.")
+		httpapi.FailField(w, 422, "newPassword", "Choose a password different from your current one.")
 	case err != nil:
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 	default:
 		h.StartSession(w, r, user, 200, nil)
 	}

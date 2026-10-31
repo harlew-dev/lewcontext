@@ -207,3 +207,7 @@ func (s *Server) meter(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return s.Allow(w, r, budget, budget.Key(Session(r).User.PublicID))
 }
+
+func (s *Server) AccountLimit(w http.ResponseWriter, r *http.Request, email string) bool {
+	return s.Allow(w, r, AuthPerAccount, AuthPerAccount.Key(email))
+}

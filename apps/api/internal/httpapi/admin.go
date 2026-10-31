@@ -17,26 +17,6 @@ import (
 // on every call (X-Admin-Key), then an admin session of its own. It reads
 // across every workspace, so nothing here is scoped by membership.
 
-type adminSessionKey struct{}
-
-// Admin is the signed-in admin's session, set by RequireAdminSession.
-func Admin(r *http.Request) store.AdminSession {
-	return r.Context().Value(adminSessionKey{}).(store.AdminSession)
-}
-
-// OptionalAdmin is the request's admin session on routes that may run
-// without one (the rate limiters).
-func OptionalAdmin(r *http.Request) (store.AdminSession, bool) {
-	session, ok := r.Context().Value(adminSessionKey{}).(store.AdminSession)
-	return session, ok
-}
-
-// NotFound is the answer to an unknown API route, and to every admin request
-// without the right key, so the two can't be told apart.
-func NotFound(w http.ResponseWriter, r *http.Request) {
-	Fail(w, 404, "Not found.")
-}
-
 // AdminKeyHash is the digest of the current ADMIN_ROUTE_KEY, which each admin
 // session stores: rotating the key ends them all.
 func (s *Server) AdminKeyHash() string {

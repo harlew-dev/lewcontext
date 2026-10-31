@@ -1,10 +1,11 @@
-package httpapi
+package account
 
 import (
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -30,19 +31,19 @@ type resetPassword struct {
 }
 
 // PasswordResets are reset links, /api/auth/password-reset (router/routes.go).
-type PasswordResets struct{ *Server }
+type PasswordResets struct{ *httpapi.Server }
 
 func (h PasswordResets) Request(w http.ResponseWriter, r *http.Request) {
 	if h.Config.MailDriver == config.MailOff {
-		Fail(w, 503, "Password reset isn’t available yet.")
+		httpapi.Fail(w, 503, "Password reset isn’t available yet.")
 		return
 	}
 	var in resetRequest
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !ValidEmail(&in.Email) {
-		FailField(w, 422, "email", "Enter a valid email address.")
+	if !httpapi.ValidEmail(&in.Email) {
+		httpapi.FailField(w, 422, "email", "Enter a valid email address.")
 		return
 	}
 	if !h.allowPasswordResetRequest(w, r, in.Email) {
@@ -50,7 +51,7 @@ func (h PasswordResets) Request(w http.ResponseWriter, r *http.Request) {
 	}
 	e := events.PasswordResetRequested{Email: in.Email}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	w.WriteHeader(202)
@@ -59,34 +60,34 @@ func (h PasswordResets) Request(w http.ResponseWriter, r *http.Request) {
 // allowPasswordResetRequest counts a request against each limit in turn, so
 // one refused early doesn't spend the later ones: a single client can't use
 // up the limit shared by everyone. Unknown emails count like real ones.
-func (s *Server) allowPasswordResetRequest(w http.ResponseWriter, r *http.Request, email string) bool {
-	return s.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) &&
-		s.Allow(w, r, PasswordResetPerIP, PasswordResetPerIP.IPKey(ClientIP(r))) &&
-		s.Allow(w, r, PasswordResetPerEmail, PasswordResetPerEmail.Key(email)) &&
-		s.Allow(w, r, PasswordResetGlobal, PasswordResetGlobal.Everyone())
+func (h PasswordResets) allowPasswordResetRequest(w http.ResponseWriter, r *http.Request, email string) bool {
+	return h.Allow(w, r, httpapi.AuthPerIP, httpapi.AuthPerIP.IPKey(httpapi.ClientIP(r))) &&
+		h.Allow(w, r, httpapi.PasswordResetPerIP, httpapi.PasswordResetPerIP.IPKey(httpapi.ClientIP(r))) &&
+		h.Allow(w, r, httpapi.PasswordResetPerEmail, httpapi.PasswordResetPerEmail.Key(email)) &&
+		h.Allow(w, r, httpapi.PasswordResetGlobal, httpapi.PasswordResetGlobal.Everyone())
 }
 
 // Check lets the link's page say straight away that a link has
 // expired, before the user types a new password.
 func (h PasswordResets) Check(w http.ResponseWriter, r *http.Request) {
 	var in resetCheck
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !h.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
+	if !h.Allow(w, r, httpapi.AuthPerIP, httpapi.AuthPerIP.IPKey(httpapi.ClientIP(r))) {
 		return
 	}
 	if !input.Token(in.Token) {
-		FailField(w, 422, "token", resetLinkInvalid)
+		httpapi.FailField(w, 422, "token", resetLinkInvalid)
 		return
 	}
 	live, err := h.Repo.CheckPasswordReset(r.Context(), auth.Digest(in.Token))
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	if !live {
-		FailField(w, 422, "token", resetLinkInvalid)
+		httpapi.FailField(w, 422, "token", resetLinkInvalid)
 		return
 	}
 	w.WriteHeader(204)
@@ -97,15 +98,15 @@ func (h PasswordResets) Check(w http.ResponseWriter, r *http.Request) {
 // new password (which also lets a password manager save it).
 func (h PasswordResets) Reset(w http.ResponseWriter, r *http.Request) {
 	var in resetPassword
-	if !Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) {
 		return
 	}
 	if !input.Token(in.Token) {
-		FailField(w, 422, "token", resetLinkInvalid)
+		httpapi.FailField(w, 422, "token", resetLinkInvalid)
 		return
 	}
-	if !PasswordInBounds(in.NewPassword) || !StrongPassword(in.NewPassword) {
-		FailField(w, 422, "newPassword", "Use a new password of 12–128 characters.")
+	if !httpapi.PasswordInBounds(in.NewPassword) || !httpapi.StrongPassword(in.NewPassword) {
+		httpapi.FailField(w, 422, "newPassword", "Use a new password of 12–128 characters.")
 		return
 	}
 	digest := auth.Digest(in.Token)
@@ -113,27 +114,27 @@ func (h PasswordResets) Reset(w http.ResponseWriter, r *http.Request) {
 	// checks again under a lock.
 	live, err := h.Repo.CheckPasswordReset(r.Context(), digest)
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	if !live {
-		FailField(w, 422, "token", resetLinkInvalid)
+		httpapi.FailField(w, 422, "token", resetLinkInvalid)
 		return
 	}
 	hash, err := auth.HashPassword(in.NewPassword)
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	user, err := h.Repo.ResetPassword(r.Context(), digest, hash)
 	if errors.Is(err, store.ErrResetInvalid) {
-		FailField(w, 422, "token", resetLinkInvalid)
+		httpapi.FailField(w, 422, "token", resetLinkInvalid)
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		httpapi.InternalError(w, err)
 		return
 	}
 	// The email lets the login page fill it in.
-	JSON(w, 200, map[string]string{"email": user.Email})
+	httpapi.JSON(w, 200, map[string]string{"email": user.Email})
 }

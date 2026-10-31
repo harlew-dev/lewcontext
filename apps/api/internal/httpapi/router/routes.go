@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/endpoints/account"
 	"lewcontext/api/internal/httpapi/endpoints/workspace"
 	"net/http"
 	"strings"
@@ -30,11 +31,11 @@ func New(s *httpapi.Server) http.Handler {
 func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", health(s))
-	registrations := httpapi.Registrations{Server: s}
-	sessions := httpapi.Sessions{Server: s}
-	me := httpapi.Me{Server: s}
-	password := httpapi.Password{Server: s}
-	passwordResets := httpapi.PasswordResets{Server: s}
+	registrations := account.Registrations{Server: s}
+	sessions := account.Sessions{Server: s}
+	me := account.Me{Server: s}
+	password := account.Password{Server: s}
+	passwordResets := account.PasswordResets{Server: s}
 	mux.Handle("POST /api/auth/register", s.LimitAuth(http.HandlerFunc(registrations.Register)))
 	mux.Handle("POST /api/auth/login", s.LimitAuth(http.HandlerFunc(sessions.Login)))
 	// A login's second factor, with the challenge in its cookie (mfa.go).
@@ -57,8 +58,8 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	// do turning it off and new recovery codes, which are recovery routes
 	// too: a stolen session must not use up the budget to keep the owner
 	// from taking the account back.
-	mfa := httpapi.MFA{Server: s}
-	recoveryCodes := httpapi.RecoveryCodes{Server: s}
+	mfa := account.MFA{Server: s}
+	recoveryCodes := account.RecoveryCodes{Server: s}
 	mux.Handle("POST /api/auth/mfa/setup", s.RequireSession(s.LimitAuth(http.HandlerFunc(mfa.Setup))))
 	mux.Handle("POST /api/auth/mfa", s.RequireSession(http.HandlerFunc(mfa.Store)))
 	mux.Handle("DELETE /api/auth/mfa", s.RequireSessionUnmetered(s.LimitAuth(http.HandlerFunc(mfa.Destroy))))
@@ -91,11 +92,11 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 // only the IP limit, and each counts its own. A signed-in account verifies
 // with its session, unverified or not.
 func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
-	registrations := httpapi.Registrations{Server: s}
+	registrations := account.Registrations{Server: s}
 	mux.HandleFunc("POST /api/auth/register/check", registrations.Check)
 	mux.HandleFunc("POST /api/auth/register/resend", registrations.Resend)
 	mux.HandleFunc("POST /api/auth/register/verify", registrations.Verify)
-	verification := httpapi.EmailVerification{Server: s}
+	verification := account.EmailVerification{Server: s}
 	mux.Handle("POST /api/auth/email-verification", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(verification.Store))))
 	mux.Handle("PATCH /api/auth/email-verification", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(verification.Update))))
 }
