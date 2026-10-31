@@ -50,6 +50,9 @@ make serve          # make build, then run bin/api on http://localhost:3000
 
 To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGIN`, `API_ADDR`, `APP_ENV`) and start `./bin/api`. `APP_ORIGIN` must be the address browsers use. With `APP_ENV=production`, it also needs HTTPS and a database URL with `sslmode=verify-full`, and it refuses to start without the web build embedded.
 
+- **`bin/api` takes no arguments.** It ignores anything after it and starts the server. So `./bin/api migrate` doesn't migrate: it starts a full server, delivery worker included, against `DATABASE_URL`. Migrate with `make migrate`, or `cd apps/api && DATABASE_URL=… go run ./cmd/migrate` for another database. The Docker image is different: it installs every `cmd/*` as its own command, which is why `docker compose run --rm app migrate` works there.
+- **:3000 can also be held by Docker.** `make docker-dev` leaves the `app` container listening on :3000. It runs the code from its last `make docker-app`, not your working tree, and it shares the local database. Stop it (`docker compose stop app`) or serve on another port ([ui/testing.md](ui/testing.md#against-a-server-of-your-own)).
+
 ## Configuration
 
 `make` loads `.env` for its subprocesses, and its values win over variables set on the command line. If you run Go or npm commands directly, export the variables yourself (`scripts/dev.sh` does). Vite doesn't read the root `.env` from `apps/web`; its dev proxy uses `API_URL` (default `http://127.0.0.1:8080`), and `APP_NAME` (default `lewcontext`) is baked into the web build as the product name in page titles, the logo and app copy, so rebuild after changing it. Keep `APP_ORIGIN=http://localhost:3000`: Vite forwards the browser's Origin unchanged, and `make serve` listens on :3000. Restart the servers after changing configuration.
