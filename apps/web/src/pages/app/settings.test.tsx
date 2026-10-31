@@ -82,7 +82,8 @@ describe("profile", () => {
   });
   it("shows the email address read-only, with a tooltip saying why", async () => {
     renderPage();
-    const email = screen.getByLabelText("Email address");
+    // The label carries the verification badge, so it's read with the field.
+    const email = screen.getByLabelText("Email address Verified");
     // Sensitive, not secret: in the page, but blurred until the eye shows it.
     expect(email).toHaveValue(session.user.email);
     expect(email).toHaveAttribute("data-blurred");
@@ -124,6 +125,89 @@ describe("profile", () => {
       await screen.findByText("Use a name of 1–80 characters."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("Ada");
+  });
+});
+describe("email verification", () => {
+  const unverified = testSession({
+    csrfToken: "csrf-old",
+    user: { emailVerifiedAt: null },
+  });
+  it("says nothing about verification when it's off", () => {
+    renderPage(testSession({ emailVerification: "off" }));
+    expect(screen.getByLabelText("Email address")).toBeInTheDocument();
+    expect(screen.queryByText("Verified")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Verify email" })).toBeNull();
+  });
+  it("verifies an unverified email with a code sent to it", async () => {
+    const verifiedAt = "2026-10-31T12:00:00Z";
+    const api = stubApi({
+      "POST /api/auth/email-verification": { status: 202 },
+      "PATCH /api/auth/email-verification": [
+        {
+          status: 422,
+          body: { error: "That code isn’t right.", field: "code" },
+        },
+        { body: { user: { ...unverified.user, emailVerifiedAt: verifiedAt } } },
+      ],
+    });
+    renderPage(unverified);
+    expect(
+      screen.getByLabelText("Email address Not verified"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("We haven’t confirmed this address."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
+    const dialog = await screen.findByRole("dialog");
+    // The address stays out of the dialog: the field keeps it blurred.
+    expect(dialog).not.toHaveTextContent(unverified.user.email);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send code" }));
+    const code = await within(dialog).findByLabelText("Verification code");
+    expect(code).toHaveAttribute("autocomplete", "one-time-code");
+    fireEvent.change(code, { target: { value: "111111" } });
+    expect(
+      await within(dialog).findByText("That code isn’t right."),
+    ).toBeInTheDocument();
+    fireEvent.change(code, { target: { value: "482913" } });
+    expect(await screen.findByText("Email verified.")).toBeInTheDocument();
+    expect(api.sent("POST")[0]).toMatchObject({
+      url: "/api/auth/email-verification",
+      csrf: "csrf-old",
+    });
+    expect(api.sent("PATCH").map((r) => r.body)).toEqual([
+      { code: "111111" },
+      { code: "482913" },
+    ]);
+    // The renewed session says verified.
+    expect(
+      await screen.findByLabelText("Email address Verified"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Verify email" })).toBeNull();
+  });
+  it("asks for a new code when the last one ended", async () => {
+    stubApi({
+      "POST /api/auth/email-verification": { status: 202 },
+      "PATCH /api/auth/email-verification": {
+        status: 410,
+        body: { error: "This code has expired. Send a new one." },
+      },
+    });
+    renderPage(unverified);
+    fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send code" }));
+    fireEvent.change(
+      await within(dialog).findByLabelText("Verification code"),
+      {
+        target: { value: "482913" },
+      },
+    );
+    expect(
+      await within(dialog).findByText("This code has expired. Send a new one."),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Send code" }),
+    ).toBeInTheDocument();
   });
 });
 describe("change password", () => {

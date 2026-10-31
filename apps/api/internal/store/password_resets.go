@@ -51,7 +51,8 @@ func (s *Store) CheckPasswordReset(ctx context.Context, hash string) (bool, erro
 // ResetPassword gives the account whose live reset link is hash the password
 // hash passwordHash, deletes the link and every session of the account's
 // (admin sessions too), and
-// records auth.password_reset.completed, in one transaction. It returns
+// records auth.password_reset.completed, in one transaction. An unverified
+// email becomes verified (auth.email_verified). It returns
 // ErrResetInvalid unless hash is a live link.
 func (s *Store) ResetPassword(ctx context.Context, hash, passwordHash string) (User, error) {
 	var u User
@@ -97,7 +98,15 @@ func (s *Store) ResetPassword(ctx context.Context, hash, passwordHash string) (U
 			return err
 		}
 		e := events.PasswordResetCompleted{User: u.PublicID, OtherSessionsRevoked: revoked}
-		return s.record(ctx, tx, e, EventScope{ActorID: u.ID, UserID: u.ID})
+		if err := s.record(ctx, tx, e, EventScope{ActorID: u.ID, UserID: u.ID}); err != nil {
+			return err
+		}
+		// The link went only to the account's inbox, and whoever used it
+		// controls the account anyway, so it proves the email too.
+		if u.EmailVerifiedAt != nil {
+			return nil
+		}
+		return markEmailVerified(ctx, s, tx, &u, events.VerifiedByPasswordReset)
 	})
 	return u, err
 }

@@ -1,15 +1,22 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import useSWR from "swr";
-import { ApiError, errorMessage, useApi, type ApiPath } from "./api";
-import { loginPath } from "./routes";
+import {
+  ApiError,
+  errorMessage,
+  useApi,
+  verificationRequired,
+  type ApiPath,
+} from "./api";
+import { loginPath, verifyEmailPath } from "./routes";
 import { useOptionalSession } from "./session";
 // SWR for a typed path from `paths`; the key includes the session's user ID.
 // Pages render at once and show a skeleton while `loading`. `fallback` (e.g.
 // a record from an already loaded list) is shown until the fetch returns.
 // While a new path loads, or if it fails, the last loaded data stays
-// available. A null path fetches nothing. Expired sessions go to login,
-// returning to this page afterwards. `refreshInterval` polls: milliseconds
+// available. A null path fetches nothing. Expired sessions go to login, and
+// an account that must verify its email to the verify-email page, returning
+// to this page afterwards. `refreshInterval` polls: milliseconds
 // until the next refresh after each load, or 0 to stop (e.g. only while an
 // invitation's email is still being sent).
 export function useResource<T>(
@@ -30,10 +37,11 @@ export function useResource<T>(
       fallbackData: fallback,
       refreshInterval,
       onError(error) {
+        const here = location.pathname + location.search;
         if (error instanceof ApiError && error.status === 401)
-          void navigate(loginPath(location.pathname + location.search), {
-            replace: true,
-          });
+          void navigate(loginPath(here), { replace: true });
+        if (verificationRequired(error))
+          void navigate(verifyEmailPath(here), { replace: true });
       },
     },
   );

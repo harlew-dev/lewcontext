@@ -14,6 +14,8 @@ func TestNewRouteKeyPassesConfig(t *testing.T) {
 	t.Setenv("APP_ORIGIN", "https://app.example.com")
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("MAIL_DRIVER", "off")
+	t.Setenv("EMAIL_VERIFICATION", "off")
+	t.Setenv("EMAIL_VERIFICATION_EXISTING", "")
 	t.Setenv("APP_KEY", "c3VwZXItc2VjcmV0LXRlc3Qta2V5LTMyLWJ5dGVzISE=")
 	t.Setenv("RATE_LIMITS", "")
 	t.Setenv("CLIENT_IP_HEADER", "")

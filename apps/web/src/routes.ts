@@ -11,6 +11,7 @@ export default [
   index("pages/home.tsx"),
   route("auth/login", "pages/auth/login.tsx"),
   route("auth/register", "pages/auth/register.tsx"),
+  route("auth/register/verify", "pages/auth/register/verify.tsx"),
   route("auth/forgot-password", "pages/auth/forgot-password.tsx"),
   route(
     "auth/forgot-password/:token",
@@ -19,6 +20,7 @@ export default [
   route("auth/invitations/:token", "pages/auth/invitations/[token].tsx"),
   route("app", "pages/app/index.tsx"),
   route("app/onboarding", "pages/app/onboarding.tsx"),
+  route("app/verify-email", "pages/app/verify-email.tsx"),
   layout("pages/app/layout.tsx", [
     route("app/settings", "pages/app/settings.tsx"),
     route("app/:workspace/dashboard", "pages/app/[workspace]/dashboard.tsx"),

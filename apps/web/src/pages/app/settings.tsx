@@ -27,8 +27,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Divider } from "@/components/ui/divider";
-import { ErrorNotice } from "@/components/ui/feedback";
-import { Field, FieldGroup, Label } from "@/components/ui/fieldset";
+import { ErrorNotice, Notice } from "@/components/ui/feedback";
+import {
+  Description,
+  Field,
+  FieldGroup,
+  Label,
+} from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import {
   Input,
@@ -108,6 +113,12 @@ function ProfileForm() {
   const renew = useRenewSession();
   const [name, setName] = useState(session.user.name);
   const [emailVisible, setEmailVisible] = useState(false);
+  // With email verification on, the email says whether it's verified, and an
+  // unverified one offers to verify it.
+  const verification = session.emailVerification !== "off";
+  const unverified = verification && !session.user.emailVerifiedAt;
+  const [verifying, setVerifying] = useState(false);
+  const verifyOpened = useOpenCount(verifying);
   const save = useAction((clean: string) =>
     api.auth().updateProfile({ name: clean }),
   );
@@ -122,60 +133,204 @@ function ProfileForm() {
     toast.success("Profile updated.");
   }
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <FieldGroup>
-        <Field disabled={save.loading}>
-          <Label>Name</Label>
-          <Input
-            name="name"
-            autoComplete="name"
-            required
-            maxLength={maxName}
-            value={name}
-            onChange={(e) => setName(e.currentTarget.value)}
-          />
-        </Field>
-        <Field>
-          <Label>Email address</Label>
-          <InputGroup>
+    // The dialog sits outside the form: React passes a dialog form's submit
+    // up through its portal to an enclosing form.
+    <>
+      <form onSubmit={submit} className="space-y-4">
+        <FieldGroup>
+          <Field disabled={save.loading}>
+            <Label>Name</Label>
             <Input
-              type="email"
-              value={session.user.email}
-              readOnly
-              blurred={!emailVisible}
-              onReveal={() => setEmailVisible(true)}
+              name="name"
+              autoComplete="name"
+              required
+              maxLength={maxName}
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
             />
-            <InputActions>
-              <Tooltip content={emailVisible ? "Hide" : "Reveal"}>
-                <InputButton
-                  aria-label={
-                    emailVisible ? "Hide email address" : "Reveal email address"
-                  }
-                  aria-pressed={emailVisible}
-                  onClick={() => setEmailVisible(!emailVisible)}
-                >
-                  {emailVisible ? <EyeSlashIcon /> : <EyeIcon />}
-                </InputButton>
-              </Tooltip>
-              <InputLock label="Your sign-in email can’t be changed" />
-            </InputActions>
-          </InputGroup>
-        </Field>
-      </FieldGroup>
-      <div className="flex justify-end">
-        <Button
-          type="submit"
-          loading={save.loading}
-          disabled={clean === null || clean === session.user.name}
-          disabledReason={
-            clean === null ? "Fill in required fields" : "No changes made"
-          }
-        >
-          Save
-        </Button>
-      </div>
-      <ErrorNotice error={save.error} />
-    </form>
+          </Field>
+          <Field>
+            <Label>
+              Email address
+              {verification && <EmailStatusBadge verified={!unverified} />}
+            </Label>
+            <InputGroup>
+              <Input
+                type="email"
+                value={session.user.email}
+                readOnly
+                blurred={!emailVisible}
+                onReveal={() => setEmailVisible(true)}
+              />
+              <InputActions>
+                <Tooltip content={emailVisible ? "Hide" : "Reveal"}>
+                  <InputButton
+                    aria-label={
+                      emailVisible
+                        ? "Hide email address"
+                        : "Reveal email address"
+                    }
+                    aria-pressed={emailVisible}
+                    onClick={() => setEmailVisible(!emailVisible)}
+                  >
+                    {emailVisible ? <EyeSlashIcon /> : <EyeIcon />}
+                  </InputButton>
+                </Tooltip>
+                <InputLock label="Your sign-in email can’t be changed" />
+              </InputActions>
+            </InputGroup>
+            {unverified && (
+              <Description>
+                We haven’t confirmed this address.{" "}
+                <TextButton onClick={() => setVerifying(true)}>
+                  Verify email
+                </TextButton>
+              </Description>
+            )}
+          </Field>
+        </FieldGroup>
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            loading={save.loading}
+            disabled={clean === null || clean === session.user.name}
+            disabledReason={
+              clean === null ? "Fill in required fields" : "No changes made"
+            }
+          >
+            Save
+          </Button>
+        </div>
+        <ErrorNotice error={save.error} />
+      </form>
+      <VerifyEmailDialog
+        key={verifyOpened}
+        open={verifying}
+        onClose={() => setVerifying(false)}
+      />
+    </>
+  );
+}
+// Part of the email field's label, so it's read with it.
+function EmailStatusBadge({ verified }: { verified: boolean }) {
+  return (
+    <>
+      {" "}
+      <Badge color={verified ? "lime" : "zinc"} className="ml-1 align-middle">
+        {verified ? "Verified" : "Not verified"}
+      </Badge>
+    </>
+  );
+}
+// Verifies the account's email with a code sent to it: Send code, then the
+// code. The address isn't shown, as the field above keeps it blurred.
+function VerifyEmailDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const session = useSession();
+  const renew = useRenewSession();
+  const [step, setStep] = useState<"send" | "code">("send");
+  const [code, setCode] = useState("");
+  const [fieldError, setFieldError] = useState<string>();
+  const [ended, setEnded] = useState("");
+  // A code that ended (expired, or too many wrong ones) goes back to sending
+  // a new one, saying why; a wrong one shows under the field.
+  function showError(e: unknown): boolean {
+    if (e instanceof ApiError && e.status === 410) {
+      setEnded(errorMessage(e));
+      setCode("");
+      setStep("send");
+      return true;
+    }
+    if (e instanceof ApiError && e.field === "code") {
+      setFieldError(errorMessage(e));
+      return true;
+    }
+    return false;
+  }
+  const send = useAction(() => api.auth().emailVerification().store());
+  const verify = useAction(
+    (typed: string) => api.auth().emailVerification().update(typed),
+    { onError: showError },
+  );
+  const busy = send.busy || verify.busy;
+  const loading = send.loading || verify.loading;
+  function close() {
+    if (!busy) onClose();
+  }
+  function verified(emailVerifiedAt: string | null) {
+    renew({ ...session, user: { ...session.user, emailVerifiedAt } });
+    toast.success("Email verified.");
+    onClose();
+  }
+  async function sendCode() {
+    setEnded("");
+    setFieldError(undefined);
+    if (!(await send.run()).ok) return;
+    if (step === "code") toast.success("We sent a new code.");
+    setCode("");
+    setStep("code");
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (step === "send") return sendCode();
+    setFieldError(undefined);
+    const result = await verify.run(code);
+    if (result.ok) verified(result.value.user.emailVerifiedAt);
+  }
+  return (
+    <Dialog open={open} onClose={close}>
+      <form onSubmit={submit}>
+        <DialogTitle>Verify your email</DialogTitle>
+        <DialogDescription>
+          {step === "send"
+            ? "We’ll send a 6-digit code to your email address."
+            : "Enter the 6-digit code we sent to your email address. It works for 15 minutes."}
+        </DialogDescription>
+        <DialogBody>
+          {ended && (
+            <Notice variant="error" className="mb-6">
+              {ended}
+            </Notice>
+          )}
+          <ErrorNotice
+            error={step === "send" ? send.error : verify.error}
+            className="mb-6"
+          />
+          {step === "code" && (
+            <div className="space-y-4">
+              <CodeField
+                label="Verification code"
+                value={code}
+                onChange={setCode}
+                error={fieldError}
+                disabled={loading}
+                autoSubmit
+                autoFocus
+              />
+              <Text>
+                <TextButton onClick={sendCode} disabled={busy}>
+                  Send a new code
+                </TextButton>
+              </Text>
+            </div>
+          )}
+        </DialogBody>
+        <DialogActions>
+          <Button plain onClick={close} disabled={loading}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={loading}>
+            {step === "send" ? "Send code" : "Verify"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 }
 function PasswordControls() {

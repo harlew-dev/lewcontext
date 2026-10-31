@@ -38,6 +38,8 @@ type Template string
 const (
 	ForgotPassword      Template = "forgot-password"
 	WorkspaceInvitation Template = "workspace-invitation"
+	VerifyEmail         Template = "verify-email"
+	AccountExists       Template = "account-exists"
 )
 
 // Subjects are fixed text kept here rather than in the HTML file: a subject is
@@ -45,6 +47,8 @@ const (
 var subjects = map[Template]string{
 	ForgotPassword:      "Reset your password",
 	WorkspaceInvitation: "You’ve been invited to join a workspace",
+	VerifyEmail:         "Confirm your email address",
+	AccountExists:       "You already have an account",
 }
 
 // ForgotPasswordData fills templates/forgot-password.html.
@@ -62,6 +66,21 @@ type WorkspaceInvitationData struct {
 	Role         string // with its article: "a member", "an admin"
 	URL          string // the invitation link, built from APP_ORIGIN
 	Home         string // the homepage, APP_ORIGIN + "/", for someone new to the app
+}
+
+// VerifyEmailData fills templates/verify-email.html: a sign-up's code, or an
+// account's verifying the email it has. It holds no name: anyone can send a
+// sign-up's code to any address, so none of its words may be theirs.
+type VerifyEmailData struct {
+	Code string // spaced for reading (auth.FormatEmailCode): "482 913"
+}
+
+// AccountExistsData fills templates/account-exists.html, sent instead of a
+// code to a sign-up for an email that already has an account.
+type AccountExistsData struct {
+	Name     string // the account's own name, never the one just typed
+	LoginURL string // the login page with its account-exists notice
+	ResetURL string // the page that asks for a reset link
 }
 
 // Message is a rendered email, ready for a driver.

@@ -71,12 +71,13 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 4. Click a row to open the project page, edit it, then reload. The change persists.
 5. Open Account & security from the account menu, change your name (the account menu shows the new one), sign out other sessions, then sign out of this browser.
 6. From the workspace menu, create a second workspace; it opens empty. Switch back from the same menu. In Workspace settings, rename it and copy its ID.
-7. Register another account. It starts at onboarding, creates its own workspace and can't see the demo account's (`/app/<their wsp_…>/dashboard` shows "This page has wandered off.").
-8. Signed out, open `/`: the homepage offers "Log in". Open `/app/settings`: you land on login, and return to settings after signing in. Back on `/`, the button now says "Dashboard".
-9. Hide the sidebar with the button beside the workspace menu; it slides out and the toggle glides into the top bar. Reload: it stays hidden, with no flash of the sidebar. Show it again.
-10. At a 390px viewport, navigation, search, paging (Previous/Next) and editing remain usable; the slide-over sidebar closes from the button beside the workspace menu.
+7. Register another account. It asks for the 6-digit code emailed to it (open Mailpit at `http://localhost:8025`; on a phone the code is offered above the keyboard), then starts at onboarding, creates its own workspace and can't see the demo account's (`/app/<their wsp_…>/dashboard` shows "This page has wandered off."). Signing up again with the same email shows the same code page, while Mailpit gets "You already have an account" instead of a code.
+8. Email verification for older accounts: `make seed only=users` makes some unverified ones (password `DEMO_PASSWORD`). Sign in as one: Account & security says "Not verified" with Verify email. With `EMAIL_VERIFICATION_EXISTING=required` in `.env` (restart the API), signing in as another goes to "You must verify your email to continue" first ([api/auth.md](api/auth.md#email-verification)).
+9. Signed out, open `/`: the homepage offers "Log in". Open `/app/settings`: you land on login, and return to settings after signing in. Back on `/`, the button now says "Dashboard".
+10. Hide the sidebar with the button beside the workspace menu; it slides out and the toggle glides into the top bar. Reload: it stays hidden, with no flash of the sidebar. Show it again.
+11. At a 390px viewport, navigation, search, paging (Previous/Next) and editing remain usable; the slide-over sidebar closes from the button beside the workspace menu.
 
-11. The admin dashboard: `make admin cmd=grant email=test@example.com CONFIRM=1`, then open `http://localhost:3000/admin/<ADMIN_ROUTE_KEY from .env>`. Sign in with the demo account's password; without two-factor authentication it asks you to set it up (the QR code hidden until revealed), then shows Users and Workspaces. `/admin/<anything else>` is the ordinary 404. Sign out from the account menu ([api/admin.md](api/admin.md)).
+12. The admin dashboard: `make admin cmd=grant email=test@example.com CONFIRM=1`, then open `http://localhost:3000/admin/<ADMIN_ROUTE_KEY from .env>`. Sign in with the demo account's password; without two-factor authentication it asks you to set it up (the QR code hidden until revealed), then shows Users and Workspaces. `/admin/<anything else>` is the ordinary 404. Sign out from the account menu ([api/admin.md](api/admin.md)).
 
 ## Failure checks
 

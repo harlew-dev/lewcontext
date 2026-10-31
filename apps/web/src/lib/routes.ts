@@ -13,6 +13,9 @@ export const routes = {
   home: "/",
   app: "/app",
   onboarding: "/app/onboarding",
+  // An account that must verify its email first (mustVerify) is sent here
+  // from every signed-in page, with ?next= to return to.
+  verifyEmail: "/app/verify-email",
   settings: "/app/settings",
   dashboard: (workspace: string) => `/app/${workspace}/dashboard`,
   // Resource pages, grouped by resource with the page actions index, show,
@@ -31,6 +34,9 @@ export const routes = {
   },
   login: "/auth/login",
   register: "/auth/register",
+  // A sign-up's code step, its own page so a reload (a phone switching to
+  // the mail app) resumes it from the sign-up's cookie.
+  registerVerify: "/auth/register/verify",
   // Asks for a reset link; the link itself is /auth/forgot-password/<token>.
   forgotPassword: "/auth/forgot-password",
   // An invitation's emailed link. Like the reset link, it holds a single-use
@@ -84,7 +90,8 @@ export const linkToken = /^[A-Za-z0-9_-]{43}$/;
 const invitationLink = /^\/auth\/invitations\/([A-Za-z0-9_-]{43})$/;
 // Pages a sign-in may return to (?next=), matched exactly: the signed-in
 // pages, and an invitation link. Add a pattern for each new page under /app.
-// Onboarding isn't one: /app sends accounts without a workspace there anyway.
+// Onboarding and verify-email aren't ones: /app sends whoever needs them
+// there anyway.
 const returnRoutes = [
   invitationLink,
   /^\/app$/,
@@ -182,6 +189,17 @@ function stringIn(state: unknown, key: string): string | undefined {
   if (typeof state !== "object" || state === null) return undefined;
   const value: unknown = Reflect.get(state, key);
   return typeof value === "string" ? value : undefined;
+}
+// The login page saying the email already has an account (a sign-up's code
+// found one), returning to `next`. The notice is fixed text the login page
+// picks by name; nothing from the URL is shown.
+export function accountExistsLoginPath(next: unknown): string {
+  const login = authPath(routes.login, next);
+  return `${login}${login.includes("?") ? "&" : "?"}notice=account-exists`;
+}
+// The verify-email page, returning to `path` afterwards.
+export function verifyEmailPath(path: string): string {
+  return authPath(routes.verifyEmail, path);
 }
 // The login page, returning to `path` afterwards.
 export function loginPath(path: string): string {

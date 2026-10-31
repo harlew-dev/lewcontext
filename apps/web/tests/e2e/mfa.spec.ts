@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHmac } from "node:crypto";
+import { enterMailedCode } from "./mail";
 import { execFileSync } from "node:child_process";
 const email = `e2e-${Date.now()}-mfa@lewcontext.test`;
 const password = "A thoughtful test passphrase!";
@@ -69,6 +70,7 @@ test("two-factor authentication: enable with a hidden QR code, sign in with a co
   await page.getByLabel("Full name").fill("Two Factor");
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
+  await enterMailedCode(page, email);
   await expect(page).toHaveURL("/app/onboarding");
   await page.getByLabel("Name").fill("Second Factor Co");
   await page.getByRole("button", { name: "Create workspace" }).click();

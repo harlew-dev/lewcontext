@@ -47,5 +47,23 @@ elif ! e2e_reserve "$port" || e2e_port_in_use "$port"; then
   e2e_clash "$port"
 fi
 
-echo "E2E run: app http://localhost:$port · database $(e2e_database_name "$(e2e_database_url "$DATABASE_URL" "$port")")"
-E2E_PORT=$port E2E_LOCK_HELD=1 exec "$@"
+# A second port, for the server tests/e2e/email-verification-settings.spec.ts
+# starts and stops with other settings on this run's database: the first free
+# one after the run's, held like it until the run ends. Without one that spec
+# is skipped.
+settings_port=""
+for candidate in $(seq $((port + 1)) $((port + 50))); do
+  e2e_valid_port "$candidate" || break
+  main_lock=$E2E_LOCK_FD
+  if e2e_reserve "$candidate"; then
+    if ! e2e_port_in_use "$candidate"; then
+      settings_port=$candidate
+      break
+    fi
+    exec {E2E_LOCK_FD}>&-
+  fi
+  E2E_LOCK_FD=$main_lock
+done
+
+echo "E2E run: app http://localhost:$port · database $(e2e_database_name "$(e2e_database_url "$DATABASE_URL" "$port")") · settings server port ${settings_port:-none}"
+E2E_PORT=$port E2E_SETTINGS_PORT=$settings_port E2E_LOCK_HELD=1 exec "$@"

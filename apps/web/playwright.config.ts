@@ -33,6 +33,10 @@ function loadTestEnv(): string {
   // it's made here and the server Playwright starts inherits it
   // (scripts/serve-test.sh). Workers load this file again and keep it.
   process.env.E2E_ADMIN_ROUTE_KEY ||= randomBytes(32).toString("base64url");
+  // The run's APP_KEY, the same way: every server of the run, including the
+  // one the settings spec restarts, shares the database, so they must share
+  // the key that seals MFA secrets and digests emailed codes.
+  process.env.E2E_APP_KEY ||= randomBytes(32).toString("base64");
   process.env.DATABASE_URL = database.toString();
   return process.env.APP_ORIGIN;
 }

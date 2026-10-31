@@ -185,6 +185,31 @@ describe("auth() and sessions()", () => {
     expect(stub.sent()[0].csrf).toBeNull();
     expect(stub.sent()[4].csrf).toBe("csrf");
   });
+  it("verifies an email with a code, the code only in bodies", async () => {
+    const stub = stubFetch();
+    await api().auth().registerCheck();
+    await api().auth().registerResend();
+    await api().auth().registerVerify("482913");
+    await api("csrf").auth().emailVerification().store();
+    await api("csrf").auth().emailVerification().update("482913");
+    expect(requests(stub)).toEqual([
+      "POST /api/auth/register/check",
+      "POST /api/auth/register/resend",
+      "POST /api/auth/register/verify",
+      "POST /api/auth/email-verification",
+      "PATCH /api/auth/email-verification",
+    ]);
+    expect(stub.sent().map((r) => r.body)).toEqual([
+      {},
+      {},
+      { code: "482913" },
+      {},
+      { code: "482913" },
+    ]);
+    // A sign-up has no session yet; an account's verification has one.
+    expect(stub.sent()[2].csrf).toBeNull();
+    expect(stub.sent()[4].csrf).toBe("csrf");
+  });
 });
 describe("invitations", () => {
   const base = `/api/workspaces/${ws}/invitations`;

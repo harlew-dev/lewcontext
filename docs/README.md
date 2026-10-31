@@ -8,7 +8,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | --- | --- |
 | [api/README.md](api/README.md) | need the package layout, request flow, how Go serves the web app, or environment variables |
 | [api/endpoints.md](api/endpoints.md) | call or add an endpoint |
-| [api/auth.md](api/auth.md) | touch sign-in, sessions, CSRF or security headers |
+| [api/auth.md](api/auth.md) | touch sign-in, sign-up and email verification, sessions, CSRF or security headers |
 | [api/admin.md](api/admin.md) | touch the admin dashboard: its secret key, admins, admin sign-in and sessions, what admins see |
 | [api/rate-limits.md](api/rate-limits.md) | add an endpoint, a limit or a quota, or touch `requireSession` |
 | [api/events.md](api/events.md) | record something that happened (the `events` audit trail), or add an event type |
@@ -34,7 +34,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 
 ## Everything else
 
-- [naming.md](naming.md): how routes, handlers, store methods, permissions, events, rate limits, client methods, page routes and components are named. Read it before adding any of them.
+- [naming.md](naming.md): how routes, handlers, store methods, permissions, events, rate limits, client methods, page routes and components are named, and how lists of declarations are grouped and commented. Read it before adding any of them.
 - [deployment.md](deployment.md): deploying to production: the image and commands, required configuration, migrating and releasing, several servers, proxies and client IPs, Cloudflare, email, and a security checklist.
 - [testing.md](testing.md): local environment setup, running the dev server (`make dev`), building and running the production binary (`make build`, `make serve`), manual demo and failure checks.
 - [`plans/`](../plans): feature plans and the decisions behind them.

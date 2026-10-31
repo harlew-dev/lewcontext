@@ -21,9 +21,13 @@ Our server must never be usable to flood someone's inbox, and important mail mus
 
 | Kind | Examples | Rule |
 | --- | --- | --- |
-| **Asked for by a user**, for themselves or someone else | password reset, invitations | A per-email limit on the request, `<feature>:per-email` ([rate-limits.md](rate-limits.md)), counted for every address whether or not it has an account, refused with 429 before anything is queued: `password-reset:per-email` (3 an hour) and `invitation:per-email` (5 an hour) |
+| **Asked for by a user**, for themselves or someone else | password reset, invitations, sign-up codes and "You already have an account", an account's verification code | A per-email limit on the request, `<feature>:per-email` ([rate-limits.md](rate-limits.md)), counted for every address whether or not it has an account, refused with 429 before anything is queued: `password-reset:per-email` (3 an hour), `invitation:per-email` (5 an hour), `register:per-email` (3 an hour), `email-verification:per-email` (3 an hour) |
 | **Security mail** about the recipient's own account | password changed, new sign-in (none yet) | Never limited: an attacker must not be able to spend a victim's budget and hold back the warning. The actions that trigger it are already limited |
 | **Notifications** about things in a workspace | a project or workspace deleted (none yet) | Not rate limited, because they matter, but **opt-in only: never subscribe anyone automatically.** Only the user can turn them on (a setting such as "Workspace notifications: All / Deletions only / None", off by default). Otherwise someone could add a person to 20 projects and delete them all, sending 20 emails they never asked for |
+
+### A limit in a listener
+
+One exception, on purpose: **"You already have an account"** is capped at 5 a day per account in the `mail.registration` listener (`mail.AccountExistsPerAccount`, `account-exists:per-account`), which then sends nothing and records `rate_limit.reached` the first time in a window. A limit on the request would give the account away, since only taken emails would hit it: the cap can only live where the account is looked up, after the response. Nothing anyone was promised is held back (the person signing up was told only "check your email", and the owner misses a sixth copy of the same notice in a day), and it never applies to security mail or codes. It counts a delivery's first attempt only, so retries don't spend it. Don't add another without the same reasons.
 
 Delaying sends by how many a recipient has had was considered and rejected: a delayed reset link arrives expired or replaced, the person who asked is told it worked while nothing arrives, and a send budget per recipient is exactly what an attacker would spend to suppress security mail.
 
@@ -34,6 +38,8 @@ Delaying sends by how many a recipient has had was considered and rejected: a de
 | Template | Constant | Data | Subject |
 | --- | --- | --- | --- |
 | `forgot-password.html` | `mail.ForgotPassword` | `ForgotPasswordData{Name, URL}` | Reset your password |
+| `verify-email.html` | `mail.VerifyEmail` | `VerifyEmailData{Code}` (spaced, "482 913"). **No name and no link:** anyone can send a sign-up's code to any address, so none of its words may be theirs, and a code is typed where it was asked for, on any device | Confirm your email address |
+| `account-exists.html` | `mail.AccountExists` | `AccountExistsData{Name, LoginURL, ResetURL}`: the account's own name, never the one typed; links to sign in (with the account-exists notice) and to ask for a reset link. No code | You already have an account |
 | `workspace-invitation.html` | `mail.WorkspaceInvitation` | `WorkspaceInvitationData{Workspace, Inviter, InviterEmail, Role, URL, Home}` (`Role` with its article, "a member"; `Inviter` empty once that account is gone; `Home` the homepage, for the "Learn about …" button beside "View the invitation", since the recipient may not know the app) | You’ve been invited to join a workspace |
 
 Every HTML email shares `templates/layout.html`: the document, the grey page, the white card and, at its top, the logo and the app's name. The logo is `templates/logo.png`, the web app's `favicon.svg` rendered at 64×64 and shown at 32×32 (`node scripts/email-logo.mjs` regenerates it after a logo change); `Send` embeds it in every message as an inline attachment, which the layout shows with `src="cid:logo"`. The name beside it is text, so the email is branded even with images off. Each email's file defines only its `title` and `content`, and `mail.New` parses each one with the layout as a set of its own. Every plain-text email shares `templates/layout.txt`, which opens with the app's name on its own line; each `.txt` file defines its `content`: the same words, the link written out, no markup.
@@ -66,7 +72,7 @@ An account's name is whatever the user typed, such as `<script>alert('XSS')</scr
 | --- | --- | --- |
 | `smtp` (the default, production included) | `SMTPDriver` (`smtp.go`, [`go-mail`](https://github.com/wneessen/go-mail)) | Sends each message over its own connection, within the listener's 30 s, with a 10 s limit on each step. See below |
 | `log` | `FileDriver` | Appends each message to `MAIL_FILE` (`tmp/mail.log`; `make` uses the repository's `tmp/`): a `====` line, `To`, `Subject`, `Template`, the plain text, then `---- HTML` and the HTML. The file is created `0600`, and the server log notes only that mail was written, never the body. **Refused in production:** it holds working reset links. For working without Docker |
-| `off` | none | Nothing is sent. Neither listener is registered, and requests for a reset link or an invitation answer 503. Production must say `off` explicitly to run without email |
+| `off` | none | Nothing is sent. No listener is registered, and requests for a reset link or an invitation answer 503. `EMAIL_VERIFICATION` must be `off` too (it sends codes). Production must say `off` explicitly to run without email |
 
 The old value `file` is refused with a message saying it's now `log`.
 

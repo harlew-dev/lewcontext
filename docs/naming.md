@@ -30,7 +30,7 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 - **`update` is always PATCH**, even when the body is the whole editable representation. PUT isn't used.
 - **A singleton resource** (one per parent, no ID in the path) uses the same actions: leaving a workspace is `membership.destroy` on `DELETE …/membership`.
 - **Anything else is a named verb**, as POST on the record or collection, with the verb as the handler name: `POST /api/invitations/accept` → `invitations.accept`. First check whether it's really a `store` or `destroy` of some other resource.
-- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources. The admin door's `/api/admin/login`, `/login/mfa` and `/logout` follow it (`adminAuthHandlers`); its resources are ordinary (`adminUserHandlers.index`, `.show`; `IndexAdminUsers`, `FindAdminWorkspace`).
+- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `register/verify`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources; the account's own singletons there use the CRUD actions (`email-verification`: `store` sends a code, `update` verifies). The admin door's `/api/admin/login`, `/login/mfa` and `/logout` follow it (`adminAuthHandlers`); its resources are ordinary (`adminUserHandlers.index`, `.show`; `IndexAdminUsers`, `FindAdminWorkspace`).
 
 ## Store methods (`internal/store`)
 
@@ -57,7 +57,7 @@ Every method starts with a verb:
 
 - **The resource** is what the event is about, spelled as in its permission: a top-level resource is one segment (`project`, `workspace`), and a resource inside another adds one (`workspace.member`, `workspace.invitation`, `auth.password_reset`). The permission `workspace.member.update` guards the route that records `workspace.member.updated`.
 - **The fact** is the last segment: past tense, a fact rather than a command (`created`, `updated`, `removed`, `left`, `sent`). Everything before it is what the fact is about, so filtering by resource is a prefix (`workspace.member.%`).
-- **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`); only stored sub-resources (reset links, members, invitations) get a segment.
+- **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`, `auth.email_verified`); only stored sub-resources (reset links, pending sign-ups, email codes, members, invitations) get a segment (`auth.registration.requested`, `auth.email_verification.sent`). A sign-up waiting for its code is a *registration*, after the `register` route; the table is `pending_registrations`.
 - **The admin dashboard** is the `admin` area: facts about admins and their sessions are one segment (`admin.granted`, `admin.logged_in`), and what an admin read gets the resource read (`admin.user.viewed`, `admin.workspace.listed`).
 - **At most three segments**, enforced by the `events.name` CHECK and `TestCatalogueNames`. A deeper resource needs this rule revisited, not a fourth dot.
 - **CRUD actions:** `store` records `<resource>.created`; `update` records `<resource>.updated`, or a more specific fact (`workspace.renamed`); `destroy` records `<resource>.deleted`, or a more specific fact (`workspace.member.removed`, `workspace.member.left`, `workspace.invitation.revoked`).
@@ -66,7 +66,7 @@ Every method starts with a verb:
 
 ## Rate limits (`httpapi/limits.go`)
 
-`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. Counted by is `per-ip`, `per-account`, `per-email`, `per-user` or `global` (a limit shared by everyone); `TestRateLimitNames` checks it. In `rate_limit.reached`, the level reached follows the name: `register:global:block`. Every limit has only `block` for now; the CAPTCHA plan adds `:challenge`.
+`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. Counted by is `per-ip`, `per-account`, `per-email`, `per-user` or `global` (a limit shared by everyone); `TestRateLimitNames` checks it. In `rate_limit.reached`, the level reached follows the name: `register:global:block`. Every limit has only `block` for now; the CAPTCHA plan adds `:challenge`. The declarations are grouped by feature ([Lists of declarations](#lists-of-declarations)).
 
 ## Web app
 
@@ -83,3 +83,28 @@ Every method starts with a verb:
 - **Page files are shaped like the URL** (`pages/app/[workspace]/projects/[project].tsx`).
 - **Component files** are kebab-case, grouping a family of named exports (`button.tsx`, `confirmation-dialog.tsx`); see AGENTS.md rule 6.
 - **Variants:** components with alternatives take a `variant` prop (`<Notice variant="error">`, `<ConfirmationDialog variant="danger">`), never `tone`, and never one component per alternative.
+
+## Lists of declarations
+
+A run of declarations of the same kind (the rate limits in `limits.go`, a `var (…)` or `const (…)` block, a table of routes) is grouped by what it's for, with **one blank line between groups** and none inside one. Each declaration's comment starts with its name and what it is, then any context on the lines after, as `//` comments:
+
+```go
+var (
+	// authPerIP: everything that signs in or checks a password, per client IP.
+	authPerIP = rateLimit{…}
+	// authPerAccount: password guesses against one account, from any IP.
+	authPerAccount = rateLimit{…}
+
+	// registerPerEmail: sign-ups for one email, from any IP, with verification on.
+	// Each one emails the address, a code or "you already have an account".
+	registerPerEmail = rateLimit{…}
+	// registerGlobal: accounts created by everyone.
+	// Caps sign-ups during a distributed flood.
+	registerGlobal = rateLimit{…}
+)
+```
+
+- **Comments are `//`**, never `/* */`, like every other comment in the code.
+- **A list that repeats the declarations** (`rateLimits`, beside them) follows the same groups and order, one line per group.
+- **A new declaration joins its group;** a new kind of thing starts a group of its own, after a blank line.
+

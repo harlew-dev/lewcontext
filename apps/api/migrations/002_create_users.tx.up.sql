@@ -4,5 +4,8 @@ CREATE TABLE users (
  name text NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
  email text NOT NULL UNIQUE,
  password_hash text NOT NULL,
+ -- When the account proved it owns the email with a code (or a password
+ -- reset link). Null for accounts made while EMAIL_VERIFICATION was off.
+ email_verified_at timestamptz,
  created_at timestamptz NOT NULL DEFAULT now()
 );

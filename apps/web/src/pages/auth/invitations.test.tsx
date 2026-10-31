@@ -52,6 +52,10 @@ function renderAt(pathname: string, session: Session | null, state?: unknown) {
       Component: () => <Landed name="dashboard" />,
     },
     { path: "/app/onboarding", Component: () => <Landed name="onboarding" /> },
+    {
+      path: "/app/verify-email",
+      Component: () => <Landed name={`verify ${useLocation().search}`} />,
+    },
   ]);
   const [path, search = ""] = pathname.split("?");
   render(
@@ -145,6 +149,23 @@ describe("the invitation page", () => {
       body: { token },
       csrf: "csrf",
     });
+  });
+  it("sends an account that must verify its email to do that first, then back", async () => {
+    stubApi({
+      "POST /api/invitations/check": { body: preview },
+      "POST /api/invitations/accept": {
+        status: 403,
+        body: {
+          error: "Verify your email to continue.",
+          verificationRequired: true,
+        },
+      },
+    });
+    renderAt(link, bob);
+    fireEvent.click(await screen.findByRole("button", { name: "Join Acme" }));
+    expect(
+      await screen.findByText(`verify ?next=${encodeURIComponent(link)} null`),
+    ).toBeVisible();
   });
   it("joins at once when arriving from its own buttons", async () => {
     const api = stubApi({

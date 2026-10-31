@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
-import { useApi } from "@/lib/api";
+import { needsVerification, useApi, type Registration } from "@/lib/api";
 import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
@@ -25,6 +25,7 @@ export default function Register() {
   const [email, setEmail] = useState(arrived.email ?? "");
   const [password, setPassword] = useState("");
   const api = useApi();
+  const navigate = useNavigate();
   const [search] = useSearchParams();
   // Coming from an invitation link: say so, and fill in its email.
   const token = invitationToken(search.get("next"));
@@ -34,10 +35,20 @@ export default function Register() {
     setPrefilled(true);
     if (email === "") setEmail(invitation.invitation.email);
   }
+  // With email verification on there's no account yet: the code page
+  // finishes, keeping ?next= and the invitation state.
+  async function signUp(registration: Registration) {
+    const result = await api.auth().register(registration);
+    if (!needsVerification(result)) return true;
+    await navigate(authPath(routes.registerVerify, search.get("next")), {
+      state: arrived.invitation ? { invitation: true } : undefined,
+    });
+    return false;
+  }
   // A new account has no workspace yet, so it starts at onboarding, unless it
   // came to accept an invitation: then it goes back to the link.
   const { loading, error, submit } = useAuthSubmit(
-    api.auth().register,
+    signUp,
     token ? undefined : routes.onboarding,
   );
   return (

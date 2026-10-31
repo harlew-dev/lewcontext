@@ -123,10 +123,17 @@ func seedVolume(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (s
 }
 
 // seedUsers creates fake accounts, each owning a workspace with a random
-// number of projects.
+// number of projects. Every third one never verified its email, as if made
+// while EMAIL_VERIFICATION was off, so the Not verified badge and
+// EMAIL_VERIFICATION_EXISTING=required can be tried.
 func seedUsers(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (string, error) {
 	count, most := orDefault(o.Count, 10), orDefault(o.Projects, 60)
-	users, err := factory.Users.State(factory.WithPasswordHash(o.PasswordHash)).Create(ctx, tx, f, count)
+	everyThirdUnverified := func(i int, u *factory.User) {
+		if i%3 == 2 {
+			factory.Unverified(u)
+		}
+	}
+	users, err := factory.Users.State(factory.WithPasswordHash(o.PasswordHash)).Sequence(everyThirdUnverified).Create(ctx, tx, f, count)
 	if err != nil {
 		return "", err
 	}
@@ -142,5 +149,5 @@ func seedUsers(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (st
 		}
 		projects += n
 	}
-	return fmt.Sprintf("Created %d users (%s, …), each with a workspace, and %d projects", count, users[0].Email, projects), nil
+	return fmt.Sprintf("Created %d users (%s, …, %d of them unverified), each with a workspace, and %d projects", count, users[0].Email, count/3, projects), nil
 }

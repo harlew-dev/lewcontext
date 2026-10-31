@@ -7,11 +7,12 @@ import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
-import { loaderApi, useApi } from "@/lib/api";
+import { loaderApi, useApi, verificationRequired } from "@/lib/api";
 import {
   authPageState,
   authPath,
   routes,
+  verifyEmailPath,
   type ArrivalState,
   type AuthPageState,
 } from "@/lib/routes";
@@ -117,11 +118,22 @@ function Join({ token, invitation, check }: InvitationProps) {
   const api = useApi();
   const navigate = useNavigate();
   const arrived = authPageState(useLocation().state);
-  const join = useAction(async () => {
-    const workspace = await api.invitations().accept(token);
-    const state: ArrivalState = { joinedWorkspace: workspace.name };
-    await navigate(routes.dashboard(workspace.id), { replace: true, state });
-  });
+  const join = useAction(
+    async () => {
+      const workspace = await api.invitations().accept(token);
+      const state: ArrivalState = { joinedWorkspace: workspace.name };
+      await navigate(routes.dashboard(workspace.id), { replace: true, state });
+    },
+    {
+      // An account that must verify its email first does that, then comes
+      // back here to join.
+      onError: (e) => {
+        if (!verificationRequired(e)) return;
+        void navigate(verifyEmailPath(routes.invitations.show(token)));
+        return true;
+      },
+    },
+  );
   // Once, even when React runs effects twice in development (the ref
   // survives the remount).
   const tried = useRef(false);

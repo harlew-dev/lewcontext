@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
@@ -103,7 +104,7 @@ func run() error {
 
 // listen registers every listener. Without email delivery (MAIL_DRIVER=off)
 // nothing sends reset links or invitations, and the API refuses to take
-// requests for either.
+// requests for either; email verification can't be on without it (config).
 func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
 	if c.MailDriver == config.MailOff {
 		slog.Info("mail is off (MAIL_DRIVER=off): password reset and invitations are unavailable")
@@ -119,6 +120,14 @@ func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
 	}
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
 	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(repository, mailer, c.Origin))
+	if c.Verify {
+		keys, err := auth.NewKeys(c.AppKey)
+		if err != nil {
+			return err
+		}
+		events.Listen(bus, "mail.registration", mail.Registration(repository, mailer, keys, c.Origin, c.RateLimits == config.RateLimitsOn))
+		events.Listen(bus, "mail.email_verification", mail.EmailVerification(repository, mailer, keys))
+	}
 	return nil
 }
 

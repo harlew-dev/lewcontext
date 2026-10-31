@@ -25,6 +25,31 @@ Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`,
 - The link is built from `APP_ORIGIN`, never the request's `Host`. Tokens travel to the API only in JSON bodies. The page URL holds the token, so the 30-minute lifetime and single use limit what browser history can leak; pages send `strict-origin-when-cross-origin` referrers and load nothing from other sites, and Go keeps no access log.
 - **Delivery:** over SMTP (`MAIL_DRIVER=smtp`; Mailpit locally), or the development mailbox (`log`, refused in production since it holds working links) ([mail.md](mail.md)). With `MAIL_DRIVER=off` the request endpoint answers 503.
 
+## Email verification
+
+Code: `internal/httpapi/registration.go` (sign-up), `email_verification.go` (signed in), `internal/store/registrations.go`, `email_verifications.go`, `internal/mail/registration.go` (both listeners), `internal/auth/email_code.go`, `internal/config/verification.go`. Plan: [plans/features/implemented/email-verification.md](../../plans/features/implemented/email-verification.md).
+
+`EMAIL_VERIFICATION=on` (the default; refused with `MAIL_DRIVER=off`) proves every new account owns its email with a 6-digit code, and closes the last place that said whether an email has an account. `off` signs up as before: the account at once, unverified, and 409 "Unable to create this account…" for a taken email.
+
+**Signing up** (`internal/httpapi/registration.go`):
+
+1. **Register** (`POST /api/auth/register`, the same validation and limits, plus `register:per-email`): hashes the password, saves a row in `pending_registrations` (15 minutes), records `auth.registration.requested {email, ip}`, sets the **registration cookie** (`lewcontext_registration`, `__Host-` in production; a 256-bit token, HttpOnly, SameSite=Strict, 15 minutes) and answers 202 `{verificationRequired, email}`. **No account exists until the code is right**, so with verification on `users` only gains verified accounts.
+2. **Listener** (`mail.registration`, after the response): makes a code and stores its HMAC on the row (found by the requested event's `evt_` ID). For a new email it sends `verify-email` with the code. For an email that has an account it stores the HMAC of a code **nobody is sent** and emails **"You already have an account"** instead, with Sign in (`/auth/login?notice=account-exists`) and Reset password links and no code: nothing in sign-up can change an existing account. That email is capped at 5 a day per account (`account-exists:per-account`), in the listener, silently ([mail.md](mail.md#a-limit-in-a-listener)).
+3. **Code page** `/auth/register/verify`: `POST …/check` (cookie) tells it which email, so a reload resumes it; `POST …/resend` makes a new code for the same row (15 more minutes, tries reset, counted like a sign-up); `POST …/verify {code}` checks it.
+4. **Verify**: one transaction locks the row, compares the HMAC in constant time and records `auth.registration.checked`. Wrong: 422 on `code`, and the 5th wrong deletes the row (401). Right: creates the user with `email_verified_at`, deletes **every** pending row for that email, records `auth.registered {verifiedBy: "code"}` and signs in (201). If an account took the email meanwhile, 409 and nothing is created.
+
+- **Sign-up doesn't say whether an email has an account.** Register, check, resend and a wrong verify answer the same and run the same queries for a taken email as for a new one: none of them reads `users` (only the listener does, after the response), and a taken email's row holds a real-looking HMAC, so every code fails it exactly as a wrong one fails a new email's. Limits count every address alike. `TestSignUpLooksTheSameForATakenEmail` compares the answers, headers and the tables each request touches. Only the inbox can tell the two apart.
+- **A code works only in the browser that started the sign-up.** Rows are found by the cookie, never by email, and one email can have several. Otherwise, if an owner and a stranger signed up the same new email at once, the owner could type the code from the stranger's sign-up and create the account with the stranger's password (`TestSignUpCodeBelongsToItsBrowser`).
+- **Codes:** 6 digits from `crypto/rand`, 15 minutes, 5 tries, then `email-code:per-email` (10 checks a day per email, from anywhere), so guessing one is about 1 in 100,000 a day. Stored as HMAC-SHA256 under a key derived from `APP_KEY` (a plain hash of a million codes reverses instantly). Never in an event, log or URL; the email shows it spaced and never as a link, so it works on whichever device reads the mail.
+- **Invitation links don't verify an address.** The token proves someone has the link, not that they own the inbox, and links get forwarded ("just use my invitation link"). Invited people enter the code too, then return to the link and join.
+
+**Existing accounts** (made while it was off, or before it existed) have `email_verified_at` null:
+
+- **Account settings** (with verification on): the email's label says Verified or Not verified, and an unverified one offers **Verify email**: `POST /api/auth/email-verification` records `auth.email_verification.requested`, whose `mail.email_verification` listener emails a code (one per account in `email_verifications`, replacing the last); `PATCH … {code}` verifies (422 wrong, 410 ended, 409 already verified) and records `auth.email_verified {via: "code"}`. Limits: `email-verification:per-email` (3 an hour), `email-verification:global` (500 an hour), `email-code:per-email`.
+- **`EMAIL_VERIFICATION_EXISTING=required`**: such an account signs in as usual (password, then MFA), but `requireSession` refuses it every route with 403 `{verificationRequired: true}` except reading the session, signing out, signing out other sessions and the two verification routes, which `allowUnverified` marks in `routes.go` (`TestOnlyFiveRoutesAllowUnverified`). The web app sends it to `/app/verify-email`. Codes go out only when it presses Send code.
+- **A completed password reset verifies the email** (`auth.email_verified {via: "password_reset"}`): the link went only to that inbox, and whoever uses it controls the account anyway.
+- **Admins' door isn't gated**; their app sessions are.
+
 ## Two-factor authentication
 
 Code: `internal/auth/totp.go`, `encrypt.go`, `recovery.go` (primitives), `internal/httpapi/mfa.go` (handlers), `internal/store/mfa.go`. Plan: [plans/features/implemented/mfa.md](../../plans/features/implemented/mfa.md).
@@ -51,7 +76,7 @@ Optional for every account (Account settings → Two-factor authentication → *
 - A session token is 32 random bytes (base64url, 43 characters). Only its SHA-256 digest is stored in `sessions`.
 - **Cookie:** `lewcontext_session` locally, `__Host-lewcontext_session` in production. HttpOnly, SameSite=Lax, Path=/, Secure in production.
 - **Expiry:** 30 minutes idle (every request refreshes it) and 24 hours absolute. Expired sessions answer 401.
-- **Login, register and a password change rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
+- **Login, register (or a sign-up's right code) and a password change rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
 - Logout deletes the session. `DELETE /api/auth/sessions` deletes all others.
 - Session tokens never go in localStorage or URLs.
 - **Admin sessions are separate** ([admin.md](admin.md)): their own table and `lewcontext_admin` cookie (SameSite=Strict), 15 minutes idle and 8 hours at most, 2 per admin, started only by an admin sign-in with a code, and valid only while the user is an admin and the `ADMIN_ROUTE_KEY` they were made under is current. A password change, a password reset, an MFA reset, revoking admin and deleting the account end them. An app session never counts as one, nor the other way round.
@@ -68,7 +93,7 @@ Signed-in mutations also need `X-CSRF-Token`: an independent random token return
 
 ## Rate limits
 
-Sign-in, sign-up and password reset are limited per IP, per account or email, and for everyone, and every signed-in request has a budget per user, with tighter limits on creating workspaces and projects and quotas on how many can exist. All of it is in [rate-limits.md](rate-limits.md). What matters here:
+Sign-in, sign-up (and its codes) and password reset are limited per IP, per account or email, and for everyone, and every signed-in request has a budget per user, with tighter limits on creating workspaces and projects and quotas on how many can exist. All of it is in [rate-limits.md](rate-limits.md). What matters here:
 
 - `auth:per-ip` (60 / 15 min) and `auth:per-account` (10 / 15 min) guard every password check: `limitAuth` (the IP limit and a hashing slot) and `accountLimit`. Both deletions and the signed-in password endpoints use the session user's email, so a stolen session can't guess the password faster than a login could.
 - Logout, revoking other sessions, the password endpoints, turning MFA off and new recovery codes skip the signed-in budget, so a stolen session can't use it up to stop its owner.
@@ -80,7 +105,7 @@ Sign-in, sign-up and password reset are limited per IP, per account or email, an
 
 ## Audit trail
 
-Sign-ups, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, the first refusal of each rate-limit window (`rate_limit.reached`), and admins granted, revoked, signing in and out and everything they read (`admin.*`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups (requested, sent, each code checked, completed), email verifications, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, the first refusal of each rate-limit window (`rate_limit.reached`), and admins granted, revoked, signing in and out and everything they read (`admin.*`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 
@@ -129,7 +154,7 @@ Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `inter
 4. **Accept** (`POST /api/invitations/accept {token}`, signed in): one transaction locks the workspace, then the invitation, checks the signed-in email is the invited one (403 otherwise, and the invitation is left as it was), adds the membership (an existing member keeps their role), deletes the invitation and records `workspace.invitation.accepted`. A second accept, or a revoke, waits and then finds nothing.
 5. **Revoke** (`DELETE …/invitations/{inv}`, `workspace.invitation.destroy`, and the invitation's role in your `assignableRoles`): locks in the same order (workspace, then invitation; the other way round the two deadlock), deletes the row and records `workspace.invitation.revoked`. The link stops working.
 
-- **Joining is always deliberate.** Registering or signing in never looks up invitations: accepting needs the token, which only the invited inbox has, and the signed-in email must match. There is no email verification, so someone with a leaked link who registers the invited address first could still join; single use, the 7-day lifetime and revoking bound that.
+- **Joining is always deliberate.** Registering or signing in never looks up invitations: accepting needs the token, which only the invited inbox has, and the signed-in email must match. With email verification on, registering the invited address also needs the code sent to it, so a leaked link alone can't create that account; with it off, someone with a leaked link who registers the invited address first could still join (single use, the 7-day lifetime and revoking bound that). A link never counts as verifying the address ([Email verification](#email-verification)).
 - **The token** works once, for 7 days, and only its digest is stored. It is in the page's path and in `?next=` for login and register (AGENTS.md names this exception), never in an API URL. A crafted `?next=` can't make anyone join: the page joins at once only with navigation state from its own buttons, and otherwise shows **Join**.
 - **The email** has a fixed subject, escapes every name ([mail.md](mail.md)), and shows the inviter's address so a misleading workspace name can be judged. With `MAIL_DRIVER=off` inviting answers 503.
 - **Limits:** `invitation:per-user` (20 an hour), `invitation:per-email` (5 an hour to one address from any inviter or workspace, so the server can't flood an inbox; "This email address has had too many invitations recently."), `invitation:global` (200 an hour, 503), 50 live invitations and the member quota ([rate-limits.md](rate-limits.md)).
@@ -151,6 +176,6 @@ Register workspace routes in `workspaceRoutes` in `routes.go` (the `ws` group ap
 
 ## Not implemented
 
-Email verification, passkeys (WebAuthn) and OIDC. Two-factor authentication is authenticator-app codes and recovery codes only. Don't describe the others as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need observability, backups, abuse monitoring and load testing.
+Passkeys (WebAuthn), OIDC, and changing an account's email. Two-factor authentication is authenticator-app codes and recovery codes only; email verification is a code at sign-up and, for older accounts, from Account settings. Don't describe the others as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need observability, backups, abuse monitoring and load testing.
 
 References: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

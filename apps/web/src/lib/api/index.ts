@@ -24,7 +24,12 @@ export type { InvitationIndexQuery } from "./invitations";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
 export type { WorkspaceDeletion, WorkspaceIndexQuery } from "./workspaces";
-export { lastOwnerWorkspaces, needsMfa } from "./auth";
+export {
+  lastOwnerWorkspaces,
+  needsMfa,
+  needsVerification,
+  verificationRequired,
+} from "./auth";
 export type {
   Credentials,
   MfaConfirmation,
@@ -32,8 +37,10 @@ export type {
   RecoveryCodes,
   PasswordChange,
   PasswordReset,
+  PendingRegistration,
   Registration,
   SignedIn,
+  VerificationRequired,
   WorkspaceSummary,
 } from "./auth";
 // Typed API paths, for SWR keys and module constants:

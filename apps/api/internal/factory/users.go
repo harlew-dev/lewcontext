@@ -26,19 +26,30 @@ type User struct {
 	Email         string
 	PasswordHash  string
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	// EmailVerifiedAt is set: accounts made with EMAIL_VERIFICATION on are
+	// always verified. Unverified clears it.
+	EmailVerifiedAt *time.Time
 }
 
 // Users builds accounts with unique, valid, lowercase emails.
 var Users = Define(func(f *gofakeit.Faker) User {
 	first, last := f.FirstName(), f.LastName()
 	now := time.Now()
+	created := f.DateRange(now.AddDate(-1, 0, 0), now)
 	return User{
-		Name:         first + " " + last,
-		Email:        fmt.Sprintf("%s.%s.%s@example.test", slug(first), slug(last), strings.ToLower(f.LetterN(6))),
-		PasswordHash: mustHash(),
-		CreatedAt:    f.DateRange(now.AddDate(-1, 0, 0), now),
+		Name:            first + " " + last,
+		Email:           fmt.Sprintf("%s.%s.%s@example.test", slug(first), slug(last), strings.ToLower(f.LetterN(6))),
+		PasswordHash:    mustHash(),
+		CreatedAt:       created,
+		EmailVerifiedAt: &created,
 	}
 })
+
+// Unverified is an account that never verified its email, as one made while
+// EMAIL_VERIFICATION was off.
+func Unverified(u *User) {
+	u.EmailVerifiedAt = nil
+}
 
 // WithPasswordHash signs a user in with another password's hash.
 func WithPasswordHash(hash string) func(*User) {

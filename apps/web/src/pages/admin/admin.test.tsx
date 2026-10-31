@@ -36,6 +36,7 @@ function user(n: number, overrides: Partial<AdminUser> = {}): AdminUser {
     name: `User ${n}`,
     email: `user${n}@example.com`,
     createdAt: "2026-10-30T12:00:00Z",
+    emailVerifiedAt: "2026-10-30T12:00:00Z",
     mfaEnabled: false,
     admin: false,
     workspaceCount: 1,

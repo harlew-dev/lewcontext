@@ -2,6 +2,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import {
   AdminBadge,
   AdminTableHead,
+  EmailBadge,
   MfaBadge,
   adminListPath,
   adminListQuery,
@@ -111,6 +112,7 @@ function UserRow({ user }: { user: AdminUser }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{user.name}</span>
           <MfaBadge enabled={user.mfaEnabled} />
+          <EmailBadge verifiedAt={user.emailVerifiedAt} quiet />
           {user.admin && <AdminBadge />}
         </div>
       </TableCell>

@@ -30,7 +30,13 @@ The API records what happens (sign-ins, password changes, workspaces and project
 
 | Event | Payload | Recorded by |
 | --- | --- | --- |
-| `auth.registered` | `user`, `name`, `email` | `CreateUser` |
+| `auth.registered` | `user`, `name`, `email`, `verifiedBy`: `code` (the sign-up's emailed code) / `none` (`EMAIL_VERIFICATION=off`) | `CompleteRegistration`, `CreateUser` |
+| `auth.registration.requested` | `email`, `ip` (no `user`: the request doesn't look the account up) | `register` and `register/resend` with verification on, for every request past the limits, taken email or not |
+| `auth.registration.sent` | `email`, `request` (the requested event's `evt_` ID), `existingAccount`, `user` when it exists | the `mail.registration` listener, after sending a code, or "You already have an account" to an email with one (not when `account-exists:per-account` held it back) |
+| `auth.registration.checked` | `email`, `ok`, `ip`, `attempt` (this sign-up's try, from 1) | `CompleteRegistration`, for every code that reached the check |
+| `auth.email_verification.requested` | `user` | `POST /api/auth/email-verification`: a signed-in account asked for a code |
+| `auth.email_verification.sent` | `user`, `request` | the `mail.email_verification` listener, after sending the code |
+| `auth.email_verified` | `user`, `via`: `code` / `password_reset` (completing a reset link, which went only to that inbox) | `VerifyEmail`, `ResetPassword` (only when the email wasn't verified yet) |
 | `auth.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
@@ -71,8 +77,8 @@ The API records what happens (sign-ins, password changes, workspaces and project
 ## What's stored, and what never is
 
 - **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, MFA secrets, codes and recovery codes (or their digests), challenge tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
-- **Personal data, on purpose:** the email typed and the client IP on `auth.login_attempted` and `auth.password_reset.requested`, the IP on `rate_limit.reached`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `clientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
-- **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
+- **Personal data, on purpose:** the email typed and the client IP on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the IP on `rate_limit.reached`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `clientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
+- **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered; so are `auth.registration.requested` and `.checked`. Only the listener's `auth.registration.sent`, after the response, says whether the email had an account.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `rate_limit.reached`, so a flood writes one row per limit.
 - Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
 
@@ -81,6 +87,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 ```go
 // cmd/server/main.go, before anything records an event:
 events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
+// with EMAIL_VERIFICATION on, also mail.registration and mail.email_verification
 
 // or inline:
 events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.PasswordChanged, d events.Delivered) error {

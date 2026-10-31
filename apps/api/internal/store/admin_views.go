@@ -59,15 +59,17 @@ type AdminFilter struct {
 
 // AdminUser is an account as the admin dashboard lists it.
 type AdminUser struct {
-	ID             int64      `bun:"id" json:"-"`
-	PublicID       string     `bun:"public_id" json:"id"`
-	Name           string     `bun:"name" json:"name"`
-	Email          string     `bun:"email" json:"email"`
-	CreatedAt      time.Time  `bun:"created_at" json:"createdAt"`
-	MFAEnabled     bool       `bun:"mfa_enabled" json:"mfaEnabled"`
-	Admin          bool       `bun:"admin" json:"admin"`
-	WorkspaceCount int        `bun:"workspace_count" json:"workspaceCount"`
-	LastSignedInAt *time.Time `bun:"last_signed_in_at" json:"lastSignedInAt"`
+	ID        int64     `bun:"id" json:"-"`
+	PublicID  string    `bun:"public_id" json:"id"`
+	Name      string    `bun:"name" json:"name"`
+	Email     string    `bun:"email" json:"email"`
+	CreatedAt time.Time `bun:"created_at" json:"createdAt"`
+	// EmailVerifiedAt is nil for an account that never verified its email.
+	EmailVerifiedAt *time.Time `bun:"email_verified_at" json:"emailVerifiedAt"`
+	MFAEnabled      bool       `bun:"mfa_enabled" json:"mfaEnabled"`
+	Admin           bool       `bun:"admin" json:"admin"`
+	WorkspaceCount  int        `bun:"workspace_count" json:"workspaceCount"`
+	LastSignedInAt  *time.Time `bun:"last_signed_in_at" json:"lastSignedInAt"`
 }
 
 // AdminMembership is one of a user's workspaces, with their role in it.
@@ -126,7 +128,7 @@ func adminUsers(db bun.IDB) *bun.SelectQuery {
 		Where("e.user_id = u.id AND e.name = ?", events.LoggedIn{}.EventName()).
 		OrderExpr("e.created_at DESC").Limit(1)
 	return db.NewSelect().Model((*User)(nil)).
-		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at").
+		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at").
 		ColumnExpr("EXISTS (?) AS mfa_enabled", mfaOn).
 		ColumnExpr("EXISTS (?) AS admin", admin).
 		ColumnExpr("(?) AS workspace_count", workspaces).

@@ -12,11 +12,13 @@ export function testSession(
       email: "ada@lewcontext.test",
       createdAt: "2026-10-30T00:00:00Z",
       mfaEnabledAt: null,
+      emailVerifiedAt: "2026-10-30T00:00:00Z",
       ...user,
     },
     csrfToken: "csrf",
     expiresAt: "",
     signedInAt: "2026-10-30T00:00:00Z",
+    emailVerification: "optional",
     ...rest,
   };
 }

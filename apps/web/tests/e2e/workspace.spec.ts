@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import {
+  enterMailedCode,
+  mailTo,
+  mailedCode,
+  newestMailTo,
+  signUpThroughApi,
+} from "./mail";
 const stamp = Date.now();
 const email = `e2e-${stamp}@lewcontext.test`;
 const returnEmail = `e2e-${stamp}-next@lewcontext.test`;
@@ -17,6 +24,7 @@ const inviterEmail = `e2e-${stamp}-inviter@lewcontext.test`;
 const inviteeEmail = `e2e-${stamp}-invitee@lewcontext.test`;
 const joinerEmail = `e2e-${stamp}-joiner@lewcontext.test`;
 const revokedEmail = `e2e-${stamp}-revoked@lewcontext.test`;
+const signUpEmail = `e2e-${stamp}-signup@lewcontext.test`;
 const emails = [
   email,
   returnEmail,
@@ -33,6 +41,7 @@ const emails = [
   inviterEmail,
   inviteeEmail,
   joinerEmail,
+  signUpEmail,
 ];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
@@ -81,6 +90,9 @@ async function register(page: Page, address: string, name: string) {
   await page.getByLabel("Full name").fill(name);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
+  // Email verification is on (the default): the code from Mailpit.
+  await expect(page).toHaveURL("/auth/register/verify");
+  await enterMailedCode(page, address);
   await expect(page).toHaveURL("/app/onboarding");
 }
 async function onboard(page: Page, workspace: string) {
@@ -116,6 +128,8 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await page.getByLabel("Full name").fill("Taylor Example");
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL("/auth/register/verify?next=%2Fapp");
+  await enterMailedCode(page, email);
   // A new account starts at onboarding, and can't skip it.
   await expect(page).toHaveURL("/app/onboarding");
   await page.getByRole("button", { name: "Account" }).click();
@@ -533,15 +547,15 @@ test("other people's workspaces are not found until you're a member; members can
   // The owner, set up through the API in a browser context of their own.
   const owner = await browser.newContext();
   const origin = { Origin: process.env.APP_ORIGIN || "http://localhost:3000" };
-  const signedUp = await owner.request.post("/api/auth/register", {
-    headers: { ...origin, "Content-Type": "application/json" },
-    data: { name: "Owen Owner", email: ownerEmail, password },
+  const signedUp = await signUpThroughApi(owner.request, {
+    name: "Owen Owner",
+    email: ownerEmail,
+    password,
   });
-  expect(signedUp.status()).toBe(201);
   const headers = {
     ...origin,
     "Content-Type": "application/json",
-    "X-CSRF-Token": (await signedUp.json()).csrfToken,
+    "X-CSRF-Token": signedUp.csrfToken,
   };
   const created = await owner.request.post("/api/workspaces", {
     headers,
@@ -617,12 +631,11 @@ test("members: an owner changes a member to viewer, then removes them", async ({
 }) => {
   // Invites don't exist yet, so the membership is added in the database.
   const teammate = await browser.newContext();
-  const origin = { Origin: process.env.APP_ORIGIN || "http://localhost:3000" };
-  const signedUp = await teammate.request.post("/api/auth/register", {
-    headers: { ...origin, "Content-Type": "application/json" },
-    data: { name: "Terry Teammate", email: teammateEmail, password },
+  await signUpThroughApi(teammate.request, {
+    name: "Terry Teammate",
+    email: teammateEmail,
+    password,
   });
-  expect(signedUp.status()).toBe(201);
   await register(page, crewEmail, "Casey Crew");
   const crew = await onboard(page, "Crew HQ");
   sql(
@@ -722,20 +735,6 @@ test("change password: checks the current one twice and signs out other sessions
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(workspaceUrl);
 });
-// Mailpit, where the e2e server's email lands (MAILPIT_URL, from .env.testing).
-const mailpit = process.env.MAILPIT_URL!;
-// The newest email Mailpit holds for `to`: its HTML and plain-text parts, or
-// nothing yet. Every run's recipients are unique, so other runs' mail never
-// matches.
-async function newestMailTo(
-  to: string,
-): Promise<{ HTML: string; Text: string } | undefined> {
-  const query = new URLSearchParams({ query: `to:"${to}"` });
-  const found = await (await fetch(`${mailpit}/api/v1/search?${query}`)).json();
-  const id = found.messages?.[0]?.ID;
-  if (!id) return undefined;
-  return (await fetch(`${mailpit}/api/v1/message/${id}`)).json();
-}
 // The path of the newest link of a kind (a reset link, or an invitation)
 // sent to `to`, once the server's worker has sent it (it polls every second).
 // The plain-text part must carry the same link.
@@ -759,6 +758,67 @@ async function mailedLink(
     .not.toBe("");
   return link;
 }
+test("sign-up: the code survives a reload, and a taken email is told it has an account", async ({
+  page,
+}) => {
+  async function signUp(name: string) {
+    await page.goto("/auth/register");
+    await page.getByLabel("Email").fill(signUpEmail);
+    await page.getByLabel("Full name").fill(name);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page).toHaveURL("/auth/register/verify");
+    await expect(page.getByText(signUpEmail)).toBeVisible();
+  }
+  await signUp("Sam Signup");
+  const first = await mailedCode(signUpEmail);
+  // A phone switching to the mail app often reloads the tab: the sign-up is
+  // in its cookie, so the page comes back to the same step.
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Check your email" }),
+  ).toBeVisible();
+  await expect(page.getByText(signUpEmail)).toBeVisible();
+  // A new code replaces the first.
+  await page.getByRole("button", { name: "Send a new code" }).click();
+  await expect(
+    page.getByText(`We sent a new code to ${signUpEmail}.`),
+  ).toBeVisible();
+  const second = await mailedCode(signUpEmail, first.mail);
+  if (second.code !== first.code) {
+    await page.getByLabel("Verification code").fill(first.code);
+    await expect(
+      page.getByRole("alert").filter({ hasText: "That code isn’t right." }),
+    ).toBeVisible();
+  }
+  await page.getByLabel("Verification code").fill(second.code);
+  await expect(page).toHaveURL("/app/onboarding");
+
+  // The same email again, from a fresh browser: the same page, but the inbox
+  // gets "You already have an account" and no code.
+  await page.context().clearCookies();
+  await signUp("Someone Else");
+  const notice = await mailTo(signUpEmail, "You already have an account");
+  expect(notice.Text).not.toMatch(/\b\d{3} \d{3}\b/);
+  expect(notice.Text).toContain("Hi Sam Signup,");
+  const login = notice.HTML.match(
+    /href="https?:\/\/[^/"]+(\/auth\/login\?notice=account-exists)"/,
+  )?.[1];
+  expect(login).toBeTruthy();
+  await page.getByLabel("Verification code").fill("000000");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "That code isn’t right." }),
+  ).toBeVisible();
+  await page.goto(login!);
+  await expect(
+    page.getByText("You already have an account. Sign in here, or"),
+  ).toBeVisible();
+  // Nothing about the account changed: the first password still signs in.
+  await page.getByLabel("Email").fill(signUpEmail);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL("/app/onboarding");
+});
 test("forgot password: a link from the mailbox sets a new password once", async ({
   page,
 }) => {
@@ -1033,6 +1093,10 @@ test("invitations: invite by email, join through the link as a new or existing a
   await inviteePage.getByLabel("Full name").fill("Ines Invitee");
   await inviteePage.getByLabel("Password", { exact: true }).fill(password);
   await inviteePage.getByRole("button", { name: "Create account" }).click();
+  // An invitation link doesn't verify the address: the code comes first,
+  // then the link, which joins.
+  await expect(inviteePage).toHaveURL(/\/auth\/register\/verify\?next=/);
+  await enterMailedCode(inviteePage, inviteeEmail);
   await expect(inviteePage).toHaveURL(`/app/${ws}/dashboard`);
   await expect(
     inviteePage.getByText("You joined Invite studio."),

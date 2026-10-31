@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"lewcontext/api/internal/mail"
 	"regexp"
 	"sync"
 	"testing"
@@ -12,7 +13,9 @@ import (
 func TestRateLimitNames(t *testing.T) {
 	valid := regexp.MustCompile(`^[a-z]+(-[a-z]+)*:(per-ip|per-account|per-email|per-user|global)$`)
 	seen := map[string]bool{}
-	for _, l := range rateLimits {
+	// The one limit counted in a listener, not a request.
+	exists := mail.AccountExistsPerAccount
+	for _, l := range append(rateLimits, rateLimit{name: exists.Name, limit: exists.Limit, window: exists.Window}) {
 		if !valid.MatchString(l.name) {
 			t.Errorf("%q isn't <feature>:<counted by>", l.name)
 		}
@@ -41,6 +44,8 @@ func TestRetryAfterAndWaitFor(t *testing.T) {
 		{11*time.Minute + time.Second, "661", "12 minutes"},
 		{15 * time.Minute, "900", "15 minutes"},
 		{time.Hour - time.Second/2, "3600", "an hour"},
+		{time.Hour + time.Second, "3601", "2 hours"},
+		{24 * time.Hour, "86400", "24 hours"},
 	} {
 		if got := retryAfter(c.left); got != c.retryAfter {
 			t.Errorf("retryAfter(%s) = %s, want %s", c.left, got, c.retryAfter)

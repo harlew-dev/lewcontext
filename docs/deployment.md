@@ -38,11 +38,13 @@ make build                                                     # or, without Doc
 | `APP_ORIGIN` | `https://app.example.com` | The exact public origin: scheme and host, no trailing slash. **HTTPS is required.** Mutations from any other origin are refused, and every emailed link is built from it |
 | `DATABASE_URL` | `postgresql://lewcontext:…@db.internal:5432/lewcontext?sslmode=verify-full` | **`sslmode=verify-full` is required.** For a provider with its own CA, mount the CA file and add `&sslrootcert=/path/to/ca.pem` |
 | `API_ADDR` | `0.0.0.0:3000` (the image's default) | The listen address. Bind it to a private interface the proxy can reach, never directly to the internet without TLS in front |
-| `MAIL_DRIVER` | `smtp` (the default), or `off` | `smtp` needs the settings below, or the server refuses to start. `off` runs without email: password reset and invitations answer 503. `log` (the development mailbox) is refused in production |
+| `MAIL_DRIVER` | `smtp` (the default), or `off` | `smtp` needs the settings below, or the server refuses to start. `off` runs without email: password reset and invitations answer 503, and it needs `EMAIL_VERIFICATION=off`. `log` (the development mailbox) is refused in production |
+| `EMAIL_VERIFICATION` | `on` (the default), or `off` | `on`: a new sign-up enters a 6-digit code emailed to it before its account exists, and sign-up no longer tells anyone whether an email has an account. `off`: sign-up as before. See [Turning on email verification](#turning-on-email-verification) |
+| `EMAIL_VERIFICATION_EXISTING` | `optional` (the default), or `required` | `required`: accounts that never verified (made while it was off) must verify at their next sign-in before anything else |
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | `no-reply@example.com`, `Example` | The sender. The address must be bare, on a domain your provider has verified. The name defaults to `APP_NAME` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | `smtp.resend.com`, `587`, `starttls` | `starttls` (port 587 by default) or `tls` (465). **`none` is refused in production.** Certificates are always verified |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | your provider's | Both or neither. **A secret:** pass it through your platform's secret store, not the image |
-| `APP_KEY` | 32 random bytes in base64: `docker run --rm lewcontext admin app-key generate` prints one (or `openssl rand -base64 32`) | **A secret, and required.** Seals two-factor secrets at rest and keys recovery-code digests. `.env.example`'s key is refused. **Back it up with the database and never change it:** without the same key, every account with two-factor authentication on is locked out (there is no key rotation yet), and `admin reset-mfa` is the only way back in, one account at a time |
+| `APP_KEY` | 32 random bytes in base64: `docker run --rm lewcontext admin app-key generate` prints one (or `openssl rand -base64 32`) | **A secret, and required.** Seals two-factor secrets at rest and keys recovery-code and emailed-code digests; **every server on one database needs the same one** (one server's worker may send a code another checks). `.env.example`'s key is refused. **Back it up with the database and never change it:** without the same key, every account with two-factor authentication on is locked out (there is no key rotation yet), and `admin reset-mfa` is the only way back in, one account at a time |
 | `ADMIN_ROUTE_KEY` | `docker run --rm lewcontext admin route-key generate` prints one (256 bits) | **A secret.** The admin dashboard's path, `/admin/<key>`, and its API header. Unset turns the admin dashboard off. `.env.example`'s throwaway key is refused. See [Admin dashboard](#admin-dashboard) |
 | `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 
@@ -94,6 +96,7 @@ Everything that must be shared lives in PostgreSQL, so several `api` processes b
 | Rate-limit counters | `rate_limits` | exact across servers |
 | Event deliveries (mail, future listeners) | `event_deliveries`, claimed with `FOR UPDATE SKIP LOCKED` | each delivery runs on one server; a crashed one's lease expires after 5 minutes and another takes over |
 | Reset links and invitations | digests in their tables | any server can check a link |
+| Sign-ups and email codes | `pending_registrations`, `email_verifications`: HMACs under `APP_KEY` | any server can check a code, **if every server has the same `APP_KEY`** |
 | CAPTCHA tokens (**Planned**) | single use enforced by Cloudflare | no table needed |
 
 Things that are per process:
@@ -144,6 +147,16 @@ These notes apply when the domain is proxied through Cloudflare.
   - **If Cloudflare is unreachable** while a limit is in challenge mode, those requests get 503 (the check fails closed). Normal traffic never calls Cloudflare.
 - **Edge protection from rate-limit events (Planned, future use case):** a listener on `rate_limit.reached` could enable a pre-made, disabled Cloudflare rule for the route under attack, and disable it when the window ends. It needs an API token with only "Zone WAF: Edit" on one zone. See [captcha-challenges](../plans/features/captcha-challenges.md#future-use-case-turning-on-cloudflare-edge-protection-not-built).
 
+## Turning on email verification
+
+`EMAIL_VERIFICATION` is on by default, so a new install verifies every sign-up from the start. For an install that already has accounts:
+
+1. **Turn on `EMAIL_VERIFICATION`** (it's the default; just don't set `off`). New sign-ups are verified from then on. Existing accounts keep working; their Account settings say "Not verified" with a Verify email button, and admins see the same.
+2. **Later, once most have verified, set `EMAIL_VERIFICATION_EXISTING=required`.** The rest verify at their next sign-in, which spreads out by itself over hours or days. A code is only sent when someone presses Send code, so the switch emails nobody by itself; `email-verification:global` (500 an hour) caps the mail if many sign in at once.
+3. A completed password reset also verifies an account's email: the link went only to that inbox.
+
+Someone whose old address no longer receives mail can't get past the verify page under `required`, and there's no way to change an email yet. Turning `required` off again lets them back in.
+
 ## Email
 
 Password reset links and workspace invitations go out over SMTP (`MAIL_DRIVER=smtp`, [api/mail.md](api/mail.md)). Any provider that accepts SMTP works; changing provider changes only these settings:
@@ -159,9 +172,9 @@ Check each provider's own docs for current values.
 
 - **Before the first email:** verify the sending domain with the provider and publish the DNS records it gives you: SPF, DKIM and a DMARC policy. Without them, mail lands in spam or is refused. The app doesn't sign mail itself; the provider does.
 - **If the provider is down,** emails wait and retry for about an hour (1 s, 10 s, 1 min, 10 min, 1 h), then are marked failed and logged as an error. Requests keep working: handlers only queue mail. Failures are in `event_deliveries.last_error`.
-- **Abuse:** each email someone can trigger has a per-recipient limit on the request (`password-reset:per-email`, 3 an hour; `invitation:per-email`, 5 an hour) besides the per-IP, per-user and global ones ([api/rate-limits.md](api/rate-limits.md)), so the server can't be used to flood an inbox.
-- **Without a provider,** set `MAIL_DRIVER=off`: password reset answers 503 ("Password reset isn't available.") and the Invite dialog says "Invitations aren’t available on this server." Don't advertise either feature then.
-- There is still **no email verification**: an account's address is whatever was typed at sign-up ([api/auth.md](api/auth.md)).
+- **Abuse:** each email someone can trigger has a per-recipient limit on the request (`password-reset:per-email`, 3 an hour; `invitation:per-email`, 5 an hour; `register:per-email`, 3 an hour) besides the per-IP, per-user and global ones ([api/rate-limits.md](api/rate-limits.md)), so the server can't be used to flood an inbox. "You already have an account" is also capped at 5 a day per account, silently.
+- **Without a provider,** set `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off`: password reset answers 503 ("Password reset isn't available.") and the Invite dialog says "Invitations aren’t available on this server." Don't advertise either feature then. Sign-up is then unverified, and says when an email is taken.
+- **Email verification** (on by default) sends a code to every sign-up, so sign-up needs mail to work at all ([api/auth.md](api/auth.md#email-verification)).
 
 ## Security checklist
 
@@ -175,7 +188,8 @@ Check each provider's own docs for current values.
 - [ ] `seed` never run (it refuses in production anyway).
 - [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
-- [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` deliberately.
+- [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off` deliberately.
+- [ ] Every server on the database has the same `APP_KEY`.
 - [ ] Turnstile keys are real (not Cloudflare's test keys), once built.
 - [ ] No secrets in the image or the repository: pass them as environment variables or through your platform's secret store.
 - [ ] The server's own security headers aren't stripped or overridden by the proxy: CSP with script hashes, `X-Frame-Options: DENY`, HSTS, `no-store` caching on the app shell and API.

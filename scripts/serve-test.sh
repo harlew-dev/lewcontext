@@ -5,6 +5,11 @@
 # begins empty and a changed create migration always applies. Run through
 # scripts/test-env.sh, so its settings come from .env.testing. Reserves the
 # port itself unless make test-e2e already did (E2E_LOCK_HELD).
+#
+# E2E_SHARED_DATABASE=1 starts a second server for a run already going
+# (tests/e2e/email-verification-settings.spec.ts restarts one with other
+# settings): DATABASE_URL then already names the run's database, which it
+# uses as it is and never rebuilds.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,7 +25,12 @@ fi
 
 # Only ever rebuild a local *_test_<port> database, never the Go tests'
 # lewcontext_test or anything else.
-database_url="$(e2e_database_url "$DATABASE_URL" "$port")"
+shared=${E2E_SHARED_DATABASE:-}
+if [[ $shared == 1 ]]; then
+  database_url="$DATABASE_URL"
+else
+  database_url="$(e2e_database_url "$DATABASE_URL" "$port")"
+fi
 database="$(e2e_database_name "$database_url")"
 read -r host _ <<< "$(e2e_database_host "$database_url")"
 if [[ ! $database =~ ^[a-z0-9_]+_test_[0-9]+$ ]]; then
@@ -54,19 +64,23 @@ if ! command -v psql > /dev/null; then
 fi
 
 # $database matched the pattern above, so it's safe in the statement.
-if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "SELECT 1 FROM pg_database WHERE datname = '$database'" | grep -q 1; then
+if [[ $shared != 1 ]] && ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "SELECT 1 FROM pg_database WHERE datname = '$database'" | grep -q 1; then
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -qc "CREATE DATABASE $database"
 fi
-# A fresh APP_KEY per start: the database is rebuilt too, so nothing
-# sealed with an older key survives, and .env.testing holds no key.
-APP_KEY="$(head -c 32 /dev/urandom | base64)"
+# The run's APP_KEY (E2E_APP_KEY, playwright.config.ts), or a fresh one: the
+# database is rebuilt too, so nothing sealed with an older key survives, and
+# .env.testing holds no key. Servers sharing a database must share it, since
+# one's worker may make a code another checks.
+APP_KEY="${E2E_APP_KEY:-$(head -c 32 /dev/urandom | base64)}"
 export APP_KEY
 # The admin dashboard's key: the one Playwright made for this run
 # (E2E_ADMIN_ROUTE_KEY, playwright.config.ts), or a fresh one, printed below
 # for checking by hand.
 ADMIN_ROUTE_KEY="${E2E_ADMIN_ROUTE_KEY:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')}"
 export ADMIN_ROUTE_KEY
-(cd apps/api && DATABASE_URL="$database_url" go run ./cmd/migrate fresh -confirm)
+if [[ $shared != 1 ]]; then
+  (cd apps/api && DATABASE_URL="$database_url" go run ./cmd/migrate fresh -confirm)
+fi
 
 export DATABASE_URL="$database_url" API_ADDR="127.0.0.1:$port" APP_ORIGIN="http://localhost:$port"
 echo "E2E server: http://localhost:$port · database $database · mail ${MAILPIT_URL:-$MAIL_FILE}"

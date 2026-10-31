@@ -44,13 +44,13 @@ Everything under `/api/admin/` checks `X-Admin-Key` first (`requireAdminKey`): a
 | POST | `/api/admin/login/mfa` | key, Origin, JSON, a challenge, `auth:per-ip`, `mfa:per-account` | 200 `{user, csrfToken, expiresAt}` and the admin cookie; for an `admin_setup` challenge MFA is turned on and it's 201 with `recoveryCodes` too. 422 `field: "code"`; 401 when the challenge ended; 409 when the setup expired |
 | GET | `/api/admin/me` | key, admin session | `{user, csrfToken, expiresAt}`; 401 without one (the pages' probe) |
 | POST | `/api/admin/logout` | key, admin session, CSRF | 204, cookie cleared |
-| GET | `/api/admin/users` | key, admin session | A page of accounts: `id`, `name`, `email`, `createdAt`, `mfaEnabled`, `admin`, `workspaceCount`, `lastSignedInAt`. `q` (name or email), `sort` `created` (default `-created`), `name`, `email` |
+| GET | `/api/admin/users` | key, admin session | A page of accounts: `id`, `name`, `email`, `createdAt`, `emailVerifiedAt` (null: never verified), `mfaEnabled`, `admin`, `workspaceCount`, `lastSignedInAt`. `q` (name or email), `sort` `created` (default `-created`), `name`, `email` |
 | GET | `/api/admin/users/{user}` | key, admin session | The account as listed, plus `memberships` (`{workspace: {id, name}, role, addedAt}`, at most 100, newest first) and `sessionCount` (live app sessions) |
 | GET | `/api/admin/workspaces` | key, admin session | A page of workspaces: `id`, `name`, `createdAt`, `memberCount`, `projectCount`, `owners` (`{id, name, email}`, at most 3, oldest first). `q` (name), `sort` `created` (default `-created`), `name` |
 | GET | `/api/admin/workspaces/{workspace}` | key, admin session | The workspace as listed, plus `members` (`{id, name, email, role, addedAt}`, by role then name) |
 
 - **Pagination** is the app's ([pagination.md](pagination.md)): `page`, `perPage`, and 400 for unknown or malformed parameters. A malformed or unknown ID is 404.
-- **Never in a response:** password hashes, MFA secrets, recovery codes, other users' session or CSRF tokens, internal IDs, project names or descriptions (counts only). `decodeAdmin` in the tests walks every admin response for such field names.
+- **Never in a response:** password hashes, MFA secrets, recovery codes, other users' session or CSRF tokens, internal IDs, project names or descriptions (counts only, for this first phase: the [events-and-mail](../../plans/features/admin/events-and-mail.md) plan shows them, with a projects list on the workspace page). `decodeAdmin` in the tests walks every admin response for such field names.
 - **Not scoped by membership, on purpose:** these queries see across workspaces, which is why they're only reachable behind both middlewares. `TestAdminRoutesStayInTheAdminGroup` fails if an `/api/admin` route is registered outside `adminRoutes`, or there without `requireAdminKey`.
 - **Admin status is never in an app response** (`/api/auth/me`). The one place an account learns it is an admin is turning MFA off: 409 "Admins must keep two-factor authentication on."
 
@@ -122,9 +122,9 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 - **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. `useAdminApi()` sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `routes.admin.*(key)`.
 - **Loaders** (`lib/loaders.ts`): `adminLoginLoader` (404 → not-found, signed in → Users) and `adminLoader` (404 → not-found, 401 → sign-in).
 - **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users and Workspaces, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out.
-- **Lists** use `PaginatedTable`, `SearchField` and sortable headers (`components/app/admin/admin-list.tsx`: URL state, `AdminTableHead`, `MfaBadge`, `AdminBadge`); rows link to their page. There are no row menus: there are no actions.
+- **Lists** use `PaginatedTable`, `SearchField` and sortable headers (`components/app/admin/admin-list.tsx`: URL state, `AdminTableHead`, `MfaBadge`, `EmailBadge` (zinc "Not verified"; a user's page also shows lime "Verified", the list only the unverified), `AdminBadge`); rows link to their page. There are no row menus: there are no actions.
 - `react/no-danger` is on for the whole web app: other users' names and emails render only through React's escaping.
 
 ## Not built
 
-Events, Mail and Monitoring pages (the admin-dashboard plan), any write action or impersonation, an IP allowlist, a separate admin origin, passkeys for admins, and several keys at once (rotating without signing everyone out).
+Events, Mail and Monitoring pages, alerts, write actions, an IP allowlist, admin roles and several keys at once (rotating without signing everyone out) are planned in [plans/features/admin/](../../plans/features/admin/README.md). Not planned: impersonation, a separate admin origin, passkeys for admins.

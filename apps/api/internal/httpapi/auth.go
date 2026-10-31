@@ -50,9 +50,11 @@ func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email stri
 
 // registrationLimit counts a valid sign-up against the account creation
 // limits: per IP first, so a client refused there doesn't spend the limit
-// shared by everyone.
-func (s *Server) registrationLimit(w http.ResponseWriter, r *http.Request) bool {
+// shared by everyone. With verification on each sign-up emails its address,
+// so it counts per email too, for every address alike.
+func (s *Server) registrationLimit(w http.ResponseWriter, r *http.Request, email string) bool {
 	return s.allow(w, r, registerPerIP, registerPerIP.ipKey(r)) &&
+		(!s.Config.Verify || s.allow(w, r, registerPerEmail, registerPerEmail.key(email))) &&
 		s.allow(w, r, registerGlobal, registerGlobal.everyone())
 }
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -64,12 +66,16 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "Use a name, a valid email, and a password of 12–128 characters.")
 		return
 	}
-	if !s.accountLimit(w, r, in.Email) || !s.registrationLimit(w, r) {
+	if !s.accountLimit(w, r, in.Email) || !s.registrationLimit(w, r, in.Email) {
 		return
 	}
 	hash, err := auth.HashPassword(in.Password)
 	if err != nil {
 		internalError(w, err)
+		return
+	}
+	if s.Config.Verify {
+		s.beginRegistration(w, r, in, hash)
 		return
 	}
 	user, err := s.Store.CreateUser(r.Context(), in.Name, in.Email, hash)
@@ -162,11 +168,11 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.Us
 		return
 	}
 	http.SetCookie(w, auth.Cookie(token, s.Config.Production))
-	jsonResponse(w, status, map[string]any{"user": u, "csrfToken": csrf, "expiresAt": expires, "signedInAt": signedIn})
+	jsonResponse(w, status, map[string]any{"user": u, "csrfToken": csrf, "expiresAt": expires, "signedInAt": signedIn, "emailVerification": s.Config.VerificationMode()})
 }
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	session := current(r)
-	jsonResponse(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt, "signedInAt": session.CreatedAt})
+	jsonResponse(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt, "signedInAt": session.CreatedAt, "emailVerification": s.Config.VerificationMode()})
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.DeleteSession(r.Context(), current(r).User, s.sessionDigest(r)); err != nil {

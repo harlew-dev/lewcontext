@@ -20,11 +20,21 @@ const (
 	PasswordStepRecoveryCodes    = "recovery_codes"
 )
 
-// Registered: an account was created.
+// How a new account's email was verified (Registered.VerifiedBy), and how an
+// existing account's was (EmailVerified.Via).
+const (
+	VerifiedByCode          = "code"
+	VerifiedByNone          = "none" // EMAIL_VERIFICATION=off
+	VerifiedByPasswordReset = "password_reset"
+)
+
+// Registered: an account was created. VerifiedBy is code when its email was
+// verified first, none with verification off.
 type Registered struct {
-	User  string `json:"user"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	User       string `json:"user"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	VerifiedBy string `json:"verifiedBy"`
 }
 
 func (Registered) EventName() string { return "auth.registered" }
@@ -128,3 +138,63 @@ type PasswordResetCompleted struct {
 }
 
 func (PasswordResetCompleted) EventName() string { return "auth.password_reset.completed" }
+
+// RegistrationRequested: someone signed up, or asked for a new code, with
+// verification on. Email is as typed (trimmed, lowercased, and a valid
+// address), whether or not an account uses it: the request doesn't look the
+// account up, so its response can't tell. The mail.registration listener
+// does, and sends a code or "you already have an account".
+type RegistrationRequested struct {
+	Email string `json:"email"`
+	IP    string `json:"ip"`
+}
+
+func (RegistrationRequested) EventName() string { return "auth.registration.requested" }
+
+// RegistrationSent: the listener emailed a sign-up's address for the request
+// event Request (evt_…): a code, or, when ExistingAccount, "you already have
+// an account" (User is that account).
+type RegistrationSent struct {
+	Email           string `json:"email"`
+	Request         string `json:"request"`
+	ExistingAccount bool   `json:"existingAccount"`
+	User            string `json:"user,omitempty"`
+}
+
+func (RegistrationSent) EventName() string { return "auth.registration.sent" }
+
+// RegistrationChecked: a code was checked against a sign-up waiting for one.
+// Attempt counts this sign-up's tries, from 1.
+type RegistrationChecked struct {
+	Email   string `json:"email"`
+	OK      bool   `json:"ok"`
+	IP      string `json:"ip"`
+	Attempt int    `json:"attempt"`
+}
+
+func (RegistrationChecked) EventName() string { return "auth.registration.checked" }
+
+// EmailVerificationRequested: a signed-in account asked for a code to verify
+// its email.
+type EmailVerificationRequested struct {
+	User string `json:"user"`
+}
+
+func (EmailVerificationRequested) EventName() string { return "auth.email_verification.requested" }
+
+// EmailVerificationSent: the code was emailed, for the request event Request.
+type EmailVerificationSent struct {
+	User    string `json:"user"`
+	Request string `json:"request"`
+}
+
+func (EmailVerificationSent) EventName() string { return "auth.email_verification.sent" }
+
+// EmailVerified: an account's email was verified, by a code (Via code) or by
+// completing a password reset, whose link went only to that inbox.
+type EmailVerified struct {
+	User string `json:"user"`
+	Via  string `json:"via"`
+}
+
+func (EmailVerified) EventName() string { return "auth.email_verified" }

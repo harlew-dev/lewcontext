@@ -82,6 +82,17 @@ export default function Login() {
         {arrived.accountDeleted && !error.message && (
           <Notice variant="success">Your account has been deleted.</Notice>
         )}
+        {/* From the "You already have an account" email, or a sign-up whose
+            code found one. Fixed text: nothing from the URL is shown. */}
+        {search.get("notice") === "account-exists" && !error.message && (
+          <Notice variant="info">
+            You already have an account. Sign in here, or{" "}
+            <TextLink href={routes.forgotPassword} state={{ email }}>
+              reset your password
+            </TextLink>
+            .
+          </Notice>
+        )}
         {restarted && !error.message && (
           <Notice variant="error">{restarted}</Notice>
         )}

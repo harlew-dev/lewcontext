@@ -32,12 +32,14 @@ const sealVersion = 1
 var ErrUnsealable = errors.New("sealed value can't be opened")
 
 // Keys are the keys derived from APP_KEY: one for AES-256-GCM, which
-// seals secrets the server must read back (TOTP secrets), and one for HMAC
-// digests of recovery codes, so they can't be guessed offline from a
-// database dump. Deriving both (HKDF) keeps either from being the other.
+// seals secrets the server must read back (TOTP secrets), and two for HMAC
+// digests of recovery codes and emailed codes, so they can't be guessed
+// offline from a database dump. Deriving each (HKDF) keeps any from being
+// another.
 type Keys struct {
-	aead     cipher.AEAD
-	recovery []byte
+	aead      cipher.AEAD
+	recovery  []byte
+	emailCode []byte
 }
 
 // NewKeys derives the keys from the 32-byte APP_KEY.
@@ -53,6 +55,10 @@ func NewKeys(key []byte) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
+	emailCode, err := hkdf.Key(sha256.New, key, nil, "lewcontext email-codes v1", 32)
+	if err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(sealKey)
 	if err != nil {
 		return nil, err
@@ -61,7 +67,7 @@ func NewKeys(key []byte) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Keys{aead: aead, recovery: recovery}, nil
+	return &Keys{aead: aead, recovery: recovery, emailCode: emailCode}, nil
 }
 
 // Seal encrypts plaintext for the row of owner (a user's internal ID): it
@@ -94,6 +100,16 @@ func (k *Keys) Open(sealed []byte, owner int64) ([]byte, error) {
 // code (NormalizeRecoveryCode).
 func (k *Keys) RecoveryCodeDigest(code string) string {
 	mac := hmac.New(sha256.New, k.recovery)
+	mac.Write([]byte(code))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// EmailCodeDigest is what's stored for an emailed verification code: an
+// HMAC-SHA256 like RecoveryCodeDigest's, under its own key. A million codes
+// would make a plain hash trivial to reverse. Pass the normalised code
+// (NormalizeEmailCode).
+func (k *Keys) EmailCodeDigest(code string) string {
+	mac := hmac.New(sha256.New, k.emailCode)
 	mac.Write([]byte(code))
 	return hex.EncodeToString(mac.Sum(nil))
 }

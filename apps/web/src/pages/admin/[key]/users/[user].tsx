@@ -1,6 +1,10 @@
 import { useParams } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
-import { AdminBadge, MfaBadge } from "@/components/app/admin/admin-list";
+import {
+  AdminBadge,
+  EmailBadge,
+  MfaBadge,
+} from "@/components/app/admin/admin-list";
 import { RoleBadge } from "@/components/app/workspaces/role-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +71,7 @@ function UserDetails({ user }: { user: AdminUserDetail }) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Heading className="truncate">{user.name}</Heading>
           <MfaBadge enabled={user.mfaEnabled} />
+          <EmailBadge verifiedAt={user.emailVerifiedAt} />
           {user.admin && <AdminBadge />}
         </div>
         <Text className="mt-1">{user.email}</Text>

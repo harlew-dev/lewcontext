@@ -25,14 +25,15 @@ type LastOwnerError struct {
 func (e LastOwnerError) Error() string        { return ErrLastOwner.Error() }
 func (e LastOwnerError) Is(target error) bool { return target == ErrLastOwner }
 
-// CreateUser creates an account and records auth.registered.
+// CreateUser creates an account with its email unverified, for sign-up with
+// EMAIL_VERIFICATION off, and records auth.registered.
 func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User, error) {
 	a := account{User: User{Name: name, Email: email}, PasswordHash: hash}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if _, err := tx.NewInsert().Model(&a).Returning("*").Exec(ctx); err != nil {
 			return err
 		}
-		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email}
+		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email, VerifiedBy: events.VerifiedByNone}
 		return s.record(ctx, tx, e, EventScope{ActorID: a.ID, UserID: a.ID})
 	})
 	return a.User, err

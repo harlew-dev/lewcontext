@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { signUpThroughApi } from "./mail";
 // The run's admin key, made by playwright.config.ts and passed to the server.
 const key = process.env.E2E_ADMIN_ROUTE_KEY!;
 const stamp = Date.now();
@@ -45,11 +46,7 @@ function codeFor(setupKey: string, ahead: number): string {
 }
 // Creates an account through the API, then forgets its session.
 async function register(page: Page, email: string, name: string) {
-  const response = await page.request.post("/api/auth/register", {
-    headers: { Origin: process.env.APP_ORIGIN! },
-    data: { name, email, password },
-  });
-  expect(response.status()).toBe(201);
+  await signUpThroughApi(page.request, { name, email, password });
   await page.context().clearCookies();
 }
 async function passwordStep(page: Page, email: string) {
@@ -131,7 +128,10 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
 
   // Workspaces.
   await page.getByRole("link", { name: "Workspaces" }).first().click();
-  await expect(page.getByRole("heading", { name: "Workspaces" })).toBeVisible();
+  // Exact: the empty list's "No workspaces yet" is a heading too.
+  await expect(
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
+  ).toBeVisible();
   // The key is in the URL only, never in the page's text.
   expect(await page.locator("body").innerText()).not.toContain(key);
 

@@ -18,6 +18,9 @@ type Config struct {
 	AppName string
 	// Mail is how email is delivered and who it comes from (mail.go).
 	Mail
+	// EmailVerification is whether emails are verified with a code
+	// (verification.go).
+	EmailVerification
 	// AppKey (APP_KEY, 32 bytes) seals MFA secrets at rest
 	// (encryption.go, auth.Keys).
 	AppKey []byte
@@ -43,6 +46,9 @@ const (
 func Load() (Config, error) {
 	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Origin: env("APP_ORIGIN", "http://localhost:3000"), Address: env("API_ADDR", "127.0.0.1:8080"), Production: os.Getenv("APP_ENV") == "production", AppName: env("APP_NAME", "lewcontext")}
 	if err := c.loadMail(); err != nil {
+		return c, err
+	}
+	if err := c.loadEmailVerification(); err != nil {
 		return c, err
 	}
 	if err := c.loadAppKey(); err != nil {

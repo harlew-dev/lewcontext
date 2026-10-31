@@ -38,7 +38,22 @@ func newMailer(t *testing.T) (*Mailer, *outbox) {
 var examples = map[Template]any{
 	ForgotPassword:      ForgotPasswordData{Name: "Ada", URL: "http://localhost:3000/auth/forgot-password/abc"},
 	WorkspaceInvitation: WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc", Home: "http://localhost:3000/"},
+	VerifyEmail:         VerifyEmailData{Code: "482 913"},
+	AccountExists:       AccountExistsData{Name: "Ada", LoginURL: "http://localhost:3000/auth/login?notice=account-exists", ResetURL: "http://localhost:3000/auth/forgot-password"},
 }
+
+// shows is what each example's content must show: "Ada" (the example's
+// name) unless the email has no name.
+func shows(t Template) string {
+	if t == VerifyEmail {
+		return "482 913"
+	}
+	return "Ada"
+}
+
+// withoutLinks are the emails that carry no link: a code is typed, never
+// clicked.
+var withoutLinks = map[Template]bool{VerifyEmail: true}
 
 // Every email is a whole document from the shared layout, titled with its own
 // subject.
@@ -70,11 +85,11 @@ func TestEveryTemplateRenders(t *testing.T) {
 		t.Fatalf("sent %d of %d", len(box.sent), len(subjects))
 	}
 	for _, msg := range box.sent {
-		if msg.Subject == "" || !strings.Contains(msg.HTML, "Ada") || !strings.Contains(msg.Text, "Ada") {
+		if msg.Subject == "" || !strings.Contains(msg.HTML, shows(msg.Template)) || !strings.Contains(msg.Text, shows(msg.Template)) {
 			t.Fatalf("%s rendered badly: %+v", msg.Template, msg)
 		}
 		// The plain-text part is text: the link as it is, and no markup.
-		if !strings.Contains(msg.Text, "http://localhost:3000/auth/") || strings.Contains(msg.Text, "<") {
+		if strings.Contains(msg.Text, "http://localhost:3000/auth/") == withoutLinks[msg.Template] || strings.Contains(msg.Text, "<") {
 			t.Fatalf("%s plain text:\n%s", msg.Template, msg.Text)
 		}
 	}
@@ -94,7 +109,7 @@ func TestAppNameOpensEveryEmail(t *testing.T) {
 		}
 		msg := box.sent[len(box.sent)-1]
 		wordmark := strings.Index(msg.HTML, ">Acme &amp; &lt;Co&gt;</td>")
-		if wordmark < 0 || wordmark > strings.Index(msg.HTML, "Ada") || strings.Contains(msg.HTML, "<Co>") {
+		if wordmark < 0 || wordmark > strings.Index(msg.HTML, shows(name)) || strings.Contains(msg.HTML, "<Co>") {
 			t.Errorf("%s HTML doesn't open with the escaped name:\n%s", name, msg.HTML)
 		}
 		if !strings.HasPrefix(msg.Text, "Acme & <Co>\n\n") || strings.HasPrefix(msg.Text[len("Acme & <Co>\n\n"):], "\n") || !strings.HasSuffix(msg.Text, ".\n") || strings.HasSuffix(msg.Text, "\n\n") {

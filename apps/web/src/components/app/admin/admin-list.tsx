@@ -71,6 +71,18 @@ export function AdminTableHead<F extends string>({
 export function MfaBadge({ enabled }: { enabled: boolean }) {
   return enabled ? <Badge color="lime">MFA</Badge> : <Badge>No MFA</Badge>;
 }
+// Whether the account proved it owns its email. Lists show only "Not
+// verified", so most rows stay quiet; a user's page shows either.
+export function EmailBadge({
+  verifiedAt,
+  quiet = false,
+}: {
+  verifiedAt: string | null;
+  quiet?: boolean;
+}) {
+  if (verifiedAt) return quiet ? null : <Badge color="lime">Verified</Badge>;
+  return <Badge>Not verified</Badge>;
+}
 export function AdminBadge() {
   return <Badge color="purple">Admin</Badge>;
 }

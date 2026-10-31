@@ -5,6 +5,30 @@ export type Credentials = { email: string; password: string };
 export type Registration = Credentials & { name: string };
 // Login and registration start a session and return its CSRF token.
 export type SignedIn = { user: User; csrfToken: string };
+// Registration with email verification on starts no account: a code goes to
+// the email, and registerVerify finishes (the sign-up is in a cookie). The
+// answer is the same whether or not the email already has an account.
+export type VerificationRequired = {
+  verificationRequired: true;
+  email: string;
+};
+export function needsVerification(
+  result: SignedIn | VerificationRequired,
+): result is VerificationRequired {
+  return "verificationRequired" in result;
+}
+// The API refused a signed-in request because the account must verify its
+// email first (EMAIL_VERIFICATION_EXISTING=required): a 403 with
+// verificationRequired.
+export function verificationRequired(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.details.verificationRequired === true
+  );
+}
+// A sign-up waiting for its code, as its own browser sees it.
+export type PendingRegistration = { email: string; expiresAt: string };
 // Login with two-factor authentication on starts no session: the password
 // was right, and the code goes to loginMfa (the challenge is in a cookie).
 export type MfaRequired = { mfaRequired: true };
@@ -29,6 +53,10 @@ export const authRoutes = {
   mfaSetup: () => "/api/auth/mfa/setup",
   recoveryCodes: () => "/api/auth/mfa/recovery-codes",
   register: () => "/api/auth/register",
+  registerCheck: () => "/api/auth/register/check",
+  registerResend: () => "/api/auth/register/resend",
+  registerVerify: () => "/api/auth/register/verify",
+  emailVerification: () => "/api/auth/email-verification",
   logout: () => "/api/auth/logout",
   password: () => "/api/auth/password",
   verifyPassword: () => "/api/auth/password/verify",
@@ -67,12 +95,28 @@ export function auth(http: Http) {
     loginMfa: (code: string) =>
       http.send<SignedIn>("POST", authRoutes.loginMfa(), { code }),
     mfa: () => mfa(http),
+    // Creates the account and signs in, or with email verification on
+    // answers { verificationRequired } (needsVerification): the code goes to
+    // the email, and registerVerify finishes.
     register: ({ name, email, password }: Registration) =>
-      http.send<SignedIn>("POST", authRoutes.register(), {
-        name,
-        email,
-        password,
-      }),
+      http.send<SignedIn | VerificationRequired>(
+        "POST",
+        authRoutes.register(),
+        { name, email, password },
+      ),
+    // This browser's sign-up waiting for a code; a 401 means it ended.
+    registerCheck: () =>
+      http.send<PendingRegistration>("POST", authRoutes.registerCheck(), {}),
+    // A new code for this browser's sign-up, replacing the last one.
+    registerResend: () =>
+      http.send<VerificationRequired>("POST", authRoutes.registerResend(), {}),
+    // Finishes the sign-up with its code: the account is created and signed
+    // in. A wrong code is an ApiError with field "code"; a 401 means the
+    // sign-up ended (expired, or 5 wrong codes); a 409 that the email has
+    // an account after all.
+    registerVerify: (code: string) =>
+      http.send<SignedIn>("POST", authRoutes.registerVerify(), { code }),
+    emailVerification: () => emailVerification(http),
     logout: () => http.send<void>("POST", authRoutes.logout(), {}),
     // Deletes the account and signs it out. A wrong password is an ApiError
     // with field "password"; the only owner of a workspace gets a 409 whose
@@ -107,6 +151,20 @@ export function auth(http: Http) {
       http.send<{ email: string }>("PATCH", authRoutes.passwordReset(), {
         token,
         newPassword,
+      }),
+  };
+}
+// Verifying the signed-in account's email, as a singleton resource.
+function emailVerification(http: Http) {
+  return {
+    // Emails a code to the account's address, replacing any earlier one.
+    store: () => http.send<void>("POST", authRoutes.emailVerification(), {}),
+    // Verifies the email with the code; returns the account. A wrong code is
+    // an ApiError with field "code"; a 410 means the code ended (expired, or
+    // 5 wrong codes) and a new one is needed.
+    update: (code: string) =>
+      http.send<{ user: User }>("PATCH", authRoutes.emailVerification(), {
+        code,
       }),
   };
 }

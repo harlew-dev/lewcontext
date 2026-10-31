@@ -33,9 +33,16 @@ type eventRecord struct {
 // methods that change data call it inside their transaction, so the change,
 // its event and its deliveries are saved together or not at all.
 func (s *Store) record(ctx context.Context, db bun.IDB, e events.Event, scope EventScope) error {
+	_, err := s.recordID(ctx, db, e, scope)
+	return err
+}
+
+// recordID is record, returning the event's public ID (evt_…), for a row
+// that a listener of the event must find.
+func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope EventScope) (string, error) {
 	payload, err := json.Marshal(e)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if scope.ActorID == 0 {
 		scope.ActorID = events.Actor(ctx)
@@ -48,10 +55,10 @@ func (s *Store) record(ctx context.Context, db bun.IDB, e events.Event, scope Ev
 		Payload:     payload,
 		UserAgent:   events.UserAgent(ctx),
 	}
-	if _, err = db.NewInsert().Model(&row).Returning("id").Exec(ctx); err != nil {
-		return err
+	if _, err = db.NewInsert().Model(&row).Returning("id, public_id").Exec(ctx); err != nil {
+		return "", err
 	}
-	return s.queueDeliveries(ctx, db, row.ID, row.Name)
+	return row.PublicID, s.queueDeliveries(ctx, db, row.ID, row.Name)
 }
 
 // Record writes an event that has no data change of its own, such as a login

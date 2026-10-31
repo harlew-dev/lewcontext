@@ -57,9 +57,9 @@ func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 		With("active", active).
 		TableExpr("active AS a").
 		Join("JOIN users AS u ON u.id = a.user_id").
-		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, a.csrf_token, a.created_at, a.expires_at").
+		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at, a.csrf_token, a.created_at, a.expires_at").
 		ColumnExpr("(?)", mfaEnabledAt(s.DB)).
-		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
+		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.User.EmailVerifiedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
 	return session, err
 }
 
@@ -96,9 +96,8 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 }
 
 // Cleanup deletes used-up rate-limit windows, ended sessions (admin ones
-// too), expired reset
-// links and sign-in challenges, MFA setups left unconfirmed, and invitations
-// that expired over 30 days ago (until then they're listed as expired, so
+// too), expired reset links, sign-in challenges, sign-ups and email codes,
+// MFA setups left unconfirmed, and invitations that expired over 30 days ago (until then they're listed as expired, so
 // whoever sent one can see why it wasn't used).
 func (s *Store) Cleanup(ctx context.Context) error {
 	if _, err := s.DB.NewDelete().Model((*mfaChallenge)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
@@ -123,6 +122,12 @@ func (s *Store) Cleanup(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.DB.NewDelete().Model((*passwordReset)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := s.DB.NewDelete().Model((*pendingRegistration)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := s.DB.NewDelete().Model((*emailVerification)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
 		return err
 	}
 	_, err := s.DB.NewDelete().Model((*invitationRecord)(nil)).Where("expires_at <= now() - interval '30 days'").Exec(ctx)

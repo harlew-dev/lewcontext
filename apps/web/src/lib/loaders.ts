@@ -1,9 +1,15 @@
 import { data, redirect } from "react-router";
 import type { AdminSession } from "@/types/admin";
 import type { Workspace } from "@/types/workspaces";
-import { ApiError, loaderAdminApi, loaderApi } from "./api";
+import {
+  ApiError,
+  loaderAdminApi,
+  loaderApi,
+  verificationRequired,
+  type PendingRegistration,
+} from "./api";
 import type { Page } from "./pagination";
-import { loginPath, returnPath, routes } from "./routes";
+import { loginPath, returnPath, routes, verifyEmailPath } from "./routes";
 import type { Session } from "./types";
 // Route loaders shared by several pages. They run in the browser before a page
 // renders, so they only check what a page can't render without: the session
@@ -48,6 +54,8 @@ export async function signedInLoader(
     loaded = { session, workspaces };
   } catch (error) {
     if (unauthorized(error)) throw redirect(loginPath(here(request)));
+    if (verificationRequired(error))
+      throw redirect(verifyEmailPath(here(request)));
     return unavailable;
   }
   if (loaded.workspaces.pages.items === 0) throw redirect(routes.onboarding);
@@ -63,6 +71,7 @@ export async function workspaceHomeLoader(
     newest = (await loaderApi().workspaces().index({ perPage: 1 })).data[0];
   } catch (error) {
     if (unauthorized(error)) throw redirect(loginPath(here(request)));
+    if (verificationRequired(error)) throw redirect(routes.verifyEmail);
     return unavailable;
   }
   throw redirect(newest ? routes.dashboard(newest.id) : routes.onboarding);
@@ -84,9 +93,44 @@ export async function onboardingLoader(): Promise<
     items = list.pages.items;
   } catch (error) {
     if (unauthorized(error)) throw redirect(routes.login);
+    if (verificationRequired(error)) throw redirect(routes.verifyEmail);
     return unavailable;
   }
   if (items > 0) throw redirect(routes.app);
+  return { session };
+}
+// A sign-up's code page: the sign-up this browser's cookie holds, or ended
+// when there's none (expired, finished, or never started). Signed-in
+// visitors go on, as from register.
+export async function registerVerifyLoader(
+  request: Request,
+): Promise<{ pending: PendingRegistration } | { ended: string } | Unavailable> {
+  await guestLoader(request);
+  try {
+    return { pending: await loaderApi().auth().registerCheck() };
+  } catch (error) {
+    if (unauthorized(error) && error instanceof ApiError)
+      return { ended: error.message };
+    return unavailable;
+  }
+}
+// The verify-email page: signed in, and only while the account must verify
+// (or may, with it optional). A verified account, or verification off, goes
+// on to ?next= or /app.
+export async function verifyEmailLoader(
+  request: Request,
+): Promise<{ session: Session } | Unavailable> {
+  let session: Session;
+  try {
+    session = await loaderApi().auth().me();
+  } catch (error) {
+    if (unauthorized(error)) throw redirect(loginPath(routes.app));
+    return unavailable;
+  }
+  if (session.user.emailVerifiedAt || session.emailVerification === "off") {
+    const next = new URL(request.url).searchParams.get("next");
+    throw redirect(returnPath(next) ?? routes.app);
+  }
   return { session };
 }
 // The admin pages first ask the API whether the key in the URL is right

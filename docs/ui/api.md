@@ -36,7 +36,8 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `members(workspace)` | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins) |
 | `invitations(workspace)` | `index({ page, perPage })`, `store({ email, role })`, `destroy(id)` (owners and admins) |
 | `invitations()` | `check(token)`, `accept(token)`: the link's page, by the token in the body |
-| `auth()` | `me`, `login(credentials)` (`needsMfa(result)` when it answers `{mfaRequired}`), `loginMfa(code)`, `register(registration)`, `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces) |
+| `auth()` | `me`, `login(credentials)` (`needsMfa(result)` when it answers `{mfaRequired}`), `loginMfa(code)`, `register(registration)` (`needsVerification(result)` when it answers `{verificationRequired, email}`), `registerCheck()`, `registerResend()`, `registerVerify(code)` (the sign-up is in its cookie), `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces) |
+| `auth().emailVerification()` | `store()` (emails a code), `update(code)` (`{user}`; a 410 means the code ended). `verificationRequired(error)` recognises the API's 403 for an account that must verify first |
 | `auth().mfa()` | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
@@ -77,7 +78,7 @@ list.refresh()   // Retry, refresh, or after a mutation
 - **Polling:** `useResource(path, fallback, { refreshInterval: (data) => ms })` refreshes again after `ms`, or stops at 0: the pending invitations poll every 3 s only while one is "Sending…".
 - **Changing path** keeps the previous data in `data` while `loading` is true, and keeps it if the new request fails. Show it, dimmed, with an error `Notice` that offers Retry.
 - **`loading`** is true only when there is no data yet for this path. `refreshing` is true while revalidating.
-- **401** redirects to `/auth/login?next=<this page>` ([pages.md](pages.md#returning-after-sign-in-next)).
+- **401** redirects to `/auth/login?next=<this page>` ([pages.md](pages.md#returning-after-sign-in-next)); a 403 with `verificationRequired` to `/app/verify-email?next=<this page>`.
 - **Retries:** a failed read is retried twice (`swrConfig`, `lib/swr.ts`, set in `root.tsx`), except a 4xx: a 403 or 404 won't change, and retrying a 429 would spend more of the rate limit ([../api/rate-limits.md](../api/rate-limits.md)). The API's message ("Too many requests. Try again in 12 minutes.") shows in the error `Notice`, and Retry asks again.
 
 ## Changing data

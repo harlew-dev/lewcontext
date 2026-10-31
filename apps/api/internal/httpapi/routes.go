@@ -32,14 +32,17 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.Handle("POST /api/auth/login", s.limitAuth(http.HandlerFunc(s.login)))
 	// A login's second factor, with the challenge in its cookie (mfa.go).
 	mux.HandleFunc("POST /api/auth/login/mfa", s.loginMFA)
-	mux.Handle("GET /api/auth/me", s.requireSession(http.HandlerFunc(s.me)))
+	// An account that must verify its email first (mustVerify) may only read
+	// its session, sign out, sign out other sessions and verify: every
+	// other signed-in route refuses it.
+	mux.Handle("GET /api/auth/me", allowUnverified(s.requireSession(http.HandlerFunc(s.me))))
 	mux.Handle("PATCH /api/auth/me", s.requireSession(http.HandlerFunc(s.updateProfile)))
 	// Deleting the account checks the password, like the routes below.
 	mux.Handle("DELETE /api/auth/me", s.requireSession(s.limitAuth(http.HandlerFunc(s.destroyAccount))))
 	// The recovery routes skip the signed-in budget, so a stolen session can't
 	// use it up to keep the owner from signing it out (limits.go).
-	mux.Handle("POST /api/auth/logout", s.requireSessionUnmetered(http.HandlerFunc(s.logout)))
-	mux.Handle("DELETE /api/auth/sessions", s.requireSessionUnmetered(http.HandlerFunc(s.revokeOthers)))
+	mux.Handle("POST /api/auth/logout", allowUnverified(s.requireSessionUnmetered(http.HandlerFunc(s.logout))))
+	mux.Handle("DELETE /api/auth/sessions", allowUnverified(s.requireSessionUnmetered(http.HandlerFunc(s.revokeOthers))))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
 	mux.Handle("POST /api/auth/password/verify", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(s.verifyPassword))))
 	mux.Handle("PATCH /api/auth/password", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(s.changePassword))))
@@ -58,6 +61,9 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /api/auth/password-reset", s.requestPasswordReset)
 	mux.HandleFunc("POST /api/auth/password-reset/check", s.checkPasswordReset)
 	mux.Handle("PATCH /api/auth/password-reset", s.limitAuth(http.HandlerFunc(s.resetPassword)))
+	if s.Config.Verify {
+		s.verificationRoutes(mux)
+	}
 	// An invitation link's page checks it signed out, and accepts it signed in.
 	invitations := invitationHandlers{s}
 	mux.HandleFunc("POST /api/invitations/check", invitations.check)
@@ -70,6 +76,21 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	s.workspaceRoutes(group(mux, "/api/workspaces/{workspace}", s.requireSession, s.requireWorkspace))
 	s.adminRoutes(mux)
 	return mux
+}
+
+// verificationRoutes exist only with EMAIL_VERIFICATION on
+// (registration.go, email_verification.go). A sign-up's code page works
+// signed out, with the registration cookie; none of them hash, so they take
+// only the IP limit, and each counts its own. A signed-in account verifies
+// with its session, unverified or not.
+func (s *Server) verificationRoutes(mux *http.ServeMux) {
+	registrations := registrationHandlers{s}
+	mux.HandleFunc("POST /api/auth/register/check", registrations.check)
+	mux.HandleFunc("POST /api/auth/register/resend", registrations.resend)
+	mux.HandleFunc("POST /api/auth/register/verify", registrations.verify)
+	verification := emailVerificationHandlers{s}
+	mux.Handle("POST /api/auth/email-verification", allowUnverified(s.requireSession(http.HandlerFunc(verification.store))))
+	mux.Handle("PATCH /api/auth/email-verification", allowUnverified(s.requireSession(http.HandlerFunc(verification.update))))
 }
 
 // adminRoutes are the admin dashboard's (admin.go), and the only place an

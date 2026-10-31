@@ -11,6 +11,8 @@ export type AdminUser = {
   name: string;
   email: string;
   createdAt: string;
+  // Null for an account that never verified its email.
+  emailVerifiedAt: string | null;
   mfaEnabled: boolean;
   admin: boolean;
   workspaceCount: number;

@@ -24,6 +24,10 @@ type User struct {
 	Name          string    `json:"name"`
 	Email         string    `json:"email"`
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"createdAt"`
+	// EmailVerifiedAt is when the account proved it owns its email (a code,
+	// or a password reset link), or nil: always set for accounts made with
+	// EMAIL_VERIFICATION on.
+	EmailVerifiedAt *time.Time `bun:"email_verified_at" json:"emailVerifiedAt"`
 	// MFAEnabledAt is when two-factor authentication was turned on, or nil
 	// while it's off. Read only where a query selects it (mfaEnabledAt);
 	// only ever sent in the user's own session responses.

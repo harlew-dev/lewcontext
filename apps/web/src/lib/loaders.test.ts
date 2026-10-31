@@ -6,6 +6,7 @@ import {
   guestLoader,
   onboardingLoader,
   signedInLoader,
+  verifyEmailLoader,
   workspaceHomeLoader,
 } from "./loaders";
 const session = testSession();
@@ -118,5 +119,54 @@ describe("onboarding loader", () => {
   it("sends accounts that have a workspace on to /app", async () => {
     stubLoaderApi({});
     expect(await redirectOf(onboardingLoader())).toBe("/app");
+  });
+});
+
+// EMAIL_VERIFICATION_EXISTING=required: the API refuses an unverified
+// account everything but its session and verifying.
+const mustVerify: Reply = {
+  status: 403,
+  body: { error: "Verify your email to continue.", verificationRequired: true },
+};
+describe("an account that must verify its email", () => {
+  const unverified = testSession({
+    emailVerification: "required",
+    user: { emailVerifiedAt: null },
+  });
+  it("goes to the verify page from every signed-in page, returning after", async () => {
+    stubLoaderApi({ me: { body: unverified }, workspaces: mustVerify });
+    const path = "/app/wsp_2yEHYLwiwPVhLW/projects";
+    expect(await redirectOf(signedInLoader(request(path)))).toBe(
+      `/app/verify-email?next=${encodeURIComponent(path)}`,
+    );
+    expect(await redirectOf(workspaceHomeLoader(request("/app")))).toBe(
+      "/app/verify-email",
+    );
+    expect(await redirectOf(onboardingLoader())).toBe("/app/verify-email");
+  });
+  it("stays on the verify page only while it must verify", async () => {
+    stubLoaderApi({ me: { body: unverified } });
+    expect(await verifyEmailLoader(request("/app/verify-email"))).toEqual({
+      session: unverified,
+    });
+    stubLoaderApi({ me: { body: testSession() } });
+    const next = encodeURIComponent("/app/settings");
+    expect(
+      await redirectOf(
+        verifyEmailLoader(request(`/app/verify-email?next=${next}`)),
+      ),
+    ).toBe("/app/settings");
+    // Another site isn't a place to go on to.
+    expect(
+      await redirectOf(
+        verifyEmailLoader(
+          request("/app/verify-email?next=https%3A%2F%2Fevil.example"),
+        ),
+      ),
+    ).toBe("/app");
+    stubLoaderApi({ me: signedOut });
+    expect(
+      await redirectOf(verifyEmailLoader(request("/app/verify-email"))),
+    ).toBe("/auth/login?next=%2Fapp");
   });
 });

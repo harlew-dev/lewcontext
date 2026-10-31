@@ -18,6 +18,10 @@ import (
 type sessionKey struct{}
 type workspaceKey struct{}
 
+// unverifiedKey marks a route an unverified account may use while
+// EMAIL_VERIFICATION_EXISTING=required (allowUnverified).
+type unverifiedKey struct{}
+
 func current(r *http.Request) store.Session { return r.Context().Value(sessionKey{}).(store.Session) }
 
 // optionalSession is the request's session on routes that may run without
@@ -134,12 +138,33 @@ func (s *Server) signedIn(next http.Handler, metered bool) http.Handler {
 			fail(w, 403, "Invalid CSRF token. Refresh and try again.")
 			return
 		}
+		if s.mustVerify(session.User) && r.Context().Value(unverifiedKey{}) == nil {
+			jsonResponse(w, 403, map[string]any{"error": "Verify your email to continue.", "verificationRequired": true})
+			return
+		}
 		ctx := context.WithValue(r.Context(), sessionKey{}, session)
 		r = r.WithContext(events.WithActor(ctx, session.User.ID))
 		if metered && !s.meter(w, r) {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+// mustVerify reports whether u must verify its email before doing anything:
+// it never has, and EMAIL_VERIFICATION_EXISTING=required.
+func (s *Server) mustVerify(u store.User) bool {
+	return s.Config.RequireExisting && u.EmailVerifiedAt == nil
+}
+
+// allowUnverified lets an account that must verify its email (mustVerify)
+// use the route: only reading the session, signing out, signing out other
+// sessions and verifying (routes.go). Every other signed-in route answers it
+// 403 with verificationRequired, so a route added later is covered without
+// thinking about it. Wrap it around requireSession or its variants.
+func allowUnverified(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), unverifiedKey{}, true)))
 	})
 }
 
