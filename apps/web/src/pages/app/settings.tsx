@@ -1,5 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { ChevronRightIcon } from "@heroicons/react/16/solid";
+import {
+  ChevronRightIcon,
+  EyeIcon,
+  EyeSlashIcon,
+} from "@heroicons/react/16/solid";
 import { DeleteAccountDialog } from "@/components/app/account/delete-account-dialog";
 import {
   CodeField,
@@ -29,6 +33,7 @@ import { Heading } from "@/components/ui/heading";
 import {
   Input,
   InputActions,
+  InputButton,
   InputGroup,
   InputLock,
 } from "@/components/ui/input";
@@ -39,6 +44,7 @@ import {
 } from "@/components/ui/settings-section";
 import { Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ApiError,
   errorMessage,
@@ -106,12 +112,14 @@ function cleanName(value: string): string | null {
 }
 // Saves the name, then renews the session with the updated user so the new
 // name shows everywhere. The email address is how the user signs in, so it
-// can't be changed here.
+// can't be changed here; it starts masked, in case the screen is shared, and
+// the eye shows it.
 function ProfileForm() {
   const api = useApi();
   const session = useSession();
   const renew = useRenewSession();
   const [name, setName] = useState(session.user.name);
+  const [emailVisible, setEmailVisible] = useState(false);
   const save = useAction((clean: string) =>
     api.auth().updateProfile({ name: clean }),
   );
@@ -142,8 +150,27 @@ function ProfileForm() {
         <Field>
           <Label>Email address</Label>
           <InputGroup>
-            <Input type="email" value={session.user.email} readOnly />
+            <Input
+              type="email"
+              value={
+                emailVisible
+                  ? session.user.email
+                  : "•".repeat(session.user.email.length)
+              }
+              readOnly
+            />
             <InputActions>
+              <Tooltip content={emailVisible ? "Hide" : "Show"}>
+                <InputButton
+                  aria-label={
+                    emailVisible ? "Hide email address" : "Show email address"
+                  }
+                  aria-pressed={emailVisible}
+                  onClick={() => setEmailVisible(!emailVisible)}
+                >
+                  {emailVisible ? <EyeSlashIcon /> : <EyeIcon />}
+                </InputButton>
+              </Tooltip>
               <InputLock label="Your sign-in email can’t be changed" />
             </InputActions>
           </InputGroup>

@@ -74,7 +74,15 @@ describe("profile", () => {
   it("shows the email address read-only, with a tooltip saying why", async () => {
     renderPage();
     const email = screen.getByLabelText("Email address");
+    // Masked until the eye shows it.
+    expect(email).toHaveValue("•".repeat(session.user.email.length));
+    fireEvent.click(screen.getByRole("button", { name: "Show email address" }));
     expect(email).toHaveValue(session.user.email);
+    const hide = screen.getByRole("button", { name: "Hide email address" });
+    expect(hide).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(hide);
+    expect(email).toHaveValue("•".repeat(session.user.email.length));
+    fireEvent.click(screen.getByRole("button", { name: "Show email address" }));
     expect(email).toHaveAttribute("readonly");
     expect(email).not.toBeDisabled();
     expect(screen.queryByText("Member since")).toBeNull();

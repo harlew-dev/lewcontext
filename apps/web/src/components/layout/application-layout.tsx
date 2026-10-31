@@ -321,13 +321,8 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
                     initials={userInitials}
                     className="size-10 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
                   />
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm/5 font-medium text-zinc-950 dark:text-white">
-                      {session.user.name}
-                    </span>
-                    <span className="block truncate text-xs/5 font-normal text-zinc-500 dark:text-zinc-400">
-                      {session.user.email}
-                    </span>
+                  <span className="min-w-0 truncate text-sm/5 font-medium text-zinc-950 dark:text-white">
+                    {session.user.name}
                   </span>
                 </span>
                 <ChevronUpIcon />
