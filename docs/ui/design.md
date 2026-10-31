@@ -44,7 +44,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | --- | --- |
 | `button.tsx` | `Button` `color` (`dark/zinc`, or `red` for destructive actions: remove, leave, delete) \| `outline` \| `plain`, `href` (renders a React Router link, with optional navigation `state`), `loading`, `disabled`, `disabledReason` (while disabled and not loading: a tooltip on a wrapper, since a disabled button gets no pointer events, and the button's accessible description; [forms-and-actions.md](forms-and-actions.md#behaviour-same-everywhere)) · `TouchTarget` |
 | `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
-| `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
+| `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`, `red`: something apart from the app, the admin dashboard's "Admin") |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
 | `feedback.tsx` | `Notice variant` (`error` alert, `success` status, `info` status in blue: the invitation callout, `warning` note in amber: what a confirmation will do, read with the dialog rather than announced), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |

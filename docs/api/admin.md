@@ -121,7 +121,7 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 - **Routes** (`routes.ts`): `admin/:key` (`pages/admin/[key]/index.tsx`, `AdminLogin`), and inside `pages/admin/layout.tsx`: `users` (`AdminUserIndex`), `users/:user` (`AdminUserShow`), `workspaces` (`AdminWorkspaceIndex`), `workspaces/:workspace` (`AdminWorkspaceShow`). Not prerendered.
 - **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. `useAdminApi()` sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `routes.admin.*(key)`.
 - **Loaders** (`lib/loaders.ts`): `adminLoginLoader` (404 → not-found, signed in → Users) and `adminLoader` (404 → not-found, 401 → sign-in).
-- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users and Workspaces, the app name with an "Admin" badge, and an account menu saying who is signed in, with Sign out.
+- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users and Workspaces, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out.
 - **Lists** use `PaginatedTable`, `SearchField` and sortable headers (`components/app/admin/admin-list.tsx`: URL state, `AdminTableHead`, `MfaBadge`, `AdminBadge`); rows link to their page. There are no row menus: there are no actions.
 - `react/no-danger` is on for the whole web app: other users' names and emails render only through React's escaping.
 

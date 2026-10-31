@@ -269,7 +269,7 @@ describe("the admin layout", () => {
       await screen.findByText("This page has wandered off."),
     ).toBeInTheDocument();
   });
-  it("shows who is signed in, with an Admin badge", async () => {
+  it("shows who is signed in, with an Admin badge and a way back to the app", async () => {
     stubApi({
       "GET /api/admin/me": { body: me },
       "GET /api/admin/users": { body: emptyPage },
@@ -282,6 +282,15 @@ describe("the admin layout", () => {
     );
     expect(screen.getAllByText("Admin").length).toBeGreaterThan(0);
     expect(screen.getByText("Olive Admin")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Admin account menu" }));
+    expect(
+      await screen.findByRole("menuitem", { name: "Back to app" }),
+    ).toHaveAttribute("href", "/app");
+    expect(
+      screen.getByRole("menuitem", { name: "Account & security" }),
+    ).toHaveAttribute("href", "/app/settings");
+    expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
+    expect(screen.queryByText("Signed in as")).toBeNull();
   });
 });
 describe("the users list", () => {

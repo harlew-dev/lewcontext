@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import { useLocation, useNavigate, useNavigation } from "react-router";
 import {
   ArrowRightStartOnRectangleIcon,
+  ArrowUturnLeftIcon,
   ChevronUpIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/16/solid";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +12,6 @@ import {
   Dropdown,
   DropdownButton,
   DropdownDivider,
-  DropdownHeader,
   DropdownItem,
   DropdownLabel,
   DropdownMenu,
@@ -34,13 +35,20 @@ import { initials } from "@/lib/format";
 import { adminNavigation, routes } from "@/lib/routes";
 import { useClearCache } from "@/lib/use-clear-cache";
 import { SidebarLayout } from "./sidebar-layout";
-// The app name with an "Admin" badge, so the dashboard is never mistaken for
-// the app.
-function AdminBrand() {
+// The app name with a red "Admin" badge, so the dashboard is never mistaken
+// for the app. `stacked` puts the badge under the name, leaving the sidebar's
+// header room for its toggle.
+function AdminBrand({ stacked = false }: { stacked?: boolean }) {
   return (
-    <span className="flex items-center gap-2">
+    <span
+      className={
+        stacked
+          ? "flex flex-col items-start gap-1.5"
+          : "flex items-center gap-2"
+      }
+    >
       <Logo />
-      <Badge>Admin</Badge>
+      <Badge color="red">Admin</Badge>
     </span>
   );
 }
@@ -52,8 +60,9 @@ function useCurrentPath() {
   return (pending ?? location).pathname;
 }
 // Signed-in chrome for the admin pages (pages/admin/layout.tsx): the sidebar
-// layout with Users and Workspaces, and who is signed in with Sign out.
-// Signing out of the dashboard leaves the app session alone.
+// layout with Users and Workspaces, and an account menu leading back to the
+// app (or its Account & security) and Sign out. Signing out of the dashboard
+// leaves the app session alone.
 export function AdminLayout({ children }: { children: ReactNode }) {
   const api = useAdminApi();
   const key = useAdminKey();
@@ -83,9 +92,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       sidebar={
         <Sidebar>
           <SidebarHeader>
-            <div className="flex items-center justify-between gap-2 lg:mb-2.5">
-              <span className="px-2">
-                <AdminBrand />
+            <div className="flex items-start justify-between gap-2 lg:mb-2.5">
+              <span className="px-2 pt-1.5">
+                <AdminBrand stacked />
               </span>
               <SidebarToggle />
             </div>
@@ -122,14 +131,14 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 <ChevronUpIcon />
               </DropdownButton>
               <DropdownMenu className="min-w-64" anchor="top start">
-                <DropdownHeader>
-                  <div className="text-sm/7 text-zinc-500 dark:text-zinc-400">
-                    Signed in as
-                  </div>
-                  <div className="truncate text-sm/5 font-medium text-zinc-950 dark:text-white">
-                    {session.user.email}
-                  </div>
-                </DropdownHeader>
+                <DropdownItem href={routes.app}>
+                  <ArrowUturnLeftIcon />
+                  <DropdownLabel>Back to app</DropdownLabel>
+                </DropdownItem>
+                <DropdownItem href={routes.settings}>
+                  <ShieldCheckIcon />
+                  <DropdownLabel>Account & security</DropdownLabel>
+                </DropdownItem>
                 <DropdownDivider />
                 <DropdownItem variant="danger" onClick={signOut}>
                   <ArrowRightStartOnRectangleIcon />
