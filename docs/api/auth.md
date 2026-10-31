@@ -41,7 +41,8 @@ Optional for every account (Account settings → Two-factor authentication → *
 - **At rest:** the secret is sealed with AES-256-GCM under a key derived from `APP_KEY` (HKDF), bound to the user's internal ID (the GCM additional data), so a database dump alone, or a value copied to another row, is useless. Recovery codes are HMAC-SHA256 digests under a second derived key, so they can't be guessed offline either. **Changing `APP_KEY` locks out every account with MFA on**; there is no key rotation yet.
 - **Limits:** `mfa:per-account` (5 code checks per 15 minutes, per user, from any IP) on every code check, plus `auth:per-ip` on `login/mfa` and 5 tries per challenge ([rate-limits.md](rate-limits.md)). Turning MFA off and new recovery codes are recovery routes: unmetered by the budget, like the password routes.
 - **What doesn't change it:** a password reset or a password change leaves MFA on, so a reset link alone can't sign anyone in. Deleting the account deletes its rows (cascade).
-- **Lost the app and the codes:** only the operator can help, with `make admin cmd=reset-mfa email=… CONFIRM=1` (`cmd/admin reset-mfa`, previews without `-confirm`). It turns MFA off, signs out every session and records `auth.mfa.disabled` with reason `reset` and no actor. Check who is asking out of band first: it's a way around their second factor.
+- **Lost the app and the codes:** only the operator can help, with `make admin cmd=reset-mfa email=… CONFIRM=1` (`cmd/admin reset-mfa`, previews without `-confirm`). It turns MFA off, signs out every session (admin sessions too) and records `auth.mfa.disabled` with reason `reset` and no actor; for an admin it reopens the 24-hour window to set up a new authenticator at the admin door. Check who is asking out of band first: it's a way around their second factor.
+- **Admins** must keep MFA on: turning it off answers 409 "Admins must keep two-factor authentication on." ([admin.md](admin.md)).
 - **Responses:** every response with the user carries `mfaEnabledAt` (null while off). Secrets and codes appear only in the one response that creates them, and never in an event or log.
 - **Not stopped:** a phishing site relaying a password and a code in real time. Passkeys would; they're not built.
 
@@ -53,6 +54,7 @@ Optional for every account (Account settings → Two-factor authentication → *
 - **Login, register and a password change rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
 - Logout deletes the session. `DELETE /api/auth/sessions` deletes all others.
 - Session tokens never go in localStorage or URLs.
+- **Admin sessions are separate** ([admin.md](admin.md)): their own table and `lewcontext_admin` cookie (SameSite=Strict), 15 minutes idle and 8 hours at most, 2 per admin, started only by an admin sign-in with a code, and valid only while the user is an admin and the `ADMIN_ROUTE_KEY` they were made under is current. A password change, a password reset, an MFA reset, revoking admin and deleting the account end them. An app session never counts as one, nor the other way round.
 
 ## CSRF and origin checks
 
@@ -72,9 +74,13 @@ Sign-in, sign-up and password reset are limited per IP, per account or email, an
 - Logout, revoking other sessions, the password endpoints, turning MFA off and new recovery codes skip the signed-in budget, so a stolen session can't use it up to stop its owner.
 - **The client IP** is `clientIP(r)` (`httpapi/client_ip.go`), worked out once per request by `clientAddress`. It is the connection's address, unless `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` are set **and** the connection comes from a trusted proxy: then it is the header's address (`X-Forwarded-For` read from the right, skipping trusted proxies; the single-value headers only when they hold exactly one address). A header from any other connection is ignored, so a client can't forge one for fresh limits or fake audit IPs. Without the variables, everyone behind a proxy (and Vite's dev proxy) shares one IP. Per-IP limits count IPv6 clients by their /64. A scaled deployment still needs an edge limiter. Account lockout abuse is possible with this fixed-window design.
 
+## Admin dashboard
+
+`/admin/<ADMIN_ROUTE_KEY>`, behind the secret key on every page and API call (`X-Admin-Key`; wrong keys get the ordinary 404), then an admin's password and second factor and an admin session. Admins are granted only from the command line, must have MFA, and can only read. Everything is in [admin.md](admin.md).
+
 ## Audit trail
 
-Sign-ups, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window (`rate_limit.reached`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, the first refusal of each rate-limit window (`rate_limit.reached`), and admins granted, revoked, signing in and out and everything they read (`admin.*`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 

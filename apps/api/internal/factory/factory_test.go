@@ -125,6 +125,12 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := MFAChallenges.State(ChallengeFor(user.ID)).CreateOne(ctx, db, f); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := Admins.State(AdminFor(user.ID)).State(SetupWindow).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AdminSessions.State(AdminSessionFor(user.ID)).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
 	event, err := Events.State(func(e *Event) { e.UserID = user.ID }).CreateOne(ctx, db, f)
 	if err != nil || event.PublicID == "" {
 		t.Fatalf("event: %+v (%v)", event, err)

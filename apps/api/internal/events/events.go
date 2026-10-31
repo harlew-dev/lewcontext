@@ -34,6 +34,8 @@ var Catalogue = []Event{
 	WorkspaceInvitationCreated{}, WorkspaceInvitationSent{}, WorkspaceInvitationRevoked{}, WorkspaceInvitationAccepted{},
 	ProjectCreated{}, ProjectUpdated{}, ProjectDeleted{},
 	RateLimitReached{},
+	AdminGranted{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
+	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
 }
 
 // Change is a field's value before and after an update.

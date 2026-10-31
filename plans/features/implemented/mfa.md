@@ -1,6 +1,6 @@
 # Two-factor authentication (TOTP)
 
-Status: **implemented 2026-10-31** with the confirmed decisions below; see [How the build differs](#how-the-build-differs). Docs: [auth.md](../../../docs/api/auth.md#two-factor-authentication), [endpoints.md](../../../docs/api/endpoints.md), [events.md](../../../docs/api/events.md), [rate-limits.md](../../../docs/api/rate-limits.md), [database.md](../../../docs/api/database.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md), [testing.md](../../../docs/testing.md), [ui/README.md](../../../docs/ui/README.md), [ui/design.md](../../../docs/ui/design.md), [ui/api.md](../../../docs/ui/api.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/testing.md](../../../docs/ui/testing.md), and AGENTS.md (rule 5, the security invariants). Ships before [admin access](../admin-access.md), which requires it for every admin. Independent of [email delivery](email-delivery.md): nothing here sends mail.
+Status: **implemented 2026-10-31** with the confirmed decisions below; see [How the build differs](#how-the-build-differs). Docs: [auth.md](../../../docs/api/auth.md#two-factor-authentication), [endpoints.md](../../../docs/api/endpoints.md), [events.md](../../../docs/api/events.md), [rate-limits.md](../../../docs/api/rate-limits.md), [database.md](../../../docs/api/database.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md), [testing.md](../../../docs/testing.md), [ui/README.md](../../../docs/ui/README.md), [ui/design.md](../../../docs/ui/design.md), [ui/api.md](../../../docs/ui/api.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/testing.md](../../../docs/ui/testing.md), and AGENTS.md (rule 5, the security invariants). Ships before [admin access](admin-access.md), which requires it for every admin. Independent of [email delivery](email-delivery.md): nothing here sends mail.
 
 ## Why
 
@@ -39,7 +39,7 @@ step 3: <MfaSetup>: the recovery codes, hidden until "Reveal recovery codes",
 
 A pending secret that isn't confirmed within 15 minutes is deleted by `Store.Cleanup`. Starting again replaces it.
 
-**Admins** set up MFA the same way, or at their first admin sign-in, where the door runs the same setup stage before letting them in ([admin access](../admin-access.md#admin-sign-in)). Both places use the same setup code, described next.
+**Admins** set up MFA the same way, or at their first admin sign-in, where the door runs the same setup stage before letting them in ([admin access](admin-access.md#admin-sign-in)). Both places use the same setup code, described next.
 
 ### One setup, two entry points
 
@@ -85,7 +85,7 @@ same page, step 2: "Authentication code"  ("Use a recovery code instead" switche
 
 Both need the current password **and** a code (authenticator or recovery), in one request:
 
-- `DELETE /api/auth/mfa {password, code}`: deletes the secret and every recovery code, and records `auth.mfa.disabled` (`reason: "user"`). Admins can't turn it off (409); see [admin access](../admin-access.md).
+- `DELETE /api/auth/mfa {password, code}`: deletes the secret and every recovery code, and records `auth.mfa.disabled` (`reason: "user"`). Admins can't turn it off (409); see [admin access](admin-access.md).
 - `POST /api/auth/mfa/recovery-codes {password, code}`: replaces every recovery code with 10 new ones, records `auth.recovery_codes.created`, and returns them once.
 
 ### Lost the phone and the codes
@@ -195,7 +195,7 @@ CREATE TABLE mfa_challenges (
 CREATE INDEX mfa_challenges_user_id_idx ON mfa_challenges(user_id);
 ```
 
-- **`purpose`** stops a challenge made for one flow from completing another. `login` is the app's sign-in. `admin` and `admin_setup` come from [admin access](../admin-access.md): an admin sign-in waiting for a code, and an admin without MFA allowed to set it up at the door. Only `admin_setup` can start or confirm a setup, and only `login` or `admin` can be answered with an existing code.
+- **`purpose`** stops a challenge made for one flow from completing another. `login` is the app's sign-in. `admin` and `admin_setup` come from [admin access](admin-access.md): an admin sign-in waiting for a code, and an admin without MFA allowed to set it up at the door. Only `admin_setup` can start or confirm a setup, and only `login` or `admin` can be answered with an existing code.
 - **Store** (`internal/store/mfa.go`): `SetupMFA`, `EnableMFA`, `DisableMFA`, `ResetMFA`, `CreateRecoveryCodes`, `CreateMFAChallenge`, `CheckMFAChallenge` (the domain verbs of [naming.md](../../../docs/naming.md#store-methods-internalstore)). Every check that consumes something (a step, a recovery code, a challenge try) runs in one transaction that locks the user's `mfa_totp` row first, then the challenge.
 - **Cleanup:** expired challenges and pending secrets older than 15 minutes, in `Store.Cleanup`.
 - **Factories** for all three tables (`TestEveryTableHasAFactory`). The `mfa_totp` factory encrypts a known test secret with `.env.testing`'s key, so tests can make valid codes with `auth.TOTPCode`.
@@ -268,7 +268,7 @@ Never in a payload: secrets, codes, recovery codes, their digests, challenge tok
 | Learning that the password was right | `{mfaRequired}` shows that, as every TOTP sign-in does. Password guesses keep `auth:per-account`, and the code is still needed |
 | Secrets cached in the browser | The API sends `no-store`, and the web app keeps them only in dialog state |
 | The QR code, setup key or recovery codes seen over a shared screen, a recording or someone's shoulder | Not rendered until **Reveal**: a blurred decoy stands in. Each step starts hidden again |
-| Setting up MFA at the admin door with only a stolen password | The setup stage opens only inside the 24-hour window after `admin grant` or an operator's MFA reset ([admin access](../admin-access.md#admin-sign-in)). Otherwise it's the ordinary refusal |
+| Setting up MFA at the admin door with only a stolen password | The setup stage opens only inside the 24-hour window after `admin grant` or an operator's MFA reset ([admin access](admin-access.md#admin-sign-in)). Otherwise it's the ordinary refusal |
 | An admin door challenge used to set up MFA through `/api/auth/mfa*`, or a session through the door | Separate entry points: the account routes need an app session, and the door routes need `X-Admin-Key` and an `admin_setup` challenge |
 
 ## Tests

@@ -35,6 +35,9 @@ const config = ts.config(
       // Types describe props; React's runtime prop-types aren't used.
       "react/prop-types": "off",
       "react/jsx-no-target-blank": "off",
+      // Every page escapes what it renders, the admin pages' other people's
+      // names and emails included: no raw HTML anywhere.
+      "react/no-danger": "error",
       "jsx-a11y/alt-text": ["warn", { elements: ["img"] }],
       "jsx-a11y/aria-props": "warn",
       "jsx-a11y/aria-proptypes": "warn",

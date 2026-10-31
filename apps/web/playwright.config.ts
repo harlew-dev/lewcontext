@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +29,10 @@ function loadTestEnv(): string {
   database.pathname = `${database.pathname}_${port}`;
   process.env.E2E_PORT = port;
   process.env.APP_ORIGIN = `http://localhost:${port}`;
+  // The admin dashboard's key for this run: .env.testing holds no key, so
+  // it's made here and the server Playwright starts inherits it
+  // (scripts/serve-test.sh). Workers load this file again and keep it.
+  process.env.E2E_ADMIN_ROUTE_KEY ||= randomBytes(32).toString("base64url");
   process.env.DATABASE_URL = database.toString();
   return process.env.APP_ORIGIN;
 }

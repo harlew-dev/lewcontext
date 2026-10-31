@@ -95,7 +95,8 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 	})
 }
 
-// Cleanup deletes used-up rate-limit windows, ended sessions, expired reset
+// Cleanup deletes used-up rate-limit windows, ended sessions (admin ones
+// too), expired reset
 // links and sign-in challenges, MFA setups left unconfirmed, and invitations
 // that expired over 30 days ago (until then they're listed as expired, so
 // whoever sent one can see why it wasn't used).
@@ -113,6 +114,11 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	}
 	if _, err := s.DB.NewDelete().Model((*sessionRecord)(nil)).
 		Where("expires_at <= now() OR last_seen_at <= now() - interval '30 minutes'").
+		Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := s.DB.NewDelete().Model((*adminSessionRecord)(nil)).
+		Where("expires_at <= now() OR last_seen_at <= now() - make_interval(secs => ?)", adminIdleSeconds).
 		Exec(ctx); err != nil {
 		return err
 	}

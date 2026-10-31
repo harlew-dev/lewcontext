@@ -17,7 +17,7 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | PATCH | `/api/auth/password` | Session, CSRF, Origin, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie; every earlier session revoked. 422 with `field` (`currentPassword` or `newPassword`) when refused |
 | POST | `/api/auth/mfa/setup` | Session, CSRF, Origin, rate limit | 200 `{secret, uri}`: a new authenticator secret, pending until confirmed, shown only here. Body `{password}`. 422 with `field: "password"`; 409 when MFA is on |
 | POST | `/api/auth/mfa` | Session, CSRF, Origin, `mfa:per-account` | 201 `{recoveryCodes}` (10, shown only here); MFA is on and every other session is signed out. Body `{code}` from the app. 422 with `field: "code"`; 409 when MFA is on, or no setup from the last 15 minutes is pending |
-| DELETE | `/api/auth/mfa` | Session, CSRF, Origin, rate limit, `mfa:per-account` | 204; MFA is off, its secret, recovery codes and challenges deleted. Body `{password, code}` (an authenticator or recovery code). 422 with `field` (`password` or `code`); 409 when it's off |
+| DELETE | `/api/auth/mfa` | Session, CSRF, Origin, rate limit, `mfa:per-account` | 204; MFA is off, its secret, recovery codes and challenges deleted. Body `{password, code}` (an authenticator or recovery code). 422 with `field` (`password` or `code`); 409 when it's off, or for an admin |
 | POST | `/api/auth/mfa/recovery-codes` | Session, CSRF, Origin, rate limit, `mfa:per-account` | 201 `{recoveryCodes}`, replacing every earlier one. Body `{password, code}`. 422 with `field`; 409 when MFA is off |
 | POST | `/api/auth/password-reset` | Origin, JSON, reset rate limits | 202 for every valid `{email}`, whether or not an account uses it; the link is sent later by a listener. 422 with `field: "email"` for a malformed address, 429 per IP or email, 503 when the limit for everyone is reached or `MAIL_DRIVER=off` ([auth.md](auth.md#password-reset-by-link)) |
 | POST | `/api/auth/password-reset/check` | Origin, JSON, rate limit | 204 if `{token}` is a live reset link; 422 with `field: "token"` if not |
@@ -43,6 +43,10 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | DELETE | `/api/workspaces/{workspace}/projects/{project}` | `project.destroy`, CSRF, Origin | 204, or 404; 403 for members and viewers |
 
 Every route that needs a session also counts against the user's budget (300 writes per 15 minutes, 1,000 reads per 5 minutes), except logout, `DELETE /api/auth/sessions`, the two password routes, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` ([rate-limits.md](rate-limits.md)). Every response with the signed-in `user` includes `mfaEnabledAt`: when two-factor authentication was turned on, or null. "Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST, PATCH and any DELETE with a body. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
+
+The admin dashboard's routes, `/api/admin/*`, are in [admin.md](admin.md#api): every one needs the right `X-Admin-Key` (otherwise it answers as an unknown route), and all but the sign-in steps an admin session.
+
+**Unknown routes** answer `404 {"error": "Not found."}` (JSON, `unknownRoutesAsJSON`), the same as an admin route without its key. A known path with the wrong method stays 405.
 
 ## IDs
 

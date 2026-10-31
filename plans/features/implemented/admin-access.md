@@ -1,6 +1,6 @@
 # Admin access (secret door, admin sign-in, Users and Workspaces)
 
-Status: **proposed 2026-10-31**. Decisions 1–4 and 7 confirmed; the rest to confirm. Builds on [two-factor authentication](implemented/mfa.md), which ships first: every admin must have it, and an admin without it sets it up at their first admin sign-in. The events, mail and monitoring pages are a later plan (`admin-dashboard.md`), built on this shell.
+Status: **implemented 2026-10-31**, every decision confirmed 2026-10-31 (decision 8 changed: admin reads are recorded); see [How the build differs](#how-the-build-differs). Docs: [admin.md](../../../docs/api/admin.md) (new), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [events.md](../../../docs/api/events.md), [rate-limits.md](../../../docs/api/rate-limits.md), [database.md](../../../docs/api/database.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md), [testing.md](../../../docs/testing.md), [naming.md](../../../docs/naming.md), [ui/README.md](../../../docs/ui/README.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/api.md](../../../docs/ui/api.md), [ui/design.md](../../../docs/ui/design.md), [ui/testing.md](../../../docs/ui/testing.md), and AGENTS.md (rules 4 and 5, the security invariants, the docs table). Builds on [two-factor authentication](mfa.md). The events, mail and monitoring pages are a later plan (`admin-dashboard.md`), built on this shell.
 
 ## Why
 
@@ -26,7 +26,9 @@ Startup refuses:
 
 - a value that is neither a UUIDv4 nor 32–128 of those characters;
 - a value made of one repeated character;
-- in production, the exact values committed in `.env.example` and `.env.testing`.
+- in production, the throwaway value committed in `.env.example`.
+
+`.env.example` ships that throwaway key, so `/admin/<key>` works under `make dev` at once. `.env.testing` holds none (`TestEnvTestingHoldsNoSecrets` refuses any `*_KEY` with a value): `playwright.config.ts` makes a random key per run and puts it in the environment, which the server it starts inherits and the tests read.
 
 Messages name the variable, never its value. A UUIDv4 has 122 random bits, enough against guessing. The CLI's 256-bit key is the stronger default the docs suggest.
 
@@ -189,7 +191,7 @@ All under `/api/admin`, all behind `requireAdminKey`. Reads have their own in-me
 | POST | `/api/admin/login/mfa/setup` | key, Origin, JSON, `admin_setup` challenge inside the setup window | `{secret, uri}`; replaces a pending secret. 401 no live challenge or the window closed |
 | POST | `/api/admin/login/mfa` | key, Origin, JSON, challenge, `auth:per-ip`, `mfa:per-account` | admin session; with an `admin_setup` challenge, MFA turned on and `201 {recoveryCodes, …}` |
 | POST | `/api/admin/logout` | key, admin session, CSRF | 204, cookie cleared, `admin.logged_out` |
-| GET | `/api/admin/users` | key, admin session | One page of users: `id`, `name`, `email`, `createdAt`, `mfaEnabled`, `admin`, `workspaces` (count), `lastSignedInAt`. `q` searches name and email; sort by `createdAt` (default, newest first), `name`, `email` ([pagination.md](../../docs/api/pagination.md)) |
+| GET | `/api/admin/users` | key, admin session | One page of users: `id`, `name`, `email`, `createdAt`, `mfaEnabled`, `admin`, `workspaces` (count), `lastSignedInAt`. `q` searches name and email; sort by `createdAt` (default, newest first), `name`, `email` ([pagination.md](../../../docs/api/pagination.md)) |
 | GET | `/api/admin/users/{user}` | key, admin session | The user as above, plus their memberships (`{workspace: {id, name}, role, addedAt}`) and live session count |
 | GET | `/api/admin/workspaces` | key, admin session | One page: `id`, `name`, `createdAt`, `members`, `projects`, `owners` (`{id, name, email}`, at most 3). `q` searches the name |
 | GET | `/api/admin/workspaces/{workspace}` | key, admin session | The workspace, its members (`{id, name, email, role, addedAt}`) and project count |
@@ -209,9 +211,12 @@ All under `/api/admin`, all behind `requireAdminKey`. Reads have their own in-me
 | `admin.login_attempted` | `email`, `ip`, `user` (when it exists), `result`: `mfa_required` / `mfa_setup_required` / `wrong_password` / `unknown_account` / `not_admin` / `mfa_off` (outside the setup window) | `POST /api/admin/login` |
 | `admin.logged_in` | `user`, `ip` | admin sign-in, after the code |
 | `admin.logged_out` | `user` | `POST /api/admin/logout` |
+| `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page` | `GET /api/admin/users`, `/workspaces` |
+| `admin.user.viewed` | `admin`, `user` (the account looked at) | `GET /api/admin/users/{user}` |
+| `admin.workspace.viewed` | `admin`, `workspace` | `GET /api/admin/workspaces/{workspace}` |
 
 - **The admin events keep `actor_id`, not `user_id`,** apart from `granted` and `revoked`. Deleting an admin's account then sets the actor to null and leaves the record that someone signed in to the admin dashboard, readable by the `usr_` ID in the payload, until pruned.
-- **Reads aren't recorded** in v1 (decision 8): Users and Workspaces show what an operator needs for support. If wanted later, `admin.user.viewed` would record each user detail page opened.
+- **Reads are recorded** (decision 8): every admin GET of Users or Workspaces writes `admin.*.listed` or `.viewed`, so the trail shows what each admin looked at and searched for. The admin is the actor and is named in the payload (`admin`), so the record survives their account being deleted. `user_id` and `workspace_id` stay empty: deleting the account or workspace looked at doesn't erase the record of an admin having looked, and the record never shows in anything scoped to that user or workspace.
 - **`not_admin`** in a failed sign-in is useful in monitoring (someone with a user's password found the door) and doesn't leak, because events are only readable by admins.
 
 ## Rate limits
@@ -219,7 +224,7 @@ All under `/api/admin`, all behind `requireAdminKey`. Reads have their own in-me
 | Name | Limit | Counted by | Where |
 | --- | --- | --- | --- |
 | `auth:per-ip`, `auth:per-account` | (existing) | IP, email | `POST /api/admin/login`, through `limitAuth` and `accountLimit`, so guessing at the admin door and at the app's login draws on the same allowance |
-| `mfa:per-account` | (from [mfa.md](implemented/mfa.md)) | user | `POST /api/admin/login/mfa` |
+| `mfa:per-account` | (from [mfa.md](mfa.md)) | user | `POST /api/admin/login/mfa` |
 | `admin-read:per-user` | 1,000 / 5 min, in memory | admin user | every admin GET |
 
 A wrong key costs nothing (no query) and isn't counted: guessing 122 bits is hopeless. There is no shared `admin-login:global` limit, because once the key leaks it would let an attacker lock every admin out.
@@ -244,14 +249,14 @@ A wrong key costs nothing (no query) and isn't counted: guessing 122 bits is hop
   - email and password;
   - then **either** the code (as the app's login) **or**, on `mfaSetupRequired`, the shared `MfaSetup`, under the heading "Set up two-factor authentication" and the line "Admins need two-factor authentication. Scan this with your authenticator app." `MfaSetup` gets the door's `start` and `confirm` calls, so the QR code, setup key and recovery codes are hidden until revealed, exactly as in account settings;
   - then Users.
-- **Lists** use the existing `Table`, `Pagination`, search and `ListSkeleton` ([ui/pagination.md](../../docs/ui/pagination.md)). Rows link to their detail page; there are no row menus, because there are no actions. Badges: "MFA" (green when on), "Admin".
+- **Lists** use the existing `Table`, `Pagination`, search and `ListSkeleton` ([ui/pagination.md](../../../docs/ui/pagination.md)). Rows link to their detail page; there are no row menus, because there are no actions. Badges: "MFA" (green when on), "Admin".
 - **An expired admin session** (401 from any admin call) goes back to `/admin/<key>`, as the app does with login.
 
 ## Security risks and how they're avoided
 
 | Risk | Mitigation |
 | --- | --- |
-| The key leaks (proxy or Cloudflare logs, browser history or sync, a screenshot) | The key isn't authentication: an admin's password and second factor are still needed. Rotating it signs every admin out. [deployment.md](../../docs/deployment.md) advises keeping `/admin/` out of access logs or redacting it |
+| The key leaks (proxy or Cloudflare logs, browser history or sync, a screenshot) | The key isn't authentication: an admin's password and second factor are still needed. Rotating it signs every admin out. [deployment.md](../../../docs/deployment.md) advises keeping `/admin/` out of access logs or redacting it |
 | Finding that the door exists | Wrong keys get the byte-identical 404 for pages and API, with no query. The bundle shows that admin pages exist, but never the key |
 | Brute-forcing the key | 122–256 bits; nothing to count |
 | Guessing an admin's password at the door | The same `auth:*` limits as login, a dummy hash for unknown emails, and a code still needed |
@@ -262,7 +267,7 @@ A wrong key costs nothing (no query) and isn't counted: guessing 122 bits is hop
 | An admin turning off MFA to weaken their own account | Refused while they're an admin |
 | Learning that a password is right at the door | The same 401 for non-admins and for admins without MFA outside the setup window |
 | An attacker with only an admin's password sets up their own authenticator at the door | Only possible inside the 24-hour window after `grant` or an operator's MFA reset, which the operator starts deliberately. Outside it, the ordinary 401. Setting up MFA is recorded (`auth.mfa.enabled`, `admin.logged_in`), and the window closes the moment MFA is on |
-| The QR code, setup key or recovery codes seen over a shared screen | Hidden until revealed, in the shared `MfaSetup` ([mfa.md](implemented/mfa.md#web-app)) |
+| The QR code, setup key or recovery codes seen over a shared screen | Hidden until revealed, in the shared `MfaSetup` ([mfa.md](mfa.md#web-app)) |
 | Admin pages cached or indexed | `no-store`, `noindex`, `no-referrer` |
 | Admin reads not scoped like app reads | They're meant to cross workspaces, so they're only reachable behind both admin middlewares, and a test fails if an `/api/admin/` route is registered elsewhere |
 
@@ -312,7 +317,7 @@ A wrong key costs nothing (no query) and isn't counted: guessing 122 bits is hop
 - The layout redirects on 401.
 - The users list states (loading, empty, error with Retry, data).
 
-**Playwright** (`e2e/admin.spec.ts`, using `.env.testing`'s key):
+**Playwright** (`e2e/admin.spec.ts`, using the run's random key from `playwright.config.ts`):
 - A wrong key shows the 404 page with status 404.
 - An admin (granted with the factory in the test database, MFA on) signs in with a code, sees Users, opens a user, sees Workspaces, and signs out.
 - A newly granted admin without MFA:
@@ -324,31 +329,31 @@ A wrong key costs nothing (no query) and isn't counted: guessing 122 bits is hop
 
 ## Docs
 
-- **New:** `docs/api/admin.md`, covering the door, admins, sessions, sign-in, endpoints and the CLI. It gets a row in [docs/README.md](../../docs/README.md) and in the AGENTS.md table.
-- [auth.md](../../docs/api/auth.md): the admin session and key, in short, with a link.
-- [endpoints.md](../../docs/api/endpoints.md): the admin routes, and the JSON 404 for unknown routes.
-- [events.md](../../docs/api/events.md), [rate-limits.md](../../docs/api/rate-limits.md), [database.md](../../docs/api/database.md): their rows.
-- [api/README.md](../../docs/api/README.md): `ADMIN_ROUTE_KEY`.
-- [deployment.md](../../docs/deployment.md): the variable, the `admin` binary, granting the first admin, rotating the key, keeping `/admin/` out of access logs, and the checklist.
-- [ui/README.md](../../docs/ui/README.md) and [ui/pages.md](../../docs/ui/pages.md): the `pages/admin` area.
+- **New:** `docs/api/admin.md`, covering the door, admins, sessions, sign-in, endpoints and the CLI. It gets a row in [docs/README.md](../../../docs/README.md) and in the AGENTS.md table.
+- [auth.md](../../../docs/api/auth.md): the admin session and key, in short, with a link.
+- [endpoints.md](../../../docs/api/endpoints.md): the admin routes, and the JSON 404 for unknown routes.
+- [events.md](../../../docs/api/events.md), [rate-limits.md](../../../docs/api/rate-limits.md), [database.md](../../../docs/api/database.md): their rows.
+- [api/README.md](../../../docs/api/README.md): `ADMIN_ROUTE_KEY`.
+- [deployment.md](../../../docs/deployment.md): the variable, the `admin` binary, granting the first admin, rotating the key, keeping `/admin/` out of access logs, and the checklist.
+- [ui/README.md](../../../docs/ui/README.md) and [ui/pages.md](../../../docs/ui/pages.md): the `pages/admin` area.
 - **AGENTS.md:** rule 4 gains `src/pages/admin/*`; rule 5 gains `cmd/admin`; the security invariants gain the admin rules (CLI-only grants, the key header, MFA required).
 
 ## Decisions
 
 1. **Admins are user accounts granted admin from the CLI.** **Confirmed 2026-10-31.**
 2. **The key travels in `X-Admin-Key` on every admin API call.** **Confirmed 2026-10-31.**
-3. **MFA required for admins, TOTP plus recovery codes.** **Confirmed 2026-10-31** ([mfa.md](implemented/mfa.md)).
+3. **MFA required for admins, TOTP plus recovery codes.** **Confirmed 2026-10-31** ([mfa.md](mfa.md)).
 4. **Read-only v1.** **Confirmed 2026-10-31.** Actions (sign a user out everywhere, reset MFA, retry a failed delivery) come with step-up codes in a later plan.
-5. **A separate `admin_sessions` table** rather than a `kind` column on `sessions`. *Recommended:* an app token can't become an admin one through a missed `WHERE kind = …`, and the app's session code stays untouched. The cost is a little duplicated session code.
-6. **Admin sessions: 15 minutes idle, 8 hours maximum, 2 per admin.** *Recommended:* short enough that a forgotten tab expires, long enough for a working session.
+5. **A separate `admin_sessions` table** rather than a `kind` column on `sessions`. **Confirmed 2026-10-31:** an app token can't become an admin one through a missed `WHERE kind = …`, and the app's session code stays untouched. The cost is a little duplicated session code.
+6. **Admin sessions: 15 minutes idle, 8 hours maximum, 2 per admin.** **Confirmed 2026-10-31:** short enough that a forgotten tab expires, long enough for a working session.
 7. **An admin without MFA sets it up at their first admin sign-in.** **Confirmed 2026-10-31.** It uses the same setup component as account settings, with the QR code hidden until revealed.
-   - *Recommended within that:* setup at the door only inside a 24-hour window opened by `admin grant` or an operator's MFA reset; outside it, the same 401 as a wrong password.
-   - *Also recommended:* the same 401 for non-admins. The operator sees `not_admin` or `mfa_off` in the event and a log warning.
-8. **Admin reads aren't recorded** in v1. *Recommended:* only sign-ins and sign-outs. Recording each user page viewed (`admin.user.viewed`) is an option if you want an access trail for personal data.
-9. **Counts only for projects** (no names or descriptions) in v1. *Recommended:* the least data that's needed.
-10. **Signed-out `/admin/<key>/<page>` redirects to `/admin/<key>` without `?next=`**, and sign-in always lands on Users. *Recommended:* fewer patterns to validate, and the admin area is small.
-11. **Key format:** a UUIDv4 or 32–128 URL-safe characters. *Recommended,* with `admin route-key generate` producing 256-bit keys as the documented default.
-12. **The admin pages ship in the main bundle.** *Recommended:* their existence isn't the secret. A separate admin build or origin would hide it, at the cost of a second build and deploy target.
+   - *Confirmed within that:* setup at the door only inside a 24-hour window opened by `admin grant` or an operator's MFA reset; outside it, the same 401 as a wrong password.
+   - *Also confirmed:* the same 401 for non-admins. The operator sees `not_admin` or `mfa_off` in the event and a log warning.
+8. **Admin reads are recorded.** **Confirmed 2026-10-31, changed from the recommendation:** every list and detail read writes an event, as an audit trail of what admins have done.
+9. **Counts only for projects** (no names or descriptions) in v1. **Confirmed 2026-10-31:** the least data that's needed.
+10. **Signed-out `/admin/<key>/<page>` redirects to `/admin/<key>` without `?next=`**, and sign-in always lands on Users. **Confirmed 2026-10-31:** fewer patterns to validate, and the admin area is small.
+11. **Key format:** a UUIDv4 or 32–128 URL-safe characters. **Confirmed 2026-10-31,** with `admin route-key generate` producing 256-bit keys as the documented default.
+12. **The admin pages ship in the main bundle.** **Confirmed 2026-10-31,** on the condition that the key is never stored in the built views: not in the bundle, prerendered HTML, storage, SWR keys or page text. It lives only in the URL, and in the links and `X-Admin-Key` header built from it at runtime.
 
 ## Not included
 
@@ -360,3 +365,17 @@ A wrong key costs nothing (no query) and isn't counted: guessing 122 bits is hop
 - An **IP allowlist** for admin (`ADMIN_ALLOWED_IPS`, read through `clientIP`). It's easy to add later as a further layer.
 - A **separate admin origin or subdomain**, and passkeys for admins.
 - **Several keys at once** (to rotate without signing everyone out).
+
+## How the build differs
+
+- **Admin reads are recorded** (decision 8, changed at confirmation): `admin.user.listed`, `admin.workspace.listed` (`admin`, `q`, `sort`, `page`) and `admin.user.viewed`, `admin.workspace.viewed` (`admin`, and what was looked at), with the admin as actor and no `user_id` or `workspace_id`, so the record outlives what was looked at. The `admin` area joins the event name pattern (`TestCatalogueNames`, naming.md).
+- **The key in tests:** `.env.testing` holds no key (`TestEnvTestingHoldsNoSecrets` refuses any `*_KEY`), so `playwright.config.ts` makes `E2E_ADMIN_ROUTE_KEY` per run, `scripts/test-env.sh` keeps it, and `scripts/serve-test.sh` uses it (or a fresh one) and prints the admin URL. Go tests use `factory.AdminRouteKey`, random per process. `.env.example` and Docker Compose carry a throwaway key, refused in production; the plan's "values committed in `.env.example` and `.env.testing`" became that one.
+- **Key format:** one rule, 32–128 characters of `[A-Za-z0-9_-]`, which every UUID also meets; not one repeated character; not the template in production.
+- **Field names say what they count:** `workspaceCount`, `sessionCount`, `memberCount`, `projectCount`, beside the lists `memberships` and `members`, instead of the plan's `workspaces`, `members` and `projects` (a workspace's page has both a count and a list of members). Sort keys follow projects: `created`, `name`, `email`.
+- **Store files:** `internal/store/admins.go` (admins, admin sessions, the door's challenges) and `admin_views.go` (`IndexAdminUsers`, `FindAdminUser`, `IndexAdminWorkspaces`, `FindAdminWorkspace`), instead of one `admin.go`. Handlers: `adminAuthHandlers` (`admin_auth.go`), `adminUserHandlers`, `adminWorkspaceHandlers`.
+- **Wrong methods and unknown paths under `/api/admin/`** go through a catch-all behind `requireAdminKey` too, so they answer as an unknown route with or without the key, rather than 405. Elsewhere the API's 405 stays; only ServeMux's plain-text 404 became JSON (`unknownRoutesAsJSON`).
+- **The shared code step:** login's `CodeStep` moved to `components/app/mfa/code-step.tsx`, taking its `verify` call and destination, as the MFA plan foresaw. The setup at the door composes `MfaScanStep` and `RecoveryCodeList` like settings (there's no single `MfaSetup` component), on full-width sign-in page buttons. The setup's secret is fetched right after the password step, so the scan step opens at once.
+- **The CLI** is `make admin cmd=grant|revoke|list email=… CONFIRM=1` and `make admin cmd="route-key generate"`, the existing `make admin` target, rather than `make admin grant …`. `grantable` holds the `@example.test` refusal so it's testable.
+- **The admin chrome:** "Signed in as …" and Sign out live in an account menu in the sidebar footer, as the app's account menu does.
+- **A DB outage at the page gate** serves the admin page anyway (its loader then shows the outage page), as `requirePageSession` does.
+- **The Playwright admin** is granted through `psql`, as other specs set up memberships: e2e can't use Go factories.

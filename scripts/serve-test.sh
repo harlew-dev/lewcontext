@@ -61,8 +61,14 @@ fi
 # sealed with an older key survives, and .env.testing holds no key.
 APP_KEY="$(head -c 32 /dev/urandom | base64)"
 export APP_KEY
+# The admin dashboard's key: the one Playwright made for this run
+# (E2E_ADMIN_ROUTE_KEY, playwright.config.ts), or a fresh one, printed below
+# for checking by hand.
+ADMIN_ROUTE_KEY="${E2E_ADMIN_ROUTE_KEY:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')}"
+export ADMIN_ROUTE_KEY
 (cd apps/api && DATABASE_URL="$database_url" go run ./cmd/migrate fresh -confirm)
 
 export DATABASE_URL="$database_url" API_ADDR="127.0.0.1:$port" APP_ORIGIN="http://localhost:$port"
 echo "E2E server: http://localhost:$port · database $database · mail ${MAILPIT_URL:-$MAIL_FILE}"
+echo "E2E admin: http://localhost:$port/admin/$ADMIN_ROUTE_KEY"
 exec ./bin/api

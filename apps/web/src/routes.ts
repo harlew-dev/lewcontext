@@ -33,5 +33,17 @@ export default [
       "pages/app/[workspace]/settings/members.tsx",
     ),
   ]),
+  // The admin dashboard, at its secret key (docs/api/admin.md). The sign-in
+  // page stands alone; the rest share the admin chrome.
+  route("admin/:key", "pages/admin/[key]/index.tsx"),
+  layout("pages/admin/layout.tsx", [
+    route("admin/:key/users", "pages/admin/[key]/users.tsx"),
+    route("admin/:key/users/:user", "pages/admin/[key]/users/[user].tsx"),
+    route("admin/:key/workspaces", "pages/admin/[key]/workspaces.tsx"),
+    route(
+      "admin/:key/workspaces/:workspace",
+      "pages/admin/[key]/workspaces/[workspace].tsx",
+    ),
+  ]),
   route("*", "pages/not-found.tsx"),
 ] satisfies RouteConfig;

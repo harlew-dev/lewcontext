@@ -29,7 +29,7 @@ func integrationServer(t *testing.T) (*Server, *bun.DB) {
 	if group, err := database.Migrate(ctx, db); err != nil || !group.IsZero() {
 		t.Fatal("migration is not idempotent", group, err)
 	}
-	server := must(New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", AppKey: factory.AppKey}))(t)
+	server := must(New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", AppKey: factory.AppKey, AdminRouteKey: factory.AdminRouteKey}))(t)
 	return server, db
 }
 

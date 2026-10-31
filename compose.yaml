@@ -57,6 +57,9 @@ services:
       SMTP_TLS: none
       # Seals MFA secrets. .env's, or the example key (refused in production).
       APP_KEY: ${APP_KEY:-O1Uo2N3TlBVsoKbrO0rTLwuE7DArCGLH2tWmaL8jMQA=}
+      # The admin dashboard's secret path: .env's, or the example key
+      # (refused in production).
+      ADMIN_ROUTE_KEY: ${ADMIN_ROUTE_KEY:-ZPycpaTc6D_ZYGNirUyhk42QUAMY-uT4M3ji3CEnzWw}
       # Used only by the explicit seed command (make docker-seed).
       DEMO_PASSWORD: ${DEMO_PASSWORD:-password}
     ports:

@@ -105,6 +105,17 @@ func (p *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.serveHTML(w, p.fallback, status, "no-store")
 }
 
+// ServeAdmin answers an admin page (/admin/<key>/…), once the server has
+// checked the key: the app shell with status 200, which renders the admin
+// pages. The key is in the path, so no Referer leaves with it, and nothing is
+// cached or indexed.
+func (p *Pages) ServeAdmin(w http.ResponseWriter, r *http.Request) {
+	p.securityHeaders(w)
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	p.serveHTML(w, p.fallback, http.StatusOK, "no-store")
+}
+
 // appPath reports whether a URL may be one of the app's pages; the browser
 // decides which (src/routes.ts). Anything else is a 404.
 func appPath(urlPath string) bool {

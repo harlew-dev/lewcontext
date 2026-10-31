@@ -15,13 +15,20 @@ type Server struct {
 	Store  *store.Store
 	Config config.Config
 	// Pages serves the web app (internal/web); nil serves the API only.
-	Pages     http.Handler
+	Pages     WebPages
 	dummyHash string
 	// keys seal MFA secrets and digest recovery codes (APP_KEY).
 	keys      *auth.Keys
 	authSlots chan struct{}
 	// memoryLimits counts the limits kept in memory (api-read:per-user).
 	memoryLimits *memoryLimiter
+}
+
+// WebPages serves the built web app (web.Pages): its pages and files, and
+// the app shell for admin pages once their key is checked.
+type WebPages interface {
+	http.Handler
+	ServeAdmin(w http.ResponseWriter, r *http.Request)
 }
 
 func New(s *store.Store, c config.Config) (*Server, error) {

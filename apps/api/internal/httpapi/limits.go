@@ -69,6 +69,9 @@ var (
 	// Every signed-in read: about 3 a second sustained, with room for SWR's
 	// refreshes on focus.
 	apiReadPerUser = rateLimit{name: "api-read:per-user", limit: 1000, window: 5 * time.Minute, inMemory: true}
+	// Every admin dashboard read, per admin: the admin pages' own budget,
+	// as api-read:per-user is the app's.
+	adminReadPerUser = rateLimit{name: "admin-read:per-user", limit: 1000, window: 5 * time.Minute, inMemory: true}
 	// Workspaces created by one user.
 	workspacePerUser = rateLimit{name: "workspace:per-user", limit: 10, window: time.Hour}
 	// Projects created by one user, across all of their workspaces.
@@ -99,7 +102,7 @@ var rateLimits = []rateLimit{
 	authPerIP, authPerAccount, mfaPerAccount,
 	passwordResetPerIP, passwordResetPerEmail, passwordResetGlobal,
 	registerPerIP, registerGlobal,
-	apiPerUser, apiReadPerUser, workspacePerUser, projectPerUser,
+	apiPerUser, apiReadPerUser, adminReadPerUser, workspacePerUser, projectPerUser,
 	invitationPerUser, invitationPerEmail, invitationGlobal,
 }
 
@@ -212,6 +215,9 @@ func (s *Server) recordLimitReached(r *http.Request, l rateLimit, resetsAt time.
 	var scope store.EventScope
 	if session, ok := optionalSession(r); ok {
 		e.User, scope.UserID = session.User.PublicID, session.User.ID
+	}
+	if admin, ok := optionalAdmin(r); ok {
+		e.User, scope.UserID = admin.User.PublicID, admin.User.ID
 	}
 	if workspace, ok := optionalWorkspace(r); ok {
 		e.Workspace, scope.WorkspaceID = workspace.PublicID, workspace.ID

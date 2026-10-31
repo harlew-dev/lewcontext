@@ -44,15 +44,23 @@ func membersOf(db bun.IDB, workspaceID int64) *bun.SelectQuery {
 		Where("m.workspace_id = ?", workspaceID)
 }
 
-// IndexMembers returns one page of the workspace's members, by role (most
-// access first, in auth.Roles order), then name.
-func (s *Store) IndexMembers(ctx context.Context, workspaceID int64, f MemberFilter, req PageRequest) (Page[Member], error) {
+// byRoleThenName orders members by role (most access first, the order of
+// roleNames, passed as its placeholder), then name.
+const byRoleThenName = "array_position(?::text[], m.role), lower(u.name), u.id"
+
+// roleNames is auth.Roles as text, most access first.
+func roleNames() []string {
 	roles := make([]string, len(auth.Roles))
 	for i, role := range auth.Roles {
 		roles[i] = string(role)
 	}
-	q := membersOf(s.DB, workspaceID).
-		OrderExpr("array_position(?::text[], m.role), lower(u.name), u.id", pgdialect.Array(roles))
+	return roles
+}
+
+// IndexMembers returns one page of the workspace's members, by role (most
+// access first, in auth.Roles order), then name.
+func (s *Store) IndexMembers(ctx context.Context, workspaceID int64, f MemberFilter, req PageRequest) (Page[Member], error) {
+	q := membersOf(s.DB, workspaceID).OrderExpr(byRoleThenName, pgdialect.Array(roleNames()))
 	if f.Search != "" {
 		pattern := containsPattern(f.Search)
 		q = q.Where(`(u.name ILIKE ? ESCAPE '\' OR u.email ILIKE ? ESCAPE '\')`, pattern, pattern)

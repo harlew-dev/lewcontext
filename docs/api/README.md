@@ -10,7 +10,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
-| `cmd/admin` | The operator's commands: `make admin cmd=reset-mfa email=…` turns off a locked-out user's two-factor authentication (previews unless confirmed); `app-key generate` makes an `APP_KEY` (`make app-key`) ([auth.md](auth.md#two-factor-authentication)) |
+| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant`, `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
 | `internal/httpapi` | Routes (`routes.go`, API and pages), middleware, input validation, JSON responses |
@@ -36,6 +36,7 @@ clientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
   → mux (routes.go)
   → requireSession (cookie → session, CSRF on mutations) for private routes
   → requireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
+  (or, under /api/admin: requireAdminKey → requireAdminSession; admin.md)
   → requirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
   → handler, e.g. projectHandlers.index (parse + validate) → store, e.g. IndexProjects (query scoped by workspace ID) → jsonResponse
 ```
@@ -58,6 +59,7 @@ clientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
 | `GET /` (prerendered pages) | Their HTML, `no-cache` |
 | `GET /app`, `/app/*` without a valid session | `302` to `/auth/login?next=<path and query>` (`requirePageSession`) |
 | `GET /app/*`, `/auth/*` | `__spa-fallback.html`, `no-store`; the browser renders the page |
+| `GET /admin/<ADMIN_ROUTE_KEY>`, and `/admin/<key>/*` with an admin session (else `302` to `/admin/<key>`) | `__spa-fallback.html` with 200, `no-store`, `no-referrer`, `noindex` (`Pages.ServeAdmin`). A wrong key, or admin off, is the 404 below ([admin.md](admin.md#pages)) |
 | any other `GET` | `__spa-fallback.html` with status 404 (the app shows its not-found page) |
 | other methods outside `/api` | 405 |
 
@@ -82,6 +84,7 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `TRUSTED_PROXIES` | (unset) | Comma-separated addresses or CIDR ranges the proxy connects from. Set with `CLIENT_IP_HEADER` or not at all; `0.0.0.0/0` and `::/0` are refused |
 | `MAIL_FILE` | `tmp/mail.log` | The `log` driver's mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
 | `APP_KEY` | (required) | 32 random bytes in base64. `make app-key` writes one into `.env` when it has none (never replacing one); `go run ./cmd/admin app-key generate` only prints one. An `.env` still saying `ENCRYPTION_KEY` gets a message to rename it. Seals two-factor secrets and keys recovery-code digests. Production refuses `.env.example`'s. **Changing it locks out every account with MFA on.** The e2e server makes a fresh one each start |
+| `ADMIN_ROUTE_KEY` | (unset: admin off) | The admin dashboard's secret path segment and `X-Admin-Key`: a UUIDv4 or 32–128 characters of `A–Z a–z 0–9 _ -`; `go run ./cmd/admin route-key generate` prints one. Production refuses `.env.example`'s. Rotating it signs every admin out. It hides the door; admins still need their password and a code ([admin.md](admin.md)) |
 | `APP_NAME` | `lewcontext` | The product name: baked into the web build, and read by the server for emails, which open with it ([mail.md](mail.md#templates)) |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
@@ -90,4 +93,4 @@ Without a web build, the server serves the API only in development (Vite serves 
 
 ## More
 
-[endpoints.md](endpoints.md) · [auth.md](auth.md) · [rate-limits.md](rate-limits.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)
+[endpoints.md](endpoints.md) · [auth.md](auth.md) · [admin.md](admin.md) · [rate-limits.md](rate-limits.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)

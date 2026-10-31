@@ -42,7 +42,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.password_reset.completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
 | `auth.mfa.enabled` | `user`, `otherSessionsRevoked` | `EnableMFA`: the first code from the app turned two-factor authentication on (the first recovery codes come with it) |
 | `auth.mfa.disabled` | `user`, `reason`: `user` / `reset` (the operator's `admin reset-mfa`, with no actor) | `DisableMFA`, `ResetMFA` |
-| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `enable` / `disable` / `recovery_codes`, `ip`, and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
+| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `admin_login` / `enable` (also the admin door's setup) / `disable` / `recovery_codes`, `ip`, and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
 | `auth.recovery_codes.created` | `user`, `count` | `CreateRecoveryCodes`: a new set replaced the old |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |
@@ -59,6 +59,13 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
 | `project.updated` | `project`, `workspace`, `changes` per changed field (`from`, `to`) | `UpdateProject`, only when something changed |
 | `project.deleted` | `project`, `workspace`, `name` | `DeleteProject` |
+| `admin.granted` | `user`, `mfaSetupUntil` (null when MFA is already on); `user_id` set, no actor (the CLI) | `GrantAdmin` (`admin grant`) |
+| `admin.revoked` | `user`, `adminSessionsRevoked`; `user_id` set, no actor | `RevokeAdmin` (`admin revoke`) |
+| `admin.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `mfa_required` / `mfa_setup_required` / `wrong_password` / `unknown_account` / `not_admin` / `mfa_off` (an admin without MFA outside the setup window); no scope | `POST /api/admin/login`, for every attempt that reaches the password check |
+| `admin.logged_in` | `user`, `ip`; the admin is the actor, `user_id` stays empty | `CreateAdminSession`, after the code |
+| `admin.logged_out` | `user`; actor only | `DeleteAdminSession` |
+| `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page`; actor only | every admin list read |
+| `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` (what was looked at); actor only, so deleting it keeps the record | every admin detail read |
 | `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `ip`; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |
 
 ## What's stored, and what never is

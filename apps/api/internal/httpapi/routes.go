@@ -13,7 +13,7 @@ import (
 // create rows also name their own limit with s.limit. The client's address is
 // worked out first (clientAddress), once for both.
 func (s *Server) Routes() http.Handler {
-	api := s.security(s.apiRoutes())
+	api := s.security(unknownRoutesAsJSON(s.apiRoutes()))
 	pages := s.pageRoutes()
 	return s.clientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
@@ -68,7 +68,70 @@ func (s *Server) apiRoutes() *http.ServeMux {
 
 	// Everything inside a workspace requires a session and membership.
 	s.workspaceRoutes(group(mux, "/api/workspaces/{workspace}", s.requireSession, s.requireWorkspace))
+	s.adminRoutes(mux)
 	return mux
+}
+
+// adminRoutes are the admin dashboard's (admin.go), and the only place an
+// /api/admin/ route may be registered (TestAdminRoutesStayInTheAdminGroup).
+// Every one checks X-Admin-Key first, so without the key they answer as an
+// unknown route; then the sign-in steps, or an admin session. They only read,
+// apart from signing in and out.
+func (s *Server) adminRoutes(mux *http.ServeMux) {
+	sessions := adminAuthHandlers{s}
+	users := adminUserHandlers{s}
+	workspaces := adminWorkspaceHandlers{s}
+	// Any other path or method under /api/admin is an unknown route, with
+	// the right key or without it.
+	mux.Handle("/api/admin/", s.requireAdminKey(http.HandlerFunc(notFound)))
+	door := group(mux, "/api/admin", s.requireAdminKey)
+	// The password step hashes like sign-in, so it shares its limits.
+	door.Handle("POST", "/login", s.limitAuth(http.HandlerFunc(sessions.login)))
+	door.HandleFunc("POST", "/login/mfa/setup", sessions.loginMFASetup)
+	door.HandleFunc("POST", "/login/mfa", sessions.loginMFA)
+	admin := group(mux, "/api/admin", s.requireAdminKey, s.requireAdminSession)
+	admin.HandleFunc("GET", "/me", sessions.me)
+	admin.HandleFunc("POST", "/logout", sessions.logout)
+	admin.HandleFunc("GET", "/users", users.index)
+	admin.HandleFunc("GET", "/users/{user}", users.show)
+	admin.HandleFunc("GET", "/workspaces", workspaces.index)
+	admin.HandleFunc("GET", "/workspaces/{workspace}", workspaces.show)
+}
+
+// unknownRoutesAsJSON answers a request no API route matches with the JSON
+// 404 (notFound) instead of ServeMux's plain text, so an unknown route and an
+// admin route without its key look the same. A known path with the wrong
+// method keeps its 405.
+func unknownRoutesAsJSON(mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, pattern := mux.Handler(r); pattern != "" {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(&jsonNotFound{ResponseWriter: w, r: r}, r)
+	})
+}
+
+// jsonNotFound replaces ServeMux's plain-text 404 with notFound's JSON.
+type jsonNotFound struct {
+	http.ResponseWriter
+	r        *http.Request
+	replaced bool
+}
+
+func (w *jsonNotFound) WriteHeader(status int) {
+	if status != http.StatusNotFound {
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
+	w.replaced = true
+	notFound(w.ResponseWriter, w.r)
+}
+func (w *jsonNotFound) Write(body []byte) (int, error) {
+	if w.replaced {
+		return len(body), nil
+	}
+	return w.ResponseWriter.Write(body)
 }
 
 // workspaceRoutes are the routes inside a workspace. Reading needs only
@@ -113,6 +176,10 @@ func (s *Server) pageRoutes() http.Handler {
 	mux.Handle("GET /", s.Pages)
 	mux.Handle("GET /app", s.requirePageSession(s.Pages))
 	mux.Handle("GET /app/", s.requirePageSession(s.Pages))
+	// The admin dashboard, only at its secret key; anything else under
+	// /admin is an unknown page (admin.go).
+	mux.Handle("GET /admin/{key}", s.adminPage(false))
+	mux.Handle("GET /admin/{key}/{page...}", s.adminPage(true))
 	return mux
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

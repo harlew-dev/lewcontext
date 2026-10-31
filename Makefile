@@ -40,8 +40,8 @@ prune:
 # that locks out every account with two-factor authentication). Run before the first make dev.
 app-key:
 	cd apps/api && go run ./cmd/admin app-key generate -env ../../.env
-# make admin cmd=reset-mfa email=you@example.com [CONFIRM=1]: the operator's commands (cmd/admin).
-# Previews unless CONFIRM=1.
+# make admin cmd=grant|revoke|reset-mfa email=you@example.com [CONFIRM=1], make admin cmd=list,
+# make admin cmd="route-key generate": the operator's commands (cmd/admin). Changes preview unless CONFIRM=1.
 admin:
 	@test -n "$(cmd)" || (cd apps/api && go run ./cmd/admin; exit 2)
 	cd apps/api && go run ./cmd/admin $(cmd) $(if $(email),-email '$(email)') $(if $(CONFIRM),-confirm)

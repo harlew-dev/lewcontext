@@ -1,4 +1,9 @@
-import { HomeIcon, Square2StackIcon } from "@heroicons/react/20/solid";
+import {
+  BuildingOffice2Icon,
+  HomeIcon,
+  Square2StackIcon,
+  UsersIcon,
+} from "@heroicons/react/20/solid";
 import { publicIdPattern } from "./ids";
 // Page URLs, registered with their page files in src/routes.ts (auth/* and
 // app/*). Workspace pages live under /app/<wsp_…>; /app itself opens the
@@ -33,7 +38,33 @@ export const routes = {
   invitations: {
     show: (token: string) => `/auth/invitations/${token}`,
   },
+  // The admin dashboard, at its secret key (ADMIN_ROUTE_KEY, from the URL;
+  // lib/admin.tsx). Never a ?next=: signing in always lands on Users.
+  admin: {
+    login: (key: string) => `/admin/${key}`,
+    users: {
+      index: (key: string) => `/admin/${key}/users`,
+      show: (key: string, user: string) => `/admin/${key}/users/${user}`,
+    },
+    workspaces: {
+      index: (key: string) => `/admin/${key}/workspaces`,
+      show: (key: string, workspace: string) =>
+        `/admin/${key}/workspaces/${workspace}`,
+    },
+  },
 } as const;
+// Sidebar items for the admin dashboard (Events, Mail and Monitoring come
+// with the admin dashboard plan).
+export function adminNavigation(key: string) {
+  return [
+    { label: "Users", href: routes.admin.users.index(key), icon: UsersIcon },
+    {
+      label: "Workspaces",
+      href: routes.admin.workspaces.index(key),
+      icon: BuildingOffice2Icon,
+    },
+  ];
+}
 // Sidebar items for a workspace. Account & security is in the account menu
 // and workspace settings in the workspace menu instead.
 export function navigation(workspace: string) {

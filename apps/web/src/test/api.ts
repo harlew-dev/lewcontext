@@ -7,7 +7,7 @@ import { vi } from "vitest";
 //     "PATCH /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
 //     "*": { body: {} },
 //   });
-//   api.sent("PATCH");   // [{ method, url, body, csrf }]
+//   api.sent("PATCH");   // [{ method, url, body, csrf, adminKey }]
 //
 // A key is "METHOD url": the exact URL first, then the path without its query,
 // then "*". A list of replies is used in order and its last one repeats.
@@ -23,6 +23,8 @@ export type Sent = {
   url: string;
   body: unknown;
   csrf: string | null;
+  // The admin pages' X-Admin-Key, only on requests that have one.
+  adminKey?: string;
 };
 export function stubApi(replies: Record<string, Reply | Reply[]>) {
   const used = new Map<string, number>();
@@ -55,13 +57,20 @@ export function stubApi(replies: Record<string, Reply | Reply[]>) {
     // The requests sent so far, optionally only one method's.
     sent(method?: string): Sent[] {
       return fetch.mock.calls
-        .map(([url, init]) => ({
-          method: init?.method ?? "GET",
-          url,
-          body:
-            typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
-          csrf: new Headers(init?.headers).get("X-CSRF-Token"),
-        }))
+        .map(([url, init]) => {
+          const headers = new Headers(init?.headers);
+          const adminKey = headers.get("X-Admin-Key");
+          return {
+            method: init?.method ?? "GET",
+            url,
+            body:
+              typeof init?.body === "string"
+                ? JSON.parse(init.body)
+                : undefined,
+            csrf: headers.get("X-CSRF-Token"),
+            ...(adminKey === null ? {} : { adminKey }),
+          };
+        })
         .filter((request) => !method || request.method === method);
     },
   };

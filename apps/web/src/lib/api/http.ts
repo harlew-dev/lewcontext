@@ -76,3 +76,18 @@ export function browserHttp(csrfToken?: string): Http {
     timeout: 12000,
   });
 }
+// The admin dashboard's requests: the same-origin /api/admin with the admin
+// cookie, the ADMIN_ROUTE_KEY from the page's URL in X-Admin-Key on every
+// call (without it the API answers as an unknown route), and the admin
+// session's CSRF token on mutations when given.
+export function adminHttp(adminKey: string, csrfToken?: string): Http {
+  return http({
+    base: "",
+    headers: {
+      "X-Admin-Key": adminKey,
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    credentials: "same-origin",
+    timeout: 12000,
+  });
+}

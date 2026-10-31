@@ -21,6 +21,9 @@ type Config struct {
 	// AppKey (APP_KEY, 32 bytes) seals MFA secrets at rest
 	// (encryption.go, auth.Keys).
 	AppKey []byte
+	// AdminRouteKey (ADMIN_ROUTE_KEY) is the admin dashboard's secret path
+	// segment, and every admin API call's X-Admin-Key. Empty: admin is off.
+	AdminRouteKey string
 	// RateLimits is RateLimitsOff to switch every rate limit off, for the
 	// end-to-end tests; quotas and the hashing slots stay. Production
 	// refuses it.
@@ -43,6 +46,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if err := c.loadAppKey(); err != nil {
+		return c, err
+	}
+	if err := c.loadAdminRouteKey(); err != nil {
 		return c, err
 	}
 	c.RateLimits = env("RATE_LIMITS", RateLimitsOn)

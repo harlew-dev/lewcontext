@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -38,11 +39,9 @@ const MFASetupLifetime = 15 * time.Minute
 // password has to be entered again.
 const MaxChallengeAttempts = 5
 
-// Challenge purposes: an app sign-in, and (admin access plan) an admin
-// sign-in or an admin's first sign-in setting MFA up.
-const (
-	ChallengeLogin = "login"
-)
+// ChallengeLogin is an app sign-in's challenge purpose; the admin door's are
+// in admins.go.
+const ChallengeLogin = "login"
 
 type mfaTOTP struct {
 	bun.BaseModel `bun:"table:mfa_totp,alias:t"`
@@ -131,7 +130,8 @@ func (s *Store) SetupMFA(ctx context.Context, userID int64, sealed []byte) error
 
 // EnableMFA confirms the pending setup with its first authenticator code,
 // replaces the recovery codes with codeDigests, signs out every other session
-// of the user's (sessionHash is this one) and records auth.mfa.enabled.
+// of the user's (sessionHash is this one), closes an admin's setup window at
+// the door and records auth.mfa.enabled.
 // ErrMFANotPending without a setup from the last 15 minutes, ErrMFAEnabled
 // when it's already on, ErrWrongCode when the code doesn't match (nothing
 // changes then).
@@ -174,18 +174,28 @@ func (s *Store) EnableMFA(ctx context.Context, u User, sessionHash string, f Sec
 		if err != nil {
 			return err
 		}
+		// An admin's setup window at the door closes once MFA is on.
+		if _, err := tx.NewUpdate().Model((*adminRecord)(nil)).Set("mfa_setup_until = NULL").Where("user_id = ?", u.ID).Exec(ctx); err != nil {
+			return err
+		}
 		return s.record(ctx, tx, events.MFAEnabled{User: u.PublicID, OtherSessionsRevoked: others}, EventScope{UserID: u.ID})
 	})
 }
 
 // DisableMFA turns MFA off after checking a second factor: the secret,
 // recovery codes and sign-in challenges go, and auth.mfa.disabled is
-// recorded. ErrMFANotEnabled when it's off, ErrWrongCode when the factor
-// doesn't match (nothing changes then).
+// recorded. ErrMFANotEnabled when it's off, ErrAdminNeedsMFA for an admin,
+// ErrWrongCode when the factor doesn't match (nothing changes then).
 func (s *Store) DisableMFA(ctx context.Context, u User, f SecondFactor) (FactorUsed, error) {
 	var used FactorUsed
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if err := lockUser(ctx, tx, u.ID); err != nil {
+			return err
+		}
+		if admin, err := isAdmin(ctx, tx, u.ID); err != nil || admin {
+			if err == nil {
+				err = ErrAdminNeedsMFA
+			}
 			return err
 		}
 		factor, err := useConfirmedFactor(ctx, tx, u.ID, f)
@@ -226,7 +236,8 @@ func (s *Store) CreateRecoveryCodes(ctx context.Context, u User, f SecondFactor,
 
 // ResetMFA is the operator's way back in for someone who lost their
 // authenticator and recovery codes (admin reset-mfa): it turns MFA off,
-// signs out every session and records auth.mfa.disabled with reason reset
+// signs out every session (admin sessions too), reopens an admin's 24-hour
+// setup window at the door, and records auth.mfa.disabled with reason reset
 // and no actor. sql.ErrNoRows for an unknown email, ErrMFANotEnabled when
 // the account has no authenticator, set up or pending.
 func (s *Store) ResetMFA(ctx context.Context, email string) (User, error) {
@@ -244,6 +255,17 @@ func (s *Store) ResetMFA(ctx context.Context, email string) (User, error) {
 			return err
 		}
 		if _, err := deleteSessions(ctx, tx, "user_id = ?", u.ID); err != nil {
+			return err
+		}
+		if _, err := deleteAdminSessions(ctx, tx, u.ID); err != nil {
+			return err
+		}
+		// An admin sets up a new authenticator at their next admin sign-in.
+		_, err := tx.NewUpdate().Model((*adminRecord)(nil)).
+			Set("mfa_setup_until = ?", time.Now().Add(auth.AdminSetupWindow)).
+			Where("user_id = ?", u.ID).
+			Exec(ctx)
+		if err != nil {
 			return err
 		}
 		return s.record(ctx, tx, events.MFADisabled{User: u.PublicID, Reason: events.MFADisabledReset}, EventScope{UserID: u.ID})

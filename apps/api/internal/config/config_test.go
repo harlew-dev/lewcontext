@@ -18,6 +18,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"MAIL_DRIVER":       "off",
 		"APP_KEY":           testAppKey,
 		"ENCRYPTION_KEY":    "",
+		"ADMIN_ROUTE_KEY":   "",
 		"MAIL_FILE":         "",
 		"MAIL_FROM_ADDRESS": "",
 		"MAIL_FROM_NAME":    "",

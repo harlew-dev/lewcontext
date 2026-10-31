@@ -3,7 +3,8 @@ import type { Project } from "@/types/projects";
 import type { Page } from "@/lib/pagination";
 import { stubApi } from "@/test/api";
 import { client, paths, type ApiPath } from ".";
-import { browserHttp } from "./http";
+import { adminClient } from "./admin";
+import { adminHttp, browserHttp } from "./http";
 const stubFetch = (body: unknown = {}, status = 200) =>
   stubApi({ "*": { status, body } });
 // "METHOD url" for each request sent.
@@ -216,5 +217,46 @@ describe("invitations", () => {
       { token },
     ]);
     expect(stub.sent().every((s) => !s.url.includes(token))).toBe(true);
+  });
+});
+describe("the admin client", () => {
+  const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
+  it("builds list paths without defaults, and never puts the key in one", () => {
+    expect(paths.admin.users.index()).toBe("/api/admin/users");
+    expect(paths.admin.users.index({ page: 1, sort: "-created", q: "" })).toBe(
+      "/api/admin/users",
+    );
+    expect(paths.admin.users.index({ page: 2, q: "ada@", sort: "email" })).toBe(
+      "/api/admin/users?page=2&q=ada%40&sort=email",
+    );
+    expect(paths.admin.workspaces.index({ sort: "-name" })).toBe(
+      "/api/admin/workspaces?sort=-name",
+    );
+    expect(paths.admin.users.show("usr_2yEHYLwiwPVhLW")).toBe(
+      "/api/admin/users/usr_2yEHYLwiwPVhLW",
+    );
+    // @ts-expect-error workspaces don't sort by email
+    paths.admin.workspaces.index({ sort: "email" });
+    // @ts-expect-error not a sort the API accepts
+    paths.admin.users.index({ sort: "password" });
+  });
+  it("sends the key in X-Admin-Key, the codes in bodies, and the admin CSRF token", async () => {
+    const stub = stubFetch({ mfaRequired: true });
+    const admin = adminClient(adminHttp(key, "admin-csrf"));
+    await admin.login({ email: "olive@example.com", password: "pw" });
+    await admin.loginMfa("123456");
+    await admin.users().index({ q: "x" });
+    await admin.logout();
+    expect(stub.sent().map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "POST /api/admin/login",
+      "POST /api/admin/login/mfa",
+      "GET /api/admin/users?q=x",
+      "POST /api/admin/logout",
+    ]);
+    for (const request of stub.sent()) {
+      expect(request.adminKey).toBe(key);
+      expect(request.csrf).toBe("admin-csrf");
+    }
+    expect(stub.sent()[1].body).toEqual({ code: "123456" });
   });
 });

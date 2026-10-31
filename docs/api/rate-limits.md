@@ -42,14 +42,15 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | --- | --- | --- | --- | --- | --- |
 | `api:per-user` | 300 / 15 min | session user | database | every signed-in write, except the recovery routes below | 429 |
 | `api-read:per-user` | 1,000 / 5 min | session user | memory | every signed-in GET: about 3 a second sustained | 429 |
+| `admin-read:per-user` | 1,000 / 5 min | admin user | memory | every admin dashboard read (`requireAdminSession`), the admin's own budget ([admin.md](admin.md)) | 429 |
 | `workspace:per-user` | 10 / hour | session user | database | `POST /api/workspaces` | 429 |
 | `project:per-user` | 100 / hour | session user | database | `POST …/projects`, across all of the user's workspaces | 429 |
 | `invitation:per-user` | 20 / hour | session user | database | `POST …/invitations`, across all of the user's workspaces: each one emails an address the inviter chooses | 429 |
 | `invitation:per-email` | 5 / hour | invited email | database | `POST …/invitations`, once the body is valid, from any inviter or workspace: caps mail to one inbox. Counted for every address, registered or not | 429 "This email address has had too many invitations recently. Try again in …" |
 | `invitation:global` | 200 / hour | everyone | database | `POST …/invitations`, once the body is valid. Logs a warning | 503 "Invitations are busy. Try again later." |
-| `auth:per-ip` | 60 / 15 min | IP | database | `limitAuth`: register, login, both signed-in password endpoints, deleting a workspace or the account, setting up, turning off and renewing the codes of two-factor authentication, the reset itself; directly on reset requests and checks, and on a sign-in's second factor | 429 |
-| `auth:per-account` | 10 / 15 min | email | database | `accountLimit`: register, login, both signed-in password endpoints, both deletions and the MFA routes that check the password (the session user's email), so a stolen session can't guess faster than a login. Password reset never touches it | 429 |
-| `mfa:per-account` | 5 / 15 min | user (`usr_` ID) | database | every second-factor check: `POST /api/auth/login/mfa` (after `auth:per-ip`, once the challenge names the user), enabling, disabling, new recovery codes. Each guess covers 3 of a million codes, so an attacker who has the password reaches about 0.14% a day. A challenge also ends after 5 wrong codes | 429 |
+| `auth:per-ip` | 60 / 15 min | IP | database | `limitAuth`: register, login (and the admin door's), both signed-in password endpoints, deleting a workspace or the account, setting up, turning off and renewing the codes of two-factor authentication, the reset itself; directly on reset requests and checks, and on a sign-in's second factor | 429 |
+| `auth:per-account` | 10 / 15 min | email | database | `accountLimit`: register, login (the app's and the admin door's, sharing one allowance), both signed-in password endpoints, both deletions and the MFA routes that check the password (the session user's email), so a stolen session can't guess faster than a login. Password reset never touches it | 429 |
+| `mfa:per-account` | 5 / 15 min | user (`usr_` ID) | database | every second-factor check: `POST /api/auth/login/mfa` and the admin door's `POST /api/admin/login/mfa` (after `auth:per-ip`, once the challenge names the user), enabling, disabling, new recovery codes. Each guess covers 3 of a million codes, so an attacker who has the password reaches about 0.14% a day. A challenge also ends after 5 wrong codes | 429 |
 | `register:per-ip` | 10 / hour | IP | database | register, once the body is valid | 429 |
 | `register:global` | 1,000 / hour | everyone | database | register, after `register:per-ip`. Logs a warning | 503 "Sign-up is busy. Try again later." |
 | `password-reset:per-ip` | 10 / hour | IP | database | reset requests: one IP can't mail many people | 429 |
@@ -60,7 +61,7 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 
 **Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `requireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows.
 
-**Not limited:** `GET /api/health` (orchestrator probes; put it behind an edge limiter if it's ever public) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
+**Not limited:** a wrong admin key (no query is made, and guessing 122 bits or more is hopeless), `GET /api/health` (orchestrator probes; put it behind an edge limiter if it's ever public) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
 
 ## Quotas
 

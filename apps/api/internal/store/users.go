@@ -77,7 +77,8 @@ func (s *Store) FindPasswordHash(ctx context.Context, userID int64) (string, err
 }
 
 // ChangePassword replaces the user's password hash, deletes their reset link
-// and every session of theirs (sessionHash is the one making the change) and records
+// and every session of theirs (sessionHash is the one making the change, and
+// every admin session) and records
 // auth.password_changed, in one transaction with the user row locked.
 // replace receives the current hash and returns the new one; an error from it
 // changes nothing.
@@ -105,12 +106,16 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 		if _, err := deleteSessions(ctx, tx, "token_hash = ?", sessionHash); err != nil {
 			return err
 		}
+		if _, err := deleteAdminSessions(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		return s.record(ctx, tx, events.PasswordChanged{User: u.PublicID, OtherSessionsRevoked: others}, EventScope{UserID: u.ID})
 	})
 }
 
 // DeleteAccount deletes the user, with their sessions, memberships, reset
-// link and the events about them (ON DELETE CASCADE), and records
+// link, admin row and admin sessions, and the events about them (ON DELETE
+// CASCADE), and records
 // auth.account_deleted. It first locks every workspace they own, in id order,
 // then refuses with a LastOwnerError if any of them would be left without an
 // owner. Every membership change takes the same workspace lock, so two

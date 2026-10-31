@@ -13,7 +13,7 @@ import (
 
 // Two-factor authentication (plans/features/mfa.md): an authenticator app's
 // codes (TOTP) plus single-use recovery codes. Setting it up is shared with
-// the admin door (admin access plan): beginMFASetup and confirmMFASetup take
+// the admin door (admin_auth.go): beginMFASetup and confirmMFASetup take
 // the user, and each entry point finds the user its own way.
 
 const (
@@ -124,11 +124,15 @@ func (s *Server) mfaConfirmed(w http.ResponseWriter, r *http.Request, in mfaConf
 }
 
 // answerFactor records the second-factor check a store call made and answers
-// its refusal: 409 when MFA turned off meanwhile, 422 with field "code" for a
-// wrong code. It returns true when the factor was right.
+// its refusal: 409 when MFA turned off meanwhile or the user is an admin
+// (who can't turn it off), 422 with field "code" for a wrong code. It returns true when the factor was right.
 func (s *Server) answerFactor(w http.ResponseWriter, r *http.Request, user store.User, f store.SecondFactor, step string, used store.FactorUsed, err error) bool {
 	if errors.Is(err, store.ErrMFANotEnabled) {
 		fail(w, 409, "Two-factor authentication is off.")
+		return false
+	}
+	if errors.Is(err, store.ErrAdminNeedsMFA) {
+		fail(w, 409, "Admins must keep two-factor authentication on.")
 		return false
 	}
 	if err != nil && !errors.Is(err, store.ErrWrongCode) {

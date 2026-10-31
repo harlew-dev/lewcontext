@@ -30,7 +30,7 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 - **`update` is always PATCH**, even when the body is the whole editable representation. PUT isn't used.
 - **A singleton resource** (one per parent, no ID in the path) uses the same actions: leaving a workspace is `membership.destroy` on `DELETE …/membership`.
 - **Anything else is a named verb**, as POST on the record or collection, with the verb as the handler name: `POST /api/invitations/accept` → `invitations.accept`. First check whether it's really a `store` or `destroy` of some other resource.
-- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources.
+- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources. The admin door's `/api/admin/login`, `/login/mfa` and `/logout` follow it (`adminAuthHandlers`); its resources are ordinary (`adminUserHandlers.index`, `.show`; `IndexAdminUsers`, `FindAdminWorkspace`).
 
 ## Store methods (`internal/store`)
 
@@ -58,6 +58,7 @@ Every method starts with a verb:
 - **The resource** is what the event is about, spelled as in its permission: a top-level resource is one segment (`project`, `workspace`), and a resource inside another adds one (`workspace.member`, `workspace.invitation`, `auth.password_reset`). The permission `workspace.member.update` guards the route that records `workspace.member.updated`.
 - **The fact** is the last segment: past tense, a fact rather than a command (`created`, `updated`, `removed`, `left`, `sent`). Everything before it is what the fact is about, so filtering by resource is a prefix (`workspace.member.%`).
 - **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`); only stored sub-resources (reset links, members, invitations) get a segment.
+- **The admin dashboard** is the `admin` area: facts about admins and their sessions are one segment (`admin.granted`, `admin.logged_in`), and what an admin read gets the resource read (`admin.user.viewed`, `admin.workspace.listed`).
 - **At most three segments**, enforced by the `events.name` CHECK and `TestCatalogueNames`. A deeper resource needs this rule revisited, not a fourth dot.
 - **CRUD actions:** `store` records `<resource>.created`; `update` records `<resource>.updated`, or a more specific fact (`workspace.renamed`); `destroy` records `<resource>.deleted`, or a more specific fact (`workspace.member.removed`, `workspace.member.left`, `workspace.invitation.revoked`).
 - **One event type per fact**, with variable details in the payload, never in the name (`rate_limit.reached` with a `limit` field, not one event per limit).
@@ -74,7 +75,7 @@ Every method starts with a verb:
 | API client (`lib/api/<resource>.ts`), calls and typed paths | the API's actions, plus named verbs | `api.projects(ws).index()`, `.show(id)`, `.store(input)`, `.update(id, input)`, `.destroy(id)`; `paths.projects(ws).store()`; `api.invitations().accept(token)` |
 | Page route constants (`lib/routes.ts`) | grouped by resource, with the page actions `index`, `show`, `create`, `edit` | `routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`, `routes.members.index(ws)` |
 | Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)` |
-| Resource pages' default exports | `<Resource><Action>` | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex` |
+| Resource pages' default exports | `<Resource><Action>` | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex`; the admin dashboard's add `Admin` (`AdminUserIndex`, `AdminWorkspaceShow`), its route constants are under `routes.admin` and take the key (`routes.admin.users.show(key, usr)`) |
 | Other pages' default exports | what the page is | `Login`, `Onboarding`, `AccountSettings`, `Dashboard` |
 
 - **Delete is never a page.** It is a confirmation dialog that calls `destroy`.

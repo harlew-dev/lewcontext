@@ -13,3 +13,5 @@ CREATE INDEX events_user_created_idx ON events(user_id, created_at DESC);
 CREATE INDEX events_workspace_created_idx ON events(workspace_id, created_at DESC);
 CREATE INDEX events_name_created_idx ON events(name, created_at DESC);
 CREATE INDEX events_created_idx ON events(created_at);
+-- Each user's last sign-in, for the admin dashboard's user list.
+CREATE INDEX events_logged_in_idx ON events(user_id, created_at DESC) WHERE name = 'auth.logged_in';

@@ -23,6 +23,8 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | The ⋯ menu offers Edit project (`project.update`) and Delete project (`project.destroy`, returning to Projects); with neither, no menu. The details list shows the status as its badge |
 | `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (`workspace.update`), copy the ID, and a danger zone: Leave (hidden when `workspace.canLeave` is false: the only owner) and Delete workspace (`workspace.destroy`: type the name, plus your password, under a warning callout). After either, the next workspace's dashboard opens with a toast, or onboarding. It loads no member data; only the Members tab does |
 | `/app/wsp_…/settings/members` | `pages/app/[workspace]/settings/members.tsx` | Owners and admins (`workspace.member.index`): search members, change a role, remove; **Invite** (left of the search box) (`workspace.invitation.store`, an email and one of your `assignableRoles` but owner); and Pending invitations above the members while there are any ("Sending…", "Sent <date>" or Expired, polling while one is sending; Revoke invitation in the row's ⋯ menu). Anyone else sees a notice and nothing is fetched. Both settings pages share `SettingsTabs` (General / Members), shown only with that permission |
+| `/admin/<key>` | `pages/admin/[key]/index.tsx` | The admin sign-in (`AdminLogin`): password, then the code, or setting MFA up (QR code hidden until revealed, then the recovery codes). Its loader checks the key with the API first: a wrong one is the not-found page ([../api/admin.md](../api/admin.md#web-app)) |
+| `/admin/<key>/users`, `users/usr_…`, `workspaces`, `workspaces/wsp_…` | `pages/admin/[key]/*` inside `pages/admin/layout.tsx` | The admin dashboard (`AdminUserIndex`, `AdminUserShow`, `AdminWorkspaceIndex`, `AdminWorkspaceShow`), read-only. Lists search and sort in the URL; rows open their page. Not prerendered, never a `?next=` |
 | anything else | `pages/not-found.tsx` | Go answers it with status 404 |
 
 `app/settings` and `app/onboarding` are fixed segments, so React Router ranks them above `app/:workspace/...`, and workspace IDs always start with `wsp_`, so they can't collide. There are no redirects from older URLs (`/app/dashboard`, `/app/projects/42`, `/login`).
@@ -57,6 +59,7 @@ Loaders run in the browser before a route renders. They only decide what a page 
 | `workspaceHomeLoader` | `/app` | Redirects to the newest workspace's dashboard or onboarding |
 | `onboardingLoader` | `/app/onboarding` | Needs a session; accounts with a workspace go on to `/app` |
 | `guestLoader` | login, register | Signed-in visitors go on to `?next=` or `/app`; if the API is down the form still renders |
+| `adminLoginLoader`, `adminLoader` | the admin sign-in page, the admin layout | `GET /api/admin/me` with the URL's key: 404 → the not-found page (a wrong key); signed in → Users, or the session for the layout; 401 → the form, or back to it; API unreachable → `ServiceUnavailable` |
 
 While the first page's loader runs, the root `HydrateFallback` shows an empty page. Loaders use `loaderApi()`, a read-only client ([api.md](api.md)).
 

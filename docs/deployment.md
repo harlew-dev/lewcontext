@@ -12,7 +12,7 @@ One image (the root `Dockerfile`) holding four binaries:
 | `migrate` | Applies database migrations, inside a transaction each, under an advisory lock | once per release, **before** starting the new `api` |
 | `prune` | Deletes old rows from log tables (`events`) | from cron |
 | `seed` | Demo data | never: it refuses to run with `APP_ENV=production` |
-| `admin` | The operator's commands: `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions (previews without `-confirm`); `admin app-key generate` prints a new `APP_KEY` | by hand, after checking who is asking out of band |
+| `admin` | The operator's commands, previewing without `-confirm`: `admin grant`, `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
 
 There is one process and one origin: the same server sends pages and API responses, so there is no CORS and no separate frontend host. The server does **not** migrate on startup.
 
@@ -43,6 +43,7 @@ make build                                                     # or, without Doc
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | `smtp.resend.com`, `587`, `starttls` | `starttls` (port 587 by default) or `tls` (465). **`none` is refused in production.** Certificates are always verified |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | your provider's | Both or neither. **A secret:** pass it through your platform's secret store, not the image |
 | `APP_KEY` | 32 random bytes in base64: `docker run --rm lewcontext admin app-key generate` prints one (or `openssl rand -base64 32`) | **A secret, and required.** Seals two-factor secrets at rest and keys recovery-code digests. `.env.example`'s key is refused. **Back it up with the database and never change it:** without the same key, every account with two-factor authentication on is locked out (there is no key rotation yet), and `admin reset-mfa` is the only way back in, one account at a time |
+| `ADMIN_ROUTE_KEY` | `docker run --rm lewcontext admin route-key generate` prints one (256 bits) | **A secret.** The admin dashboard's path, `/admin/<key>`, and its API header. Unset turns the admin dashboard off. `.env.example`'s throwaway key is refused. See [Admin dashboard](#admin-dashboard) |
 | `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 
 `RATE_LIMITS` must stay unset (or `on`): `off`, for the end-to-end tests, is refused in production. The server refuses to start if any of these rules is broken, rather than starting insecurely. `DEMO_PASSWORD`, `MAIL_FILE` and `API_URL` are for development only. Tests use the committed `.env.testing`, never production settings.
@@ -63,6 +64,15 @@ make build                                                     # or, without Doc
 4. **Start the server:** `docker run -d --env-file prod.env -p 10.0.0.5:3000:3000 lewcontext`.
 5. **Check it:** `GET /api/health` returns `{"status":"ok"}`, or 503 when the database is unreachable. Use it for load-balancer health checks. Then open `APP_ORIGIN` and register an account. New accounts start with no workspace and go to onboarding.
 6. **Schedule pruning:** for example, daily `prune events -confirm`. That deletes events older than 90 days, keeping any with a pending delivery. It is allowed in production. Sessions, rate-limit windows and reset links are cleaned up by the server itself.
+
+## Admin dashboard
+
+`https://app.example.com/admin/<ADMIN_ROUTE_KEY>`: every account and workspace, read-only, with every read recorded ([api/admin.md](api/admin.md)).
+
+1. **Set `ADMIN_ROUTE_KEY`** from your secret store, and restart.
+2. **Grant the first admin:** they register an account in the app as anyone would, then `docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.com -confirm`. Without two-factor authentication on, they set it up at their first admin sign-in, within 24 hours (run `grant` again for another day). `admin list` shows every admin and their MFA; `admin revoke -email … -confirm` takes it away and signs out their admin sessions.
+3. **Keep `/admin/` out of access logs**, or redact the path: the key is in it. Cloudflare and most proxies log paths; the key never travels in a header to anywhere but this server (`X-Admin-Key`), and admin pages send `Referrer-Policy: no-referrer`.
+4. **If the key may have leaked** (a log, a screenshot, browser sync), rotate it: set a new one and restart. Every admin is signed out, and the old URL becomes an ordinary 404. The key alone gets nobody in: an admin's password and second factor are still needed.
 
 ## Releasing a new version
 
@@ -161,6 +171,7 @@ Check each provider's own docs for current values.
 - [ ] Migrations frozen (append-only) before the first real data.
 - [ ] `prune` scheduled.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
+- [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `/admin/` kept out of access logs or redacted; admins granted only to people who need it (`admin list`).
 - [ ] `seed` never run (it refuses in production anyway).
 - [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.

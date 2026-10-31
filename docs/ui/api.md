@@ -40,6 +40,8 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `auth().mfa()` | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
+The admin dashboard has its own client, `lib/api/admin.ts`: `const api = useAdminApi()` (inside `AdminProvider`) sends the URL's key in `X-Admin-Key` and the admin session's CSRF token, never the app's; `api.login`, `.loginMfaSetup()`, `.loginMfa(code)`, `.logout()`, `.users().index(query)`, `.show(id)`, `.workspaces().index(query)`, `.show(id)`; typed paths under `paths.admin` (the key is never in one); `loaderAdminApi(key)` for its loaders. Pages read with `useAdminResource(path)`, whose SWR key is `["admin", adminUserId, path]` and whose 401 goes back to `/admin/<key>` ([../api/admin.md](../api/admin.md#web-app)).
+
 ## Calling the API: `useApi()`
 
 - **`const api = useApi()`** in a component body, then `await api.projects(workspace.id).store(input)` in handlers. It is a hook, so it can't be called in a handler, a condition or at module level.

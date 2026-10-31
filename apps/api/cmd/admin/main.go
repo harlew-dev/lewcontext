@@ -11,7 +11,6 @@ import (
 	"lewcontext/api/internal/store"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -29,8 +28,16 @@ func main() {
 	switch os.Args[1] {
 	case "reset-mfa":
 		resetMFA(os.Args[2:])
+	case "grant":
+		grant(os.Args[2:])
+	case "revoke":
+		revoke(os.Args[2:])
+	case "list":
+		list(os.Args[2:])
 	case "app-key":
 		appKey(os.Args[2:])
+	case "route-key":
+		routeKey(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -41,21 +48,13 @@ func main() {
 // authenticator and recovery codes, and signs out all their sessions. Check
 // who's asking out of band first: this is a way around their second factor.
 func resetMFA(args []string) {
-	fs := flag.NewFlagSet("reset-mfa", flag.ExitOnError)
-	email := fs.String("email", "", "the account's email (required)")
-	confirm := fs.Bool("confirm", false, "reset; without it the command only previews")
-	_ = fs.Parse(args)
-	address := strings.ToLower(strings.TrimSpace(*email))
-	if address == "" || fs.NArg() > 0 {
-		fmt.Fprintln(os.Stderr, "Usage: go run ./cmd/admin reset-mfa -email <address> [-confirm]")
-		os.Exit(2)
-	}
+	address, confirm := emailFlag("reset-mfa", args)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	repository := open(ctx)
+	repository, _ := open(ctx)
 	defer repository.DB.Close()
 
-	if !*confirm {
+	if !confirm {
 		user, _, err := repository.FindUser(ctx, address)
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Fatalf("no account uses %s", address)
@@ -81,9 +80,14 @@ func resetMFA(args []string) {
 		log.Fatal(err)
 	}
 	fmt.Printf("Two-factor authentication is off for %s (%s), and every session is signed out. They can sign in with their password and set it up again.\n", user.Email, user.PublicID)
+	if admin, err := repository.FindAdmin(ctx, user.ID); err == nil && admin.MFASetupUntil != nil {
+		fmt.Printf("They're an admin: they set up a new authenticator at their next admin sign-in, before %s.\n", admin.MFASetupUntil.UTC().Format("2006-01-02 15:04 UTC"))
+	}
 }
 
-func open(ctx context.Context) *store.Store {
+// open connects to the configured database, and says whether this is
+// production.
+func open(ctx context.Context) (*store.Store, bool) {
 	c, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
@@ -92,7 +96,7 @@ func open(ctx context.Context) *store.Store {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return &store.Store{DB: db}
+	return &store.Store{DB: db}, c.Production
 }
 
 func usage() {
@@ -101,5 +105,10 @@ func usage() {
 	fmt.Fprintln(out, "\nCommands:")
 	fmt.Fprintln(out, "  reset-mfa -email <address> [-confirm]   turn off two-factor authentication for someone locked out,")
 	fmt.Fprintln(out, "                                          and sign out every session; previews without -confirm")
+	fmt.Fprintln(out, "  grant -email <address> [-confirm]       make an existing account an admin; without MFA, they set it up")
+	fmt.Fprintln(out, "                                          at their first admin sign-in, within 24 hours")
+	fmt.Fprintln(out, "  revoke -email <address> [-confirm]      take admin away and sign out their admin sessions")
+	fmt.Fprintln(out, "  list                                    every admin, with their MFA")
 	fmt.Fprintln(out, "  app-key generate [-env path]            print a new APP_KEY, or write it into an .env file that has none")
+	fmt.Fprintln(out, "  route-key generate                      print a new ADMIN_ROUTE_KEY")
 }

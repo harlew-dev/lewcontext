@@ -8,9 +8,9 @@ import { Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
-import { Strong, Text, TextButton, TextLink } from "@/components/ui/text";
-import { CodeField } from "@/components/app/mfa/mfa-setup";
-import { ApiError, errorMessage, needsMfa, useApi } from "@/lib/api";
+import { Strong, Text, TextLink } from "@/components/ui/text";
+import { CodeStep } from "@/components/app/mfa/code-step";
+import { needsMfa, useApi } from "@/lib/api";
 import type { Credentials } from "@/lib/api";
 import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
@@ -53,6 +53,7 @@ export default function Login() {
     return (
       <AuthLayout>
         <CodeStep
+          verify={(code) => api.auth().loginMfa(code)}
           onRestart={(reason) => {
             setRestarted(reason);
             setStep("password");
@@ -129,81 +130,5 @@ export default function Login() {
         </Text>
       </form>
     </AuthLayout>
-  );
-}
-// The second step with two-factor authentication on: a code from the
-// authenticator app, or a recovery code. The challenge lives in a cookie, so
-// a refresh starts over at the password. A 401 means it ended: back to the
-// password with the API's reason.
-function CodeStep({ onRestart }: { onRestart: (reason: string) => void }) {
-  const api = useApi();
-  const [recovery, setRecovery] = useState(false);
-  const [code, setCode] = useState("");
-  const [fieldError, setFieldError] = useState<string>();
-  const { loading, error, submit } = useAuthSubmit(
-    (value: string) => api.auth().loginMfa(value),
-    undefined,
-    (e) => {
-      if (e instanceof ApiError && e.status === 401) {
-        onRestart(errorMessage(e));
-        return true;
-      }
-      if (e instanceof ApiError && e.field === "code") {
-        setFieldError(errorMessage(e));
-        return true;
-      }
-    },
-  );
-  function switchMode() {
-    setRecovery(!recovery);
-    setCode("");
-    setFieldError(undefined);
-  }
-  return (
-    <form
-      onSubmit={(event) => {
-        setFieldError(undefined);
-        return submit(event, code);
-      }}
-      className="grid w-full max-w-sm grid-cols-1 gap-8"
-    >
-      <Logo href={routes.home} />
-      <Heading>Two-factor authentication</Heading>
-      <Text>
-        {recovery
-          ? "Enter one of your recovery codes. Each one works once."
-          : "Enter the code from your authenticator app."}
-      </Text>
-      <ErrorNotice error={error} />
-      <CodeField
-        key={recovery ? "recovery" : "app"}
-        label={recovery ? "Recovery code" : "Authentication code"}
-        value={code}
-        onChange={setCode}
-        error={fieldError}
-        disabled={loading}
-        recovery={recovery}
-        autoFocus
-      />
-      <Button type="submit" className="w-full" loading={loading}>
-        Verify
-      </Button>
-      <div className="space-y-2">
-        <Text>
-          <TextButton onClick={switchMode} disabled={loading}>
-            <Strong>
-              {recovery
-                ? "Use your authenticator app instead"
-                : "Lost your device? Use a recovery code"}
-            </Strong>
-          </TextButton>
-        </Text>
-        <Text>
-          <TextButton onClick={() => onRestart("")} disabled={loading}>
-            Sign in as someone else
-          </TextButton>
-        </Text>
-      </div>
-    </form>
   );
 }
