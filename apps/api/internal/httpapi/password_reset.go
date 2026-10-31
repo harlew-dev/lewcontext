@@ -1,11 +1,11 @@
 package httpapi
 
 import (
-	"encoding/base64"
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 )
@@ -57,10 +57,10 @@ func (s *Server) requestPasswordReset(w http.ResponseWriter, r *http.Request) {
 // one refused early doesn't spend the later ones: a single client can't use
 // up the limit shared by everyone. Unknown emails count like real ones.
 func (s *Server) allowPasswordResetRequest(w http.ResponseWriter, r *http.Request, email string) bool {
-	return s.allow(w, r, authPerIP, authPerIP.ipKey(r)) &&
-		s.allow(w, r, passwordResetPerIP, passwordResetPerIP.ipKey(r)) &&
-		s.allow(w, r, passwordResetPerEmail, passwordResetPerEmail.key(email)) &&
-		s.allow(w, r, passwordResetGlobal, passwordResetGlobal.everyone())
+	return s.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) &&
+		s.allow(w, r, passwordResetPerIP, passwordResetPerIP.IPKey(ClientIP(r))) &&
+		s.allow(w, r, passwordResetPerEmail, passwordResetPerEmail.Key(email)) &&
+		s.allow(w, r, passwordResetGlobal, passwordResetGlobal.Everyone())
 }
 
 // checkPasswordReset lets the link's page say straight away that a link has
@@ -70,10 +70,10 @@ func (s *Server) checkPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !s.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !s.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
-	if !validResetToken(in.Token) {
+	if !input.Token(in.Token) {
 		failField(w, 422, "token", resetLinkInvalid)
 		return
 	}
@@ -97,7 +97,7 @@ func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !validResetToken(in.Token) {
+	if !input.Token(in.Token) {
 		failField(w, 422, "token", resetLinkInvalid)
 		return
 	}
@@ -133,14 +133,4 @@ func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// The email lets the login page fill it in.
 	jsonResponse(w, 200, map[string]string{"email": user.Email})
-}
-
-// validResetToken checks a token has the shape auth.Token makes: 32 bytes as
-// 43 base64url characters.
-func validResetToken(token string) bool {
-	if len(token) != 43 {
-		return false
-	}
-	_, err := base64.RawURLEncoding.DecodeString(token)
-	return err == nil
 }

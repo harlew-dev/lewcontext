@@ -6,6 +6,7 @@ import (
 	"io"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/httpapi/ratelimit"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -21,7 +22,7 @@ type Server struct {
 	keys      *auth.Keys
 	authSlots chan struct{}
 	// memoryLimits counts the limits kept in memory (api-read:per-user).
-	memoryLimits *memoryLimiter
+	memoryLimits *ratelimit.Memory
 }
 
 // WebPages serves the built web app (web.Pages): its pages and files, and
@@ -40,7 +41,7 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{Store: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: newMemoryLimiter()}, nil
+	return &Server{Store: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory()}, nil
 }
 func jsonResponse(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

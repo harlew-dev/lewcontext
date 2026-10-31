@@ -184,7 +184,7 @@ func TestAdminReadBudget(t *testing.T) {
 	f := factory.TestFaker(t)
 	admin, session := adminSignedIn(t, db, f)
 	for range 1000 {
-		s.memoryLimits.allow(adminReadPerUser.key(admin.User.PublicID), adminReadPerUser.limit, adminReadPerUser.window)
+		s.memoryLimits.Allow(adminReadPerUser.Key(admin.User.PublicID), adminReadPerUser.Max, adminReadPerUser.Window)
 	}
 	w := adminCall(t, h, "GET", "/api/admin/users", "", "", 429, session.Cookie())
 	if w.Header().Get("Retry-After") == "" {

@@ -11,6 +11,7 @@ import (
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/database/dbtest"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
@@ -168,7 +169,7 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "POST", "/api/workspaces", `{"name":"Mine"}`, "", cookie, 403)
 	var workspace store.Workspace
 	_ = json.Unmarshal(call(t, h, "POST", "/api/workspaces", `{"name":"  Mine  "}`, one.CSRF, cookie, 201).Body.Bytes(), &workspace)
-	if !validPublicID("wsp", workspace.PublicID) || workspace.Name != "Mine" || workspace.Role != auth.RoleOwner {
+	if !input.PublicID("wsp", workspace.PublicID) || workspace.Name != "Mine" || workspace.Role != auth.RoleOwner {
 		t.Fatalf("created workspace not returned: %+v", workspace)
 	}
 	projects := workspacePath(workspace.PublicID, "/projects")
@@ -182,7 +183,7 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	}
 	var project store.Project
 	_ = json.Unmarshal(created.Body.Bytes(), &project)
-	if !validPublicID("prj", project.PublicID) || project.Name != "Private project" || project.Status != "Planned" || project.CreatedAt.IsZero() || project.UpdatedAt.IsZero() {
+	if !input.PublicID("prj", project.PublicID) || project.Name != "Private project" || project.Status != "Planned" || project.CreatedAt.IsZero() || project.UpdatedAt.IsZero() {
 		t.Fatalf("created project not returned: %+v", project)
 	}
 	var owned store.Page[store.Project]

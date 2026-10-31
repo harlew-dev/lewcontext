@@ -45,7 +45,7 @@ func strongPassword(password string) bool {
 	return utf8.RuneCountInString(password) >= 12
 }
 func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email string) bool {
-	return s.allow(w, r, authPerAccount, authPerAccount.key(email))
+	return s.allow(w, r, authPerAccount, authPerAccount.Key(email))
 }
 
 // registrationLimit counts a valid sign-up against the account creation
@@ -53,9 +53,9 @@ func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email stri
 // shared by everyone. With verification on each sign-up emails its address,
 // so it counts per email too, for every address alike.
 func (s *Server) registrationLimit(w http.ResponseWriter, r *http.Request, email string) bool {
-	return s.allow(w, r, registerPerIP, registerPerIP.ipKey(r)) &&
-		(!s.Config.Verify || s.allow(w, r, registerPerEmail, registerPerEmail.key(email))) &&
-		s.allow(w, r, registerGlobal, registerGlobal.everyone())
+	return s.allow(w, r, registerPerIP, registerPerIP.IPKey(ClientIP(r))) &&
+		(!s.Config.Verify || s.allow(w, r, registerPerEmail, registerPerEmail.Key(email))) &&
+		s.allow(w, r, registerGlobal, registerGlobal.Everyone())
 }
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var in credentials

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 )
@@ -32,7 +33,7 @@ func (h adminWorkspaceHandlers) index(w http.ResponseWriter, r *http.Request) {
 
 func (h adminWorkspaceHandlers) show(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("workspace")
-	if !validPublicID("wsp", id) {
+	if !input.PublicID("wsp", id) {
 		fail(w, 404, "Workspace not found.")
 		return
 	}
@@ -62,21 +63,21 @@ type adminWorkspaceProjectHandlers struct{ *Server }
 
 func (h adminWorkspaceProjectHandlers) index(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("workspace")
-	if !validPublicID("wsp", id) {
+	if !input.PublicID("wsp", id) {
 		fail(w, 404, "Workspace not found.")
 		return
 	}
-	params, ok := queryParams(r, "page", "perPage", "q", "status", "sort")
+	params, ok := input.Query(r, "page", "perPage", "q", "status", "sort")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
 	}
-	req, ok := pageRequest(params)
+	req, ok := input.Page(params)
 	if !ok {
 		fail(w, 400, "Invalid page.")
 		return
 	}
-	filter, ok := projectFilter(params)
+	filter, ok := input.ProjectFilter(params)
 	if !ok {
 		fail(w, 400, "Check the search, status, and sort.")
 		return

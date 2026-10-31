@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"strings"
 	"testing"
@@ -77,7 +78,7 @@ func checkPayloadIDs(t *testing.T, db bun.IDB) {
 		var payload map[string]any
 		_ = json.Unmarshal([]byte(raw), &payload)
 		for key, prefix := range prefixes {
-			if value, ok := payload[key]; ok && !validPublicID(prefix, fmt.Sprint(value)) {
+			if value, ok := payload[key]; ok && !input.PublicID(prefix, fmt.Sprint(value)) {
 				t.Errorf("%s: %s is not a public ID: %s", name, key, raw)
 			}
 		}
@@ -348,7 +349,7 @@ func TestListenerReceivesEventsFromTheAPI(t *testing.T) {
 		t.Fatalf("RunOnce: %d, %v", n, err)
 	}
 	if len(received) != 1 || received[0].Project != project.PublicID || received[0].Workspace != workspace.PublicID || received[0].Name != "Launch" ||
-		!validPublicID("evt", meta.EventID) || meta.Attempt != 1 {
+		!input.PublicID("evt", meta.EventID) || meta.Attempt != 1 {
 		t.Fatalf("listener got %+v %+v", received, meta)
 	}
 	// Delivered once: nothing is left to claim.

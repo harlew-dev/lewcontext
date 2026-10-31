@@ -7,6 +7,7 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"slices"
@@ -117,7 +118,7 @@ func TestMemberList(t *testing.T) {
 		t.Fatalf("owners not first: %v", names)
 	}
 	for _, member := range page.Data {
-		if !validPublicID("usr", member.PublicID) || member.Email == "" {
+		if !input.PublicID("usr", member.PublicID) || member.Email == "" {
 			t.Fatalf("member: %+v", member)
 		}
 		if member.Name == "viewer Vera" && !member.AddedAt.Equal(added) {

@@ -1,16 +1,16 @@
-package httpapi
+package ratelimit
 
 import (
 	"sync"
 	"time"
 )
 
-// memoryLimiter counts hits in fixed windows in this process's memory, for
+// Memory counts hits in fixed windows in this process's memory, for
 // limits that would otherwise add a database write to every request (reads).
 // Each server process counts on its own, so with N servers a user gets N
 // times the limit: fine for load protection, not for anything that must be
 // exact. Ended windows are swept at most once a minute, on the next hit.
-type memoryLimiter struct {
+type Memory struct {
 	mu        sync.Mutex
 	windows   map[string]memoryWindow
 	lastSweep time.Time
@@ -22,13 +22,14 @@ type memoryWindow struct {
 	resetsAt time.Time
 }
 
-func newMemoryLimiter() *memoryLimiter {
-	return &memoryLimiter{windows: map[string]memoryWindow{}, now: time.Now}
+// NewMemory is an empty counter.
+func NewMemory() *Memory {
+	return &Memory{windows: map[string]memoryWindow{}, now: time.Now}
 }
 
-// allow counts a hit against key, like Store.Allow: allowed while the window
+// Allow counts a hit against key, like Store.Allow: allowed while the window
 // holds at most limit hits, and firstRefusal for the hit that first goes over.
-func (m *memoryLimiter) allow(key string, limit int, window time.Duration) (allowed, firstRefusal bool, resetsAt time.Time) {
+func (m *Memory) Allow(key string, limit int, window time.Duration) (allowed, firstRefusal bool, resetsAt time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
@@ -43,7 +44,7 @@ func (m *memoryLimiter) allow(key string, limit int, window time.Duration) (allo
 }
 
 // sweep drops ended windows, at most once a minute. The caller holds mu.
-func (m *memoryLimiter) sweep(now time.Time) {
+func (m *Memory) sweep(now time.Time) {
 	if now.Sub(m.lastSweep) < time.Minute {
 		return
 	}
@@ -56,7 +57,7 @@ func (m *memoryLimiter) sweep(now time.Time) {
 }
 
 // size is how many windows are held, for tests.
-func (m *memoryLimiter) size() int {
+func (m *Memory) size() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.windows)

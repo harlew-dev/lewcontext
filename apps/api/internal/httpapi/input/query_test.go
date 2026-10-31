@@ -1,4 +1,4 @@
-package httpapi
+package input
 
 import (
 	"lewcontext/api/internal/store"
@@ -20,7 +20,7 @@ func TestQueryParams(t *testing.T) {
 		{"q=a;b", false},
 	} {
 		r := httptest.NewRequest("GET", "/api/projects?"+tc.query, nil)
-		if _, ok := queryParams(r, "page", "perPage", "q"); ok != tc.want {
+		if _, ok := Query(r, "page", "perPage", "q"); ok != tc.want {
 			t.Errorf("%q: want %v got %v", tc.query, tc.want, ok)
 		}
 	}
@@ -44,14 +44,14 @@ func TestPageRequest(t *testing.T) {
 		{"", "0", store.PageRequest{}, false},
 		{"", "101", store.PageRequest{}, false},
 	} {
-		got, ok := pageRequest(map[string]string{"page": tc.page, "perPage": tc.perPage})
+		got, ok := Page(map[string]string{"page": tc.page, "perPage": tc.perPage})
 		if ok != tc.ok || got != tc.want {
 			t.Errorf("page=%q perPage=%q: want %+v %v got %+v %v", tc.page, tc.perPage, tc.want, tc.ok, got, ok)
 		}
 	}
 }
 func TestProjectFilter(t *testing.T) {
-	got, ok := projectFilter(map[string]string{"q": "  launch 50%  ", "status": "Planned"})
+	got, ok := ProjectFilter(map[string]string{"q": "  launch 50%  ", "status": "Planned"})
 	if !ok || got != (store.ProjectFilter{Search: "launch 50%", Status: "Planned", Sort: store.DefaultProjectSort}) {
 		t.Fatalf("valid filter: got %+v %v", got, ok)
 	}
@@ -65,11 +65,11 @@ func TestProjectFilter(t *testing.T) {
 		{"q": "\xff"},
 		{"q": strings.Repeat("é", maxSearchLength+1)},
 	} {
-		if _, ok := projectFilter(params); ok {
+		if _, ok := ProjectFilter(params); ok {
 			t.Errorf("invalid filter accepted: %q", params)
 		}
 	}
-	if _, ok := projectFilter(map[string]string{"q": strings.Repeat("é", maxSearchLength)}); !ok {
+	if _, ok := ProjectFilter(map[string]string{"q": strings.Repeat("é", maxSearchLength)}); !ok {
 		t.Error("search at the length limit rejected")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strconv"
@@ -30,7 +31,7 @@ type invitationToken struct {
 // invitationID reads the {invitation} path value, an inv_ public ID.
 func invitationID(r *http.Request) (string, bool) {
 	id := r.PathValue("invitation")
-	return id, validPublicID("inv", id)
+	return id, input.PublicID("inv", id)
 }
 
 // invitationHandlers are a workspace's …/invitations routes and the
@@ -38,12 +39,12 @@ func invitationID(r *http.Request) (string, bool) {
 type invitationHandlers struct{ *Server }
 
 func (h invitationHandlers) index(w http.ResponseWriter, r *http.Request) {
-	params, ok := queryParams(r, "page", "perPage")
+	params, ok := input.Query(r, "page", "perPage")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
 	}
-	req, ok := pageRequest(params)
+	req, ok := input.Page(params)
 	if !ok {
 		fail(w, 400, "Invalid page.")
 		return
@@ -83,10 +84,10 @@ func (h invitationHandlers) store(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only valid requests spend the invited address's limit and the one
 	// shared by everyone, in that order (invitation:per-user came first).
-	if !h.allow(w, r, invitationPerEmail, invitationPerEmail.key(in.Email)) {
+	if !h.allow(w, r, invitationPerEmail, invitationPerEmail.Key(in.Email)) {
 		return
 	}
-	if !h.allow(w, r, invitationGlobal, invitationGlobal.everyone()) {
+	if !h.allow(w, r, invitationGlobal, invitationGlobal.Everyone()) {
 		return
 	}
 	inv, err := h.Store.CreateInvitation(r.Context(), currentWorkspace(r), current(r).User.ID, store.InvitationInput{Email: in.Email, Role: role})
@@ -140,10 +141,10 @@ func (h invitationHandlers) check(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !h.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
-	if !validResetToken(in.Token) {
+	if !input.Token(in.Token) {
 		failField(w, 422, "token", invitationInvalid)
 		return
 	}
@@ -167,7 +168,7 @@ func (h invitationHandlers) accept(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !validResetToken(in.Token) {
+	if !input.Token(in.Token) {
 		failField(w, 422, "token", invitationInvalid)
 		return
 	}

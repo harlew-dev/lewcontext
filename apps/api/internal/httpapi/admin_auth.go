@@ -5,6 +5,7 @@ import (
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -141,14 +142,14 @@ func (h adminAuthHandlers) loginMFA(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !h.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	hash, admin, purpose, ok := h.adminChallenge(w, r)
 	if !ok {
 		return
 	}
-	if !h.allow(w, r, mfaPerAccount, mfaPerAccount.key(admin.User.PublicID)) {
+	if !h.allow(w, r, mfaPerAccount, mfaPerAccount.Key(admin.User.PublicID)) {
 		return
 	}
 	if purpose == store.ChallengeAdminSetup {
@@ -205,7 +206,7 @@ func (h adminAuthHandlers) confirmAdminSetup(w http.ResponseWriter, r *http.Requ
 // password) when there is none, or its user is no longer an admin.
 func (h adminAuthHandlers) adminChallenge(w http.ResponseWriter, r *http.Request) (string, store.Admin, string, bool) {
 	cookie, err := r.Cookie(auth.AdminMFACookieName(h.Config.Production))
-	if err != nil || !validResetToken(cookie.Value) {
+	if err != nil || !input.Token(cookie.Value) {
 		h.endAdminChallenge(w, r, "", mfaSignInAgain)
 		return "", store.Admin{}, "", false
 	}

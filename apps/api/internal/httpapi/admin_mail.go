@@ -4,6 +4,7 @@ import (
 	"errors"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"slices"
@@ -60,7 +61,7 @@ func (h adminMailHandlers) driver() adminMailDriver {
 }
 
 func (h adminMailHandlers) show(w http.ResponseWriter, r *http.Request) {
-	params, ok := queryParams(r, "window")
+	params, ok := input.Query(r, "window")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
@@ -90,17 +91,17 @@ func (h adminMailHandlers) show(w http.ResponseWriter, r *http.Request) {
 // deliveryCursor reads a deliveries cursor, evt_…:listener.
 func deliveryCursor(raw string) (event, listener string, ok bool) {
 	event, listener, found := strings.Cut(raw, ":")
-	return event, listener, found && validPublicID("evt", event) && listener != "" && len(listener) <= 100
+	return event, listener, found && input.PublicID("evt", event) && listener != "" && len(listener) <= 100
 }
 
 // adminDeliveryQuery parses the deliveries list's query string.
 func (h adminDeliveryHandlers) query(r *http.Request) (store.AdminDeliveryFilter, int, events.DeliveryFilters, bool) {
 	var f store.AdminDeliveryFilter
-	params, ok := queryParams(r, "status", "listener", "from", "to", "before", "perPage")
+	params, ok := input.Query(r, "status", "listener", "from", "to", "before", "perPage")
 	if !ok {
 		return f, 0, events.DeliveryFilters{}, false
 	}
-	perPage, ok := boundedInt(params["perPage"], defaultEventsPerPage, maxEventsPerPage)
+	perPage, ok := input.Int(params["perPage"], defaultEventsPerPage, maxEventsPerPage)
 	valid := ok
 	f.Status, f.Listener = params["status"], params["listener"]
 	valid = valid && (f.Status == "" || store.DeliveryStatus(f.Status))

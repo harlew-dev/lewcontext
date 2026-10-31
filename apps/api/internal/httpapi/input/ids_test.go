@@ -1,4 +1,4 @@
-package httpapi
+package input
 
 import "testing"
 
@@ -18,8 +18,8 @@ func TestValidPublicID(t *testing.T) {
 		{"42", false},
 		{"", false},
 	} {
-		if got := validPublicID("prj", tc.id); got != tc.want {
-			t.Errorf("validPublicID(prj, %q) = %v", tc.id, got)
+		if got := PublicID("prj", tc.id); got != tc.want {
+			t.Errorf("PublicID(prj, %q) = %v", tc.id, got)
 		}
 	}
 }

@@ -27,8 +27,8 @@ func (h emailVerificationHandlers) store(w http.ResponseWriter, r *http.Request)
 		fail(w, 409, alreadyVerified)
 		return
 	}
-	if !h.allow(w, r, emailVerificationPerEmail, emailVerificationPerEmail.key(user.Email)) ||
-		!h.allow(w, r, emailVerificationGlobal, emailVerificationGlobal.everyone()) {
+	if !h.allow(w, r, emailVerificationPerEmail, emailVerificationPerEmail.Key(user.Email)) ||
+		!h.allow(w, r, emailVerificationGlobal, emailVerificationGlobal.Everyone()) {
 		return
 	}
 	if err := h.Store.Record(r.Context(), events.EmailVerificationRequested{User: user.PublicID}, store.EventScope{UserID: user.ID}); err != nil {
@@ -46,7 +46,7 @@ func (h emailVerificationHandlers) update(w http.ResponseWriter, r *http.Request
 		return
 	}
 	user := current(r).User
-	if !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.key(user.Email)) {
+	if !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.Key(user.Email)) {
 		return
 	}
 	result, err := h.Store.VerifyEmail(r.Context(), user.ID, h.emailCodeDigest(in.Code))

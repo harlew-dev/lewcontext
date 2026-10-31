@@ -9,6 +9,7 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/mail"
 	"lewcontext/api/internal/store"
 	"regexp"
@@ -88,7 +89,7 @@ func TestCreateInvitation(t *testing.T) {
 				t.Fatal(err)
 			}
 			by, _ := got["invitedBy"].(map[string]any)
-			if !validPublicID("inv", fmt.Sprint(got["id"])) || got["role"] != string(role) || got["sentAt"] != nil || by["id"] != ownerID || numericID.MatchString(w.Body.String()) {
+			if !input.PublicID("inv", fmt.Sprint(got["id"])) || got["role"] != string(role) || got["sentAt"] != nil || by["id"] != ownerID || numericID.MatchString(w.Body.String()) {
 				t.Fatalf("invitation: %s", w.Body.String())
 			}
 		}

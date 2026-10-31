@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strings"
@@ -41,12 +42,12 @@ func workspaceFilter(params map[string]string) (store.WorkspaceFilter, bool) {
 	return store.WorkspaceFilter{CanLeave: &canLeave}, true
 }
 func (h workspaceHandlers) index(w http.ResponseWriter, r *http.Request) {
-	params, ok := queryParams(r, "page", "perPage", "canLeave")
+	params, ok := input.Query(r, "page", "perPage", "canLeave")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
 	}
-	req, ok := pageRequest(params)
+	req, ok := input.Page(params)
 	if !ok {
 		fail(w, 400, "Invalid page.")
 		return

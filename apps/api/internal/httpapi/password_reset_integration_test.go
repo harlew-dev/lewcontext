@@ -8,6 +8,7 @@ import (
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/mail"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +122,7 @@ func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
 		t.Fatal("the stored digest isn't the link's token's")
 	}
 	sent := onlyEvent(t, db, "auth.password_reset.sent")
-	if sent.Payload["user"] != user.PublicID || sent.Payload["email"] != user.Email || !validPublicID("evt", sent.Payload["request"].(string)) ||
+	if sent.Payload["user"] != user.PublicID || sent.Payload["email"] != user.Email || !input.PublicID("evt", sent.Payload["request"].(string)) ||
 		!is(sent.UserID, user.ID) || strings.Contains(sent.Raw, token) || strings.Contains(sent.Raw, stored) {
 		t.Fatalf("sent event: %+v", sent)
 	}

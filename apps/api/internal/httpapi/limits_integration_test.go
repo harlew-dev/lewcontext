@@ -128,7 +128,7 @@ func TestReadBudget(t *testing.T) {
 	session, other := signedIn(t, db, f), signedIn(t, db, f)
 	publicID := publicIDOf(t, s, session.UserID)
 	for range 999 {
-		s.memoryLimits.allow(apiReadPerUser.key(publicID), apiReadPerUser.limit, apiReadPerUser.window)
+		s.memoryLimits.Allow(apiReadPerUser.Key(publicID), apiReadPerUser.Max, apiReadPerUser.Window)
 	}
 	call(t, h, "GET", "/api/auth/me", "", "", session.Cookie(), 200)
 	refused := call(t, h, "GET", "/api/workspaces", "", "", session.Cookie(), 429)

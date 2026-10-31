@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strings"
@@ -21,18 +22,18 @@ func adminFilter(params map[string]string, fallback string, sortable func(string
 	if f.Sort == "" {
 		f.Sort = fallback
 	}
-	return f, validSearch(f.Search) && sortable(f.Sort)
+	return f, input.Search(f.Search) && sortable(f.Sort)
 }
 
 // adminListQuery parses an admin list's query string, answering 400 when it
 // is malformed.
 func adminListQuery(w http.ResponseWriter, r *http.Request, fallback string, sortable func(string) bool) (store.AdminFilter, store.PageRequest, bool) {
-	params, ok := queryParams(r, "page", "perPage", "q", "sort")
+	params, ok := input.Query(r, "page", "perPage", "q", "sort")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return store.AdminFilter{}, store.PageRequest{}, false
 	}
-	req, ok := pageRequest(params)
+	req, ok := input.Page(params)
 	if !ok {
 		fail(w, 400, "Invalid page.")
 		return store.AdminFilter{}, req, false
@@ -64,7 +65,7 @@ func (h adminUserHandlers) index(w http.ResponseWriter, r *http.Request) {
 
 func (h adminUserHandlers) show(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("user")
-	if !validPublicID("usr", id) {
+	if !input.PublicID("usr", id) {
 		fail(w, 404, "User not found.")
 		return
 	}

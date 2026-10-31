@@ -92,7 +92,7 @@ func (s *Server) requireAdminSession(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), adminSessionKey{}, session)
 		r = r.WithContext(events.WithActor(ctx, session.User.ID))
-		if !unsafeMethod(r.Method) && !s.allow(w, r, adminReadPerUser, adminReadPerUser.key(session.User.PublicID)) {
+		if !unsafeMethod(r.Method) && !s.allow(w, r, adminReadPerUser, adminReadPerUser.Key(session.User.PublicID)) {
 			return
 		}
 		next.ServeHTTP(w, r)

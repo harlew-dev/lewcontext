@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strings"
@@ -22,7 +23,7 @@ func validMemberInput(in *memberInput) bool {
 // memberID reads the {member} path value, the user's usr_ public ID.
 func memberID(r *http.Request) (string, bool) {
 	id := r.PathValue("member")
-	return id, validPublicID("usr", id)
+	return id, input.PublicID("usr", id)
 }
 
 // failMembership answers the errors a membership change can end in.
@@ -43,18 +44,18 @@ func failMembership(w http.ResponseWriter, err error) {
 type memberHandlers struct{ *Server }
 
 func (h memberHandlers) index(w http.ResponseWriter, r *http.Request) {
-	params, ok := queryParams(r, "page", "perPage", "q")
+	params, ok := input.Query(r, "page", "perPage", "q")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
 	}
-	req, ok := pageRequest(params)
+	req, ok := input.Page(params)
 	if !ok {
 		fail(w, 400, "Invalid page.")
 		return
 	}
 	filter := store.MemberFilter{Search: strings.TrimSpace(params["q"])}
-	if !validSearch(filter.Search) {
+	if !input.Search(filter.Search) {
 		fail(w, 400, "Check the search.")
 		return
 	}

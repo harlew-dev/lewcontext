@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"time"
@@ -52,7 +53,7 @@ func waitingForCode(w http.ResponseWriter, email string) {
 // reload (a phone switching to the mail app) resumes it. POST
 // /api/auth/register/check.
 func (h registrationHandlers) check(w http.ResponseWriter, r *http.Request) {
-	if !h.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	pending, _, ok := h.pendingRegistration(w, r)
@@ -64,14 +65,14 @@ func (h registrationHandlers) check(w http.ResponseWriter, r *http.Request) {
 // resend gives the browser's sign-up a new code, counted like a sign-up.
 // POST /api/auth/register/resend.
 func (h registrationHandlers) resend(w http.ResponseWriter, r *http.Request) {
-	if !h.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	pending, digest, ok := h.pendingRegistration(w, r)
 	if !ok {
 		return
 	}
-	if !h.allow(w, r, registerPerEmail, registerPerEmail.key(pending.Email)) || !h.allow(w, r, registerGlobal, registerGlobal.everyone()) {
+	if !h.allow(w, r, registerPerEmail, registerPerEmail.Key(pending.Email)) || !h.allow(w, r, registerGlobal, registerGlobal.Everyone()) {
 		return
 	}
 	pending, err := h.Store.ResendPendingRegistration(r.Context(), digest)
@@ -95,11 +96,11 @@ func (h registrationHandlers) verify(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !h.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !h.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	pending, digest, ok := h.pendingRegistration(w, r)
-	if !ok || !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.key(pending.Email)) {
+	if !ok || !h.allow(w, r, emailCodePerEmail, emailCodePerEmail.Key(pending.Email)) {
 		return
 	}
 	result, err := h.Store.CompleteRegistration(r.Context(), digest, h.emailCodeDigest(in.Code))
@@ -125,7 +126,7 @@ func (h registrationHandlers) verify(w http.ResponseWriter, r *http.Request) {
 // Without one it answers 401 and clears the cookie.
 func (s *Server) pendingRegistration(w http.ResponseWriter, r *http.Request) (store.PendingRegistration, string, bool) {
 	cookie, err := r.Cookie(auth.RegistrationCookieName(s.Config.Production))
-	if err != nil || !validResetToken(cookie.Value) {
+	if err != nil || !input.Token(cookie.Value) {
 		s.endRegistration(w, registrationEnded)
 		return store.PendingRegistration{}, "", false
 	}

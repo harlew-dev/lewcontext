@@ -7,6 +7,7 @@ import (
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"mime"
@@ -196,7 +197,7 @@ func (s *Server) requirePageSession(next http.Handler) http.Handler {
 func (s *Server) requireWorkspace(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("workspace")
-		if !validPublicID("wsp", id) {
+		if !input.PublicID("wsp", id) {
 			fail(w, 404, "Workspace not found.")
 			return
 		}
@@ -226,7 +227,7 @@ func requirePermission(p auth.Permission, next http.Handler) http.Handler {
 }
 func (s *Server) limitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+		if !s.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 			return
 		}
 		select {

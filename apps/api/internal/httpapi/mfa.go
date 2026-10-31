@@ -4,6 +4,7 @@ import (
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -59,7 +60,7 @@ func (h mfaHandlers) store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := current(r).User
-	if !h.allow(w, r, mfaPerAccount, mfaPerAccount.key(user.PublicID)) {
+	if !h.allow(w, r, mfaPerAccount, mfaPerAccount.Key(user.PublicID)) {
 		return
 	}
 	if codes, ok := h.confirmMFASetup(w, r, user, h.sessionDigest(r), in.Code); ok {
@@ -120,7 +121,7 @@ func (s *Server) mfaConfirmed(w http.ResponseWriter, r *http.Request, in mfaConf
 	if !s.passwordConfirmed(w, r, in.Password, step) {
 		return user, false
 	}
-	return user, s.allow(w, r, mfaPerAccount, mfaPerAccount.key(user.PublicID))
+	return user, s.allow(w, r, mfaPerAccount, mfaPerAccount.Key(user.PublicID))
 }
 
 // answerFactor records the second-factor check a store call made and answers
@@ -219,7 +220,7 @@ func (s *Server) loginMFA(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !s.allow(w, r, authPerIP, authPerIP.ipKey(r)) {
+	if !s.allow(w, r, authPerIP, authPerIP.IPKey(ClientIP(r))) {
 		return
 	}
 	hash, ok := s.mfaChallengeDigest(r)
@@ -236,7 +237,7 @@ func (s *Server) loginMFA(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	if !s.allow(w, r, mfaPerAccount, mfaPerAccount.key(user.PublicID)) {
+	if !s.allow(w, r, mfaPerAccount, mfaPerAccount.Key(user.PublicID)) {
 		return
 	}
 	factor := s.secondFactor(user, in.Code)
@@ -285,7 +286,7 @@ func (s *Server) startMFAChallenge(w http.ResponseWriter, r *http.Request, user 
 // token, when the cookie holds a well-formed one.
 func (s *Server) mfaChallengeDigest(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(auth.MFACookieName(s.Config.Production))
-	if err != nil || !validResetToken(cookie.Value) {
+	if err != nil || !input.Token(cookie.Value) {
 		return "", false
 	}
 	return auth.Digest(cookie.Value), true

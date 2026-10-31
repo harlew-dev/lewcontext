@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/mail"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -99,11 +100,11 @@ func timeFilter(raw string) (*time.Time, bool) {
 // filter, the page size and what to record of it.
 func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.EventFilters, bool) {
 	var f store.AdminEventFilter
-	params, ok := queryParams(r, "name", "account", "workspace", "email", "ip", "from", "to", "adminReads", "before", "perPage")
+	params, ok := input.Query(r, "name", "account", "workspace", "email", "ip", "from", "to", "adminReads", "before", "perPage")
 	if !ok {
 		return f, 0, events.EventFilters{}, false
 	}
-	perPage, ok := boundedInt(params["perPage"], defaultEventsPerPage, maxEventsPerPage)
+	perPage, ok := input.Int(params["perPage"], defaultEventsPerPage, maxEventsPerPage)
 	if !ok {
 		return f, 0, events.EventFilters{}, false
 	}
@@ -112,9 +113,9 @@ func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.Event
 		Email: params["email"], IP: params["ip"], AdminReads: params["adminReads"] == "include", Before: params["before"],
 	}
 	f.Account, f.Workspace, f.Before = used.Account, used.Workspace, used.Before
-	valid := (used.Account == "" || validPublicID("usr", used.Account)) &&
-		(used.Workspace == "" || validPublicID("wsp", used.Workspace)) &&
-		(used.Before == "" || validPublicID("evt", used.Before)) &&
+	valid := (used.Account == "" || input.PublicID("usr", used.Account)) &&
+		(used.Workspace == "" || input.PublicID("wsp", used.Workspace)) &&
+		(used.Before == "" || input.PublicID("evt", used.Before)) &&
 		(params["adminReads"] == "" || used.AdminReads)
 	if used.Name != "" {
 		f.Names, ok = eventNames(used.Name)
@@ -167,7 +168,7 @@ func (h adminEventHandlers) index(w http.ResponseWriter, r *http.Request) {
 
 func (h adminEventHandlers) show(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("event")
-	if !validPublicID("evt", id) {
+	if !input.PublicID("evt", id) {
 		fail(w, 404, "Event not found.")
 		return
 	}
@@ -200,7 +201,7 @@ type adminCatalogue struct {
 func (h adminEventHandlers) catalogue(w http.ResponseWriter, r *http.Request) {
 	limits := []string{mail.AccountExistsPerAccount.Name}
 	for _, l := range rateLimits {
-		limits = append(limits, l.name)
+		limits = append(limits, l.Name)
 	}
 	slices.Sort(limits)
 	jsonResponse(w, 200, adminCatalogue{Events: catalogueNames(), Limits: limits, Listeners: h.listeners()})

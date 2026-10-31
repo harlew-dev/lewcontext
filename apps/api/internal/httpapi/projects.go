@@ -3,21 +3,15 @@ package httpapi
 import (
 	"database/sql"
 	"errors"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"slices"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
-var (
-	projectStatuses = []string{"Planned", "In progress", "Completed"}
-	projectColors   = []string{"violet", "blue", "amber", "emerald", "rose"}
-)
-
-// maxSearchLength bounds the project search term in Unicode characters.
-const maxSearchLength = 100
+var projectColors = []string{"violet", "blue", "amber", "emerald", "rose"}
 
 const invalidProject = "Check the project name, description, status, and color."
 
@@ -27,61 +21,30 @@ func validProject(in *store.ProjectInput) bool {
 	if utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 100 || utf8.RuneCountInString(in.Description) > 500 {
 		return false
 	}
-	return slices.Contains(projectStatuses, in.Status) && slices.Contains(projectColors, in.Color)
-}
-
-// projectFilter validates the listing's "q", "status" and "sort" parameters.
-func projectFilter(params map[string]string) (store.ProjectFilter, bool) {
-	f := store.ProjectFilter{
-		Search: strings.TrimSpace(params["q"]),
-		Status: params["status"],
-		Sort:   params["sort"],
-	}
-	if !validSearch(f.Search) {
-		return store.ProjectFilter{}, false
-	}
-	if f.Status != "" && !slices.Contains(projectStatuses, f.Status) {
-		return store.ProjectFilter{}, false
-	}
-	if f.Sort == "" {
-		f.Sort = store.DefaultProjectSort
-	}
-	if !store.ProjectSortable(f.Sort) {
-		return store.ProjectFilter{}, false
-	}
-	return f, true
-}
-
-// validSearch rejects invalid UTF-8 and control characters (PostgreSQL text
-// cannot hold NUL) and bounds the length.
-func validSearch(term string) bool {
-	if !utf8.ValidString(term) || utf8.RuneCountInString(term) > maxSearchLength {
-		return false
-	}
-	return !strings.ContainsFunc(term, unicode.IsControl)
+	return slices.Contains(input.ProjectStatuses, in.Status) && slices.Contains(projectColors, in.Color)
 }
 
 // projectID reads the {project} path value, a prj_ public ID.
 func projectID(r *http.Request) (string, bool) {
 	id := r.PathValue("project")
-	return id, validPublicID("prj", id)
+	return id, input.PublicID("prj", id)
 }
 
 // projectHandlers are the …/projects routes inside a workspace (routes.go).
 type projectHandlers struct{ *Server }
 
 func (h projectHandlers) index(w http.ResponseWriter, r *http.Request) {
-	params, ok := queryParams(r, "page", "perPage", "q", "status", "sort")
+	params, ok := input.Query(r, "page", "perPage", "q", "status", "sort")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
 	}
-	req, ok := pageRequest(params)
+	req, ok := input.Page(params)
 	if !ok {
 		fail(w, 400, "Invalid page.")
 		return
 	}
-	filter, ok := projectFilter(params)
+	filter, ok := input.ProjectFilter(params)
 	if !ok {
 		fail(w, 400, "Check the search, status, and sort.")
 		return
