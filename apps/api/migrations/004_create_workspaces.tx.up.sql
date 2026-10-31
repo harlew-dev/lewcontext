@@ -9,7 +9,7 @@ CREATE TABLE workspace_user (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  user_id bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  workspace_id bigint NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
- role text NOT NULL CHECK (role IN ('owner','admin','member')),
+ role text NOT NULL CHECK (role IN ('owner','admin','member','viewer')),
  created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE (workspace_id, user_id)
 );

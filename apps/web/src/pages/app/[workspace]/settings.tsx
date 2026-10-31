@@ -21,15 +21,17 @@ import { useApi } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { useAction } from "@/lib/use-action";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
-import { canManage, workspaceName, type Role } from "@/types/workspaces";
+import { can, workspaceName, type Role } from "@/types/workspaces";
 const roleBadges: Record<Role, { label: string; color: BadgeColor }> = {
   owner: { label: "Owner", color: "purple" },
   admin: { label: "Admin", color: "pink" },
   member: { label: "Member", color: "zinc" },
+  viewer: { label: "Viewer", color: "zinc" },
 };
 export default function WorkspaceSettings() {
   const workspace = useWorkspace();
   const role = roleBadges[workspace.role];
+  const canRename = can(workspace, "workspace.update");
   return (
     <div className="mx-auto max-w-4xl">
       <Heading>Workspace settings</Heading>
@@ -37,12 +39,12 @@ export default function WorkspaceSettings() {
       <SettingsSection
         title="General"
         description={
-          canManage(workspace.role)
+          canRename
             ? "The name everyone in this workspace sees."
             : "Only owners and admins can rename this workspace."
         }
       >
-        {canManage(workspace.role) ? (
+        {canRename ? (
           <RenameForm key={workspace.id} />
         ) : (
           <Field>

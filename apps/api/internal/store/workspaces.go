@@ -3,23 +3,9 @@ package store
 import (
 	"context"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 )
-
-// Workspace roles, from most to least access.
-const (
-	RoleOwner  = "owner"
-	RoleAdmin  = "admin"
-	RoleMember = "member"
-)
-
-var roleRank = map[string]int{RoleOwner: 3, RoleAdmin: 2, RoleMember: 1}
-
-// RoleAtLeast reports whether role grants at least min's access. Unknown roles
-// grant nothing.
-func RoleAtLeast(role, min string) bool {
-	return roleRank[role] > 0 && roleRank[role] >= roleRank[min]
-}
 
 // memberWorkspaces selects the workspaces userID belongs to, with their role.
 func (s *Store) memberWorkspaces(userID int64) *bun.SelectQuery {
@@ -51,19 +37,19 @@ func (s *Store) CreateWorkspace(ctx context.Context, userID int64, in WorkspaceI
 		if _, err := tx.NewInsert().Model(&w).Returning("*").Exec(ctx); err != nil {
 			return err
 		}
-		m := membership{UserID: userID, WorkspaceID: w.ID, Role: RoleOwner}
+		m := membership{UserID: userID, WorkspaceID: w.ID, Role: auth.RoleOwner}
 		if _, err := tx.NewInsert().Model(&m).Exec(ctx); err != nil {
 			return err
 		}
 		e := events.WorkspaceCreated{Workspace: w.PublicID, Name: w.Name}
 		return s.record(ctx, tx, e, EventScope{ActorID: userID, WorkspaceID: w.ID})
 	})
-	w.Role = RoleOwner
+	w.Role = auth.RoleOwner
 	return w, err
 }
 
 // RenameWorkspace updates a workspace's name and records workspace.renamed
-// when it changed. Callers check the member's role first; the returned
+// when it changed. Callers check the member's permission first; the returned
 // workspace has no Role.
 func (s *Store) RenameWorkspace(ctx context.Context, id int64, in WorkspaceInput) (Workspace, error) {
 	w := Workspace{Name: in.Name}

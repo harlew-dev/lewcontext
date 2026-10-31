@@ -41,7 +41,7 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 ## What to cover
 
 - **Validation:** table-driven unit tests for parsing (e.g. `TestPageRequest`, `TestProjectFilter`).
-- **Security boundaries:** 401 without a session, 403 without CSRF or with a bad Origin or too low a role, a non-member's 404 on every workspace route, another workspace's data returning 404 or empty results, and no numeric `id` in responses.
+- **Security boundaries:** 401 without a session, 403 without CSRF or with a bad Origin or a role without the permission, a non-member's 404 on every workspace route, another workspace's data returning 404 or empty results, and no numeric `id` in responses.
 - **Persistence:** results come back from the database, ordering is stable across pages, and filters combine.
 - Don't add tests that only mirror trivial code.
 
@@ -50,7 +50,9 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 | Test | Checks |
 | --- | --- |
 | `TestAuthenticationAndProjectIsolation` | Register (no workspace yet), public IDs, cookies, digests, CSRF, creating a workspace, cross-user and cross-workspace 404, old routes gone, rotation, logout, idle/expiry, session cap, account limit |
-| `TestWorkspaceList`, `TestWorkspaceMembershipAndRoles` | Newest-first paging, list isolation, roles on rename, members on projects, outsiders and malformed IDs 404, name validation |
+| `TestWorkspaceList`, `TestWorkspaceMembershipAndRoles` | Newest-first paging, list isolation, each role's `permissions` and `assignableRoles` in the show, list, rename and create responses, outsiders and malformed IDs 404, name validation |
+| `TestWorkspacePermissionMatrix` | Every workspace route × every role: allowed roles succeed, others 403, outsiders 404. Fails when a route is registered but missing from `workspaceRoutesMatrix` |
+| `TestWorkspaceMutationsNeedAPermission`, `TestRequirePermission`, `internal/auth` tests | An unguarded `ws` mutation panics; 403 for roles without the permission. The matrix: owner has every declared permission (read from the source), viewer none, each role a subset of the one above, `ParseRole`, `AssignableRoles` |
 | `TestAccountRateLimit`, `TestIPRateLimit` | 429 and `Retry-After` from pre-filled counters |
 | `TestPasswordReset*` (`password_reset_integration_test.go`) | Identical answers for known and unknown emails; the listener mails only real accounts and stores only the digest; check, reset, every session revoked, sign-in with the new password; a link works once (also under concurrency), dies on expiry, a newer request or a password change; malformed tokens; each reset limit (unknown emails count, 503 for everyone, a refused request spends no later limit); Origin and `MAIL_DRIVER=off` |
 | `internal/mail` tests | Every template renders; `<script>` and `<h1>` in a name come out escaped, `javascript:` links are filtered; bad recipients, unknown templates and wrong data send nothing; no `text/template`; the mailbox file is `0600` and appends; the listener (unknown email, digest matches the link, rerun replaces it, stale request dropped) |

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stubApi, type Reply } from "@/test/api";
 import { testSession } from "@/test/session";
+import { testWorkspace } from "@/test/workspace";
 import {
   guestLoader,
   onboardingLoader,
@@ -8,13 +9,7 @@ import {
   workspaceHomeLoader,
 } from "./loaders";
 const session = testSession();
-const workspace = {
-  id: "wsp_2yEHYLwiwPVhLW",
-  name: "Acme",
-  role: "owner",
-  createdAt: "",
-  updatedAt: "",
-};
+const workspace = testWorkspace();
 function list(...items: (typeof workspace)[]) {
   return {
     data: items,

@@ -452,7 +452,7 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
   ).toContainText("Bulk 22");
   expect(workspaceOf(page)).not.toBe(second);
 });
-test("other people's workspaces are not found until you're a member, then read-only for members", async ({
+test("other people's workspaces are not found until you're a member; members can't rename and viewers can't change anything", async ({
   page,
   browser,
 }) => {
@@ -508,6 +508,33 @@ test("other people's workspaces are not found until you're a member, then read-o
   await expect(page.getByText("Member", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByText("Shared plans")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New project" })).toBeVisible();
+  // Viewers read everything but can't change it, in the UI or the API.
+  sql(
+    `UPDATE workspace_user SET role = 'viewer' WHERE user_id = (SELECT id FROM users WHERE email = '${memberEmail}') AND workspace_id = (SELECT id FROM workspaces WHERE public_id = '${theirs}')`,
+  );
+  await page.reload();
+  await expect(page.getByText("Shared plans").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "New project" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("link", { name: "Shared plans" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Shared plans" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit project" })).toHaveCount(
+    0,
+  );
+  const refused = await page.request.post(
+    `/api/workspaces/${theirs}/projects`,
+    {
+      headers: await apiHeaders(page),
+      data: { name: "Nope", description: "", status: "Planned", color: "blue" },
+    },
+  );
+  expect(refused.status()).toBe(403);
+  await page.goto(`/app/${theirs}/settings`);
+  await expect(page.getByText("Viewer", { exact: true })).toBeVisible();
 });
 test("change password: checks the current one twice and signs out other sessions", async ({
   page,

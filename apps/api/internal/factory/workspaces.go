@@ -4,11 +4,9 @@ import (
 	"context"
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"time"
 )
-
-// The roles the API accepts (store/workspaces.go).
-var workspaceRoles = []string{"owner", "admin", "member"}
 
 type Workspace struct {
 	bun.BaseModel `bun:"table:workspaces,alias:w"`
@@ -25,7 +23,7 @@ type WorkspaceUser struct {
 	ID            int64 `bun:",pk,autoincrement"`
 	UserID        int64 `bun:",notnull"`
 	WorkspaceID   int64 `bun:",notnull"`
-	Role          string
+	Role          auth.Role
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
@@ -44,7 +42,7 @@ var Workspaces = Define(func(f *gofakeit.Faker) Workspace {
 // WorkspaceUsers builds memberships with a random role. Set UserID and
 // WorkspaceID, or use MemberOf.
 var WorkspaceUsers = Define(func(f *gofakeit.Faker) WorkspaceUser {
-	return WorkspaceUser{Role: f.RandomString(workspaceRoles)}
+	return WorkspaceUser{Role: auth.Roles[f.IntN(len(auth.Roles))]}
 })
 
 // WorkspaceFor creates a workspace owned by a user, as the API does when the
@@ -58,12 +56,12 @@ func WorkspaceFor(ctx context.Context, db bun.IDB, f *gofakeit.Faker, userID int
 	if err != nil {
 		return Workspace{}, err
 	}
-	_, err = MemberOf(ctx, db, f, userID, workspace.ID, "owner")
+	_, err = MemberOf(ctx, db, f, userID, workspace.ID, auth.RoleOwner)
 	return workspace, err
 }
 
 // MemberOf adds a user to a workspace with a role.
-func MemberOf(ctx context.Context, db bun.IDB, f *gofakeit.Faker, userID, workspaceID int64, role string) (WorkspaceUser, error) {
+func MemberOf(ctx context.Context, db bun.IDB, f *gofakeit.Faker, userID, workspaceID int64, role auth.Role) (WorkspaceUser, error) {
 	return WorkspaceUsers.State(func(m *WorkspaceUser) {
 		m.UserID, m.WorkspaceID, m.Role = userID, workspaceID, role
 	}).CreateOne(ctx, db, f)

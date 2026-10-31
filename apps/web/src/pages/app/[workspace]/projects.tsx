@@ -25,6 +25,7 @@ import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
+import { can } from "@/types/workspaces";
 import {
   statuses,
   type ProjectQuery,
@@ -50,6 +51,7 @@ export default function Projects() {
     if (created) navigate({});
   });
   const filtered = Boolean(query.q) || query.status !== "all";
+  const canCreate = can(workspace, "project.store");
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -80,10 +82,12 @@ export default function Projects() {
             refreshing={list.refreshing}
             onRefresh={list.refresh}
           />
-          <Button onClick={() => editor.setDialog("new")}>
-            <PlusIcon />
-            New project
-          </Button>
+          {canCreate && (
+            <Button onClick={() => editor.setDialog("new")}>
+              <PlusIcon />
+              New project
+            </Button>
+          )}
         </div>
       </div>
       <ProjectNotices error={list.error} onRetry={list.refresh} />
@@ -106,7 +110,7 @@ export default function Projects() {
         empty={
           <ProjectEmptyState
             filtered={filtered}
-            onCreate={() => editor.setDialog("new")}
+            onCreate={canCreate ? () => editor.setDialog("new") : undefined}
           />
         }
       />

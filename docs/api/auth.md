@@ -73,23 +73,30 @@ Sign-ups, login attempts (with the email typed and the connection IP), sign-ins,
 
 ## Workspaces and roles
 
-Data belongs to workspaces; users reach a workspace through a `workspace_user` row with a role.
+Data belongs to workspaces; users reach a workspace through a `workspace_user` row with a role: `owner`, `admin`, `member` or `viewer`. What each role may do is a list of named permissions, `<resource>.<action>` after the route's CRUD action, granted in one table (`grants` in `internal/auth/permissions.go`):
 
-| Action | owner | admin | member |
-| --- | --- | --- | --- |
-| View the workspace and its projects | ✓ | ✓ | ✓ |
-| Create and edit projects | ✓ | ✓ | ✓ |
-| View workspace settings | ✓ | ✓ | ✓ (read-only) |
-| Rename the workspace | ✓ | ✓ | |
+| Permission | owner | admin | member | viewer | Guards |
+| --- | --- | --- | --- | --- | --- |
+| *(membership)* | ✓ | ✓ | ✓ | ✓ | `GET` the workspace and its projects |
+| `workspace.update` | ✓ | ✓ | | | `PATCH /workspaces/{ws}` |
+| `workspace.destroy` | ✓ | | | | no endpoint yet |
+| `workspace.invitation.index` / `.store` / `.destroy` | ✓ | ✓ | | | no endpoints yet (invitations) |
+| `workspace.member.index` / `.update` / `.destroy` | ✓ | ✓ | | | no endpoints yet (members) |
+| `project.store` | ✓ | ✓ | ✓ | | `POST …/projects` |
+| `project.update` | ✓ | ✓ | ✓ | | `PATCH …/projects/{prj}` |
+| `project.destroy` | ✓ | ✓ | | | no endpoint yet |
+
+A viewer reads everything except the member and invitation lists (which hold other people's emails) and changes nothing. For actions on another person's role, `Role.AssignableRoles()` also says which roles may be targeted: an owner any role, an admin only `member` and `viewer` (so only owners create admins or touch owners), others none. An action on a member will need the permission and the target's current (and new) role in that list.
 
 - **`requireWorkspace`** (after `requireSession`) checks the `{workspace}` ID's shape, then loads it through the session user's membership in one query. A non-member, a missing workspace and a malformed ID all get the same 404, so workspace IDs can't be probed. The workspace and role go in the request context (`currentWorkspace(r)`).
-- **`requireRole(min, …)`** refuses lower roles with 403 (`store.RoleAtLeast`). The web app hides controls by role, but the API is what enforces it.
+- **`ws.Can(method, path, permission, handler)`** registers a workspace route behind `requirePermission`, which answers 403 when `currentWorkspace(r).Role.Can(permission)` is false. The `ws` group panics at startup on any other mutation (`Handle` with a method other than GET or HEAD), so a mutation can't ship without naming its permission; one every member may do names `auth.AnyMember`. Unknown roles grant nothing.
+- The workspace response carries `permissions` and `assignableRoles`, computed from the role, and the web app hides controls with `can(workspace, permission)` instead of keeping its own copy of the rules. The API is what enforces them.
 - Creating a workspace makes the creator its `owner`, in the same transaction. Invites, member management, ownership transfer and deleting workspaces are not implemented.
 - Public IDs are unguessable (about 83 random bits), but access never depends on that: every workspace route checks membership.
 
 ## Protecting a new endpoint
 
-Register workspace routes on the `ws` group in `routes.go`, which applies `requireSession` and `requireWorkspace`; add `requireRole` when only some roles may act. Account routes use `requireSession`. Read the user from `current(r).User.ID` and the workspace from `currentWorkspace(r).ID`, never from the request, and pass them into every store query.
+Register workspace routes in `workspaceRoutes` in `routes.go` (the `ws` group applies `requireSession` and `requireWorkspace`): reads with `ws.HandleFunc("GET", …)`, every mutation with `ws.Can(…, auth.<Permission>, …)`. A new permission goes in `internal/auth/permissions.go` (constant and `grants`) and in `permissions` in `apps/web/src/types/workspaces.ts`; tests check both. Add the route to the permission matrix (`workspaceRoutesMatrix`). Account routes use `requireSession`. Read the user from `current(r).User.ID` and the workspace from `currentWorkspace(r).ID`, never from the request, and pass them into every store query.
 
 ## Not implemented
 

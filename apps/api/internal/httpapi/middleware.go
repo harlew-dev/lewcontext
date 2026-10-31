@@ -172,11 +172,11 @@ func (s *Server) requireWorkspace(next http.Handler) http.Handler {
 	})
 }
 
-// requireRole runs after requireWorkspace and refuses members whose role is
-// below min.
-func requireRole(min string, next http.Handler) http.Handler {
+// requirePermission runs after requireWorkspace and refuses members whose
+// role doesn't grant p (auth/permissions.go).
+func requirePermission(p auth.Permission, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !store.RoleAtLeast(currentWorkspace(r).Role, min) {
+		if !currentWorkspace(r).Role.Can(p) {
 			fail(w, 403, "You don’t have permission to do that in this workspace.")
 			return
 		}

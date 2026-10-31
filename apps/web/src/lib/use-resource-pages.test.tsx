@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testSession } from "@/test/session";
+import { testWorkspace } from "@/test/workspace";
 import type { Workspace } from "@/types/workspaces";
 import { paths } from "./api";
 import type { Page } from "./pagination";
@@ -28,13 +29,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 function workspace(n: number): Workspace {
   const id = `wsp_${String(n).padStart(14, "0")}`;
-  return {
-    id,
-    name: `Workspace ${n}`,
-    role: "owner",
-    createdAt: "",
-    updatedAt: "",
-  };
+  return testWorkspace("owner", { id, name: `Workspace ${n}` });
 }
 // Two pages of two: 1, 2 | 3, 4.
 function page(current: number, ...items: number[]): Page<Workspace> {

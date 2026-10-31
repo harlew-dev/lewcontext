@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/store"
@@ -84,16 +85,6 @@ func TestWorkspaceValidation(t *testing.T) {
 		t.Fatal("80-character name rejected")
 	}
 }
-func TestRoleAtLeast(t *testing.T) {
-	for _, tc := range []struct {
-		role, min string
-		want      bool
-	}{{"owner", "admin", true}, {"admin", "admin", true}, {"member", "admin", false}, {"member", "member", true}, {"", "member", false}, {"root", "member", false}} {
-		if got := store.RoleAtLeast(tc.role, tc.min); got != tc.want {
-			t.Errorf("RoleAtLeast(%q, %q) = %v", tc.role, tc.min, got)
-		}
-	}
-}
 
 // Fake data has to be data the API would accept, or tests exercise states
 // real users can't reach.
@@ -112,7 +103,7 @@ func TestFactoriesMatchValidation(t *testing.T) {
 		}
 	}
 	for _, m := range factory.WorkspaceUsers.Make(f, 50) {
-		if !store.RoleAtLeast(m.Role, store.RoleMember) {
+		if _, ok := auth.ParseRole(string(m.Role)); !ok {
 			t.Fatalf("fake membership has an unknown role: %+v", m)
 		}
 	}

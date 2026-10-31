@@ -9,7 +9,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `users` | Accounts (`password_hash` never leaves the store) | `User` (+ unexported `account` with the hash) |
 | `sessions` | Session token digests, CSRF tokens, expiry | unexported `sessionRecord` |
 | `workspaces` | Workspaces (name) | `Workspace` (+ the member's `Role`, read from `workspace_user`) |
-| `workspace_user` | Memberships: user, workspace, `role` (`owner`, `admin`, `member`); unique per pair | unexported `membership` |
+| `workspace_user` | Memberships: user, workspace, `role` (`owner`, `admin`, `member`, `viewer`; `auth.Role`); unique per pair | unexported `membership` |
 | `projects` | Projects in a workspace (`ON DELETE CASCADE`) | `Project` |
 | `auth_attempts` | Rate-limit counters, keyed `<limit name>:<digest>` ([auth.md](auth.md#rate-limits)) | unexported `authAttempt` |
 | `password_resets` | One live reset link per user: the token's SHA-256 digest and `expires_at`; deleted when used, replaced, or the password changes | unexported `passwordReset` |

@@ -24,6 +24,7 @@ import { useResource } from "@/lib/use-resource";
 import { formatDate } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 import type { Project } from "@/types/projects";
+import { can } from "@/types/workspaces";
 // Only well-formed project IDs reach the API; anything else, and a project
 // that doesn't exist in this workspace, shows "not found" inside the layout.
 export default function ProjectPage() {
@@ -49,7 +50,11 @@ function ProjectContent({ id }: { id: string }) {
       {project.data ? (
         <ProjectDetails
           project={project.data}
-          onEdit={() => project.data && editor.setDialog(project.data)}
+          onEdit={
+            can(workspace, "project.update")
+              ? () => project.data && editor.setDialog(project.data)
+              : undefined
+          }
         />
       ) : (
         project.loading && <ListSkeleton label="Loading project" rows={1} />
@@ -58,12 +63,13 @@ function ProjectContent({ id }: { id: string }) {
     </>
   );
 }
+// Without onEdit (members who can't edit projects) there's no Edit button.
 function ProjectDetails({
   project,
   onEdit,
 }: {
   project: Project;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <>
@@ -80,10 +86,12 @@ function ProjectDetails({
             </Text>
           </div>
         </div>
-        <Button outline onClick={onEdit}>
-          <PencilSquareIcon />
-          Edit project
-        </Button>
+        {onEdit && (
+          <Button outline onClick={onEdit}>
+            <PencilSquareIcon />
+            Edit project
+          </Button>
+        )}
       </div>
       <div className="mt-12">
         <Subheading>Details</Subheading>

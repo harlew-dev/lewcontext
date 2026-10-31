@@ -7,16 +7,11 @@ import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
-import type { Role, Workspace } from "@/types/workspaces";
+import { testWorkspace } from "@/test/workspace";
+import type { Role } from "@/types/workspaces";
 const session = testSession();
 function renderAs(role: Role) {
-  const workspace: Workspace = {
-    id: "wsp_2yEHYLwiwPVhLW",
-    name: "Acme",
-    role,
-    createdAt: "",
-    updatedAt: "",
-  };
+  const workspace = testWorkspace(role);
   const first = {
     data: [workspace],
     pages: { current: 1, total: 1, perPage: 20, items: 1 },
@@ -50,26 +45,31 @@ describe("workspace settings", () => {
     expect(rename.body).toEqual({ name: "Acme Inc" });
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
-  it("shows members the name, locked, without a form", () => {
-    renderAs("member");
-    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-    const name = screen.getByLabelText("Name");
-    expect(name).toHaveValue("Acme");
-    expect(name).toHaveAttribute("readonly");
-    expect(name).not.toBeDisabled();
-    expect(
-      screen.getByRole("img", {
-        name: "Only owners and admins can rename this",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", { name: "Workspace IDs can’t be changed" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Only owners and admins can rename this workspace."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Member")).toBeInTheDocument();
-  });
+  it.each(["member", "viewer"] as const)(
+    "shows a %s the name, locked, without a form",
+    (role) => {
+      renderAs(role);
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+      const name = screen.getByLabelText("Name");
+      expect(name).toHaveValue("Acme");
+      expect(name).toHaveAttribute("readonly");
+      expect(name).not.toBeDisabled();
+      expect(
+        screen.getByRole("img", {
+          name: "Only owners and admins can rename this",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: "Workspace IDs can’t be changed" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Only owners and admins can rename this workspace."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(role === "member" ? "Member" : "Viewer"),
+      ).toBeInTheDocument();
+    },
+  );
   it("copies the workspace ID and announces it", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });

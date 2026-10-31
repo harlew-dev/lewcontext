@@ -34,7 +34,7 @@ security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
   → mux (routes.go)
   → requireSession (cookie → session, CSRF on mutations) for private routes
   → requireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
-  → requireRole (403 below the needed role) where only some roles may act
+  → requirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
   → handler (parse + validate) → store (query scoped by workspace ID) → jsonResponse
 ```
 

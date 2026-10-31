@@ -1,7 +1,8 @@
 package httpapi
 
 import (
-	"lewcontext/api/internal/store"
+	"fmt"
+	"lewcontext/api/internal/auth"
 	"net/http"
 	"strings"
 )
@@ -42,14 +43,21 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.Handle("POST /api/workspaces", s.requireSession(http.HandlerFunc(s.createWorkspace)))
 
 	// Everything inside a workspace requires a session and membership.
-	ws := group(mux, "/api/workspaces/{workspace}", s.requireSession, s.requireWorkspace)
-	ws.HandleFunc("GET", "", s.workspace)
-	ws.Handle("PATCH", "", requireRole(store.RoleAdmin, http.HandlerFunc(s.updateWorkspace)))
-	ws.HandleFunc("GET", "/projects", s.projects)
-	ws.HandleFunc("POST", "/projects", s.createProject)
-	ws.HandleFunc("GET", "/projects/{project}", s.project)
-	ws.HandleFunc("PATCH", "/projects/{project}", s.updateProject)
+	s.workspaceRoutes(group(mux, "/api/workspaces/{workspace}", s.requireSession, s.requireWorkspace))
 	return mux
+}
+
+// workspaceRoutes are the routes inside a workspace. Reading needs only
+// membership; every mutation is registered with Can and names the permission
+// it needs (auth/permissions.go), or the server won't start.
+func (s *Server) workspaceRoutes(ws routeGroup) {
+	ws.requirePermissions = true
+	ws.HandleFunc("GET", "", s.workspace)
+	ws.Can("PATCH", "", auth.WorkspaceUpdate, s.updateWorkspace)
+	ws.HandleFunc("GET", "/projects", s.projects)
+	ws.Can("POST", "/projects", auth.ProjectStore, s.createProject)
+	ws.HandleFunc("GET", "/projects/{project}", s.project)
+	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, s.updateProject)
 }
 
 // pageRoutes serve the built web app (internal/web) for every other GET.
@@ -80,6 +88,11 @@ type routeGroup struct {
 	mux        *http.ServeMux
 	prefix     string
 	middleware []func(http.Handler) http.Handler
+	// requirePermissions makes Handle refuse anything but GET and HEAD, so
+	// each mutation has to be registered with Can.
+	requirePermissions bool
+	// registered collects each pattern, when set (the permission matrix test).
+	registered *[]string
 }
 
 // group starts a route group; the first middleware runs first.
@@ -87,10 +100,26 @@ func group(mux *http.ServeMux, prefix string, middleware ...func(http.Handler) h
 	return routeGroup{mux: mux, prefix: prefix, middleware: middleware}
 }
 func (g routeGroup) Handle(method, path string, h http.Handler) {
+	if g.requirePermissions && method != "GET" && method != "HEAD" {
+		panic(fmt.Sprintf("%s %s%s: register it with Can and the permission it needs", method, g.prefix, path))
+	}
+	g.handle(method, path, h)
+}
+
+// Can registers a route only members whose role grants p may use; others get
+// 403. auth.AnyMember allows every member.
+func (g routeGroup) Can(method, path string, p auth.Permission, h http.HandlerFunc) {
+	g.handle(method, path, requirePermission(p, h))
+}
+func (g routeGroup) handle(method, path string, h http.Handler) {
 	for i := len(g.middleware) - 1; i >= 0; i-- {
 		h = g.middleware[i](h)
 	}
-	g.mux.Handle(method+" "+g.prefix+path, h)
+	pattern := method + " " + g.prefix + path
+	if g.registered != nil {
+		*g.registered = append(*g.registered, pattern)
+	}
+	g.mux.Handle(pattern, h)
 }
 func (g routeGroup) HandleFunc(method, path string, h http.HandlerFunc) {
 	g.Handle(method, path, h)

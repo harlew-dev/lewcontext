@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -45,7 +46,7 @@ func TestWorkspaceList(t *testing.T) {
 	if first.Pages != (store.Pages{Current: 1, Total: 2, PerPage: 20, Items: 25}) {
 		t.Fatalf("pages: %+v", first.Pages)
 	}
-	if first.Data[0].Name != "Workspace 24" || first.Data[19].Name != "Workspace 05" || first.Data[0].Role != store.RoleOwner {
+	if first.Data[0].Name != "Workspace 24" || first.Data[19].Name != "Workspace 05" || first.Data[0].Role != auth.RoleOwner {
 		t.Fatalf("not newest first: %+v", first.Data[0])
 	}
 	second := listWorkspaces(t, h, session.Cookie(), "page=2")
@@ -65,6 +66,18 @@ func TestWorkspaceList(t *testing.T) {
 	}
 	call(t, h, "GET", "/api/workspaces", "", "", nil, 401)
 }
+
+// workspaceAccess is the permissions part of a workspace response.
+type workspaceAccess struct {
+	Role            auth.Role         `json:"role"`
+	Permissions     []auth.Permission `json:"permissions"`
+	AssignableRoles []auth.Role       `json:"assignableRoles"`
+}
+
+// sameAccess reports whether a response carries what role allows.
+func sameAccess(got workspaceAccess, role auth.Role) bool {
+	return got.Role == role && slices.Equal(got.Permissions, role.Permissions()) && slices.Equal(got.AssignableRoles, role.AssignableRoles()) && got.Permissions != nil && got.AssignableRoles != nil
+}
 func TestWorkspaceMembershipAndRoles(t *testing.T) {
 	s, db := integrationServer(t)
 	h := s.Routes()
@@ -73,40 +86,44 @@ func TestWorkspaceMembershipAndRoles(t *testing.T) {
 	owner := signedIn(t, db, f)
 	workspace := ownedWorkspace(t, db, f, owner.UserID)
 	path := workspacePath(workspace.PublicID, "")
-	join := func(role string) factory.Session {
+	join := func(role auth.Role) factory.Session {
 		session := signedIn(t, db, f)
 		must(factory.MemberOf(ctx, db, f, session.UserID, workspace.ID, role))(t)
 		return session
 	}
-	admin, member, outsider := join(store.RoleAdmin), join(store.RoleMember), signedIn(t, db, f)
+	admin, member, viewer, outsider := join(auth.RoleAdmin), join(auth.RoleMember), join(auth.RoleViewer), signedIn(t, db, f)
+	sessions := map[auth.Role]factory.Session{auth.RoleOwner: owner, auth.RoleAdmin: admin, auth.RoleMember: member, auth.RoleViewer: viewer}
 
-	t.Run("members see the workspace with their role", func(t *testing.T) {
-		for session, role := range map[*factory.Session]string{&owner: "owner", &admin: "admin", &member: "member"} {
+	t.Run("members see the workspace with their role and permissions", func(t *testing.T) {
+		for role, session := range sessions {
+			body := call(t, h, "GET", path, "", "", session.Cookie(), 200).Body.Bytes()
 			var got store.Workspace
-			_ = json.Unmarshal(call(t, h, "GET", path, "", "", session.Cookie(), 200).Body.Bytes(), &got)
-			if got.PublicID != workspace.PublicID || got.Name != workspace.Name || got.Role != role {
-				t.Fatalf("%s sees %+v", role, got)
+			var access workspaceAccess
+			_ = json.Unmarshal(body, &got)
+			_ = json.Unmarshal(body, &access)
+			if got.PublicID != workspace.PublicID || got.Name != workspace.Name || !sameAccess(access, role) {
+				t.Fatalf("%s sees %s", role, body)
+			}
+			var list struct{ Data []workspaceAccess }
+			_ = json.Unmarshal(call(t, h, "GET", "/api/workspaces", "", "", session.Cookie(), 200).Body.Bytes(), &list)
+			if len(list.Data) != 1 || !sameAccess(list.Data[0], role) {
+				t.Fatalf("%s's list: %+v", role, list.Data)
 			}
 		}
 	})
-	t.Run("only owners and admins rename", func(t *testing.T) {
-		call(t, h, "PATCH", path, `{"name":"By member"}`, member.CSRFToken, member.Cookie(), 403)
+	t.Run("owners and admins rename", func(t *testing.T) {
+		body := call(t, h, "PATCH", path, `{"name":" By admin "}`, admin.CSRFToken, admin.Cookie(), 200).Body.Bytes()
 		var renamed store.Workspace
-		_ = json.Unmarshal(call(t, h, "PATCH", path, `{"name":" By admin "}`, admin.CSRFToken, admin.Cookie(), 200).Body.Bytes(), &renamed)
-		if renamed.Name != "By admin" || renamed.Role != store.RoleAdmin || renamed.PublicID != workspace.PublicID {
-			t.Fatalf("rename: %+v", renamed)
+		var access workspaceAccess
+		_ = json.Unmarshal(body, &renamed)
+		_ = json.Unmarshal(body, &access)
+		if renamed.Name != "By admin" || renamed.PublicID != workspace.PublicID || !sameAccess(access, auth.RoleAdmin) {
+			t.Fatalf("rename: %s", body)
 		}
-		call(t, h, "PATCH", path, `{"name":"By owner"}`, owner.CSRFToken, owner.Cookie(), 200)
 		for _, body := range []string{`{"name":""}`, `{"name":"   "}`, fmt.Sprintf(`{"name":%q}`, strings.Repeat("x", 81)), `{"name":"a\u0000b"}`} {
 			call(t, h, "PATCH", path, body, owner.CSRFToken, owner.Cookie(), 422)
 		}
 		call(t, h, "PATCH", path, `{"name":"x","role":"owner"}`, owner.CSRFToken, owner.Cookie(), 400)
-	})
-	t.Run("every member can work on projects", func(t *testing.T) {
-		body := `{"name":"Shared","description":"","status":"Planned","color":"blue"}`
-		var project store.Project
-		_ = json.Unmarshal(call(t, h, "POST", path+"/projects", body, member.CSRFToken, member.Cookie(), 201).Body.Bytes(), &project)
-		call(t, h, "GET", path+"/projects/"+project.PublicID, "", "", admin.Cookie(), 200)
 	})
 	t.Run("outsiders and malformed IDs get 404", func(t *testing.T) {
 		call(t, h, "GET", path, "", "", outsider.Cookie(), 404)
@@ -117,8 +134,86 @@ func TestWorkspaceMembershipAndRoles(t *testing.T) {
 		}
 		call(t, h, "GET", path, "", "", nil, 401)
 	})
-	t.Run("creating validates the name", func(t *testing.T) {
+	t.Run("creating validates the name and makes you its owner", func(t *testing.T) {
 		call(t, h, "POST", "/api/workspaces", `{"name":""}`, owner.CSRFToken, owner.Cookie(), 422)
 		call(t, h, "POST", "/api/workspaces", `{"name":"Fine","id":"wsp_00000000000000"}`, owner.CSRFToken, owner.Cookie(), 400)
+		body := call(t, h, "POST", "/api/workspaces", `{"name":"Fine"}`, viewer.CSRFToken, viewer.Cookie(), 201).Body.Bytes()
+		var access workspaceAccess
+		_ = json.Unmarshal(body, &access)
+		if !sameAccess(access, auth.RoleOwner) {
+			t.Fatalf("created: %s", body)
+		}
 	})
+}
+
+// workspaceRoute is one row of the permission matrix: a route inside a
+// workspace, a request to it, and the roles allowed to use it.
+type workspaceRoute struct {
+	pattern string
+	path    string // after /api/workspaces/{workspace}
+	body    string
+	ok      int
+	allowed []auth.Role // nil: every member
+}
+
+// Every route inside a workspace, for every role: allowed roles get the
+// route's status, refused roles 403 and outsiders 404. A new workspace route
+// fails TestWorkspacePermissionMatrix until it has a row here.
+func workspaceRoutesMatrix(projectID string) []workspaceRoute {
+	project := `{"name":"Matrix","description":"","status":"Planned","color":"blue"}`
+	owners := []auth.Role{auth.RoleOwner, auth.RoleAdmin}
+	editors := []auth.Role{auth.RoleOwner, auth.RoleAdmin, auth.RoleMember}
+	return []workspaceRoute{
+		{"GET /api/workspaces/{workspace}", "", "", 200, nil},
+		{"PATCH /api/workspaces/{workspace}", "", `{"name":"Renamed"}`, 200, owners},
+		{"GET /api/workspaces/{workspace}/projects", "/projects", "", 200, nil},
+		{"POST /api/workspaces/{workspace}/projects", "/projects", project, 201, editors},
+		{"GET /api/workspaces/{workspace}/projects/{project}", "/projects/" + projectID, "", 200, nil},
+		{"PATCH /api/workspaces/{workspace}/projects/{project}", "/projects/" + projectID, project, 200, editors},
+	}
+}
+func TestWorkspacePermissionMatrix(t *testing.T) {
+	s, db := integrationServer(t)
+	h := s.Routes()
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	owner := signedIn(t, db, f)
+	workspace := ownedWorkspace(t, db, f, owner.UserID)
+	project := must(factory.ProjectsIn(workspace.ID).CreateOne(ctx, db, f))(t)
+	sessions := map[auth.Role]factory.Session{auth.RoleOwner: owner}
+	for _, role := range auth.Roles[1:] {
+		sessions[role] = signedIn(t, db, f)
+		must(factory.MemberOf(ctx, db, f, sessions[role].UserID, workspace.ID, role))(t)
+	}
+	outsider := signedIn(t, db, f)
+	matrix := workspaceRoutesMatrix(project.PublicID)
+
+	var registered, listed []string
+	s.workspaceRoutes(routeGroup{mux: http.NewServeMux(), prefix: "/api/workspaces/{workspace}", registered: &registered})
+	for _, route := range matrix {
+		listed = append(listed, route.pattern)
+	}
+	slices.Sort(registered)
+	slices.Sort(listed)
+	if !slices.Equal(registered, listed) {
+		t.Fatalf("workspace routes %v, matrix lists %v", registered, listed)
+	}
+
+	for _, route := range matrix {
+		method, _, _ := strings.Cut(route.pattern, " ")
+		path := workspacePath(workspace.PublicID, route.path)
+		for _, role := range auth.Roles {
+			want := 403
+			if route.allowed == nil || slices.Contains(route.allowed, role) {
+				want = route.ok
+			}
+			session := sessions[role]
+			t.Run(route.pattern+" as "+string(role), func(t *testing.T) {
+				call(t, h, method, path, route.body, session.CSRFToken, session.Cookie(), want)
+			})
+		}
+		t.Run(route.pattern+" as an outsider", func(t *testing.T) {
+			call(t, h, method, path, route.body, outsider.CSRFToken, outsider.Cookie(), 404)
+		})
+	}
 }

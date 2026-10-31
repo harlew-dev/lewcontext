@@ -30,7 +30,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process) |
 | `Sessions` | `Session` | Real random token, only the digest stored; `Cookie()`, `CSRFToken`. Needs `UserID`; use `SessionFor` |
 | `Workspaces` | `Workspace` | Fake company names (≤ 80 characters), created in the last year. Use `WorkspaceFor` to add an owner |
-| `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role. Needs `UserID` and `WorkspaceID`; use `MemberOf` |
+| `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role (any of `auth.Roles`, viewers included). Needs `UserID` and `WorkspaceID`; use `MemberOf` |
 | `Projects` | `Project` | Valid name, description, status and color; created in the last 90 days. Needs `WorkspaceID`; use `ProjectsIn` |
 | `AuthAttempts` | `AuthAttempt` | Counter in the current 15-minute window, keyed like the IP limiter |
 | `Events` | `Event` | `auth.rate_limited` events from the last 90 days (no other records needed); set `UserID`/`WorkspaceID` with a state. Seeders don't create events: fake history would be misleading |

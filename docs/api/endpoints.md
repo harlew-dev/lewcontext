@@ -16,16 +16,16 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/auth/password-reset` | Origin, JSON, reset rate limits | 202 for every valid `{email}`, whether or not an account uses it; the link is sent later by a listener. 422 with `field: "email"` for a malformed address, 429 per IP or email, 503 when the limit for everyone is reached or `MAIL_DRIVER=off` ([auth.md](auth.md#password-reset-by-link)) |
 | POST | `/api/auth/password-reset/check` | Origin, JSON, rate limit | 204 if `{token}` is a live reset link; 422 with `field: "token"` if not |
 | PUT | `/api/auth/password-reset` | Origin, JSON, rate limit | 200 `{email}` after setting `newPassword` with a live `token`; every session revoked, nobody signed in. 422 with `field` (`token` or `newPassword`) when refused |
-| GET | `/api/workspaces` | Session | One page of your workspaces with your role, newest first ([pagination.md](pagination.md)) |
+| GET | `/api/workspaces` | Session | One page of your workspaces with your role and permissions, newest first ([pagination.md](pagination.md)) |
 | POST | `/api/workspaces` | Session, CSRF, Origin | 201 with the created workspace; you are its `owner` |
-| GET | `/api/workspaces/{workspace}` | Member | The workspace with your role |
-| PATCH | `/api/workspaces/{workspace}` | Admin or owner, CSRF, Origin | 200 with the renamed workspace; 403 for members |
+| GET | `/api/workspaces/{workspace}` | Member | The workspace with your role and permissions |
+| PATCH | `/api/workspaces/{workspace}` | `workspace.update`, CSRF, Origin | 200 with the renamed workspace; 403 for members and viewers |
 | GET | `/api/workspaces/{workspace}/projects` | Member | One page of the workspace's projects ([pagination.md](pagination.md)) |
-| POST | `/api/workspaces/{workspace}/projects` | Member, CSRF, Origin | 201 with the created project |
+| POST | `/api/workspaces/{workspace}/projects` | `project.store`, CSRF, Origin | 201 with the created project; 403 for viewers |
 | GET | `/api/workspaces/{workspace}/projects/{project}` | Member | The project, or 404 |
-| PATCH | `/api/workspaces/{workspace}/projects/{project}` | Member, CSRF, Origin | 200 with the updated project, or 404 |
+| PATCH | `/api/workspaces/{workspace}/projects/{project}` | `project.update`, CSRF, Origin | 200 with the updated project, or 404; 403 for viewers |
 
-"Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST and PATCH. "Member" means a session plus a `workspace_user` row for that workspace ([auth.md](auth.md#workspaces-and-roles)).
+"Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST and PATCH. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
 
 ## IDs
 
@@ -34,12 +34,15 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 ## Workspaces
 
 ```json
-{ "id": "wsp_2yEHYLwiwPVhLW", "name": "Acme", "role": "owner",
+{ "id": "wsp_2yEHYLwiwPVhLW", "name": "Acme", "role": "admin",
+  "permissions": ["project.destroy", "project.store", "project.update", "workspace.invitation.destroy", "…"],
+  "assignableRoles": ["member", "viewer"],
   "createdAt": "2026-10-30T12:00:00Z", "updatedAt": "2026-10-30T12:00:00Z" }
 ```
 
 - **Body for POST/PATCH:** `name` (trimmed, 1–80 characters, no control characters). Unknown fields, such as `id` or `role`, are rejected.
 - **Membership:** the `{workspace}` routes go through `requireWorkspace`, which looks the workspace up through your membership. Another user's workspace, a missing one and a malformed ID all get the same 404.
+- **`permissions`** (sorted) and **`assignableRoles`** (most access first) come from your role, at no query cost, in every workspace response including the list. Empty lists for a viewer, never `null`.
 - **The list** takes `page` and `perPage` only (no search or sort). A new account has none; the web app's onboarding creates the first.
 
 ## Projects
@@ -59,7 +62,7 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 | --- | --- |
 | 400 | Malformed JSON or query parameters |
 | 401 | No session, expired session, or wrong sign-in credentials (a wrong *current* password while signed in is 422) |
-| 403 | Bad Origin or CSRF token, or a role that can't do this |
+| 403 | Bad Origin or CSRF token, or a role without the permission |
 | 404 | Not found, not yours, or a malformed ID |
 | 409 | Email already registered (generic message) |
 | 415 | Mutation without JSON content type |
@@ -70,6 +73,6 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 ## Adding an endpoint
 
 1. Handler and validation in `httpapi` (one file per resource), query in `store` taking the workspace's internal ID (`currentWorkspace(r).ID`).
-2. Register it in `routes.go`: workspace data goes on the `ws` group (`requireSession` and `requireWorkspace`), adding `requireRole` when only some roles may do it; account-level routes use `requireSession`.
-3. Integration tests for success, validation, 401, a non-member (404), another workspace's data (404 or empty), and each role that is refused (403).
+2. Register it in `routes.go`: workspace routes go in `workspaceRoutes` (`requireSession` and `requireWorkspace`), mutations with `ws.Can(…, auth.<Permission>, …)` ([auth.md](auth.md#protecting-a-new-endpoint)); account-level routes use `requireSession`.
+3. Integration tests for success, validation, 401, a non-member (404), another workspace's data (404 or empty), and a row in the role × route matrix (`workspaceRoutesMatrix`).
 4. Add it to this table.

@@ -16,9 +16,9 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | `/app/onboarding` | `pages/app/onboarding.tsx` | Signed in without a workspace: create the first one (`AuthLayout`) |
 | `/app/settings` | `pages/app/settings.tsx` | Account & security (per user) |
 | `/app/wsp_…/dashboard` | `pages/app/[workspace]/dashboard.tsx` | |
-| `/app/wsp_…/projects` | `pages/app/[workspace]/projects.tsx` | |
-| `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | |
-| `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (owners and admins), copy the ID, your role |
+| `/app/wsp_…/projects` | `pages/app/[workspace]/projects.tsx` | New project only with `project.store` |
+| `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | Edit project only with `project.update` |
+| `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (`workspace.update`), copy the ID, your role |
 | anything else | `pages/not-found.tsx` | Go answers it with status 404 |
 
 `app/settings` and `app/onboarding` are fixed segments, so React Router ranks them above `app/:workspace/...`, and workspace IDs always start with `wsp_`, so they can't collide. There are no redirects from older URLs (`/app/dashboard`, `/app/projects/42`, `/login`).
@@ -68,7 +68,7 @@ The layout route puts the loaded session in `SessionProvider` (`lib/session.tsx`
 | `useIsGuest()` | `true` when signed out | Guest UI under a `SessionProvider` |
 | `useOptionalSession()` | `Session \| null` | Hooks that work everywhere |
 | `useRenewSession()` | `(session) => void`: replaces the loaded session | After the API rotates the session (changing the password), so later requests send the new CSRF token |
-| `useWorkspace()` | `Workspace` with `role`; throws outside signed-in pages | Paths and links (`workspace.id`), the name, role checks (`canManage(role)`) |
+| `useWorkspace()` | `Workspace` with `role`, `permissions` and `assignableRoles`; throws outside signed-in pages | Paths and links (`workspace.id`), the name, hiding what the API would refuse (`can(workspace, "project.store")`) |
 | `useWorkspaceList()` | All the member's workspaces, a page at a time | The switcher ([pagination.md](pagination.md#infinite-lists)) |
 | `useRefreshWorkspaces()` | `(id?) => void`: reloads the list, and `id`'s record | After creating or renaming a workspace |
 

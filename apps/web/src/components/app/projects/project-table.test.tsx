@@ -7,20 +7,14 @@ import { Table, TableBody, TableHead } from "@/components/ui/table";
 import { sortable, type Project } from "@/types/projects";
 import { paths } from "@/lib/api";
 import { WorkspaceProvider } from "@/lib/workspace";
-import type { Workspace } from "@/types/workspaces";
+import { testWorkspace } from "@/test/workspace";
 import { indexQuery, projectQuery, projectsPath } from "./project-query";
 import {
   ProjectEmptyState,
   ProjectRow,
   ProjectTableHead,
 } from "./project-table";
-const workspace: Workspace = {
-  id: "wsp_2yEHYLwiwPVhLW",
-  name: "Acme",
-  role: "owner",
-  createdAt: "",
-  updatedAt: "",
-};
+const workspace = testWorkspace();
 const project: Project = {
   id: "prj_j292s2S2j7Qx4B",
   name: "Research sprint",
@@ -92,6 +86,13 @@ describe("project table", () => {
     render(<ProjectEmptyState onCreate={onCreate} />);
     fireEvent.click(screen.getByRole("button", { name: "Create a project" }));
     expect(onCreate).toHaveBeenCalled();
+  });
+  it("offers no button to members who can't create projects", () => {
+    render(<ProjectEmptyState />);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(
+      screen.getByText("Projects will show here once someone creates one."),
+    ).toBeInTheDocument();
   });
 });
 describe("project query", () => {

@@ -1,7 +1,9 @@
 package store
 
 import (
+	"encoding/json"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"time"
 )
 
@@ -42,10 +44,22 @@ type Workspace struct {
 	ID            int64     `bun:",pk,autoincrement" json:"-"`
 	PublicID      string    `bun:",nullzero" json:"id"`
 	Name          string    `json:"name"`
-	Role          string    `bun:",scanonly" json:"role"`
+	Role          auth.Role `bun:",scanonly" json:"role"`
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"createdAt"`
 	UpdatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updatedAt"`
 }
+
+// MarshalJSON adds what the member's role allows, computed from the role, so
+// the web app reads the rules instead of keeping its own copy.
+func (w Workspace) MarshalJSON() ([]byte, error) {
+	type plain Workspace
+	return json.Marshal(struct {
+		plain
+		Permissions     []auth.Permission `json:"permissions"`
+		AssignableRoles []auth.Role       `json:"assignableRoles"`
+	}{plain(w), w.Role.Permissions(), w.Role.AssignableRoles()})
+}
+
 type WorkspaceInput struct {
 	Name string `json:"name"`
 }
@@ -56,7 +70,7 @@ type membership struct {
 	ID            int64 `bun:",pk,autoincrement"`
 	UserID        int64 `bun:",notnull"`
 	WorkspaceID   int64 `bun:",notnull"`
-	Role          string
+	Role          auth.Role
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 type Project struct {

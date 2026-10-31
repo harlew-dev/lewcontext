@@ -159,7 +159,7 @@ func TestAuthenticationAndProjectIsolation(t *testing.T) {
 	call(t, h, "POST", "/api/workspaces", `{"name":"Mine"}`, "", cookie, 403)
 	var workspace store.Workspace
 	_ = json.Unmarshal(call(t, h, "POST", "/api/workspaces", `{"name":"  Mine  "}`, one.CSRF, cookie, 201).Body.Bytes(), &workspace)
-	if !validPublicID("wsp", workspace.PublicID) || workspace.Name != "Mine" || workspace.Role != store.RoleOwner {
+	if !validPublicID("wsp", workspace.PublicID) || workspace.Name != "Mine" || workspace.Role != auth.RoleOwner {
 		t.Fatalf("created workspace not returned: %+v", workspace)
 	}
 	projects := workspacePath(workspace.PublicID, "/projects")

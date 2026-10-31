@@ -92,12 +92,13 @@ export function ProjectRow({ project }: { project: Project }) {
   );
 }
 // No projects yet, or none matching the search and filter.
+// Without onCreate (members who can't create projects) there's no button.
 export function ProjectEmptyState({
   filtered = false,
   onCreate,
 }: {
   filtered?: boolean;
-  onCreate: () => void;
+  onCreate?: () => void;
 }) {
   return filtered ? (
     <EmptyState
@@ -107,8 +108,12 @@ export function ProjectEmptyState({
   ) : (
     <EmptyState
       title="Room for your next big thing"
-      description="Create your first project and give your work a place to grow."
-      action={<Button onClick={onCreate}>Create a project</Button>}
+      description={
+        onCreate
+          ? "Create your first project and give your work a place to grow."
+          : "Projects will show here once someone creates one."
+      }
+      action={onCreate && <Button onClick={onCreate}>Create a project</Button>}
     />
   );
 }
