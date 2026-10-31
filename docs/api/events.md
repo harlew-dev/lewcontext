@@ -1,6 +1,6 @@
 # Events
 
-Code: `internal/events` (event types, request metadata, `Bus`, `Listen`, `Worker`), `internal/store/events.go` (`record`, `Record`, `EventScope`), `internal/store/deliveries.go` (the delivery queue). Plan: [plans/features/events.md](../../plans/features/events.md).
+Code: `internal/events` (event types, request metadata, `Bus`, `Listen`, `Worker`), `internal/store/events.go` (`record`, `Record`, `EventScope`), `internal/store/deliveries.go` (the delivery queue). Plan: [plans/features/implemented/events.md](../../plans/features/implemented/events.md).
 
 The API records what happens (sign-ins, password changes, workspaces and projects created, changed or deleted, accounts deleted, rate limits reached) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. Two listeners are registered: `mail.password_reset` sends reset links and `mail.workspace_invitation` sends invitations ([mail.md](mail.md)).
 

@@ -26,7 +26,7 @@ Nobody can see who else is in a workspace. Workspace settings needs a **Members*
 
 | Endpoint | Requires | Success | Failure |
 | --- | --- | --- | --- |
-| `GET /api/workspaces/{ws}/members` | `workspace.member.index` | one page of members ([pagination.md](../../docs/api/pagination.md)) | 400 bad params · 403 member or viewer |
+| `GET /api/workspaces/{ws}/members` | `workspace.member.index` | one page of members ([pagination.md](../../../docs/api/pagination.md)) | 400 bad params · 403 member or viewer |
 | `PATCH /api/workspaces/{ws}/members/{member}` | `workspace.member.update`, CSRF, Origin | 200 with the member | 403 role not assignable · 404 not a member of this workspace · 409 last owner · 422 bad role |
 | `DELETE /api/workspaces/{ws}/members/{member}` | `workspace.member.destroy`, CSRF, Origin | 204 | 403 role not assignable · 404 · 409 last owner · 422 yourself ("To leave, use Leave workspace.") |
 | `DELETE /api/workspaces/{ws}/membership` | `auth.AnyMember`, CSRF, Origin | 204 | 409 last owner |
@@ -76,7 +76,7 @@ All three are scoped to the workspace. There's no email in the payloads, only pu
 - **Settings tabs:** `components/app/workspaces/settings-tabs.tsx` (General, Members), built on the existing `Navbar` items with `current`. It is shared by two pages, so it goes in `components/app/` (rule 3). The Members tab shows only when `can(ws, "workspace.member.index")`. Members and viewers see General with no tabs.
 - **Opening the members URL without the permission** shows `<Notice>` "Only owners and admins can see this workspace's members." It doesn't fetch, so there's no 403 round trip.
 - **Members page** (`MemberIndex`):
-  - `PaginatedTable` with a search input, following [docs/ui/pagination.md](../../docs/ui/pagination.md);
+  - `PaginatedTable` with a search input, following [docs/ui/pagination.md](../../../docs/ui/pagination.md);
   - `ListSkeleton` while loading; Retry on failure, keeping the shown page; `EmptyState` for no matches;
   - each row shows an initials `Avatar`, the name with a "You" badge on your own row, the email, a role `Badge`, and "Added" via `lib/format.ts`;
   - a `⋯` `Dropdown` shows only on rows you can act on: `can(ws, "workspace.member.update" | "workspace.member.destroy")`, the row's role in `assignableRoles`, and not yourself.
@@ -178,4 +178,4 @@ Where the build differs from the plan above:
 - **Demo members** get random fake names from the `Users` factory and a password hash of random text (`unusable:…`), which never verifies.
 - **Playwright** signs up its own owner and adds the member in SQL, instead of changing the demo seed's members, so it stays self-contained and repeatable.
 
-Docs updated: [endpoints.md](../../docs/api/endpoints.md), [auth.md](../../docs/api/auth.md#workspaces-and-roles), [events.md](../../docs/api/events.md), [api/pagination.md](../../docs/api/pagination.md), [seeding.md](../../docs/api/seeding.md), [api/testing.md](../../docs/api/testing.md), [ui/pages.md](../../docs/ui/pages.md), [ui/design.md](../../docs/ui/design.md), [ui/pagination.md](../../docs/ui/pagination.md), [ui/README.md](../../docs/ui/README.md), [ui/testing.md](../../docs/ui/testing.md) and AGENTS.md.
+Docs updated: [endpoints.md](../../../docs/api/endpoints.md), [auth.md](../../../docs/api/auth.md#workspaces-and-roles), [events.md](../../../docs/api/events.md), [api/pagination.md](../../../docs/api/pagination.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/design.md](../../../docs/ui/design.md), [ui/pagination.md](../../../docs/ui/pagination.md), [ui/README.md](../../../docs/ui/README.md), [ui/testing.md](../../../docs/ui/testing.md) and AGENTS.md.

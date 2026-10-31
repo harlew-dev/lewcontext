@@ -95,7 +95,7 @@ TLS ends at the proxy, so the server sees every connection coming from the proxy
 - every per-IP limit (`auth:per-ip`, 60 sign-in attempts per 15 minutes; `register:per-ip`, 10 sign-ups an hour) is shared by all users together. Signed-in limits count by user, so they aren't affected;
 - audit events record the proxy's address.
 
-To fix that, set `CLIENT_IP_HEADER` to the header your proxy writes the client's address in, and `TRUSTED_PROXIES` to the addresses or CIDR ranges the proxy connects from (comma-separated). The header is believed **only** on connections from those addresses, because anyone can send a forged one. `X-Forwarded-For` is read from the right, skipping your own proxies, so entries a client adds at the left are never chosen. Plan: [client-ip](../plans/features/client-ip.md).
+To fix that, set `CLIENT_IP_HEADER` to the header your proxy writes the client's address in, and `TRUSTED_PROXIES` to the addresses or CIDR ranges the proxy connects from (comma-separated). The header is believed **only** on connections from those addresses, because anyone can send a forged one. `X-Forwarded-For` is read from the right, skipping your own proxies, so entries a client adds at the left are never chosen. Plan: [client-ip](../plans/features/implemented/client-ip.md).
 
 | Setup | `CLIENT_IP_HEADER` | `TRUSTED_PROXIES` | Proxy config |
 | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 # Prune command
 
-Status: **implemented 2026-10-30** with [events](events.md) step 3, then restructured to one file per target with Bun queries (below). See [docs/api/database.md](../../docs/api/database.md#pruning).
+Status: **implemented 2026-10-30** with [events](events.md) step 3, then restructured to one file per target with Bun queries (below). See [docs/api/database.md](../../../docs/api/database.md#pruning).
 
 Built as planned, except: a pruner's `count` and `delete` take the store first (`(*store.Store).CountOldEvents` as a method expression); `Options.Batch` lets tests use small batches; `make prune CONFIRM=1` without a target says confirming needs a target; and output uses plain numbers (`12408`).
 

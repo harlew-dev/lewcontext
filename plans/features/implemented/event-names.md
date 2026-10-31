@@ -1,6 +1,6 @@
 # Event names
 
-Status: **implemented 2026-10-31**, decisions as recommended. Follows the [CRUD naming convention](crud-routing-convention.md) (implemented). Docs updated: [`docs/naming.md`](../../docs/naming.md#events-internalevents), [`docs/api/events.md`](../../docs/api/events.md), [`docs/api/auth.md`](../../docs/api/auth.md), [`docs/api/testing.md`](../../docs/api/testing.md); `database.md`, `mail.md`, `deployment.md` and `AGENTS.md` had no old names. Built as planned; the CHECK test is `TestEventNameCheck` in `internal/database`, the regex test `TestEventNamePattern`, and `naming.md` also notes that listener names don't follow event renames.
+Status: **implemented 2026-10-31**, decisions as recommended. Follows the [CRUD naming convention](crud-routing-convention.md) (implemented). Docs updated: [`docs/naming.md`](../../../docs/naming.md#events-internalevents), [`docs/api/events.md`](../../../docs/api/events.md), [`docs/api/auth.md`](../../../docs/api/auth.md), [`docs/api/testing.md`](../../../docs/api/testing.md); `database.md`, `mail.md`, `deployment.md` and `AGENTS.md` had no old names. Built as planned; the CHECK test is `TestEventNameCheck` in `internal/database`, the regex test `TestEventNamePattern`, and `naming.md` also notes that listener names don't follow event renames.
 
 ## Why
 

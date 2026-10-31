@@ -1,6 +1,6 @@
 # Domain events, listeners and pruning
 
-Status: **implemented 2026-10-30** (recording events; listeners and the worker; pruning, see [prune.md](prune.md)). Docs: [docs/api/events.md](../../docs/api/events.md).
+Status: **implemented 2026-10-30** (recording events; listeners and the worker; pruning, see [prune.md](prune.md)). Docs: [docs/api/events.md](../../../docs/api/events.md).
 
 ## Why
 

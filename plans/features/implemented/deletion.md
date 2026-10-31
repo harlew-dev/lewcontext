@@ -2,7 +2,7 @@
 
 Status: **implemented 2026-10-31**. Uses the permissions from [workspace permissions](workspace-permissions.md) (`project.destroy`, `workspace.destroy`) and the workspace lock and last-owner rule from [workspace members](workspace-members.md). Names follow the [CRUD convention](crud-routing-convention.md).
 
-Docs updated: [`docs/api/endpoints.md`](../../docs/api/endpoints.md#deleting), [`auth.md`](../../docs/api/auth.md#deleting), [`events.md`](../../docs/api/events.md), [`database.md`](../../docs/api/database.md), [`pagination.md`](../../docs/api/pagination.md), [`testing.md`](../../docs/api/testing.md), [`docs/ui/design.md`](../../docs/ui/design.md#confirmations), [`pages.md`](../../docs/ui/pages.md), [`api.md`](../../docs/ui/api.md), [`README.md`](../../docs/ui/README.md), [`testing.md`](../../docs/ui/testing.md), and AGENTS.md.
+Docs updated: [`docs/api/endpoints.md`](../../../docs/api/endpoints.md#deleting), [`auth.md`](../../../docs/api/auth.md#deleting), [`events.md`](../../../docs/api/events.md), [`database.md`](../../../docs/api/database.md), [`pagination.md`](../../../docs/api/pagination.md), [`testing.md`](../../../docs/api/testing.md), [`docs/ui/design.md`](../../../docs/ui/design.md#confirmations), [`pages.md`](../../../docs/ui/pages.md), [`api.md`](../../../docs/ui/api.md), [`README.md`](../../../docs/ui/README.md), [`testing.md`](../../../docs/ui/testing.md), and AGENTS.md.
 
 **Where the build differs from the plan:**
 
@@ -56,7 +56,7 @@ Account   /app/settings → Danger zone → Delete account (red)
 | `GET /api/workspaces?canLeave=false` | Session | one page of the workspaces you can't leave: those where you're the **only** owner | 400 bad params |
 
 - **The name check is on the server too.** It compares the current name, so a tab opened before a rename can't delete the workspace under its old name.
-- **Password checks** work as `POST /api/auth/password/verify` does: `limitAuth` (`auth:per-ip`, one of the 4 hashing slots) and `auth:per-account`. These routes pass no CAPTCHA action, so they are never challenged ([CAPTCHA plan](captcha-challenges.md)).
+- **Password checks** work as `POST /api/auth/password/verify` does: `limitAuth` (`auth:per-ip`, one of the 4 hashing slots) and `auth:per-account`. These routes pass no CAPTCHA action, so they are never challenged ([CAPTCHA plan](../captcha-challenges.md)).
 - **DELETE with a body:** `security` today skips the JSON content-type check for DELETE. It changes to require `application/json` whenever a DELETE has a body. Bodies stay bounded (16 KiB).
 - **The 409 for a last owner** lists what to deal with, so the web app can switch to the warning dialog even when the pre-check was stale:
 
@@ -66,7 +66,7 @@ Account   /app/settings → Danger zone → Delete account (red)
   ```
 
   The quota plan caps owned workspaces at 20, so the list is short. It's capped at 100 anyway.
-- **`canLeave=false`** filters the existing workspace index ([pagination.md](../../docs/api/pagination.md)) by the `canLeave` field every workspace response already carries (members plan): false only when your role is `owner` and no other membership in that workspace has `owner`. Deleting your account means leaving every workspace, so the workspaces that block it are exactly the ones you can't leave. The `page`/`perPage` rules are unchanged; `canLeave` is added to the allowed parameters and accepts only `false` (anything else is 400), the one value with a use.
+- **`canLeave=false`** filters the existing workspace index ([pagination.md](../../../docs/api/pagination.md)) by the `canLeave` field every workspace response already carries (members plan): false only when your role is `owner` and no other membership in that workspace has `owner`. Deleting your account means leaving every workspace, so the workspaces that block it are exactly the ones you can't leave. The `page`/`perPage` rules are unchanged; `canLeave` is added to the allowed parameters and accepts only `false` (anything else is 400), the one value with a use.
 
 ## Data
 
@@ -96,7 +96,7 @@ Without this, deleting a workspace also deletes its whole history, including the
   3. Record `auth.account_deleted`, delete the user row, and let the cascades run.
 
   **This lock stops two owners stranding a workspace.** Say Ada and Bo both own Acme and both delete their accounts at the same moment. Without a lock, each sees the other as an owner and both succeed, leaving Acme with members but no owner. With it, Ada's transaction locks Acme, sees Bo, and deletes Ada. Bo's waits for the lock, then counts only Bo and gets 409. Every membership change (demote, remove, leave, accept an invitation, delete the workspace) takes the same workspace lock first, so none of them can slip in between either. Locking in `id` order means two transactions that own the same workspaces always take the locks in the same order, so they can't deadlock.
-- `IndexWorkspaces` gains a `CanLeave *bool` filter field (nil: no filter) for the `canLeave=false` page. A filter is a field on the query, not a new method ([naming](../../docs/naming.md#store-methods-internalstore)).
+- `IndexWorkspaces` gains a `CanLeave *bool` filter field (nil: no filter) for the `canLeave=false` page. A filter is a field on the query, not a new method ([naming](../../../docs/naming.md#store-methods-internalstore)).
 - **One expression for "can leave".** The `can_leave` column expression in `memberWorkspaces` (`m.role <> 'owner' OR EXISTS` another owner) becomes one helper, used by the response field, the filter and `DeleteAccount`'s check, so the three can't disagree.
 
 ## Events

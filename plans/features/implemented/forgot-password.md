@@ -1,6 +1,6 @@
 # Forgot password
 
-Status: **implemented 2026-10-31** with the recommended decisions below. Docs: [auth.md](../../docs/api/auth.md#password-reset-by-link), [mail.md](../../docs/api/mail.md). Builds on [events](events.md) (first real listener) and [change password](change-password.md) (the new-password step).
+Status: **implemented 2026-10-31** with the recommended decisions below. Docs: [auth.md](../../../docs/api/auth.md#password-reset-by-link), [mail.md](../../../docs/api/mail.md). Builds on [events](events.md) (first real listener) and [change password](change-password.md) (the new-password step).
 
 ## Why
 

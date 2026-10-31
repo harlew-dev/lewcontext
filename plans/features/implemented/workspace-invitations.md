@@ -1,6 +1,6 @@
 # Workspace invitations
 
-Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [auth.md](../../docs/api/auth.md#invitations), [endpoints.md](../../docs/api/endpoints.md), [events.md](../../docs/api/events.md), [mail.md](../../docs/api/mail.md), [database.md](../../docs/api/database.md), [rate-limits.md](../../docs/api/rate-limits.md), [seeding.md](../../docs/api/seeding.md), [api/testing.md](../../docs/api/testing.md), [ui/pages.md](../../docs/ui/pages.md), [ui/design.md](../../docs/ui/design.md), [ui/api.md](../../docs/ui/api.md), [ui/testing.md](../../docs/ui/testing.md), [ui/README.md](../../docs/ui/README.md), [deployment.md](../../docs/deployment.md) and AGENTS.md. Needs [workspace permissions](workspace-permissions.md) and [workspace members](workspace-members.md), whose page shows pending invitations. Reuses the token, listener and mail design from [forgot password](forgot-password.md).
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [auth.md](../../../docs/api/auth.md#invitations), [endpoints.md](../../../docs/api/endpoints.md), [events.md](../../../docs/api/events.md), [mail.md](../../../docs/api/mail.md), [database.md](../../../docs/api/database.md), [rate-limits.md](../../../docs/api/rate-limits.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/design.md](../../../docs/ui/design.md), [ui/api.md](../../../docs/ui/api.md), [ui/testing.md](../../../docs/ui/testing.md), [ui/README.md](../../../docs/ui/README.md), [deployment.md](../../../docs/deployment.md) and AGENTS.md. Needs [workspace permissions](workspace-permissions.md) and [workspace members](workspace-members.md), whose page shows pending invitations. Reuses the token, listener and mail design from [forgot password](forgot-password.md).
 
 ## Why
 
@@ -125,10 +125,10 @@ Every invitation sends an email to an address the inviter chooses. That makes in
 | Name | Limit | Refusal | Purpose |
 | --- | --- | --- | --- |
 | `invitation:per-user` | 20 / hour (the inviter) | 429 | one account, across all of its workspaces |
-| `invitation:global` | challenge above 100, block above 200 / hour ([CAPTCHA challenges](captcha-challenges.md)) | 428 challenge, then 503 "Invitations are busy. Try again later." | caps total mail during an abuse wave |
+| `invitation:global` | challenge above 100, block above 200 / hour ([CAPTCHA challenges](../captcha-challenges.md)) | 428 challenge, then 503 "Invitations are busy. Try again later." | caps total mail during an abuse wave |
 | pending cap | 50 live invitations per workspace | 422 | bounds the unpaginated list and standing links |
 
-Until the [CAPTCHA plan](captcha-challenges.md) is built, `invitation:global` has only its block level (503 above 200). Both are `rateLimit`s in `httpapi/limits.go`, applied with `s.limit` on the route, as the [rate-limits plan](rate-limits.md) (implemented) does for projects; accepting gets the signed-in write budget.
+Until the [CAPTCHA plan](../captcha-challenges.md) is built, `invitation:global` has only its block level (503 above 200). Both are `rateLimit`s in `httpapi/limits.go`, applied with `s.limit` on the route, as the [rate-limits plan](rate-limits.md) (implemented) does for projects; accepting gets the signed-in write budget.
 
 **Member quota.** This plan also adds the [rate-limits plan](rate-limits.md#quotas)'s quota of **100 members plus pending invitations per workspace** (`store.MaxWorkspaceMembers` in `store/quotas.go`), checked in `CreateInvitation` and `AcceptInvitation` under the workspace lock and returned as a `QuotaError` (422 "A workspace can have up to 100 members, counting pending invitations."). Accepting turns a pending invitation into a member, so it counts members only, excluding the invitation being accepted.
 
@@ -138,10 +138,10 @@ They run in this order after the permission check, so a refused request doesn't 
 
 ### Members page (from the members plan)
 
-- An **Invite** button on the right of the page header ([forms-and-actions.md](../../docs/ui/forms-and-actions.md)) when `can(ws, "workspace.invitation.store")` opens a `Dialog`: email `Input`, role `Listbox` (from `assignableRoles`), and `<Button loading>`. Field errors show inline. A 503 from `MAIL_DRIVER=off` shows "Invitations aren't available on this server." On success: toast "Invitation sent to ada@…", the dialog closes, and the pending list refreshes.
+- An **Invite** button on the right of the page header ([forms-and-actions.md](../../../docs/ui/forms-and-actions.md)) when `can(ws, "workspace.invitation.store")` opens a `Dialog`: email `Input`, role `Listbox` (from `assignableRoles`), and `<Button loading>`. Field errors show inline. A 503 from `MAIL_DRIVER=off` shows "Invitations aren't available on this server." On success: toast "Invitation sent to ada@…", the dialog closes, and the pending list refreshes.
 - A **Pending invitations** section above the members table, shown when `can(ws, "workspace.invitation.index")`:
   - columns: email, role badge, invited by, and "Sending…" / "Sent <date>" / an "Expired" badge;
-  - **Revoke** (`workspace.invitation.destroy`) as "Revoke invitation" in the row's ⋯ menu, confirmed with a `ConfirmationDialog` ([forms-and-actions.md](../../docs/ui/forms-and-actions.md): row actions live in the menu);
+  - **Revoke** (`workspace.invitation.destroy`) as "Revoke invitation" in the row's ⋯ menu, confirmed with a `ConfirmationDialog` ([forms-and-actions.md](../../../docs/ui/forms-and-actions.md): row actions live in the menu);
   - while the list is non-empty and has a `Sending…` row, it polls every few seconds so "Sent" appears. Otherwise it refreshes on focus.
 - `lib/api/invitations.ts`: `index`, `store`, `destroy` (workspace-scoped), and `check`, `accept` (account-level), with paths in `paths`.
 
@@ -280,7 +280,7 @@ They run in this order after the permission check, so a refused request doesn't 
 
 ## How the build differs
 
-- **The list is paged** (`{data, pages}` with `page` and `perPage`), as [pagination.md](../../docs/api/pagination.md) asks of every list, rather than a bare `{data}`. The members page loads one page of up to 100, which holds the 50 live invitations plus expired ones.
+- **The list is paged** (`{data, pages}` with `page` and `perPage`), as [pagination.md](../../../docs/api/pagination.md) asks of every list, rather than a bare `{data}`. The members page loads one page of up to 100, which holds the 50 live invitations plus expired ones.
 - **Revoking** needs the invitation's role in your `assignableRoles` too (an admin can't revoke an owner's admin invitation), as removing a member does. It takes the workspace lock before the invitation's row: the race test found that the other order deadlocks with accept (the revoke's event insert needs a key-share lock on the workspace row that accept holds).
 - **The member quota is built here** (`store.MaxWorkspaceMembers`, 100). Accepting counts members plus the other live invitations, so it only fails for a workspace already full without this one.
 - **Mail:** the subject is "You’ve been invited to join a workspace", without the product name, which only the web build knows (`APP_NAME`). The listener is `mail.SendInvitation`, since `mail.WorkspaceInvitation` names the template. `layout.html` wraps each email, and each is parsed as a set of its own because every file defines `title` and `content`.

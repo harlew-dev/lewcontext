@@ -1,6 +1,6 @@
 # Rate limits for every endpoint
 
-Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [api/rate-limits.md](../../docs/api/rate-limits.md) (new), and updates to [auth.md](../../docs/api/auth.md), [endpoints.md](../../docs/api/endpoints.md), [events.md](../../docs/api/events.md), [database.md](../../docs/api/database.md), [seeding.md](../../docs/api/seeding.md), [api/testing.md](../../docs/api/testing.md), [api/README.md](../../docs/api/README.md), [naming.md](../../docs/naming.md), [deployment.md](../../docs/deployment.md), [ui/api.md](../../docs/ui/api.md), [ui/testing.md](../../docs/ui/testing.md) and [testing.md](../../docs/testing.md). Extends the limits from [forgot password](forgot-password.md) (`httpapi/limits.go`). Covers the endpoints planned in [workspace members](workspace-members.md) and [workspace invitations](workspace-invitations.md) too.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [api/rate-limits.md](../../../docs/api/rate-limits.md) (new), and updates to [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [events.md](../../../docs/api/events.md), [database.md](../../../docs/api/database.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [api/README.md](../../../docs/api/README.md), [naming.md](../../../docs/naming.md), [deployment.md](../../../docs/deployment.md), [ui/api.md](../../../docs/ui/api.md), [ui/testing.md](../../../docs/ui/testing.md) and [testing.md](../../../docs/testing.md). Extends the limits from [forgot password](forgot-password.md) (`httpapi/limits.go`). Covers the endpoints planned in [workspace members](workspace-members.md) and [workspace invitations](workspace-invitations.md) too.
 
 ## Why
 
@@ -60,7 +60,7 @@ Every signed-in request already writes once: the session lookup updates `last_se
 
 - `auth_attempts` no longer counts only sign-ins, so it is renamed **`rate_limits`** (`key`, `hits`, `resets_at`). That is an edit to the squashed `006` migration, followed by `make migrate-fresh CONFIRM=1 && make seed`. Its factory is renamed too.
 - `Store.AllowAuth` → `Store.Allow`, and `allowAuth` → `allow`. `Allow` also returns `resets_at`.
-- The event `auth.rate_limited` → **`rate_limit.reached`** (`limit`, `user`, `workspace`, `ip`, `window`, `resetsAt`; defined in [CAPTCHA challenges](captcha-challenges.md#event-rate_limitreached)), still recorded only the first time a limit or level is reached per key per window.
+- The event `auth.rate_limited` → **`rate_limit.reached`** (`limit`, `user`, `workspace`, `ip`, `window`, `resetsAt`; defined in [CAPTCHA challenges](../captcha-challenges.md#event-rate_limitreached)), still recorded only the first time a limit or level is reached per key per window.
 - Names keep `<feature>:<counted by>`. A limit shared by everyone is counted by `global`: the existing `password-reset:all-accounts` becomes **`password-reset:global`** (constant `passwordResetGlobal`), and the new ones are `register:global` and `invitation:global`. Keys keep `<name>:<sha256 of subject>`, where the subject is now also a user's public ID, so the table holds no addresses or internal IDs.
 
 ### Responses
@@ -114,7 +114,7 @@ Every signed-in request already writes once: the session lookup updates `last_se
 | `api:per-user` | 300 / 15 min | session user | database | 429 | every signed-in write except the recovery routes |
 | `api-read:per-user` | 1,000 / 5 min | session user | memory, per process | 429 | every signed-in GET: about 3 a second sustained, with room for SWR's focus refreshes and the invitations list's polling |
 | `register:per-ip` | 10 / hour | connection IP | database | 429 | account creation from one address |
-| `register:global` | challenge above 200, block above 1,000 / hour ([CAPTCHA challenges](captcha-challenges.md)) | everyone | database | 428 challenge, then 503 "Sign-up is busy. Try again later." | caps account creation during a distributed flood; also logs a warning |
+| `register:global` | challenge above 200, block above 1,000 / hour ([CAPTCHA challenges](../captcha-challenges.md)) | everyone | database | 428 challenge, then 503 "Sign-up is busy. Try again later." | caps account creation during a distributed flood; also logs a warning |
 | `workspace:per-user` | 10 / hour | session user | database | 429 | workspace creation |
 | `project:per-user` | 100 / hour | session user | database | 429 | project creation, across all of the user's workspaces |
 
@@ -189,7 +189,7 @@ Specific limits run after the budget, and per-subject limits run before shared o
 | 9 | `Retry-After` | The time left in the window, not the whole window. |
 | 10 | Configuration | Values stay hard-coded in `limits.go` and the store. Add environment variables only when a deployment needs different numbers. |
 | 11 | The end-to-end tests | One run signs up about 12 users from one IP and has one user own 25 workspaces, past `register:per-ip`, `workspace:per-user` and the owned-workspace quota. A `RATE_LIMITS=off` setting, refused in production like `MAIL_DRIVER=file`, switches every rate limit off (quotas and hashing slots stay) for the server the e2e tests run against. The switcher test adds its workspaces past the quota as memberships through `TEST_DATABASE_URL`, and is skipped without it. |
-| 12 | Plan order | Built before [convention checks](convention-checks.md): `TestRateLimitNames` is a test of its own in `httpapi`, which that plan can absorb. |
+| 12 | Plan order | Built before [convention checks](../convention-checks.md): `TestRateLimitNames` is a test of its own in `httpapi`, which that plan can absorb. |
 
 ## Not included
 
@@ -203,7 +203,7 @@ Specific limits run after the budget, and per-subject limits run before shared o
 
 - **`QuotaError{What, Max}`**, not `ErrQuota`, matching `LastOwnerError`. The handlers write the 422 message; the quotas are `store.MaxOwnedWorkspaces` and `store.MaxWorkspaceProjects` in `store/quotas.go`.
 - **The members + pending invitations quota isn't built:** no endpoint adds members yet. The [invitations plan](workspace-invitations.md) adds it to `CreateInvitation` and `AcceptInvitation`, under the same workspace lock.
-- **`rate_limit.reached` is built here**, with the payload the [CAPTCHA plan](captcha-challenges.md#event-rate_limitreached) defines. Every limit has one level for now, so `limit` is always `<name>:block`. The `rate_limit` area was added to the event-name test's list.
+- **`rate_limit.reached` is built here**, with the payload the [CAPTCHA plan](../captcha-challenges.md#event-rate_limitreached) defines. Every limit has one level for now, so `limit` is always `<name>:block`. The `rate_limit` area was added to the event-name test's list.
 - **The column is `hits`** (was `attempts`), and `Store.Allow` returns `resetsAt` as a fourth result.
 - **`rateLimit` gained two fields:** `attempts` (the 429 says "Too many attempts", for `auth:*` and `password-reset:per-*`) and `inMemory` (counted by `memoryLimiter`), so `s.allow` serves both stores.
 - **The memory limiter sweeps lazily:** on the next hit, at most once a minute, so it needs no goroutine or shutdown.

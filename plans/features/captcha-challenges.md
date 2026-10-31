@@ -1,6 +1,6 @@
 # CAPTCHA challenges for rate limits
 
-Status: **proposed 2026-10-31**, decisions to confirm. Builds on [rate limits for every endpoint](rate-limits.md), which this plan's limits, renames and event replace where they overlap. Covers login, register, password reset, and [workspace invitations](workspace-invitations.md).
+Status: **proposed 2026-10-31**, decisions to confirm. Builds on [rate limits for every endpoint](implemented/rate-limits.md), which this plan's limits, renames and event replace where they overlap. Covers login, register, password reset, and [workspace invitations](implemented/workspace-invitations.md).
 
 ## Why
 
@@ -50,8 +50,8 @@ Other limits (`auth:per-account`, `register:per-ip`, `password-reset:per-*`, `in
   | `POST /api/workspaces/{ws}/invitations` *(planned, signed in)* | `invitation` | no (counted by user instead) | ✓ for `invitation:global` |
   | `POST /api/auth/password-reset/check`, `PATCH …/password-reset` | none | ✓ | **no**: these run on `/auth/forgot-password/<token>`, and the script would see the token in the URL |
   | `POST /api/auth/password/verify`, `PATCH /api/auth/password` | none | ✓ | no: already behind a session and `auth:per-account` |
-  | `DELETE /api/workspaces/{ws}`, `DELETE /api/auth/me` *([deletion](deletion.md))* | none | ✓ (password check) | no: behind a session, a password and `auth:per-account` |
-  | `POST /api/invitations/check`, `POST /api/invitations/accept` *([invitations](workspace-invitations.md))* | none | check only | **no**: they run on `/auth/invitations/<token>` |
+  | `DELETE /api/workspaces/{ws}`, `DELETE /api/auth/me` *([deletion](implemented/deletion.md))* | none | ✓ (password check) | no: behind a session, a password and `auth:per-account` |
+  | `POST /api/invitations/check`, `POST /api/invitations/accept` *([invitations](implemented/workspace-invitations.md))* | none | check only | **no**: they run on `/auth/invitations/<token>` |
 
   On a route without an action, a challenge level is skipped: the request is counted and only the block level applies.
 - **`auth:per-ip:challenge` at 5** covers login, register and reset requests together, counting successes too. After the fifth in 15 minutes from one address, each further one needs a token.
@@ -97,7 +97,7 @@ var (
 
 Behind a reverse proxy or load balancer, every connection comes from the proxy. A per-IP limit would then count the whole site together: the challenge at 5 would challenge everyone after 5 sign-ins, and the block at 60 would refuse everyone after 60.
 
-**The fix is [client IP behind a proxy](client-ip.md):** `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` make every per-IP limit count the real client, so the levels here work unchanged behind a proxy.
+**The fix is [client IP behind a proxy](implemented/client-ip.md):** `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` make every per-IP limit count the real client, so the levels here work unchanged behind a proxy.
 
 **`PER_IP_LIMITS=off` is the fallback** for a proxy that can't send the client's address at all:
 
@@ -165,7 +165,7 @@ func New(c config.Captcha, client *http.Client) (Provider, error)
 | `CAPTCHA_PROVIDER` | `turnstile` or `off`; default `turnstile` | **required**, so `off` is a deliberate choice. `off` logs a warning at startup |
 | `CAPTCHA_SITE_KEY` | defaults to Cloudflare's test key that always passes, `1x00000000000000000000AA` | required unless `off`. Cloudflare's published test keys (`1x…`, `2x…`, `3x…`) are refused |
 | `CAPTCHA_SECRET_KEY` | defaults to the matching test secret, `1x0000000000000000000000000000000AA` | required unless `off`; never logged |
-| `PER_IP_LIMITS` | `on` (default) or `off` | the same. Behind a proxy, set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` instead ([client IP](client-ip.md)). Use `off` only when the proxy can't send the client's address; it logs a warning |
+| `PER_IP_LIMITS` | `on` (default) or `off` | the same. Behind a proxy, set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` instead ([client IP](implemented/client-ip.md)). Use `off` only when the proxy can't send the client's address; it logs a warning |
 
 The variables are named `CAPTCHA_*` rather than `TURNSTILE_*`, so a second provider reuses them. With the test keys, `make dev` shows a real widget that always passes. Cloudflare's other test keys (always fails, forces an interactive challenge) are used by the e2e tests.
 
@@ -254,7 +254,7 @@ The page CSP adds **only the configured provider's** `Sources`: for Turnstile, `
 | Cloudflare is down or slow | 5 s timeout. Fails closed (503), but only in challenge mode. Below the threshold, nothing calls Cloudflare. |
 | The secret leaks | Environment variable only, never logged or sent to the browser. Test keys are refused in production. |
 | CAPTCHAs silently off in production | `CAPTCHA_PROVIDER` must be set in production, and `off` logs a warning. |
-| **Everyone shares one IP behind a proxy** | `CLIENT_IP_HEADER` with `TRUSTED_PROXIES` ([client IP](client-ip.md)). Failing that, `PER_IP_LIMITS=off` turns every per-IP level to `never` (with a warning), instead of the site challenging or refusing itself. |
+| **Everyone shares one IP behind a proxy** | `CLIENT_IP_HEADER` with `TRUSTED_PROXIES` ([client IP](implemented/client-ip.md)). Failing that, `PER_IP_LIMITS=off` turns every per-IP level to `never` (with a warning), instead of the site challenging or refusing itself. |
 | Sign-in with `PER_IP_LIMITS=off` | No per-IP challenge, so sign-in relies on `auth:per-account` (10 per 15 min per account), the hashing slots, and the edge if there is one. Spraying one password across many accounts isn't slowed in-app. Only a deployment whose proxy can't forward the client's address is in this position. |
 | A level silently disabled by a typo | Levels are `above(n)` or `never`, never a bare number where `0` might mean "off". A unit test lists every limit's levels. |
 | The script loading on a token page | Routes on token pages pass no action, so their requests are never challenged. |
@@ -390,7 +390,7 @@ Design notes for when it's built:
 | 10 | Dialog name | `ChallengeDialog`. Agreed. |
 | 11 | e2e | The real Turnstile script with Cloudflare's test keys, skipped when offline, instead of a local stub of the script. |
 | 12 | `login:global` | None, as agreed. Sign-in relies on `auth:per-ip` (challenge and block), `auth:per-account` and the hashing slots. |
-| 13 | Behind a proxy | **Agreed.** Real client IPs through `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` ([client IP](client-ip.md)), with `PER_IP_LIMITS=off` (every per-IP level set to `never`) as the fallback for a proxy that can't send the address. |
+| 13 | Behind a proxy | **Agreed.** Real client IPs through `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` ([client IP](implemented/client-ip.md)), with `PER_IP_LIMITS=off` (every per-IP level set to `never`) as the fallback for a proxy that can't send the address. |
 | 14 | Nullable levels | **Agreed.** A `threshold` type (`above(n)` or `never`) for both levels of every limit, rather than `0` meaning off or `*int` fields. |
 | 15 | What `PER_IP_LIMITS=off` covers | **Agreed.** Every per-IP limit, both levels, not only `auth:per-ip:challenge`. Behind a proxy, the block levels are just as wrong. |
 | 16 | Production setting | `CAPTCHA_PROVIDER` must be set explicitly in production; `off` is allowed, with a warning. |
@@ -402,7 +402,7 @@ Design notes for when it's built:
 - Other CAPTCHA providers: hCaptcha (the same shape as Turnstile, but it can't bind a token to a form on the free tier), reCAPTCHA v2, and a self-hosted proof-of-work provider. Each is one `captcha.Provider` and one widget adapter, added for a real use case. reCAPTCHA v3 is score-based with no widget, so it would need a different design.
 - The Cloudflare edge-protection listener (designed above).
 - A shared login limit (`login:global`).
-- Trusted proxies and real client IPs: their own plan, [client IP behind a proxy](client-ip.md).
+- Trusted proxies and real client IPs: their own plan, [client IP behind a proxy](implemented/client-ip.md).
 - Changing a limit's levels without a code change, apart from `PER_IP_LIMITS`.
 - Challenges on per-subject limits other than `auth:per-ip`, or on any GET.
 - Turnstile pre-clearance (`cf_clearance`) from the dialog.

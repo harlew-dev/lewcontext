@@ -1,6 +1,6 @@
 # Mail
 
-Code: `internal/mail`. Plan: [plans/features/forgot-password.md](../../plans/features/forgot-password.md).
+Code: `internal/mail`. Plan: [plans/features/implemented/forgot-password.md](../../plans/features/implemented/forgot-password.md).
 
 The API sends email through `mailer.Send(ctx, to, template, data)`. It renders an HTML template and hands the result to a driver. There is no real email delivery yet. The only driver is a development mailbox file, and production runs with mail off.
 

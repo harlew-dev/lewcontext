@@ -1,6 +1,6 @@
 # Convention checks
 
-Status: **proposed 2026-10-31**, decisions to confirm. Enforces [`docs/naming.md`](../../docs/naming.md) after the [CRUD naming convention](crud-routing-convention.md) and [event names](event-names.md) renames. Do it before [deletion](deletion.md), so every later plan's new routes, store methods, events and pages are checked as they're written.
+Status: **proposed 2026-10-31**, decisions to confirm. Enforces [`docs/naming.md`](../../docs/naming.md) after the [CRUD naming convention](implemented/crud-routing-convention.md) and [event names](implemented/event-names.md) renames. Do it before [deletion](implemented/deletion.md), so every later plan's new routes, store methods, events and pages are checked as they're written.
 
 ## Why
 
@@ -54,7 +54,7 @@ On 2026-10-31 every relative link in the repository's markdown resolved to a fil
 2. `scripts/check-doc-links.mjs`, and a line in `make check` that runs it (`node scripts/check-doc-links.mjs`) before the web checks.
 3. **`docs/checks.md`**, a new doc explaining the checks and how to respond to them ([below](#the-checks-doc-docschecksmd)).
 4. Fix whatever the checks find on their first run. Nothing is expected apart from possible anchor mismatches. A real violation that should stay becomes a listed exception with its reason, only after the user agrees (decision 8).
-5. **The [rate limits plan](rate-limits.md):** add `TestRateLimitNames` (`<feature>:<counted by>`, counted by `per-ip`, `per-account`, `per-email`, `per-user` or `global`) to its Tests section. It isn't added here, because `password-reset:all-accounts` breaks the rule until that plan renames it to `password-reset:global` (decision 5).
+5. **The [rate limits plan](implemented/rate-limits.md):** add `TestRateLimitNames` (`<feature>:<counted by>`, counted by `per-ip`, `per-account`, `per-email`, `per-user` or `global`) to its Tests section. It isn't added here, because `password-reset:all-accounts` breaks the rule until that plan renames it to `password-reset:global` (decision 5).
 
 ## The checks doc (`docs/checks.md`)
 

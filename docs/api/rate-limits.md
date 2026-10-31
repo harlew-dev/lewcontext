@@ -1,6 +1,6 @@
 # Rate limits and quotas
 
-Code: `internal/httpapi/limits.go` (the limits, `allow`, `limit`, `meter`), `internal/httpapi/memlimit.go` (the in-memory counter), `internal/store/rate_limits.go` (`Store.Allow`), `internal/store/quotas.go`. Plan: [plans/features/rate-limits.md](../../plans/features/rate-limits.md).
+Code: `internal/httpapi/limits.go` (the limits, `allow`, `limit`, `meter`), `internal/httpapi/memlimit.go` (the in-memory counter), `internal/store/rate_limits.go` (`Store.Allow`), `internal/store/quotas.go`. Plan: [plans/features/implemented/rate-limits.md](../../plans/features/implemented/rate-limits.md).
 
 ## Three layers
 

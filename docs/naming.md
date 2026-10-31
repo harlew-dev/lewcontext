@@ -1,6 +1,6 @@
 # Naming
 
-How things are named across the API and the web app. **New code follows this page**, and existing code matches it ([`plans/features/crud-routing-convention.md`](../plans/features/crud-routing-convention.md) renamed it).
+How things are named across the API and the web app. **New code follows this page**, and existing code matches it ([`plans/features/implemented/crud-routing-convention.md`](../plans/features/implemented/crud-routing-convention.md) renamed it).
 
 The vocabulary is Laravel's resource controller, used at the HTTP boundary and in the web app. The store uses data verbs.
 

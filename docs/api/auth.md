@@ -14,7 +14,7 @@ Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `inte
 
 ## Password reset by link
 
-Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`, `internal/mail` (listener and mailbox). Plan: [plans/features/forgot-password.md](../../plans/features/forgot-password.md).
+Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`, `internal/mail` (listener and mailbox). Plan: [plans/features/implemented/forgot-password.md](../../plans/features/implemented/forgot-password.md).
 
 1. **Request** (`POST /api/auth/password-reset {email}`): after the rate limits below, the API records `auth.password_reset.requested` with the email and IP and answers `202`. It doesn't look the account up, so the status, body and timing are the same for every email.
 2. **Listener** (`mail.password_reset`, run by the worker about a second later): for an email with an account, it makes a 256-bit token (`auth.Token`), stores only its SHA-256 digest in `password_resets` (one row per user, so a newer link replaces the older one), sends the link `APP_ORIGIN + /auth/forgot-password/<token>` with `mailer.Send`, and records `auth.password_reset.sent`. An email without an account gets nothing. Requests older than the link's 30-minute lifetime are dropped, since retries can run an hour later. The token is never in the database, an event or the server log.
@@ -95,7 +95,7 @@ A viewer reads everything except the member and invitation lists (which hold oth
 
 ## Invitations
 
-Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `internal/mail/workspace_invitation.go` (the listener). Plan: [plans/features/workspace-invitations.md](../../plans/features/workspace-invitations.md).
+Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `internal/mail/workspace_invitation.go` (the listener). Plan: [plans/features/implemented/workspace-invitations.md](../../plans/features/implemented/workspace-invitations.md).
 
 1. **Invite** (`POST …/invitations {email, role}`, `workspace.invitation.store`): the role must be in your `assignableRoles`, and never `owner` (invite as admin, then promote, so a link can't grant ownership). Under the workspace lock the store reads your role again, then refuses an existing member, a live invitation to the same email (an expired one is replaced), the 51st live one and the member quota (100 members plus live invitations). It records `workspace.invitation.created`, which queues the email. The answer is the same whether or not the email has an account.
 2. **Listener** (`mail.workspace_invitation`, about a second later): makes a 256-bit token (`auth.Token`), stores only its digest and `sent_at` on the row (replacing any earlier link), emails `APP_ORIGIN + /auth/invitations/<token>`, and records `workspace.invitation.sent`. An invitation revoked, accepted or expired meanwhile gets nothing.
@@ -111,7 +111,7 @@ Code: `internal/httpapi/invitations.go`, `internal/store/invitations.go`, `inter
 
 ## Deleting
 
-Plan: [plans/features/deletion.md](../../plans/features/deletion.md). What each deletion removes is in [endpoints.md](endpoints.md#deleting).
+Plan: [plans/features/implemented/deletion.md](../../plans/features/implemented/deletion.md). What each deletion removes is in [endpoints.md](endpoints.md#deleting).
 
 - **A project** needs only `project.destroy` (owners and admins) and the confirmation dialog: its blast radius is one project.
 - **A workspace** needs `workspace.destroy` (owners only), its current name typed, and the owner's password, checked as sign-in checks one. `DeleteWorkspace` takes the workspace row lock, so a membership change in flight finishes first or finds the workspace gone. Other members' next request gets 404.

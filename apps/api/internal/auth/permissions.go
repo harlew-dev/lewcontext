@@ -16,7 +16,7 @@ const (
 var Roles = []Role{RoleOwner, RoleAdmin, RoleMember, RoleViewer}
 
 // Permission is something a member may do in a workspace: <resource>.<action>,
-// where the action is the route's CRUD action (plans/features/crud-routing-convention.md).
+// where the action is the route's CRUD action (plans/features/implemented/crud-routing-convention.md).
 type Permission string
 
 const (

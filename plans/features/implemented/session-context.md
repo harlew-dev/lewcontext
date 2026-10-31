@@ -294,7 +294,7 @@ return appProps(context, async (api) => ({
 | `components/app/projects/project-dialog.tsx` | `useApi()`, no `csrfToken` prop |
 | `components/app/projects/use-project-editor.ts` | `paths.projects.matches` |
 | `components/layout/application-layout.tsx` | `useSession()`, `useApi()`, no `session` prop |
-| `docs/ui/api.md`, `plans/features/api-client.md` | Updated for `useApi()` and `paths` (replaces api-client decision 1) |
+| `docs/ui/api.md`, `plans/features/implemented/api-client.md` | Updated for `useApi()` and `paths` (replaces api-client decision 1) |
 
 Page props keep `session`: that's how it gets from the server to the provider.
 

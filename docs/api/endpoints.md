@@ -96,7 +96,7 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 
 ## Deleting
 
-Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` removing what belongs to the row. Plan: [plans/features/deletion.md](../../plans/features/deletion.md).
+Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` removing what belongs to the row. Plan: [plans/features/implemented/deletion.md](../../plans/features/implemented/deletion.md).
 
 | Deleted | Removed with it | Kept |
 | --- | --- | --- |

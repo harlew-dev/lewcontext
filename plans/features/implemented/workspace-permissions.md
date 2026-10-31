@@ -29,7 +29,7 @@ const (
 var Roles = []Role{RoleOwner, RoleAdmin, RoleMember, RoleViewer}
 
 // Permission is something a member may do in a workspace: <resource>.<action>,
-// where the action is the route's CRUD action (plans/features/crud-routing-convention.md).
+// where the action is the route's CRUD action (plans/features/implemented/crud-routing-convention.md).
 type Permission string
 
 const (
@@ -190,4 +190,4 @@ Where the build differs from the design above:
 - The response fields come from `store.Workspace.MarshalJSON`, so every workspace response (list, show, store, update) carries them.
 - Web tests build workspaces with `testWorkspace(role)` (`src/test/workspace.ts`), the one place outside Go that spells out each role's permissions. `types/workspaces.test.ts` checks the TypeScript names against the Go source.
 
-Docs updated: [auth.md](../../docs/api/auth.md#workspaces-and-roles), [endpoints.md](../../docs/api/endpoints.md), [api/README.md](../../docs/api/README.md), [database.md](../../docs/api/database.md), [seeding.md](../../docs/api/seeding.md), [api/testing.md](../../docs/api/testing.md), [ui/pages.md](../../docs/ui/pages.md), [ui/testing.md](../../docs/ui/testing.md), [docs/README.md](../../docs/README.md) and AGENTS.md.
+Docs updated: [auth.md](../../../docs/api/auth.md#workspaces-and-roles), [endpoints.md](../../../docs/api/endpoints.md), [api/README.md](../../../docs/api/README.md), [database.md](../../../docs/api/database.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/testing.md](../../../docs/ui/testing.md), [docs/README.md](../../../docs/README.md) and AGENTS.md.

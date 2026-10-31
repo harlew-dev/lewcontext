@@ -17,7 +17,7 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 **Always read the docs for an area before writing code that affects it.** This isn't optional, even for small changes, and it applies to subagents too:
 
 1. Before the first edit, find every area the change touches in the table below, and read each of those docs in full. Most changes touch more than one: a new endpoint touches `endpoints.md`, `auth.md`, `rate-limits.md`, `database.md` and `api/testing.md`, plus `ui/api.md` if the web app calls it. A new component touches `ui/design.md` and `ui/base-ui.md`.
-2. If the work has a plan in `plans/features/`, read it too. Its confirmed decisions override your defaults.
+2. If the work has a plan in `plans/features/` (open) or `plans/features/implemented/` (shipped), read it too. Its confirmed decisions override your defaults.
 3. Follow what the docs say over what you'd otherwise do. If a doc and the code disagree, or a doc's rule doesn't fit the task, stop and tell the user; don't silently pick one.
 4. Update every doc whose summary the change makes untrue, in the same change. A new doc gets a row in `docs/README.md` and in the table below.
 
@@ -46,7 +46,7 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 | `docs/ui/strict-mode.md` | Behaviour seen only under `make dev` (double renders, effects twice) |
 | `docs/ui/testing.md` | Vitest and Playwright tests |
 
-**Plan before changing the architecture.** A new feature, a new table, package, event, listener or endpoint family, a new dependency, or a change to auth, security, rate limits or how layers fit together needs a completed plan in `plans/features/<name>.md` before any code is written. Follow the existing plans: Why, the design or flow, API and data changes, security risks and how they're avoided, tests, Decisions (each open question with a recommendation), and Not included. Write the plan, have the user confirm its decisions, then implement. When it ships, set its `Status:` line to implemented with the date, note where the build differs from the plan, and link the docs it updated. Small fixes and changes within an existing design don't need a plan.
+**Plan before changing the architecture.** A new feature, a new table, package, event, listener or endpoint family, a new dependency, or a change to auth, security, rate limits or how layers fit together needs a completed plan in `plans/features/<name>.md` before any code is written. Follow the existing plans: Why, the design or flow, API and data changes, security risks and how they're avoided, tests, Decisions (each open question with a recommendation), and Not included. Write the plan, have the user confirm its decisions, then implement. When it ships, set its `Status:` line to implemented with the date, note where the build differs from the plan, link the docs it updated, and move it to `plans/features/implemented/` (fixing relative links to and from it). Small fixes and changes within an existing design don't need a plan.
 
 ## Non-negotiable architecture conventions
 

@@ -1,6 +1,6 @@
 # Client IP behind a proxy
 
-Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)), with every recommended decision taken. Docs: [deployment.md](../../docs/deployment.md#behind-a-proxy-or-load-balancer), [api/README.md](../../docs/api/README.md), [api/auth.md](../../docs/api/auth.md#rate-limits), [api/rate-limits.md](../../docs/api/rate-limits.md), [api/events.md](../../docs/api/events.md), [api/testing.md](../../docs/api/testing.md), `.env.example`, `README.md` and AGENTS.md. Fills in decision 13 of [CAPTCHA challenges](captcha-challenges.md). Used by every per-IP limit ([rate limits](rate-limits.md)) and by the `ip` field of events.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)), with every recommended decision taken. Docs: [deployment.md](../../../docs/deployment.md#behind-a-proxy-or-load-balancer), [api/README.md](../../../docs/api/README.md), [api/auth.md](../../../docs/api/auth.md#rate-limits), [api/rate-limits.md](../../../docs/api/rate-limits.md), [api/events.md](../../../docs/api/events.md), [api/testing.md](../../../docs/api/testing.md), `.env.example`, `README.md` and AGENTS.md. Fills in decision 13 of [CAPTCHA challenges](../captcha-challenges.md). Used by every per-IP limit ([rate limits](rate-limits.md)) and by the `ip` field of events.
 
 ## Why
 
@@ -76,7 +76,7 @@ One IPv6 user usually controls a whole /64 (2⁶⁴ addresses), so counting sing
 | Cloudflare proxying straight to the server | `CF-Connecting-IP` | Cloudflare's published ranges (`https://www.cloudflare.com/ips-v4`, `…/ips-v6`) |
 | Cloudflare Tunnel (`cloudflared` on the same machine) | `CF-Connecting-IP` | `127.0.0.1/32,::1/128` |
 
-With Cloudflare, the server must also accept connections **only** from Cloudflare (a firewall allowing only Cloudflare's ranges, or a Tunnel with no open port). Otherwise anyone who finds the server's own address can connect directly. A header from a direct connection is ignored, but that client still bypasses Cloudflare's edge rules. Cloudflare's ranges change rarely, but they do change, so they are listed in [deployment.md](../../docs/deployment.md) with a note to recheck them.
+With Cloudflare, the server must also accept connections **only** from Cloudflare (a firewall allowing only Cloudflare's ranges, or a Tunnel with no open port). Otherwise anyone who finds the server's own address can connect directly. A header from a direct connection is ignored, but that client still bypasses Cloudflare's edge rules. Cloudflare's ranges change rarely, but they do change, so they are listed in [deployment.md](../../../docs/deployment.md) with a note to recheck them.
 
 ## Security risks and how they're avoided
 
