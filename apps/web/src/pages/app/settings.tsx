@@ -1,6 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { ChevronRightIcon } from "@heroicons/react/16/solid";
 import { DeleteAccountDialog } from "@/components/app/account/delete-account-dialog";
+import {
+  CodeField,
+  MfaScanStep,
+  RecoveryCodeList,
+} from "@/components/app/mfa/mfa-setup";
 import { WorkspaceAvatar } from "@/components/app/workspaces/workspace-avatar";
 import {
   NewPasswordFields,
@@ -9,6 +14,7 @@ import {
 } from "@/components/app/account/password-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   Dialog,
   DialogActions,
@@ -38,12 +44,14 @@ import {
   errorMessage,
   paths,
   useApi,
+  type MfaSetup,
   type WorkspaceSummary,
 } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { useRenewSession, useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
+import { useOpenCount } from "@/lib/use-open-count";
 import { useResource } from "@/lib/use-resource";
 export default function AccountSettings() {
   const session = useSession();
@@ -63,6 +71,13 @@ export default function AccountSettings() {
         description="Change your account password."
       >
         <PasswordControls />
+      </SettingsSection>
+      <Divider className="my-10" soft />
+      <SettingsSection
+        title="Two-factor authentication"
+        description="Ask for a code from an authenticator app when you sign in, as well as your password."
+      >
+        <MfaControls />
       </SettingsSection>
       <Divider className="my-10" soft />
       <SettingsSection
@@ -302,6 +317,375 @@ function ChangePasswordDialog({
           )}
           <Button type="submit" loading={loading}>
             {step === "current" ? "Next" : "Confirm"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+}
+// Whether two-factor authentication is on, and turning it on or off or
+// replacing the recovery codes. The dialogs stay mounted while the session
+// switches between off and on underneath them.
+function MfaControls() {
+  const session = useSession();
+  const enabledAt = session.user.mfaEnabledAt;
+  const [dialog, setDialog] = useState<"enable" | "disable" | "codes" | null>(
+    null,
+  );
+  const close = () => setDialog(null);
+  // Each opening starts a fresh dialog at its first step.
+  const enabling = useOpenCount(dialog === "enable");
+  const disabling = useOpenCount(dialog === "disable");
+  const renewing = useOpenCount(dialog === "codes");
+  return (
+    <div className="space-y-4">
+      {enabledAt && (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-base/6 font-medium text-zinc-950 sm:text-sm/6 dark:text-white">
+              Authenticator app
+            </div>
+            <Text>On since {formatDate(enabledAt)}</Text>
+          </div>
+          <Badge color="lime">On</Badge>
+        </div>
+      )}
+      <div className="flex flex-wrap justify-end gap-3">
+        {enabledAt ? (
+          <>
+            <Button outline onClick={() => setDialog("codes")}>
+              New recovery codes
+            </Button>
+            <Button outline onClick={() => setDialog("disable")}>
+              Disable
+            </Button>
+          </>
+        ) : (
+          <Button outline onClick={() => setDialog("enable")}>
+            Enable
+          </Button>
+        )}
+      </div>
+      <EnableMfaDialog
+        key={`enable-${enabling}`}
+        open={dialog === "enable"}
+        onClose={close}
+      />
+      <DisableMfaDialog
+        key={`disable-${disabling}`}
+        open={dialog === "disable"}
+        onClose={close}
+      />
+      <RecoveryCodesDialog
+        key={`codes-${renewing}`}
+        open={dialog === "codes"}
+        onClose={close}
+      />
+    </div>
+  );
+}
+// An ApiError about the password or the code, kept for its field.
+function mfaFieldErrors(e: unknown): Record<string, string> | null {
+  const field = e instanceof ApiError ? e.field : undefined;
+  if (field === "password" || field === "code")
+    return { [field]: errorMessage(e) };
+  return null;
+}
+// Hidden, so password managers know which account the password belongs to.
+function UsernameHint() {
+  const session = useSession();
+  return (
+    <input
+      type="email"
+      name="username"
+      autoComplete="username"
+      value={session.user.email}
+      readOnly
+      hidden
+    />
+  );
+}
+// Three steps: the password (which starts the setup), the QR code and the
+// first code from the app (which turns MFA on and signs out other sessions),
+// then the recovery codes. That last step can't be closed until they've been
+// revealed, copied or downloaded: they're never shown again.
+function EnableMfaDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const session = useSession();
+  const renew = useRenewSession();
+  const [step, setStep] = useState<"password" | "scan" | "codes">("password");
+  const [password, setPassword] = useState("");
+  const [setup, setSetup] = useState<MfaSetup | null>(null);
+  const [code, setCode] = useState("");
+  const [codes, setCodes] = useState<string[]>([]);
+  const [saved, setSaved] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  function showOnField(e: unknown): boolean {
+    const errors = mfaFieldErrors(e);
+    if (errors) setFieldErrors(errors);
+    return errors !== null;
+  }
+  const start = useAction(() => api.auth().mfa().setup(password), {
+    onError: showOnField,
+  });
+  const enable = useAction(() => api.auth().mfa().store(code), {
+    onError: showOnField,
+  });
+  const busy = start.busy || enable.busy;
+  const loading = start.loading || enable.loading;
+  function close() {
+    if (busy || step === "codes") return;
+    onClose();
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setFieldErrors({});
+    if (step === "password") {
+      const result = await start.run();
+      if (!result.ok) return;
+      setPassword("");
+      setSetup(result.value);
+      setStep("scan");
+    } else if (step === "scan") {
+      const result = await enable.run();
+      if (!result.ok) return;
+      setSetup(null);
+      setCodes(result.value.recoveryCodes);
+      setStep("codes");
+      renew({
+        ...session,
+        user: { ...session.user, mfaEnabledAt: new Date().toISOString() },
+      });
+    } else {
+      toast.success(
+        "Two-factor authentication is on. Other sessions were signed out.",
+      );
+      onClose();
+    }
+  }
+  return (
+    <Dialog open={open} onClose={close}>
+      <form onSubmit={submit}>
+        <DialogTitle>Enable two-factor authentication</DialogTitle>
+        <DialogDescription>
+          {step === "password" && "Enter your password to continue."}
+          {step === "scan" &&
+            "Add your account to an authenticator app, then enter the code it shows."}
+          {step === "codes" &&
+            "Two-factor authentication is on. Save your recovery codes before you go on."}
+        </DialogDescription>
+        <DialogBody>
+          <ErrorNotice
+            error={step === "password" ? start.error : enable.error}
+            className="mb-6"
+          />
+          <UsernameHint />
+          {step === "password" && (
+            <PasswordField
+              label="Your password"
+              autoComplete="current-password"
+              value={password}
+              onChange={setPassword}
+              error={fieldErrors.password}
+              disabled={loading}
+            />
+          )}
+          {step === "scan" && setup && (
+            <MfaScanStep
+              setup={setup}
+              code={code}
+              onCodeChange={setCode}
+              error={fieldErrors.code}
+              disabled={loading}
+            />
+          )}
+          {step === "codes" && (
+            <RecoveryCodeList
+              codes={codes}
+              account={session.user.email}
+              onSaved={() => setSaved(true)}
+            />
+          )}
+        </DialogBody>
+        <DialogActions>
+          {step !== "codes" && (
+            <Button plain onClick={close} disabled={loading}>
+              Cancel
+            </Button>
+          )}
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={step === "codes" && !saved}
+          >
+            {step === "password" && "Next"}
+            {step === "scan" && "Verify"}
+            {step === "codes" && "I’ve saved these codes"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+}
+// Turning MFA off takes the password and a code (an authenticator or a
+// recovery code), so a stolen session can't do it.
+function DisableMfaDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const session = useSession();
+  const renew = useRenewSession();
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  async function disable() {
+    setFieldErrors({});
+    await api.auth().mfa().destroy({ password, code });
+    renew({ ...session, user: { ...session.user, mfaEnabledAt: null } });
+  }
+  return (
+    <ConfirmationDialog
+      open={open}
+      onClose={onClose}
+      title="Disable two-factor authentication?"
+      description="Signing in will only need your password."
+      confirm="Disable two-factor authentication"
+      disabled={password === "" || code.trim() === ""}
+      onConfirm={disable}
+      onConfirmed={() => toast.success("Two-factor authentication is off.")}
+      onError={(e) => {
+        const errors = mfaFieldErrors(e);
+        if (errors) setFieldErrors(errors);
+        return errors !== null;
+      }}
+    >
+      <UsernameHint />
+      <FieldGroup>
+        <PasswordField
+          label="Your password"
+          autoComplete="current-password"
+          value={password}
+          onChange={setPassword}
+          error={fieldErrors.password}
+          disabled={false}
+        />
+        <CodeField
+          label="Authentication or recovery code"
+          value={code}
+          onChange={setCode}
+          error={fieldErrors.code}
+          disabled={false}
+          recovery
+        />
+      </FieldGroup>
+    </ConfirmationDialog>
+  );
+}
+// New recovery codes replace every old one: the password and a code first,
+// then the new codes, shown once.
+function RecoveryCodesDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const session = useSession();
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const create = useAction(
+    () => api.auth().mfa().recoveryCodes().store({ password, code }),
+    {
+      onError: (e) => {
+        const errors = mfaFieldErrors(e);
+        if (errors) setFieldErrors(errors);
+        return errors !== null;
+      },
+    },
+  );
+  function close() {
+    if (create.busy || codes) return;
+    onClose();
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (codes) {
+      toast.success("New recovery codes saved. The old ones no longer work.");
+      onClose();
+      return;
+    }
+    setFieldErrors({});
+    const result = await create.run();
+    if (!result.ok) return;
+    setPassword("");
+    setCode("");
+    setCodes(result.value.recoveryCodes);
+  }
+  return (
+    <Dialog open={open} onClose={close}>
+      <form onSubmit={submit}>
+        <DialogTitle>New recovery codes</DialogTitle>
+        <DialogDescription>
+          {codes
+            ? "Your old recovery codes no longer work. Save these before you go on."
+            : "Your current recovery codes will stop working. Enter your password and a code to continue."}
+        </DialogDescription>
+        <DialogBody>
+          <ErrorNotice error={create.error} className="mb-6" />
+          <UsernameHint />
+          {codes ? (
+            <RecoveryCodeList
+              codes={codes}
+              account={session.user.email}
+              onSaved={() => setSaved(true)}
+            />
+          ) : (
+            <FieldGroup>
+              <PasswordField
+                label="Your password"
+                autoComplete="current-password"
+                value={password}
+                onChange={setPassword}
+                error={fieldErrors.password}
+                disabled={create.loading}
+              />
+              <CodeField
+                label="Authentication or recovery code"
+                value={code}
+                onChange={setCode}
+                error={fieldErrors.code}
+                disabled={create.loading}
+                recovery
+              />
+            </FieldGroup>
+          )}
+        </DialogBody>
+        <DialogActions>
+          {!codes && (
+            <Button plain onClick={close} disabled={create.loading}>
+              Cancel
+            </Button>
+          )}
+          <Button
+            type="submit"
+            loading={create.loading}
+            disabled={codes !== null && !saved}
+          >
+            {codes ? "I’ve saved these codes" : "Create new codes"}
           </Button>
         </DialogActions>
       </form>

@@ -25,6 +25,26 @@ Code: `internal/httpapi/password_reset.go`, `internal/store/password_resets.go`,
 - The link is built from `APP_ORIGIN`, never the request's `Host`. Tokens travel to the API only in JSON bodies. The page URL holds the token, so the 30-minute lifetime and single use limit what browser history can leak; pages send `strict-origin-when-cross-origin` referrers and load nothing from other sites, and Go keeps no access log.
 - **Delivery:** over SMTP (`MAIL_DRIVER=smtp`; Mailpit locally), or the development mailbox (`log`, refused in production since it holds working links) ([mail.md](mail.md)). With `MAIL_DRIVER=off` the request endpoint answers 503.
 
+## Two-factor authentication
+
+Code: `internal/auth/totp.go`, `encrypt.go`, `recovery.go` (primitives), `internal/httpapi/mfa.go` (handlers), `internal/store/mfa.go`. Plan: [plans/features/implemented/mfa.md](../../plans/features/implemented/mfa.md).
+
+Optional for every account (Account settings → Two-factor authentication → **Enable**): codes from an authenticator app (TOTP, RFC 6238), plus 10 single-use recovery codes.
+
+1. **Setup** (`POST /api/auth/mfa/setup {password}`): checks the password like the other password routes (`auth.password_checked`, step `mfa_setup`), makes a 160-bit secret, stores it sealed and pending, and returns it once as `{secret, uri}` for the QR code. A new setup replaces a pending one; one left unconfirmed for 15 minutes is deleted by the cleanup.
+2. **Enable** (`POST /api/auth/mfa {code}`): the first code from the app confirms the secret. Under the user's row lock it turns MFA on, stores 10 new recovery codes, signs out **every other session** (they never passed a second factor) and records `auth.mfa.enabled`. The codes are returned once.
+3. **Sign in**: a right password with MFA on starts **no session**. It makes a challenge (a 256-bit token, digest in `mfa_challenges`, purpose `login`, 5 minutes) in the cookie `lewcontext_mfa` (`__Host-lewcontext_mfa` in production; HttpOnly, SameSite=Strict) and answers `{mfaRequired: true}`, recording `auth.login_attempted` with result `mfa_required`. `POST /api/auth/login/mfa {code}` then takes an authenticator code (6 digits, spaces allowed) or a recovery code; the right one deletes the challenge and starts the session as login does (`auth.logged_in`). A wrong one is 422 with `field: "code"`; the fifth wrong one deletes the challenge and answers 401, as does an expired or missing one, so the password is needed again.
+4. **Turning it off** (`DELETE /api/auth/mfa {password, code}`) and **new recovery codes** (`POST /api/auth/mfa/recovery-codes {password, code}`) need the password **and** a second factor, so a stolen session can't do either.
+
+- **Codes:** HMAC-SHA1, 6 digits, 30-second steps, one step of drift either way, compared in constant time. A code's step must be after the last one used (`last_used_step`, checked and saved under the row lock), so each code works once.
+- **Recovery codes:** 10 characters of Crockford base32 (50 bits), shown as `k7p2m-x9qfr`; case, hyphens and spaces don't matter. Each works once.
+- **At rest:** the secret is sealed with AES-256-GCM under a key derived from `APP_KEY` (HKDF), bound to the user's internal ID (the GCM additional data), so a database dump alone, or a value copied to another row, is useless. Recovery codes are HMAC-SHA256 digests under a second derived key, so they can't be guessed offline either. **Changing `APP_KEY` locks out every account with MFA on**; there is no key rotation yet.
+- **Limits:** `mfa:per-account` (5 code checks per 15 minutes, per user, from any IP) on every code check, plus `auth:per-ip` on `login/mfa` and 5 tries per challenge ([rate-limits.md](rate-limits.md)). Turning MFA off and new recovery codes are recovery routes: unmetered by the budget, like the password routes.
+- **What doesn't change it:** a password reset or a password change leaves MFA on, so a reset link alone can't sign anyone in. Deleting the account deletes its rows (cascade).
+- **Lost the app and the codes:** only the operator can help, with `make admin cmd=reset-mfa email=… CONFIRM=1` (`cmd/admin reset-mfa`, previews without `-confirm`). It turns MFA off, signs out every session and records `auth.mfa.disabled` with reason `reset` and no actor. Check who is asking out of band first: it's a way around their second factor.
+- **Responses:** every response with the user carries `mfaEnabledAt` (null while off). Secrets and codes appear only in the one response that creates them, and never in an event or log.
+- **Not stopped:** a phishing site relaying a password and a code in real time. Passkeys would; they're not built.
+
 ## Sessions
 
 - A session token is 32 random bytes (base64url, 43 characters). Only its SHA-256 digest is stored in `sessions`.
@@ -49,12 +69,12 @@ Signed-in mutations also need `X-CSRF-Token`: an independent random token return
 Sign-in, sign-up and password reset are limited per IP, per account or email, and for everyone, and every signed-in request has a budget per user, with tighter limits on creating workspaces and projects and quotas on how many can exist. All of it is in [rate-limits.md](rate-limits.md). What matters here:
 
 - `auth:per-ip` (60 / 15 min) and `auth:per-account` (10 / 15 min) guard every password check: `limitAuth` (the IP limit and a hashing slot) and `accountLimit`. Both deletions and the signed-in password endpoints use the session user's email, so a stolen session can't guess the password faster than a login could.
-- Logout, revoking other sessions and the password endpoints skip the signed-in budget, so a stolen session can't use it up to stop its owner.
+- Logout, revoking other sessions, the password endpoints, turning MFA off and new recovery codes skip the signed-in budget, so a stolen session can't use it up to stop its owner.
 - **The client IP** is `clientIP(r)` (`httpapi/client_ip.go`), worked out once per request by `clientAddress`. It is the connection's address, unless `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` are set **and** the connection comes from a trusted proxy: then it is the header's address (`X-Forwarded-For` read from the right, skipping trusted proxies; the single-value headers only when they hold exactly one address). A header from any other connection is ignored, so a client can't forge one for fresh limits or fake audit IPs. Without the variables, everyone behind a proxy (and Vite's dev proxy) shares one IP. Per-IP limits count IPv6 clients by their /64. A scaled deployment still needs an edge limiter. Account lockout abuse is possible with this fixed-window design.
 
 ## Audit trail
 
-Sign-ups, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window (`rate_limit.reached`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window (`rate_limit.reached`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 
@@ -125,6 +145,6 @@ Register workspace routes in `workspaceRoutes` in `routes.go` (the `ws` group ap
 
 ## Not implemented
 
-Email verification, MFA/passkeys and OIDC. Don't describe them as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need observability, backups, abuse monitoring and load testing.
+Email verification, passkeys (WebAuthn) and OIDC. Two-factor authentication is authenticator-app codes and recovery codes only. Don't describe the others as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need observability, backups, abuse monitoring and load testing.
 
 References: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

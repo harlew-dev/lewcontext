@@ -57,6 +57,10 @@ fi
 if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "SELECT 1 FROM pg_database WHERE datname = '$database'" | grep -q 1; then
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -qc "CREATE DATABASE $database"
 fi
+# A fresh APP_KEY per start: the database is rebuilt too, so nothing
+# sealed with an older key survives, and .env.testing holds no key.
+APP_KEY="$(head -c 32 /dev/urandom | base64)"
+export APP_KEY
 (cd apps/api && DATABASE_URL="$database_url" go run ./cmd/migrate fresh -confirm)
 
 export DATABASE_URL="$database_url" API_ADDR="127.0.0.1:$port" APP_ORIGIN="http://localhost:$port"

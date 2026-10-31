@@ -219,7 +219,7 @@ func TestRateLimitsOff(t *testing.T) {
 	db := dbtest.Open(t)
 	ctx := context.Background()
 	must(database.Migrate(ctx, db))(t)
-	s := must(New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", RateLimits: config.RateLimitsOff}))(t)
+	s := must(New(&store.Store{DB: db}, config.Config{Origin: "http://localhost:3000", AppKey: factory.AppKey, RateLimits: config.RateLimitsOff}))(t)
 	f := factory.TestFaker(t)
 	session := signedIn(t, db, f)
 	must(factory.RateLimits.State(factory.ForLimit("workspace:per-user", publicIDOf(t, s, session.UserID))).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)

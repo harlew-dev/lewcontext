@@ -7,13 +7,17 @@ const (
 	LoginUnknownAccount = "unknown_account"
 )
 
-// Steps that check the current password: the two of a password change, and
-// deleting a workspace or the account.
+// Steps that check the current password: the two of a password change,
+// deleting a workspace or the account, and setting up, turning off or
+// renewing the recovery codes of two-factor authentication.
 const (
 	PasswordStepVerify           = "verify"
 	PasswordStepUpdate           = "update"
 	PasswordStepDestroyWorkspace = "destroy_workspace"
 	PasswordStepDestroyAccount   = "destroy_account"
+	PasswordStepMFASetup         = "mfa_setup"
+	PasswordStepMFADisable       = "mfa_disable"
+	PasswordStepRecoveryCodes    = "recovery_codes"
 )
 
 // Registered: an account was created.

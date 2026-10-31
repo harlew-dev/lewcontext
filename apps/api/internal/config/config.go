@@ -18,6 +18,9 @@ type Config struct {
 	AppName string
 	// Mail is how email is delivered and who it comes from (mail.go).
 	Mail
+	// AppKey (APP_KEY, 32 bytes) seals MFA secrets at rest
+	// (encryption.go, auth.Keys).
+	AppKey []byte
 	// RateLimits is RateLimitsOff to switch every rate limit off, for the
 	// end-to-end tests; quotas and the hashing slots stay. Production
 	// refuses it.
@@ -37,6 +40,9 @@ const (
 func Load() (Config, error) {
 	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Origin: env("APP_ORIGIN", "http://localhost:3000"), Address: env("API_ADDR", "127.0.0.1:8080"), Production: os.Getenv("APP_ENV") == "production", AppName: env("APP_NAME", "lewcontext")}
 	if err := c.loadMail(); err != nil {
+		return c, err
+	}
+	if err := c.loadAppKey(); err != nil {
 		return c, err
 	}
 	c.RateLimits = env("RATE_LIMITS", RateLimitsOn)

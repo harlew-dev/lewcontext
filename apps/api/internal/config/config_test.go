@@ -16,6 +16,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		// Mail off unless a test turns it on: smtp, the default, needs
 		// settings the other tests don't care about.
 		"MAIL_DRIVER":       "off",
+		"APP_KEY":           testAppKey,
+		"ENCRYPTION_KEY":    "",
 		"MAIL_FILE":         "",
 		"MAIL_FROM_ADDRESS": "",
 		"MAIL_FROM_NAME":    "",

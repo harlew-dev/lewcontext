@@ -18,10 +18,10 @@ const session = testSession({ csrfToken: "csrf-old" });
 const rotated = { ...session, csrfToken: "csrf-new" };
 // Account settings at /app/settings, with login (where deleting the account
 // leads) and a workspace's settings (where the last-owner warning links).
-function renderPage() {
+function renderPage(current = session) {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-      <SessionProvider session={session}>
+      <SessionProvider session={current}>
         <MemoryRouter initialEntries={["/app/settings"]}>
           <Routes>
             <Route path="/app/settings" element={<AccountSettings />} />
@@ -312,5 +312,146 @@ describe("deleting the account", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Acme" })).toBeInTheDocument();
+  });
+});
+describe("two-factor authentication", () => {
+  const setup = {
+    secret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    uri: "otpauth://totp/lewcontext:ada?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+  };
+  const recoveryCodes = ["k7p2m-x9qfr", "a1b2c-d3e4f"];
+  const wrongCode = {
+    status: 422,
+    body: { error: "That code didn’t work.", field: "code" },
+  };
+  const wrongPassword = {
+    status: 422,
+    body: { error: "Current password is incorrect.", field: "password" },
+  };
+  function section() {
+    return within(
+      screen.getByRole("heading", { name: "Two-factor authentication" })
+        .parentElement!.parentElement!,
+    );
+  }
+  it("enables it: password, the hidden QR code, a code, then the recovery codes", async () => {
+    const api = stubApi({
+      "POST /api/auth/mfa/setup": [wrongPassword, { body: setup }],
+      "POST /api/auth/mfa": [
+        wrongCode,
+        { status: 201, body: { recoveryCodes } },
+      ],
+    });
+    renderPage();
+    // Off is just the Enable button.
+    expect(section().queryByText(/On since/)).toBeNull();
+    fireEvent.click(section().getByRole("button", { name: "Enable" }));
+    const dialog = within(await screen.findByRole("dialog"));
+
+    type("Your password", "wrong");
+    fireEvent.click(dialog.getByRole("button", { name: "Next" }));
+    expect(
+      await dialog.findByText("Current password is incorrect."),
+    ).toBeInTheDocument();
+    type("Your password", "correct horse");
+    fireEvent.click(dialog.getByRole("button", { name: "Next" }));
+    expect(
+      await dialog.findByRole("button", { name: "Reveal QR code" }),
+    ).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(setup.secret);
+
+    type("Code from your app", "000000");
+    fireEvent.click(dialog.getByRole("button", { name: "Verify" }));
+    expect(
+      await dialog.findByText("That code didn’t work."),
+    ).toBeInTheDocument();
+    type("Code from your app", "123456");
+    fireEvent.click(dialog.getByRole("button", { name: "Verify" }));
+    const done = await dialog.findByRole("button", {
+      name: "I’ve saved these codes",
+    });
+    expect(done).toBeDisabled();
+    // The step can't be dismissed before the codes are saved.
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(
+      dialog.getByRole("button", { name: "Reveal recovery codes" }),
+    );
+    expect(dialog.getByText("k7p2m-x9qfr")).toBeInTheDocument();
+    fireEvent.click(done);
+    expect(
+      await screen.findByText(
+        "Two-factor authentication is on. Other sessions were signed out.",
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(section().getByText(/^On since/)).toBeInTheDocument();
+    expect(api.sent("POST").map((r) => [r.url, r.body])).toEqual([
+      ["/api/auth/mfa/setup", { password: "wrong" }],
+      ["/api/auth/mfa/setup", { password: "correct horse" }],
+      ["/api/auth/mfa", { code: "000000" }],
+      ["/api/auth/mfa", { code: "123456" }],
+    ]);
+  });
+  it("disables it with the password and a code", async () => {
+    const api = stubApi({
+      "DELETE /api/auth/mfa": [wrongCode, { status: 204 }],
+    });
+    renderPage(testSession({ user: { mfaEnabledAt: "2026-10-30T12:00:00Z" } }));
+    fireEvent.click(section().getByRole("button", { name: "Disable" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    const confirm = dialog.getByRole("button", {
+      name: "Disable two-factor authentication",
+    });
+    expect(confirm).toBeDisabled();
+    type("Your password", "correct horse");
+    type("Authentication or recovery code", "k7p2m-x9qfr");
+    fireEvent.click(confirm);
+    expect(
+      await dialog.findByText("That code didn’t work."),
+    ).toBeInTheDocument();
+    fireEvent.click(confirm);
+    expect(
+      await screen.findByText("Two-factor authentication is off."),
+    ).toBeInTheDocument();
+    expect(
+      section().getByRole("button", { name: "Enable" }),
+    ).toBeInTheDocument();
+    expect(section().queryByText(/On since/)).toBeNull();
+    expect(api.sent("DELETE")[1].body).toEqual({
+      password: "correct horse",
+      code: "k7p2m-x9qfr",
+    });
+  });
+  it("replaces the recovery codes", async () => {
+    stubApi({
+      "POST /api/auth/mfa/recovery-codes": {
+        status: 201,
+        body: { recoveryCodes },
+      },
+    });
+    renderPage(testSession({ user: { mfaEnabledAt: "2026-10-30T12:00:00Z" } }));
+    fireEvent.click(
+      section().getByRole("button", { name: "New recovery codes" }),
+    );
+    const dialog = within(await screen.findByRole("dialog"));
+    type("Your password", "correct horse");
+    type("Authentication or recovery code", "123456");
+    fireEvent.click(dialog.getByRole("button", { name: "Create new codes" }));
+    const done = await dialog.findByRole("button", {
+      name: "I’ve saved these codes",
+    });
+    expect(done).toBeDisabled();
+    fireEvent.click(
+      dialog.getByRole("button", { name: "Reveal recovery codes" }),
+    );
+    fireEvent.click(done);
+    expect(
+      await screen.findByText(
+        "New recovery codes saved. The old ones no longer work.",
+      ),
+    ).toBeInTheDocument();
   });
 });

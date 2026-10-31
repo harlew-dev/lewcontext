@@ -31,15 +31,19 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | Event | Payload | Recorded by |
 | --- | --- | --- |
 | `auth.registered` | `user`, `name`, `email` | `CreateUser` |
-| `auth.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `succeeded` / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
-| `auth.logged_in` | `user` | `CreateSession`, on login (not on registration or a password change) |
+| `auth.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
+| `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
-| `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` | both password endpoints and both deletions that need it, whenever the current password was checked |
+| `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` / `mfa_setup` / `mfa_disable` / `recovery_codes` | both password endpoints, both deletions that need it, and setting up, turning off and renewing the codes of two-factor authentication, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
 | `auth.password_reset.requested` | `email`, `ip` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
 | `auth.password_reset.sent` | `user`, `email`, `request` (the requested event's `evt_` ID) | the `mail.password_reset` listener, after writing the link |
 | `auth.password_reset.completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
+| `auth.mfa.enabled` | `user`, `otherSessionsRevoked` | `EnableMFA`: the first code from the app turned two-factor authentication on (the first recovery codes come with it) |
+| `auth.mfa.disabled` | `user`, `reason`: `user` / `reset` (the operator's `admin reset-mfa`, with no actor) | `DisableMFA`, `ResetMFA` |
+| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `enable` / `disable` / `recovery_codes`, `ip`, and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
+| `auth.recovery_codes.created` | `user`, `count` | `CreateRecoveryCodes`: a new set replaced the old |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
@@ -59,7 +63,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 
 ## What's stored, and what never is
 
-- **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
+- **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, MFA secrets, codes and recovery codes (or their digests), challenge tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
 - **Personal data, on purpose:** the email typed and the client IP on `auth.login_attempted` and `auth.password_reset.requested`, the IP on `rate_limit.reached`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `clientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `rate_limit.reached`, so a flood writes one row per limit.

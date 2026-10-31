@@ -159,6 +159,31 @@ describe("auth() and sessions()", () => {
     ]);
     expect(stub.sent()[2].csrf).toBe("csrf");
   });
+  it("sets up, turns off and renews two-factor authentication, codes only in bodies", async () => {
+    const stub = stubFetch();
+    const confirmation = { password: "secret", code: "123456" };
+    await api().auth().loginMfa("123456");
+    await api("csrf").auth().mfa().setup("secret");
+    await api("csrf").auth().mfa().store("123456");
+    await api("csrf").auth().mfa().recoveryCodes().store(confirmation);
+    await api("csrf").auth().mfa().destroy(confirmation);
+    expect(requests(stub)).toEqual([
+      "POST /api/auth/login/mfa",
+      "POST /api/auth/mfa/setup",
+      "POST /api/auth/mfa",
+      "POST /api/auth/mfa/recovery-codes",
+      "DELETE /api/auth/mfa",
+    ]);
+    expect(stub.sent().map((r) => r.body)).toEqual([
+      { code: "123456" },
+      { password: "secret" },
+      { code: "123456" },
+      confirmation,
+      confirmation,
+    ]);
+    expect(stub.sent()[0].csrf).toBeNull();
+    expect(stub.sent()[4].csrf).toBe("csrf");
+  });
 });
 describe("invitations", () => {
   const base = `/api/workspaces/${ws}/invitations`;

@@ -36,7 +36,8 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `members(workspace)` | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins) |
 | `invitations(workspace)` | `index({ page, perPage })`, `store({ email, role })`, `destroy(id)` (owners and admins) |
 | `invitations()` | `check(token)`, `accept(token)`: the link's page, by the token in the body |
-| `auth()` | `me`, `login(credentials)`, `register(registration)`, `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces) |
+| `auth()` | `me`, `login(credentials)` (`needsMfa(result)` when it answers `{mfaRequired}`), `loginMfa(code)`, `register(registration)`, `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces) |
+| `auth().mfa()` | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
 ## Calling the API: `useApi()`

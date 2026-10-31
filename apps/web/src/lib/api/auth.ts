@@ -5,9 +5,29 @@ export type Credentials = { email: string; password: string };
 export type Registration = Credentials & { name: string };
 // Login and registration start a session and return its CSRF token.
 export type SignedIn = { user: User; csrfToken: string };
+// Login with two-factor authentication on starts no session: the password
+// was right, and the code goes to loginMfa (the challenge is in a cookie).
+export type MfaRequired = { mfaRequired: true };
+export function needsMfa(
+  result: SignedIn | MfaRequired,
+): result is MfaRequired {
+  return "mfaRequired" in result;
+}
+// A started setup: the secret (base32) to type into an authenticator app,
+// and the otpauth:// URI its QR code holds. Shown once.
+export type MfaSetup = { secret: string; uri: string };
+// Recovery codes as shown to the user, once: each signs in once.
+export type RecoveryCodes = { recoveryCodes: string[] };
+// The password and a second factor (an authenticator or recovery code), for
+// turning MFA off and for new recovery codes.
+export type MfaConfirmation = { password: string; code: string };
 export const authRoutes = {
   me: () => path<Session>("/api/auth/me"),
   login: () => "/api/auth/login",
+  loginMfa: () => "/api/auth/login/mfa",
+  mfa: () => "/api/auth/mfa",
+  mfaSetup: () => "/api/auth/mfa/setup",
+  recoveryCodes: () => "/api/auth/mfa/recovery-codes",
   register: () => "/api/auth/register",
   logout: () => "/api/auth/logout",
   password: () => "/api/auth/password",
@@ -34,8 +54,19 @@ export function lastOwnerWorkspaces(error: unknown): WorkspaceSummary[] | null {
 export function auth(http: Http) {
   return {
     me: () => http.get(authRoutes.me()),
+    // Signs in, or with MFA on answers { mfaRequired } (needsMfa) and waits
+    // for loginMfa.
     login: ({ email, password }: Credentials) =>
-      http.send<SignedIn>("POST", authRoutes.login(), { email, password }),
+      http.send<SignedIn | MfaRequired>("POST", authRoutes.login(), {
+        email,
+        password,
+      }),
+    // Finishes a sign-in with an authenticator or recovery code. A wrong code
+    // is an ApiError with field "code"; a 401 means the challenge ended (5
+    // wrong codes, or 5 minutes) and the password is needed again.
+    loginMfa: (code: string) =>
+      http.send<SignedIn>("POST", authRoutes.loginMfa(), { code }),
+    mfa: () => mfa(http),
     register: ({ name, email, password }: Registration) =>
       http.send<SignedIn>("POST", authRoutes.register(), {
         name,
@@ -77,6 +108,29 @@ export function auth(http: Http) {
         token,
         newPassword,
       }),
+  };
+}
+// Two-factor authentication, as the singleton resource of the account.
+function mfa(http: Http) {
+  return {
+    // Checks the password and starts a setup, replacing a pending one.
+    setup: (password: string) =>
+      http.send<MfaSetup>("POST", authRoutes.mfaSetup(), { password }),
+    // Turns MFA on with the first code from the app. Other sessions are
+    // signed out. Returns the recovery codes, once.
+    store: (code: string) =>
+      http.send<RecoveryCodes>("POST", authRoutes.mfa(), { code }),
+    // Turns MFA off. Wrong input is an ApiError with field "password" or "code".
+    destroy: ({ password, code }: MfaConfirmation) =>
+      http.send<void>("DELETE", authRoutes.mfa(), { password, code }),
+    recoveryCodes: () => ({
+      // Replaces every recovery code; returns the new ones, once.
+      store: ({ password, code }: MfaConfirmation) =>
+        http.send<RecoveryCodes>("POST", authRoutes.recoveryCodes(), {
+          password,
+          code,
+        }),
+    }),
   };
 }
 export const sessionRoutes = {

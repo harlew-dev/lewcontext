@@ -28,6 +28,7 @@ var Catalogue = []Event{
 	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
 	AccountDeleted{},
 	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
+	MFAEnabled{}, MFADisabled{}, MFAChecked{}, RecoveryCodesCreated{},
 	WorkspaceCreated{}, WorkspaceRenamed{}, WorkspaceDeleted{},
 	WorkspaceMemberUpdated{}, WorkspaceMemberRemoved{}, WorkspaceMemberLeft{},
 	WorkspaceInvitationCreated{}, WorkspaceInvitationSent{}, WorkspaceInvitationRevoked{}, WorkspaceInvitationAccepted{},

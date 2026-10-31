@@ -3,6 +3,8 @@ export type User = {
   name: string;
   email: string;
   createdAt: string;
+  // When two-factor authentication was turned on, or null while it's off.
+  mfaEnabledAt: string | null;
 };
 export type Session = {
   user: User;

@@ -17,6 +17,8 @@ Build them in this order. Each one assumes the ones above it are done, and later
 | 7 | [workspace-invitations](features/implemented/workspace-invitations.md): invite by email, pending list, accept by link, callout on sign-in | 1 (its event names), 3 (`ConfirmationDialog`), 4 (quota, limits); 6 optional (until then, `invitation:global` has only its block level) | implemented 2026-10-31 |
 | 8 | [test-environment](features/implemented/test-environment.md): a committed `.env.testing` for every test run, `lewcontext_test`, a port and database per e2e run (`E2E_PORT`, `auto`), Playwright starting the server | none | implemented 2026-10-31 |
 | 9 | [email-delivery](features/implemented/email-delivery.md): SMTP driver (`go-mail`), Mailpit, plain-text parts, `MAIL_DRIVER=smtp\|log\|off`, `invitation:per-email` | 8 | implemented 2026-10-31 |
+| 11 | [mfa](features/implemented/mfa.md): two-factor authentication with an authenticator app (TOTP) and recovery codes, optional per account; `APP_KEY`, `mfa:per-account`, `cmd/admin reset-mfa`, `Reveal` | none | implemented 2026-10-31 |
+| 12 | [admin-access](features/admin-access.md): the secret admin door (`ADMIN_ROUTE_KEY`, `X-Admin-Key`), CLI-granted admins with required MFA (set up at the first admin sign-in, inside a 24-hour window), separate admin sessions, read-only Users and Workspaces | 11 | decisions 1–4 and 7 confirmed; 5, 6, 8–12 to confirm |
 
 Implementing a plan:
 

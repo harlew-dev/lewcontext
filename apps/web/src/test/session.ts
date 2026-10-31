@@ -11,6 +11,7 @@ export function testSession(
       name: "Ada Lovelace",
       email: "ada@lewcontext.test",
       createdAt: "2026-10-30T00:00:00Z",
+      mfaEnabledAt: null,
       ...user,
     },
     csrfToken: "csrf",

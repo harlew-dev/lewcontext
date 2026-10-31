@@ -80,7 +80,7 @@ The layout route puts the loaded session in `SessionProvider` (`lib/session.tsx`
 
 ## Returning after sign-in (`?next=`)
 
-Signed-out visits to a signed-in page go to `/auth/login?next=<path and query>`, and signing in returns there. Login and register link to each other with the same `next`. Registering goes to onboarding (a new account has no workspace yet), unless `next` is an invitation link: then it returns there to accept.
+Signed-out visits to a signed-in page go to `/auth/login?next=<path and query>`, and signing in returns there. With two-factor authentication on, login asks for the code on the same page after the password (`{mfaRequired}`), keeping `next`; when the challenge ends (5 minutes, 5 wrong codes) it's back to the password, saying why. Login and register link to each other with the same `next`. Registering goes to onboarding (a new account has no workspace yet), unless `next` is an invitation link: then it returns there to accept.
 
 **Invitation links as `next`.** `returnRoutes` also accepts `/auth/invitations/<43-character token>`, the single-use exception AGENTS.md names. While `next` is one, login and register show `InvitationCallout` ("Acme has invited you to join.", loaded with `useInvitation`, so it survives a reload and switching between them) and fill in the invited email. The invitation page's buttons add `{invitation: true}` navigation state, which the switch links and `useAuthSubmit` pass on, so the invitation is accepted as soon as the visitor is signed in; a crafted `next` alone only reaches the page's Join button.
 

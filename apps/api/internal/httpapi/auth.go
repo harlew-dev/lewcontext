@@ -106,7 +106,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		hash = s.dummyHash
 	}
 	valid := auth.CheckPassword(in.Password, hash)
-	if err := s.recordLoginAttempt(r, in.Email, user, known, valid); err != nil {
+	needsCode := valid && known && user.MFAEnabledAt != nil
+	if err := s.recordLoginAttempt(r, in.Email, user, known, valid, needsCode); err != nil {
 		internalError(w, err)
 		return
 	}
@@ -114,18 +115,25 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Email or password is incorrect.")
 		return
 	}
+	if needsCode {
+		s.startMFAChallenge(w, r, user, store.ChallengeLogin)
+		return
+	}
 	s.startSession(w, r, user, 200, events.LoggedIn{User: user.PublicID})
 }
 
 // recordLoginAttempt records auth.login_attempted for every result, so the
-// write takes the same time whether or not the account exists.
-func (s *Server) recordLoginAttempt(r *http.Request, email string, user store.User, known, valid bool) error {
+// write takes the same time whether or not the account exists. A right
+// password that still needs a second factor is mfa_required.
+func (s *Server) recordLoginAttempt(r *http.Request, email string, user store.User, known, valid, needsCode bool) error {
 	e := events.LoginAttempted{Email: email, IP: clientIP(r), Result: events.LoginUnknownAccount}
 	var subject store.EventScope
 	if known {
 		e.User, subject.UserID = user.PublicID, user.ID
 		e.Result = events.LoginWrongPassword
-		if valid {
+		if needsCode {
+			e.Result = events.LoginMFARequired
+		} else if valid {
 			e.Result = events.LoginSucceeded
 		}
 	}

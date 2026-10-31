@@ -13,9 +13,12 @@ export type { InvitationIndexQuery } from "./invitations";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
 export type { WorkspaceDeletion, WorkspaceIndexQuery } from "./workspaces";
-export { lastOwnerWorkspaces } from "./auth";
+export { lastOwnerWorkspaces, needsMfa } from "./auth";
 export type {
   Credentials,
+  MfaConfirmation,
+  MfaSetup,
+  RecoveryCodes,
   PasswordChange,
   PasswordReset,
   Registration,

@@ -1,5 +1,10 @@
-import type { ComponentPropsWithoutRef } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ComponentPropsWithoutRef,
+} from "react";
 import { cx } from "@/lib/cx";
+import { Clickable } from "./clickable";
 import { Link, type LinkProps } from "./link";
 export function Text({ className, ...props }: ComponentPropsWithoutRef<"p">) {
   return (
@@ -13,17 +18,29 @@ export function Text({ className, ...props }: ComponentPropsWithoutRef<"p">) {
     />
   );
 }
+const textLinkClasses =
+  "text-zinc-950 underline decoration-zinc-950/50 data-hover:decoration-zinc-950 dark:text-white dark:decoration-white/50 dark:data-hover:decoration-white";
 export function TextLink({ className, ...props }: LinkProps) {
+  return <Link {...props} className={cx(className, textLinkClasses)} />;
+}
+// Looks like TextLink, for an action in running text that doesn't navigate:
+// switching a form to another way of answering ("Use a recovery code").
+export const TextButton = forwardRef<
+  HTMLElement,
+  ButtonHTMLAttributes<HTMLButtonElement>
+>(function TextButton({ className, ...props }, ref) {
   return (
-    <Link
+    <Clickable
       {...props}
+      ref={ref}
       className={cx(
         className,
-        "text-zinc-950 underline decoration-zinc-950/50 data-hover:decoration-zinc-950 dark:text-white dark:decoration-white/50 dark:data-hover:decoration-white",
+        textLinkClasses,
+        "data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-blue-500",
       )}
     />
   );
-}
+});
 export function Strong({
   className,
   ...props

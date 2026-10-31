@@ -116,6 +116,15 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := PasswordResets.State(ResetFor(user.ID)).CreateOne(ctx, db, f); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := MFATOTPs.State(TOTPFor(user.ID)).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecoveryCodes.State(RecoveryCodesFor(user.ID)).Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MFAChallenges.State(ChallengeFor(user.ID)).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
 	event, err := Events.State(func(e *Event) { e.UserID = user.ID }).CreateOne(ctx, db, f)
 	if err != nil || event.PublicID == "" {
 		t.Fatalf("event: %+v (%v)", event, err)

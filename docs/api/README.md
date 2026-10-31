@@ -10,12 +10,13 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
+| `cmd/admin` | The operator's commands: `make admin cmd=reset-mfa email=…` turns off a locked-out user's two-factor authentication (previews unless confirmed); `app-key generate` makes an `APP_KEY` (`make app-key`) ([auth.md](auth.md#two-factor-authentication)) |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
 | `internal/httpapi` | Routes (`routes.go`, API and pages), middleware, input validation, JSON responses |
 | `internal/web` | Serving the embedded web build: prerendered pages, the SPA fallback, assets, page security headers and CSP hashes |
 | `internal/store` | Bun models and every query, scoped by the user's workspace membership |
-| `internal/auth` | Argon2id passwords, random tokens, digests, cookies |
+| `internal/auth` | Argon2id passwords, random tokens, digests, cookies, TOTP codes, recovery codes, and sealing secrets with `APP_KEY` (`Keys`) |
 | `internal/mail` | Email from embedded templates (`mailer.Send`: an `html/template` part and a plain-text part), the SMTP driver and the development mailbox driver, and the reset and invitation listeners ([mail.md](mail.md)) |
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
@@ -80,6 +81,7 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `CLIENT_IP_HEADER` | (unset) | The header a proxy puts the client's address in: `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP`. Believed only on connections from `TRUSTED_PROXIES`; unset uses the connection's address ([deployment](../deployment.md#behind-a-proxy-or-load-balancer)) |
 | `TRUSTED_PROXIES` | (unset) | Comma-separated addresses or CIDR ranges the proxy connects from. Set with `CLIENT_IP_HEADER` or not at all; `0.0.0.0/0` and `::/0` are refused |
 | `MAIL_FILE` | `tmp/mail.log` | The `log` driver's mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
+| `APP_KEY` | (required) | 32 random bytes in base64. `make app-key` writes one into `.env` when it has none (never replacing one); `go run ./cmd/admin app-key generate` only prints one. An `.env` still saying `ENCRYPTION_KEY` gets a message to rename it. Seals two-factor secrets and keys recovery-code digests. Production refuses `.env.example`'s. **Changing it locks out every account with MFA on.** The e2e server makes a fresh one each start |
 | `APP_NAME` | `lewcontext` | The product name: baked into the web build, and read by the server for emails, which open with it ([mail.md](mail.md#templates)) |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |

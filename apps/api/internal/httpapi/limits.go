@@ -50,6 +50,11 @@ var (
 		window: time.Hour,
 		busy:   "Password reset is busy. Try again later.",
 	}
+	// Second-factor codes checked for one account (signing in, turning MFA
+	// on or off, new recovery codes), from any IP. With one step of drift a
+	// guess covers 3 codes in a million, so this caps an attacker who
+	// already has the password at about 0.14% a day.
+	mfaPerAccount = rateLimit{name: "mfa:per-account", limit: 5, window: 15 * time.Minute, attempts: true}
 	// Accounts created from one IP.
 	registerPerIP = rateLimit{name: "register:per-ip", limit: 10, window: time.Hour}
 	// Accounts created by everyone: caps sign-ups during a distributed flood.
@@ -91,7 +96,7 @@ var (
 
 // rateLimits lists every limit, for TestRateLimitNames.
 var rateLimits = []rateLimit{
-	authPerIP, authPerAccount,
+	authPerIP, authPerAccount, mfaPerAccount,
 	passwordResetPerIP, passwordResetPerEmail, passwordResetGlobal,
 	registerPerIP, registerGlobal,
 	apiPerUser, apiReadPerUser, workspacePerUser, projectPerUser,

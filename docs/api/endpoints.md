@@ -6,7 +6,8 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | --- | --- | --- | --- |
 | GET | `/api/health` | Public | `{"status":"ok"}`, or 503 if the database is down |
 | POST | `/api/auth/register` | Origin, JSON, rate limits | 201 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie |
-| POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie |
+| POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie; with two-factor authentication on, 200 `{mfaRequired: true}` and the challenge cookie instead, with no session ([auth.md](auth.md#two-factor-authentication)) |
+| POST | `/api/auth/login/mfa` | Origin, JSON, the challenge cookie, `auth:per-ip`, `mfa:per-account` | 200 `{user, csrfToken, expiresAt, signedInAt}` and a session cookie for a right `{code}` (authenticator or recovery code). 422 with `field: "code"` for a wrong one; 401 when the challenge is missing, expired or has had its 5 tries (the password is needed again) |
 | GET | `/api/auth/me` | Session | `{user, csrfToken, expiresAt, signedInAt}` |
 | PATCH | `/api/auth/me` | Session, CSRF, Origin | 200 with the updated user. Body `{name}` (trimmed, 1–80 characters, no control characters); the email address can't change, so other fields are rejected (400) |
 | DELETE | `/api/auth/me` | Session, CSRF, Origin, rate limit | 204; the account, its sessions, memberships and the events about it are deleted, and the cookie is cleared. Body `{password}`. 422 with `field: "password"`; 409 for the only owner of a workspace, listing them ([below](#deleting)) |
@@ -14,6 +15,10 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | DELETE | `/api/auth/sessions` | Session, CSRF, Origin | 204; every other session revoked |
 | POST | `/api/auth/password/verify` | Session, CSRF, Origin, rate limit | 204 if `{password}` is the current password; 422 with `field: "password"` if not |
 | PATCH | `/api/auth/password` | Session, CSRF, Origin, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie; every earlier session revoked. 422 with `field` (`currentPassword` or `newPassword`) when refused |
+| POST | `/api/auth/mfa/setup` | Session, CSRF, Origin, rate limit | 200 `{secret, uri}`: a new authenticator secret, pending until confirmed, shown only here. Body `{password}`. 422 with `field: "password"`; 409 when MFA is on |
+| POST | `/api/auth/mfa` | Session, CSRF, Origin, `mfa:per-account` | 201 `{recoveryCodes}` (10, shown only here); MFA is on and every other session is signed out. Body `{code}` from the app. 422 with `field: "code"`; 409 when MFA is on, or no setup from the last 15 minutes is pending |
+| DELETE | `/api/auth/mfa` | Session, CSRF, Origin, rate limit, `mfa:per-account` | 204; MFA is off, its secret, recovery codes and challenges deleted. Body `{password, code}` (an authenticator or recovery code). 422 with `field` (`password` or `code`); 409 when it's off |
+| POST | `/api/auth/mfa/recovery-codes` | Session, CSRF, Origin, rate limit, `mfa:per-account` | 201 `{recoveryCodes}`, replacing every earlier one. Body `{password, code}`. 422 with `field`; 409 when MFA is off |
 | POST | `/api/auth/password-reset` | Origin, JSON, reset rate limits | 202 for every valid `{email}`, whether or not an account uses it; the link is sent later by a listener. 422 with `field: "email"` for a malformed address, 429 per IP or email, 503 when the limit for everyone is reached or `MAIL_DRIVER=off` ([auth.md](auth.md#password-reset-by-link)) |
 | POST | `/api/auth/password-reset/check` | Origin, JSON, rate limit | 204 if `{token}` is a live reset link; 422 with `field: "token"` if not |
 | PATCH | `/api/auth/password-reset` | Origin, JSON, rate limit | 200 `{email}` after setting `newPassword` with a live `token`; every session revoked, nobody signed in. 422 with `field` (`token` or `newPassword`) when refused |
@@ -37,7 +42,7 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | PATCH | `/api/workspaces/{workspace}/projects/{project}` | `project.update`, CSRF, Origin | 200 with the updated project, or 404; 403 for viewers |
 | DELETE | `/api/workspaces/{workspace}/projects/{project}` | `project.destroy`, CSRF, Origin | 204, or 404; 403 for members and viewers |
 
-Every route that needs a session also counts against the user's budget (300 writes per 15 minutes, 1,000 reads per 5 minutes), except logout, `DELETE /api/auth/sessions` and the two password routes ([rate-limits.md](rate-limits.md)). "Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST, PATCH and any DELETE with a body. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
+Every route that needs a session also counts against the user's budget (300 writes per 15 minutes, 1,000 reads per 5 minutes), except logout, `DELETE /api/auth/sessions`, the two password routes, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` ([rate-limits.md](rate-limits.md)). Every response with the signed-in `user` includes `mfaEnabledAt`: when two-factor authentication was turned on, or null. "Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST, PATCH and any DELETE with a body. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
 
 ## IDs
 
@@ -120,7 +125,7 @@ Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` r
 | Code | Meaning |
 | --- | --- |
 | 400 | Malformed JSON or query parameters |
-| 401 | No session, expired session, or wrong sign-in credentials (a wrong *current* password while signed in is 422) |
+| 401 | No session, expired session, wrong sign-in credentials (a wrong *current* password while signed in is 422), or a sign-in's second factor whose challenge has ended |
 | 403 | Bad Origin or CSRF token, a role without the permission, or accepting an invitation sent to another email |
 | 404 | Not found, not yours, or a malformed ID |
 | 409 | The change would leave a workspace without an owner (for deleting an account, with the `workspaces`) |

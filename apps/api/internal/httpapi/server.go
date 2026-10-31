@@ -17,6 +17,8 @@ type Server struct {
 	// Pages serves the web app (internal/web); nil serves the API only.
 	Pages     http.Handler
 	dummyHash string
+	// keys seal MFA secrets and digest recovery codes (APP_KEY).
+	keys      *auth.Keys
 	authSlots chan struct{}
 	// memoryLimits counts the limits kept in memory (api-read:per-user).
 	memoryLimits *memoryLimiter
@@ -27,7 +29,11 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{Store: s, Config: c, dummyHash: dummy, authSlots: make(chan struct{}, 4), memoryLimits: newMemoryLimiter()}, nil
+	keys, err := auth.NewKeys(c.AppKey)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{Store: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: newMemoryLimiter()}, nil
 }
 func jsonResponse(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

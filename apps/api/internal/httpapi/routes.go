@@ -30,6 +30,8 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.Handle("POST /api/auth/register", s.limitAuth(http.HandlerFunc(s.register)))
 	mux.Handle("POST /api/auth/login", s.limitAuth(http.HandlerFunc(s.login)))
+	// A login's second factor, with the challenge in its cookie (mfa.go).
+	mux.HandleFunc("POST /api/auth/login/mfa", s.loginMFA)
 	mux.Handle("GET /api/auth/me", s.requireSession(http.HandlerFunc(s.me)))
 	mux.Handle("PATCH /api/auth/me", s.requireSession(http.HandlerFunc(s.updateProfile)))
 	// Deleting the account checks the password, like the routes below.
@@ -41,6 +43,16 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
 	mux.Handle("POST /api/auth/password/verify", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(s.verifyPassword))))
 	mux.Handle("PATCH /api/auth/password", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(s.changePassword))))
+	// Two-factor authentication (mfa.go). Setting up checks the password; so
+	// do turning it off and new recovery codes, which are recovery routes
+	// too: a stolen session must not use up the budget to keep the owner
+	// from taking the account back.
+	mfa := mfaHandlers{s}
+	recoveryCodes := recoveryCodeHandlers{s}
+	mux.Handle("POST /api/auth/mfa/setup", s.requireSession(s.limitAuth(http.HandlerFunc(mfa.setup))))
+	mux.Handle("POST /api/auth/mfa", s.requireSession(http.HandlerFunc(mfa.store)))
+	mux.Handle("DELETE /api/auth/mfa", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(mfa.destroy))))
+	mux.Handle("POST /api/auth/mfa/recovery-codes", s.requireSessionUnmetered(s.limitAuth(http.HandlerFunc(recoveryCodes.store))))
 	// Password reset by link, signed out (password_reset.go). Requesting a
 	// link and checking one don't hash, so they take only the IP quota.
 	mux.HandleFunc("POST /api/auth/password-reset", s.requestPasswordReset)

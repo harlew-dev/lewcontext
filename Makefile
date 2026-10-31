@@ -9,9 +9,9 @@ endif
 # target runs from. Normally it goes to Mailpit (make db): http://localhost:8025.
 MAIL_FILE ?= $(CURDIR)/tmp/mail.log
 export MAIL_FILE
-.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
+.PHONY: help install app-key migrate migrate-status migrate-rollback migrate-fresh migration seed prune admin dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
+	@echo 'Targets: install app-key migrate migrate-status migrate-rollback migrate-fresh migration seed prune admin dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -36,6 +36,15 @@ seed:
 # Previews unless CONFIRM=1 and a target; without a target previews every one at its default age.
 prune:
 	cd apps/api && go run ./cmd/prune $(if $(older-than),-older-than '$(older-than)') $(if $(CONFIRM),-confirm) $(target)
+# make app-key: writes a new APP_KEY into .env if it has none (never replaces one:
+# that locks out every account with two-factor authentication). Run before the first make dev.
+app-key:
+	cd apps/api && go run ./cmd/admin app-key generate -env ../../.env
+# make admin cmd=reset-mfa email=you@example.com [CONFIRM=1]: the operator's commands (cmd/admin).
+# Previews unless CONFIRM=1.
+admin:
+	@test -n "$(cmd)" || (cd apps/api && go run ./cmd/admin; exit 2)
+	cd apps/api && go run ./cmd/admin $(cmd) $(if $(email),-email '$(email)') $(if $(CONFIRM),-confirm)
 # Development in one terminal: rebuilds the embedded web app, then runs the API and Vite together (scripts/dev.sh).
 dev:
 	./scripts/dev.sh

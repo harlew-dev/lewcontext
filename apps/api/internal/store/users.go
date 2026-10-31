@@ -38,10 +38,12 @@ func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User,
 	return a.User, err
 }
 
-// FindUser returns sql.ErrNoRows when no account uses the email.
+// FindUser returns sql.ErrNoRows when no account uses the email. The user's
+// MFAEnabledAt says whether signing in needs a second factor.
 func (s *Store) FindUser(ctx context.Context, email string) (User, string, error) {
 	var a account
-	err := s.DB.NewSelect().Model(&a).Where("email = ?", email).Scan(ctx)
+	err := s.DB.NewSelect().Model(&a).ColumnExpr("u.*").ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(s.DB)).
+		Where("email = ?", email).Scan(ctx)
 	return a.User, a.PasswordHash, err
 }
 
