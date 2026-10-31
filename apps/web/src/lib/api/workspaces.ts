@@ -10,7 +10,7 @@ export const workspaceRoutes = {
   index: ({ page, perPage }: WorkspaceIndexQuery = {}) =>
     path<Page<Workspace>>(url(base, { page, perPage })),
   show: (id: string) => path<Workspace>(`${base}/${id}`),
-  create: () => base,
+  store: () => base,
   update: (id: string) => `${base}/${id}`,
   // Your own membership of the workspace.
   membership: (id: string) => `${base}/${id}/membership`,
@@ -21,8 +21,8 @@ export function workspaces(http: Http) {
       http.get(workspaceRoutes.index(query)),
     show: (id: string) => http.get(workspaceRoutes.show(id)),
     // The creator becomes the workspace's owner.
-    create: ({ name }: WorkspaceInput) =>
-      http.send<Workspace>("POST", workspaceRoutes.create(), { name }),
+    store: ({ name }: WorkspaceInput) =>
+      http.send<Workspace>("POST", workspaceRoutes.store(), { name }),
     // Owners and admins only.
     update: (id: string, { name }: WorkspaceInput) =>
       http.send<Workspace>("PATCH", workspaceRoutes.update(id), { name }),

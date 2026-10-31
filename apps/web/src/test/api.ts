@@ -4,10 +4,10 @@ import { vi } from "vitest";
 //
 //   const api = stubApi({
 //     "POST /api/auth/password/verify": { status: 204 },
-//     "PUT /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
+//     "PATCH /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
 //     "*": { body: {} },
 //   });
-//   api.sent("PUT");   // [{ method, url, body, csrf }]
+//   api.sent("PATCH");   // [{ method, url, body, csrf }]
 //
 // A key is "METHOD url": the exact URL first, then the path without its query,
 // then "*". A list of replies is used in order and its last one repeats.

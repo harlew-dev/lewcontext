@@ -10,11 +10,20 @@ export const routes = {
   onboarding: "/app/onboarding",
   settings: "/app/settings",
   dashboard: (workspace: string) => `/app/${workspace}/dashboard`,
-  projects: (workspace: string) => `/app/${workspace}/projects`,
-  project: (workspace: string, project: string) =>
-    `/app/${workspace}/projects/${project}`,
-  workspaceSettings: (workspace: string) => `/app/${workspace}/settings`,
-  members: (workspace: string) => `/app/${workspace}/settings/members`,
+  // Resource pages, grouped by resource with the page actions index, show,
+  // create and edit (docs/naming.md). URLs read naturally rather than
+  // following the action names.
+  projects: {
+    index: (workspace: string) => `/app/${workspace}/projects`,
+    show: (workspace: string, project: string) =>
+      `/app/${workspace}/projects/${project}`,
+  },
+  workspaces: {
+    edit: (workspace: string) => `/app/${workspace}/settings`,
+  },
+  members: {
+    index: (workspace: string) => `/app/${workspace}/settings/members`,
+  },
   login: "/auth/login",
   register: "/auth/register",
   // Asks for a reset link; the link itself is /auth/forgot-password/<token>.
@@ -27,7 +36,7 @@ export function navigation(workspace: string) {
     { label: "Overview", href: routes.dashboard(workspace), icon: HomeIcon },
     {
       label: "Projects",
-      href: routes.projects(workspace),
+      href: routes.projects.index(workspace),
       icon: Square2StackIcon,
     },
   ];

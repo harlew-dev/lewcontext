@@ -81,7 +81,7 @@ func (s *Server) session(r *http.Request) (store.Session, error) {
 	if !ok {
 		return store.Session{}, errNoSession
 	}
-	return s.Store.Session(r.Context(), auth.Digest(token))
+	return s.Store.FindSession(r.Context(), auth.Digest(token))
 }
 
 // sessionToken is the request's session cookie, if it has a well-formed one
@@ -159,7 +159,7 @@ func (s *Server) requireWorkspace(next http.Handler) http.Handler {
 			fail(w, 404, "Workspace not found.")
 			return
 		}
-		workspace, err := s.Store.MemberWorkspace(r.Context(), current(r).User.ID, id)
+		workspace, err := s.Store.FindWorkspace(r.Context(), current(r).User.ID, id)
 		if errors.Is(err, sql.ErrNoRows) {
 			fail(w, 404, "Workspace not found.")
 			return

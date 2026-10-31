@@ -5,13 +5,13 @@ const prj = "prj_j292s2S2j7Qx4B";
 describe("routes", () => {
   it("nest workspace pages under the workspace ID", () => {
     expect(routes.dashboard(ws)).toBe(`/app/${ws}/dashboard`);
-    expect(routes.projects(ws)).toBe(`/app/${ws}/projects`);
-    expect(routes.project(ws, prj)).toBe(`/app/${ws}/projects/${prj}`);
-    expect(routes.workspaceSettings(ws)).toBe(`/app/${ws}/settings`);
-    expect(routes.members(ws)).toBe(`/app/${ws}/settings/members`);
+    expect(routes.projects.index(ws)).toBe(`/app/${ws}/projects`);
+    expect(routes.projects.show(ws, prj)).toBe(`/app/${ws}/projects/${prj}`);
+    expect(routes.workspaces.edit(ws)).toBe(`/app/${ws}/settings`);
+    expect(routes.members.index(ws)).toBe(`/app/${ws}/settings/members`);
     expect(navigation(ws).map((item) => item.href)).toEqual([
       routes.dashboard(ws),
-      routes.projects(ws),
+      routes.projects.index(ws),
     ]);
   });
 });
@@ -21,10 +21,10 @@ describe("returnPath()", () => {
       routes.app,
       routes.settings,
       routes.dashboard(ws),
-      routes.projects(ws),
-      routes.project(ws, prj),
-      routes.workspaceSettings(ws),
-      routes.members(ws),
+      routes.projects.index(ws),
+      routes.projects.show(ws, prj),
+      routes.workspaces.edit(ws),
+      routes.members.index(ws),
     ])
       expect(returnPath(path)).toBe(path);
     expect(returnPath(`/app/${ws}/projects?status=Planned&page=2`)).toBe(

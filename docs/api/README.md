@@ -35,7 +35,7 @@ security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
   → requireSession (cookie → session, CSRF on mutations) for private routes
   → requireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
   → requirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
-  → handler (parse + validate) → store (query scoped by workspace ID) → jsonResponse
+  → handler, e.g. projectHandlers.index (parse + validate) → store, e.g. IndexProjects (query scoped by workspace ID) → jsonResponse
 ```
 
 - Responses are JSON. Errors are `{"error": "message"}` with a generic message; details go to `slog` only (`internalError`).

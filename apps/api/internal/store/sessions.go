@@ -52,8 +52,8 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, old
 	})
 }
 
-// Session refreshes idle time and returns sql.ErrNoRows for unknown, expired, or idle sessions.
-func (s *Store) Session(ctx context.Context, hash string) (Session, error) {
+// FindSession refreshes idle time and returns sql.ErrNoRows for unknown, expired, or idle sessions.
+func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 	active := s.DB.NewUpdate().Model((*sessionRecord)(nil)).
 		Set("last_seen_at = now()").
 		Where("token_hash = ? AND expires_at > now() AND last_seen_at > now() - interval '30 minutes'", hash).

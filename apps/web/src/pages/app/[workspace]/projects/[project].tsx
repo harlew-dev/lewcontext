@@ -27,7 +27,7 @@ import type { Project } from "@/types/projects";
 import { can } from "@/types/workspaces";
 // Only well-formed project IDs reach the API; anything else, and a project
 // that doesn't exist in this workspace, shows "not found" inside the layout.
-export default function ProjectPage() {
+export default function ProjectShow() {
   const id = parsePublicId("prj", useParams().project);
   if (id === null) return <ProjectNotFound />;
   return <ProjectContent key={id} id={id} />;
@@ -40,7 +40,7 @@ function ProjectContent({ id }: { id: string }) {
   return (
     <>
       <Link
-        href={routes.projects(workspace.id)}
+        href={routes.projects.index(workspace.id)}
         className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
       >
         <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
@@ -122,7 +122,9 @@ function ProjectNotFound() {
       title="This project has wandered off."
       description="It isn’t in this workspace, or the link is mistyped."
       action={
-        <Button href={routes.projects(workspace.id)}>Back to projects</Button>
+        <Button href={routes.projects.index(workspace.id)}>
+          Back to projects
+        </Button>
       }
     />
   );

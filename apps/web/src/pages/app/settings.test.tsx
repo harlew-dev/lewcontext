@@ -79,7 +79,7 @@ describe("change password", () => {
   it("checks the current password, then saves the new one", async () => {
     const api = stubApi({
       "POST /api/auth/password/verify": [{ status: 204 }],
-      "PUT /api/auth/password": [{ status: 200, body: rotated }],
+      "PATCH /api/auth/password": [{ status: 200, body: rotated }],
       "DELETE /api/auth/sessions": [{ status: 204 }],
     });
     renderSettings();
@@ -95,7 +95,7 @@ describe("change password", () => {
     expect(
       await screen.findByText("The passwords don’t match."),
     ).toBeInTheDocument();
-    expect(api.sent("PUT")).toHaveLength(0);
+    expect(api.sent("PATCH")).toHaveLength(0);
     type("Confirm new password", "a brand new passphrase");
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     expect(
@@ -103,8 +103,8 @@ describe("change password", () => {
         "Password updated. Other sessions were signed out.",
       ),
     ).toBeInTheDocument();
-    expect(api.sent("PUT")[0]).toEqual({
-      method: "PUT",
+    expect(api.sent("PATCH")[0]).toEqual({
+      method: "PATCH",
       url: "/api/auth/password",
       body: {
         currentPassword: "my old passphrase",
@@ -147,12 +147,12 @@ describe("change password", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Use at least 12 characters.",
     );
-    expect(api.sent("PUT")).toHaveLength(0);
+    expect(api.sent("PATCH")).toHaveLength(0);
   });
   it("goes back to the first step when the API rejects the current password on save", async () => {
     stubApi({
       "POST /api/auth/password/verify": [{ status: 204 }],
-      "PUT /api/auth/password": [wrongCurrent],
+      "PATCH /api/auth/password": [wrongCurrent],
     });
     renderSettings();
     type("Current password", "my old passphrase");

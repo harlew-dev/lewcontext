@@ -33,14 +33,15 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.Handle("DELETE /api/auth/sessions", s.requireSession(http.HandlerFunc(s.revokeOthers)))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
 	mux.Handle("POST /api/auth/password/verify", s.requireSession(s.limitAuth(http.HandlerFunc(s.verifyPassword))))
-	mux.Handle("PUT /api/auth/password", s.requireSession(s.limitAuth(http.HandlerFunc(s.changePassword))))
+	mux.Handle("PATCH /api/auth/password", s.requireSession(s.limitAuth(http.HandlerFunc(s.changePassword))))
 	// Password reset by link, signed out (password_reset.go). Requesting a
 	// link and checking one don't hash, so they take only the IP quota.
 	mux.HandleFunc("POST /api/auth/password-reset", s.requestPasswordReset)
 	mux.HandleFunc("POST /api/auth/password-reset/check", s.checkPasswordReset)
-	mux.Handle("PUT /api/auth/password-reset", s.limitAuth(http.HandlerFunc(s.resetPassword)))
-	mux.Handle("GET /api/workspaces", s.requireSession(http.HandlerFunc(s.workspaces)))
-	mux.Handle("POST /api/workspaces", s.requireSession(http.HandlerFunc(s.createWorkspace)))
+	mux.Handle("PATCH /api/auth/password-reset", s.limitAuth(http.HandlerFunc(s.resetPassword)))
+	workspaces := workspaceHandlers{s}
+	mux.Handle("GET /api/workspaces", s.requireSession(http.HandlerFunc(workspaces.index)))
+	mux.Handle("POST /api/workspaces", s.requireSession(http.HandlerFunc(workspaces.store)))
 
 	// Everything inside a workspace requires a session and membership.
 	s.workspaceRoutes(group(mux, "/api/workspaces/{workspace}", s.requireSession, s.requireWorkspace))
@@ -52,17 +53,21 @@ func (s *Server) apiRoutes() *http.ServeMux {
 // it needs (auth/permissions.go), or the server won't start.
 func (s *Server) workspaceRoutes(ws routeGroup) {
 	ws.requirePermissions = true
-	ws.HandleFunc("GET", "", s.workspace)
-	ws.Can("PATCH", "", auth.WorkspaceUpdate, s.updateWorkspace)
-	ws.HandleFunc("GET", "/projects", s.projects)
-	ws.Can("POST", "/projects", auth.ProjectStore, s.createProject)
-	ws.HandleFunc("GET", "/projects/{project}", s.project)
-	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, s.updateProject)
-	ws.Can("GET", "/members", auth.WorkspaceMemberIndex, s.members)
-	ws.Can("PATCH", "/members/{member}", auth.WorkspaceMemberUpdate, s.updateMember)
-	ws.Can("DELETE", "/members/{member}", auth.WorkspaceMemberDestroy, s.removeMember)
+	workspaces := workspaceHandlers{s}
+	projects := projectHandlers{s}
+	members := memberHandlers{s}
+	membership := membershipHandlers{s}
+	ws.HandleFunc("GET", "", workspaces.show)
+	ws.Can("PATCH", "", auth.WorkspaceUpdate, workspaces.update)
+	ws.HandleFunc("GET", "/projects", projects.index)
+	ws.Can("POST", "/projects", auth.ProjectStore, projects.store)
+	ws.HandleFunc("GET", "/projects/{project}", projects.show)
+	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, projects.update)
+	ws.Can("GET", "/members", auth.WorkspaceMemberIndex, members.index)
+	ws.Can("PATCH", "/members/{member}", auth.WorkspaceMemberUpdate, members.update)
+	ws.Can("DELETE", "/members/{member}", auth.WorkspaceMemberDestroy, members.destroy)
 	// Your own membership: anyone may leave, apart from the last owner.
-	ws.Can("DELETE", "/membership", auth.AnyMember, s.leaveWorkspace)
+	ws.Can("DELETE", "/membership", auth.AnyMember, membership.destroy)
 }
 
 // pageRoutes serve the built web app (internal/web) for every other GET.

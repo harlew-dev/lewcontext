@@ -27,6 +27,18 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 
 ## Queries
 
+Store methods are named verb first ([../naming.md](../naming.md#store-methods-internalstore)):
+
+| Verb | For | Examples |
+| --- | --- | --- |
+| `Index<Resources>` | one page of a list, with its search and filters | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
+| `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindProject`, `FindSession`, `FindWorkspace` (through the user's membership), `FindUser` |
+| `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject` |
+| a domain verb | when it says more | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset` |
+| `Check<Thing>` | a yes/no question | `CheckPasswordReset` |
+
+Methods implementing an interface from elsewhere keep its names (`Claim`, `Delivered`, `Fail`, `Retry` for `events.Queue`).
+
 - All SQL lives in `internal/store`. Handlers never build queries.
 - **Scope by membership:** workspaces are only read through a `workspace_user` row for the session's user (`memberWorkspaces`). Workspace data (projects) is scoped by the workspace's internal ID from `requireWorkspace`: `WHERE p.public_id = ? AND p.workspace_id = ?`, returning `sql.ErrNoRows` (404) when the row isn't in that workspace.
 - **Bun's builder only:** write queries with `NewSelect`/`NewInsert`/`NewUpdate`/`NewDelete` (and `With`, `ColumnExpr`, `WhereGroup` for the harder ones), in tests too; no SQL strings through `NewRaw`, `QueryContext` or `ExecContext`. Only `internal/database` (schemas, advisory locks) and migration files write SQL directly.

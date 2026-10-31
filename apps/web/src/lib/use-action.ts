@@ -15,7 +15,7 @@ type ActionOptions = {
 // calls while one is in flight, so a double click submits once. `run` awaits everything the action awaits,
 // navigation included, and never throws: it resolves { ok: true, value } or
 // { ok: false }.
-//   const save = useAction((input: ProjectInput) => api.projects(id).create(input));
+//   const save = useAction((input: ProjectInput) => api.projects(id).store(input));
 //   const result = await save.run(form);
 export function useAction<A extends unknown[], T>(
   action: (...args: A) => Promise<T>,

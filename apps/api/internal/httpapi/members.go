@@ -38,7 +38,11 @@ func failMembership(w http.ResponseWriter, err error) {
 		internalError(w, err)
 	}
 }
-func (s *Server) members(w http.ResponseWriter, r *http.Request) {
+
+// memberHandlers are the …/members routes inside a workspace (routes.go).
+type memberHandlers struct{ *Server }
+
+func (h memberHandlers) index(w http.ResponseWriter, r *http.Request) {
 	params, ok := queryParams(r, "page", "perPage", "q")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
@@ -54,14 +58,14 @@ func (s *Server) members(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Check the search.")
 		return
 	}
-	page, err := s.Store.IndexMembers(r.Context(), currentWorkspace(r).ID, filter, req)
+	page, err := h.Store.IndexMembers(r.Context(), currentWorkspace(r).ID, filter, req)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 	jsonResponse(w, 200, page)
 }
-func (s *Server) updateMember(w http.ResponseWriter, r *http.Request) {
+func (h memberHandlers) update(w http.ResponseWriter, r *http.Request) {
 	id, ok := memberID(r)
 	if !ok {
 		fail(w, 404, "Member not found.")
@@ -71,14 +75,14 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	member, err := s.Store.UpdateMemberRole(r.Context(), currentWorkspace(r), current(r).User.ID, id, in.Role)
+	member, err := h.Store.UpdateMemberRole(r.Context(), currentWorkspace(r), current(r).User.ID, id, in.Role)
 	if err != nil {
 		failMembership(w, err)
 		return
 	}
 	jsonResponse(w, 200, member)
 }
-func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
+func (h memberHandlers) destroy(w http.ResponseWriter, r *http.Request) {
 	id, ok := memberID(r)
 	if !ok {
 		fail(w, 404, "Member not found.")
@@ -88,16 +92,20 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "To leave, use Leave workspace.")
 		return
 	}
-	if err := s.Store.RemoveMember(r.Context(), currentWorkspace(r), current(r).User.ID, id); err != nil {
+	if err := h.Store.RemoveMember(r.Context(), currentWorkspace(r), current(r).User.ID, id); err != nil {
 		failMembership(w, err)
 		return
 	}
 	w.WriteHeader(204)
 }
 
-// leaveWorkspace removes the signed-in user's own membership.
-func (s *Server) leaveWorkspace(w http.ResponseWriter, r *http.Request) {
-	if err := s.Store.LeaveWorkspace(r.Context(), currentWorkspace(r), current(r).User.ID); err != nil {
+// membershipHandlers are the signed-in user's own membership of the workspace
+// (…/membership), a singleton resource: destroy is leaving.
+type membershipHandlers struct{ *Server }
+
+// destroy removes the signed-in user's own membership: they leave.
+func (h membershipHandlers) destroy(w http.ResponseWriter, r *http.Request) {
+	if err := h.Store.LeaveWorkspace(r.Context(), currentWorkspace(r), current(r).User.ID); err != nil {
 		failMembership(w, err)
 		return
 	}

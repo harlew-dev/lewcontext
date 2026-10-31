@@ -143,7 +143,7 @@ describe("the reset link page", () => {
   it("checks the new password, then sends the user to sign in with it", async () => {
     const api = stubApi({
       "POST /api/auth/password-reset/check": { status: 204 },
-      "PUT /api/auth/password-reset": { body: { email: "ada@example.com" } },
+      "PATCH /api/auth/password-reset": { body: { email: "ada@example.com" } },
     });
     renderAt(`/auth/forgot-password/${token}`);
     await screen.findByLabelText("New password");
@@ -158,7 +158,7 @@ describe("the reset link page", () => {
     type("Confirm new password", "a different passphrase");
     fireEvent.click(submit);
     expect(await screen.findByText("The passwords don’t match.")).toBeVisible();
-    expect(api.sent("PUT")).toEqual([]);
+    expect(api.sent("PATCH")).toEqual([]);
 
     type("Confirm new password", "a brand new passphrase");
     fireEvent.click(submit);
@@ -168,9 +168,9 @@ describe("the reset link page", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
-    expect(api.sent("PUT")).toEqual([
+    expect(api.sent("PATCH")).toEqual([
       {
-        method: "PUT",
+        method: "PATCH",
         url: "/api/auth/password-reset",
         body: { token, newPassword: "a brand new passphrase" },
         csrf: null,
@@ -180,7 +180,7 @@ describe("the reset link page", () => {
   it("shows the expired page when the link dies before submitting", async () => {
     stubApi({
       "POST /api/auth/password-reset/check": { status: 204 },
-      "PUT /api/auth/password-reset": deadLink,
+      "PATCH /api/auth/password-reset": deadLink,
     });
     renderAt(`/auth/forgot-password/${token}`);
     await screen.findByLabelText("New password");

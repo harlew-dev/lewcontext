@@ -40,7 +40,7 @@ describe("paths.projects(workspace)", () => {
   it("builds record paths and recognises only this workspace's keys", () => {
     expect(routes.show(prj)).toBe(`${base}/${prj}`);
     expect(routes.update(prj)).toBe(`${base}/${prj}`);
-    expect(routes.create()).toBe(base);
+    expect(routes.store()).toBe(base);
     for (const key of [base, `${base}?page=2`, `${base}/${prj}`])
       expect(routes.matches(key)).toBe(true);
     const other = paths.projects("wsp_00000000000000").index();
@@ -79,7 +79,7 @@ describe("projects(workspace)", () => {
   it("creates with the session's CSRF token and only the editable fields", async () => {
     const stub = stubFetch({ id: prj }, 201);
     const project = { ...input, id: prj, createdAt: "", updatedAt: "" };
-    await api("csrf").projects(ws).create(project);
+    await api("csrf").projects(ws).store(project);
     const [sent] = stub.sent();
     expect([sent.url, sent.method]).toEqual([base, "POST"]);
     expect(sent.csrf).toBe("csrf");
@@ -102,7 +102,7 @@ describe("workspaces()", () => {
   it("creates, renames, shows and lists, sending only the name", async () => {
     const stub = stubFetch({ id: ws });
     const workspaces = api("csrf").workspaces();
-    await workspaces.create({ name: "Acme" });
+    await workspaces.store({ name: "Acme" });
     await workspaces.update(ws, { name: "Acme Inc" });
     await workspaces.show(ws);
     await workspaces.index({ page: 2 });

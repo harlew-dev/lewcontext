@@ -41,7 +41,7 @@ func (s *Server) verifyPassword(w http.ResponseWriter, r *http.Request) {
 	if !s.accountLimit(w, r, user.Email) {
 		return
 	}
-	hash, err := s.Store.PasswordHash(r.Context(), user.ID)
+	hash, err := s.Store.FindPasswordHash(r.Context(), user.ID)
 	if err != nil {
 		internalError(w, err)
 		return

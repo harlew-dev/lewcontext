@@ -30,7 +30,7 @@ import { routes } from "@/lib/routes";
 import { useAction } from "@/lib/use-action";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
 import { can, workspaceName } from "@/types/workspaces";
-export default function WorkspaceSettings() {
+export default function WorkspaceEdit() {
   const workspace = useWorkspace();
   const canRename = can(workspace, "workspace.update");
   return (

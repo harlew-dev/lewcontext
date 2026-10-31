@@ -39,7 +39,7 @@ export function auth(http: Http) {
     // Saves a new password. The API signs out every session and returns a new
     // one for this browser (new cookie and CSRF token), for useRenewSession().
     changePassword: ({ currentPassword, newPassword }: PasswordChange) =>
-      http.send<Session>("PUT", authRoutes.password(), {
+      http.send<Session>("PATCH", authRoutes.password(), {
         currentPassword,
         newPassword,
       }),
@@ -55,7 +55,7 @@ export function auth(http: Http) {
     // Sets a new password with a reset link. Every session ends, so nobody is
     // signed in afterwards; returns the account's email for the login form.
     resetPassword: ({ token, newPassword }: PasswordReset) =>
-      http.send<{ email: string }>("PUT", authRoutes.passwordReset(), {
+      http.send<{ email: string }>("PATCH", authRoutes.passwordReset(), {
         token,
         newPassword,
       }),

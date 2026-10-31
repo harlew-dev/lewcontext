@@ -43,7 +43,7 @@ import type { Member, MemberQuery } from "@/types/members";
 import { can, type Role } from "@/types/workspaces";
 // Workspace settings → Members. Only owners and admins may list members; for
 // anyone else the page explains that without asking the API.
-export default function WorkspaceMembers() {
+export default function MemberIndex() {
   const workspace = useWorkspace();
   return (
     <div className="mx-auto max-w-4xl">
@@ -51,7 +51,7 @@ export default function WorkspaceMembers() {
       <SettingsTabs current="members" />
       <Divider className="my-10 mt-6" />
       {can(workspace, "workspace.member.index") ? (
-        <MemberIndex key={workspace.id} />
+        <MemberList key={workspace.id} />
       ) : (
         <Notice variant="error">
           Only owners and admins can see this workspace’s members.
@@ -65,11 +65,11 @@ function memberQuery(search: URLSearchParams): MemberQuery {
   return { page: page(search), q: cleanSearch(param(search, "q")) };
 }
 function membersPath(workspace: string, { q, page }: MemberQuery) {
-  return url(routes.members(workspace), { q, page });
+  return url(routes.members.index(workspace), { q, page });
 }
 // A change to one member: picking a new role, or removing them.
 type MemberAction = { kind: "role" | "remove"; member: Member };
-function MemberIndex() {
+function MemberList() {
   const [search] = useSearchParams();
   const goTo = useNavigate();
   const workspace = useWorkspace();

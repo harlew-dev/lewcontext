@@ -1,0 +1,82 @@
+# Naming
+
+How things are named across the API and the web app. **New code follows this page**, and existing code matches it ([`plans/features/crud-routing-convention.md`](../plans/features/crud-routing-convention.md) renamed it).
+
+The vocabulary is Laravel's resource controller, used at the HTTP boundary and in the web app. The store uses data verbs.
+
+## HTTP routes and handlers (`internal/httpapi`)
+
+| Action | Method | Path | Does | Handler |
+| --- | --- | --- | --- | --- |
+| `index` | GET | `/things` | one page of the list | `things.index` |
+| `show` | GET | `/things/{thing}` | one record | `things.show` |
+| `store` | POST | `/things` | create, 201 with the record | `things.store` |
+| `update` | PATCH | `/things/{thing}` | change, 200 with the record | `things.update` |
+| `destroy` | DELETE | `/things/{thing}` | delete, 204 | `things.destroy` |
+
+- **Handlers for one resource are methods on a per-resource type**, in that resource's file:
+
+  ```go
+  type projectHandlers struct{ *Server }
+  func (h projectHandlers) index(w http.ResponseWriter, r *http.Request) { … }
+
+  // routes.go
+  projects := projectHandlers{s}
+  ws.HandleFunc("GET", "/projects", projects.index)
+  ws.Can("POST", "/projects", auth.ProjectStore, projects.store)
+  ```
+
+- **Paths** are plural nouns under their parent (`/api/workspaces/{workspace}/projects/{project}`), and path IDs are public IDs.
+- **`update` is always PATCH**, even when the body is the whole editable representation. PUT isn't used.
+- **A singleton resource** (one per parent, no ID in the path) uses the same actions: leaving a workspace is `membership.destroy` on `DELETE …/membership`.
+- **Anything else is a named verb**, as POST on the record or collection, with the verb as the handler name: `POST /api/invitations/accept` → `invitations.accept`. First check whether it's really a `store` or `destroy` of some other resource.
+- **`/api/auth/*` is the exception:** named actions on the session and password (`register`, `login`, `logout`, `password/verify`, `password-reset/check`), not resources.
+
+## Store methods (`internal/store`)
+
+Every method starts with a verb:
+
+| Verb | For | Examples |
+| --- | --- | --- |
+| `Index<Resources>` | one page of a list, search and filters included (a filter is a field on the query, not a new method) | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
+| `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindUser`, `FindProject`, `FindWorkspace` |
+| `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject` |
+| a domain verb | when it says more than create, update or delete | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation` |
+| `Check<Thing>` | a yes/no question about a record | `CheckPasswordReset` |
+
+- There are no noun-only methods (`Project`, `Session`).
+- **The exception:** methods implementing an interface defined elsewhere use its names. That means the event worker's `Claim`, `Delivered`, `Fail` and `Retry` for `events.Queue`.
+
+## Permissions (`internal/auth/permissions.go`)
+
+`<resource>.<action>`, where the action is the CRUD action of the route the permission guards: `workspace.update`, `project.store`, `workspace.member.destroy`, `workspace.invitation.store`. The Go constant is the same words in PascalCase (`auth.WorkspaceMemberDestroy`).
+
+## Events (`internal/events`)
+
+`<area>.<past_tense>`, snake_case: a fact, not a command.
+
+- `store` records `*_created`;
+- `update` records `*_updated`, or a more specific fact (`workspace.renamed`);
+- `destroy` records `*_deleted`, or a more specific fact (`workspace.member_removed`, `workspace.member_left`, `workspace.invitation_revoked`).
+
+One event type per fact, with variable details in the payload, never in the name (`rate_limit.reached` with a `limit` field, not one event per limit).
+
+## Rate limits (`httpapi/limits.go`)
+
+`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. A limit shared by everyone is counted by `global`. Planned (the CAPTCHA plan): levels add `:challenge` or `:block` (`register:global:block`) in events.
+
+## Web app
+
+| What | Names | Examples |
+| --- | --- | --- |
+| API client (`lib/api/<resource>.ts`), calls and typed paths | the API's actions, plus named verbs | `api.projects(ws).index()`, `.show(id)`, `.store(input)`, `.update(id, input)`, `.destroy(id)`; `paths.projects(ws).store()`; `api.invitations().accept(token)` |
+| Page route constants (`lib/routes.ts`) | grouped by resource, with the page actions `index`, `show`, `create`, `edit` | `routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`, `routes.members.index(ws)` |
+| Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)` |
+| Resource pages' default exports | `<Resource><Action>` | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex` |
+| Other pages' default exports | what the page is | `Login`, `Onboarding`, `AccountSettings`, `Dashboard` |
+
+- **Delete is never a page.** It is a confirmation dialog that calls `destroy`.
+- **URLs read naturally and don't follow the action names:** the workspace `edit` page is `/app/<wsp>/settings`.
+- **Page files are shaped like the URL** (`pages/app/[workspace]/projects/[project].tsx`).
+- **Component files** are kebab-case, grouping a family of named exports (`button.tsx`, `confirmation-dialog.tsx`); see AGENTS.md rule 6.
+- **Variants:** components with alternatives take a `variant` prop (`<Notice variant="error">`, `<ConfirmationDialog variant="danger">`), never `tone`, and never one component per alternative.

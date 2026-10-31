@@ -108,7 +108,7 @@ function WorkspaceDropdown({
         <ChevronDownIcon />
       </DropdownButton>
       <DropdownMenu className="min-w-80 lg:min-w-64" anchor="bottom start">
-        <DropdownItem href={routes.workspaceSettings(workspace.id)}>
+        <DropdownItem href={routes.workspaces.edit(workspace.id)}>
           <Cog8ToothIcon />
           <DropdownLabel>Workspace settings</DropdownLabel>
         </DropdownItem>

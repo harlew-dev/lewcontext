@@ -35,7 +35,7 @@ Pages under `pages/app/` (except `/app` and onboarding) sit inside the **layout 
 route("app/:workspace/tasks", "pages/app/[workspace]/tasks.tsx"),
 
 // pages/app/[workspace]/tasks.tsx
-export default function Tasks() {
+export default function TaskIndex() {
   const workspace = useWorkspace();
   const [search] = useSearchParams();
   const list = useResource(paths.tasks(workspace.id).index({ page: page(search) }));
@@ -85,7 +85,8 @@ Signed-out visits to a signed-in page go to `/auth/login?next=<path and query>`,
 
 ## Routes
 
-- **Page URLs:** `routes` in `lib/routes.ts`. Workspace pages take the workspace ID: `routes.project(workspace.id, project.id)` → `/app/wsp_…/projects/prj_…`.
+- **Page URLs:** `routes` in `lib/routes.ts`, grouped by resource with the page actions `index`, `show`, `create` and `edit`. Workspace pages take the workspace ID: `routes.projects.show(workspace.id, project.id)` → `/app/wsp_…/projects/prj_…`, `routes.workspaces.edit(workspace.id)` → `/app/wsp_…/settings`. Pages that aren't a resource keep plain names (`routes.dashboard(ws)`, `routes.settings`).
+- **Delete is never a page:** it's a confirmation dialog that calls the client's `destroy`.
 - **API paths** live with their resource in `lib/api/*` and are exported as `paths`, e.g. `paths.projects(workspace.id).show(id)`.
 - **Auth links:** `loginPath(path)` and `authPath(page, next)` build login/register URLs that carry an allowed `next`.
 - **Dynamic IDs:** read `:workspace`/`:project` from `useParams()` with `parsePublicId("wsp" | "prj", value)` from `lib/ids.ts`. It returns `null` (render "not found") unless the value is that prefix and 14 base62 characters.

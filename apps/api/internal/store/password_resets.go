@@ -41,8 +41,8 @@ func (s *Store) IssuePasswordReset(ctx context.Context, email, hash string, expi
 	return u, err
 }
 
-// PasswordResetValid reports whether hash is a live reset link.
-func (s *Store) PasswordResetValid(ctx context.Context, hash string) (bool, error) {
+// CheckPasswordReset reports whether hash is a live reset link.
+func (s *Store) CheckPasswordReset(ctx context.Context, hash string) (bool, error) {
 	return s.DB.NewSelect().Model((*passwordReset)(nil)).
 		Where("token_hash = ? AND expires_at > now()", hash).
 		Exists(ctx)

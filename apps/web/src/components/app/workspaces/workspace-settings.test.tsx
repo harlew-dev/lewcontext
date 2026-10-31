@@ -9,7 +9,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 import { Toaster } from "@/components/ui/toast";
-import WorkspaceSettings from "@/pages/app/[workspace]/settings";
+import WorkspaceEdit from "@/pages/app/[workspace]/settings";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { stubApi } from "@/test/api";
@@ -31,7 +31,7 @@ function renderAs(role: Role, overrides: Partial<Workspace> = {}) {
             <Routes>
               <Route
                 path="/app/:workspace/settings"
-                element={<WorkspaceSettings />}
+                element={<WorkspaceEdit />}
               />
               <Route path="/app" element={<p>Opening your next workspace</p>} />
             </Routes>

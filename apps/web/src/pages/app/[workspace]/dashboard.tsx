@@ -63,7 +63,7 @@ export default function Dashboard() {
             refreshing={list.refreshing}
             onRefresh={list.refresh}
           />
-          <Button plain href={routes.projects(workspace.id)}>
+          <Button plain href={routes.projects.index(workspace.id)}>
             View all
           </Button>
         </div>

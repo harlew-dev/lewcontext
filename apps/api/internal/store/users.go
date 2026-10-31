@@ -48,8 +48,8 @@ func (s *Store) UpdateProfile(ctx context.Context, u User, name string) (User, e
 	return u, err
 }
 
-// PasswordHash returns the user's stored password hash.
-func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) {
+// FindPasswordHash returns the user's stored password hash.
+func (s *Store) FindPasswordHash(ctx context.Context, userID int64) (string, error) {
 	var hash string
 	err := s.DB.NewSelect().Model((*account)(nil)).Column("password_hash").Where("id = ?", userID).Scan(ctx, &hash)
 	return hash, err

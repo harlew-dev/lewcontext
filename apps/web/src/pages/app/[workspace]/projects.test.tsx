@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
-import Projects from "@/pages/app/[workspace]/projects";
-import ProjectPage from "@/pages/app/[workspace]/projects/[project]";
+import ProjectIndex from "@/pages/app/[workspace]/projects";
+import ProjectShow from "@/pages/app/[workspace]/projects/[project]";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { stubApi } from "@/test/api";
@@ -39,10 +39,13 @@ function renderAs(role: Role, url: string) {
         >
           <MemoryRouter initialEntries={[url]}>
             <Routes>
-              <Route path="/app/:workspace/projects" element={<Projects />} />
+              <Route
+                path="/app/:workspace/projects"
+                element={<ProjectIndex />}
+              />
               <Route
                 path="/app/:workspace/projects/:project"
-                element={<ProjectPage />}
+                element={<ProjectShow />}
               />
             </Routes>
           </MemoryRouter>

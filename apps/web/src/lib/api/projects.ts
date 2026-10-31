@@ -33,7 +33,7 @@ export function projectRoutes(workspace: string) {
     index: (query: ProjectIndexQuery = {}) =>
       path<Page<Project>>(url(base, indexParams(query))),
     show: (id: string) => path<Project>(`${base}/${id}`),
-    create: () => base,
+    store: () => base,
     update: (id: string) => `${base}/${id}`,
     // Needs DELETE /api/workspaces/{workspace}/projects/{project} in the Go API first.
     // destroy: (id: string) => `${base}/${id}`,
@@ -51,8 +51,8 @@ export function projects(http: Http, workspace: string) {
   return {
     index: (query: ProjectIndexQuery = {}) => http.get(routes.index(query)),
     show: (id: string) => http.get(routes.show(id)),
-    create: (input: ProjectInput) =>
-      http.send<Project>("POST", routes.create(), body(input)),
+    store: (input: ProjectInput) =>
+      http.send<Project>("POST", routes.store(), body(input)),
     update: (id: string, input: ProjectInput) =>
       http.send<Project>("PATCH", routes.update(id), body(input)),
     // Needs DELETE /api/workspaces/{workspace}/projects/{project} in the Go API first.

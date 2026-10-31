@@ -17,7 +17,11 @@ func validWorkspace(in *store.WorkspaceInput) bool {
 	n := utf8.RuneCountInString(in.Name)
 	return n >= 1 && n <= 80 && !strings.ContainsFunc(in.Name, unicode.IsControl)
 }
-func (s *Server) workspaces(w http.ResponseWriter, r *http.Request) {
+
+// workspaceHandlers are the /api/workspaces routes (routes.go).
+type workspaceHandlers struct{ *Server }
+
+func (h workspaceHandlers) index(w http.ResponseWriter, r *http.Request) {
 	params, ok := queryParams(r, "page", "perPage")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
@@ -28,35 +32,35 @@ func (s *Server) workspaces(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid page.")
 		return
 	}
-	page, err := s.Store.IndexWorkspaces(r.Context(), current(r).User.ID, req)
+	page, err := h.Store.IndexWorkspaces(r.Context(), current(r).User.ID, req)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 	jsonResponse(w, 200, page)
 }
-func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
+func (h workspaceHandlers) show(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, currentWorkspace(r))
 }
-func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
+func (h workspaceHandlers) store(w http.ResponseWriter, r *http.Request) {
 	in, ok := decodeValid(w, r, validWorkspace, invalidWorkspace)
 	if !ok {
 		return
 	}
-	workspace, err := s.Store.CreateWorkspace(r.Context(), current(r).User.ID, in)
+	workspace, err := h.Store.CreateWorkspace(r.Context(), current(r).User.ID, in)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 	jsonResponse(w, 201, workspace)
 }
-func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request) {
+func (h workspaceHandlers) update(w http.ResponseWriter, r *http.Request) {
 	in, ok := decodeValid(w, r, validWorkspace, invalidWorkspace)
 	if !ok {
 		return
 	}
 	current := currentWorkspace(r)
-	workspace, err := s.Store.RenameWorkspace(r.Context(), current.ID, in)
+	workspace, err := h.Store.RenameWorkspace(r.Context(), current.ID, in)
 	if err != nil {
 		internalError(w, err)
 		return

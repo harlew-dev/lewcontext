@@ -20,10 +20,10 @@ cd apps/web && npm audit
   ```ts
   const api = stubApi({
     "POST /api/auth/password/verify": { status: 204 },
-    "PUT /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
+    "PATCH /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
     "*": { body: {} },
   });
-  api.sent("PUT"); // [{ method, url, body, csrf }]
+  api.sent("PATCH"); // [{ method, url, body, csrf }]
   ```
 
   A list of replies is used in order and its last one repeats; anything unmatched gets a 404 naming the missing stub. A reply can hold its response until a `gate()` is released (to check pending states) or fail as if the network were down (`network: true`). `testSession(overrides)` from `src/test/session.ts` is a signed-in session to pass to `SessionProvider`. Only `lib/api/http.test.ts` (the transport, with raw `Response`s) and `lib/use-resource-pages.test.tsx` (an outage that changes mid-test) stub `fetch` themselves.

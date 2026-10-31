@@ -26,7 +26,7 @@ export function useCreateWorkspace(onOpened?: () => void) {
   const refresh = useRefreshWorkspaces();
   const [name, setName] = useState("");
   const create = useAction(async (clean: string) => {
-    const workspace = await api.workspaces().create({ name: clean });
+    const workspace = await api.workspaces().store({ name: clean });
     refresh();
     await navigate(routes.dashboard(workspace.id));
     onOpened?.();

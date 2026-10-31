@@ -26,9 +26,10 @@ func (s *Store) IndexWorkspaces(ctx context.Context, userID int64, req PageReque
 	return Paginate[Workspace](ctx, q, req)
 }
 
-// MemberWorkspace returns sql.ErrNoRows when the workspace does not exist or
+// FindWorkspace loads the workspace through the user's membership, with
+// their role. It returns sql.ErrNoRows when the workspace does not exist or
 // the user is not a member, so callers can't tell the two apart.
-func (s *Store) MemberWorkspace(ctx context.Context, userID int64, publicID string) (Workspace, error) {
+func (s *Store) FindWorkspace(ctx context.Context, userID int64, publicID string) (Workspace, error) {
 	var w Workspace
 	err := s.memberWorkspaces(userID).Where("w.public_id = ?", publicID).Scan(ctx, &w)
 	return w, err

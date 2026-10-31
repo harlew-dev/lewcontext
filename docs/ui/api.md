@@ -7,36 +7,39 @@ const api = useApi();                                    // in a component body
 const { id: ws } = useWorkspace();                       // projects belong to a workspace
 api.projects(ws).index({ status: "Planned", page: 2 })   // Promise<Page<Project>>
 api.projects(ws).show("prj_j292s2S2j7Qx4B")              // Promise<Project>
-api.projects(ws).create(input)                           // input: ProjectInput
-api.workspaces().create({ name: "Acme" })                // Promise<Workspace>, you're the owner
+api.projects(ws).store(input)                            // input: ProjectInput
+api.workspaces().store({ name: "Acme" })                 // Promise<Workspace>, you're the owner
 paths.projects(ws).show(id)                              // ApiPath<Project>: "/api/workspaces/wsp_…/projects/prj_…"
 ```
 
 ## Conventions
 
+Client methods and typed paths use the API's action names (`index`, `show`, `store`, `update`, `destroy`, plus named verbs such as `accept`); see [../naming.md](../naming.md#web-app).
+
 | Method | HTTP | Returns |
 | --- | --- | --- |
 | `index(query?)` | `GET /api/<resource>?…` | `Page<T>` ([pagination.md](pagination.md)) |
 | `show(id)` | `GET /api/<resource>/{id}` | `T` |
-| `create(input)` | `POST /api/<resource>` | `T` |
+| `store(input)` | `POST /api/<resource>` | `T` |
 | `update(id, input)` | `PATCH /api/<resource>/{id}` | `T` |
 | `destroy(id)` | `DELETE /api/<resource>/{id}` | `void` |
 
 - `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths. **Workspace resources take the workspace ID explicitly**, both in `paths.projects(ws)` and `api.projects(ws)`, so the same paths work in components, SWR keys and route loaders.
 - Resources implement only what the API supports. Projects have `destroy` commented out until a delete endpoint exists.
 - **`index()` takes a typed query object** (`ProjectIndexQuery`: `page`, `perPage`, `q`, `status`, `sort`). Unknown keys and values the API would reject are type errors. Defaults are left out, so each query has one path.
-- **Bodies contain only the editable fields** (`create`/`update` pick them from the input), because the API rejects unknown fields.
+- **Bodies contain only the editable fields** (`store`/`update` pick them from the input), because the API rejects unknown fields.
 
 | Resource | Methods |
 | --- | --- |
-| `workspaces()` | `index({ page, perPage })`, `show(id)`, `create({ name })`, `update(id, { name })` (owners and admins) |
-| `projects(workspace)` | `index`, `show`, `create`, `update` (`destroy` commented out) |
+| `workspaces()` | `index({ page, perPage })`, `show(id)`, `store({ name })`, `update(id, { name })` (owners and admins), `leave(id)` (`DELETE …/membership`) |
+| `projects(workspace)` | `index`, `show`, `store`, `update` (`destroy` commented out) |
+| `members(workspace)` | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins) |
 | `auth()` | `me`, `login(credentials)`, `register(registration)`, `logout()` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
 ## Calling the API: `useApi()`
 
-- **`const api = useApi()`** in a component body, then `await api.projects(workspace.id).create(input)` in handlers. It is a hook, so it can't be called in a handler, a condition or at module level.
+- **`const api = useApi()`** in a component body, then `await api.projects(workspace.id).store(input)` in handlers. It is a hook, so it can't be called in a handler, a condition or at module level.
 - **CSRF is automatic.** `useApi()` reads the session's token from the session context ([pages.md](pages.md#the-session-and-the-workspace)) and sends it as `X-CSRF-Token` on mutations. Signed out (login, register), it sends none. The client is rebuilt only when the token changes. Never put the token in a URL or localStorage.
 - **Calls** go to the same-origin `/api` (the Go server in production; Vite's dev proxy in development) with the session cookie and a 12 s timeout.
 - **Route loaders** run outside components and use `loaderApi()`: the same client without a CSRF token, so it can only read ([pages.md](pages.md#route-loaders-libloadersts)). Elsewhere outside components you only need `paths` (module constants, SWR keys). There is no module-level client holding a token.
@@ -75,7 +78,7 @@ list.refresh()   // Retry, refresh, or after a mutation
 - **Run mutations through `useAction`** (`lib/use-action.ts`), not hand-written `try/catch/finally`:
 
   ```tsx
-  const save = useAction((input: ProjectInput) => api.projects(workspace.id).create(input));
+  const save = useAction((input: ProjectInput) => api.projects(workspace.id).store(input));
   const result = await save.run(form);   // { ok: true, value } | { ok: false }; never throws
   <ErrorNotice error={save.error} />     // the last failure, announced again if it repeats
   <Button type="submit" loading={save.loading}>Create project</Button>

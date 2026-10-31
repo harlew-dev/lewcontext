@@ -78,7 +78,7 @@ func (s *Server) checkPasswordReset(w http.ResponseWriter, r *http.Request) {
 		failField(w, 422, "token", resetLinkInvalid)
 		return
 	}
-	live, err := s.Store.PasswordResetValid(r.Context(), auth.Digest(in.Token))
+	live, err := s.Store.CheckPasswordReset(r.Context(), auth.Digest(in.Token))
 	if err != nil {
 		internalError(w, err)
 		return
@@ -109,7 +109,7 @@ func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
 	digest := auth.Digest(in.Token)
 	// A cheap check first, so a dead link costs no hashing. ResetPassword
 	// checks again under a lock.
-	live, err := s.Store.PasswordResetValid(r.Context(), digest)
+	live, err := s.Store.CheckPasswordReset(r.Context(), digest)
 	if err != nil {
 		internalError(w, err)
 		return

@@ -11,14 +11,14 @@ export function SettingsTabs({ current }: { current: "general" | "members" }) {
     <Navbar aria-label="Workspace settings" className="mt-4">
       <NavbarSection>
         <NavbarItem
-          href={routes.workspaceSettings(workspace.id)}
+          href={routes.workspaces.edit(workspace.id)}
           current={current === "general"}
           aria-current={current === "general" ? "page" : undefined}
         >
           General
         </NavbarItem>
         <NavbarItem
-          href={routes.members(workspace.id)}
+          href={routes.members.index(workspace.id)}
           current={current === "members"}
           aria-current={current === "members" ? "page" : undefined}
         >

@@ -65,7 +65,7 @@ export function ProjectRow({ project }: { project: Project }) {
   const workspace = useWorkspace();
   return (
     <TableRow
-      href={routes.project(workspace.id, project.id)}
+      href={routes.projects.show(workspace.id, project.id)}
       title={project.name}
     >
       <TableCell>

@@ -30,7 +30,7 @@ export const paths = {
 // The API for components. Mutations send the current session's CSRF token.
 // Call it in the component body and use the result in handlers:
 //   const api = useApi();
-//   await api.projects(workspace.id).create(input);
+//   await api.projects(workspace.id).store(input);
 export function useApi(): ApiClient {
   const csrfToken = useOptionalSession()?.csrfToken;
   return useMemo(() => client(browserHttp(csrfToken)), [csrfToken]);

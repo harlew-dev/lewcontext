@@ -14,7 +14,7 @@ export function errorMessage(error: unknown): string {
     ? error.message
     : "Something went wrong. Please try again.";
 }
-export type Method = "POST" | "PUT" | "PATCH" | "DELETE";
+export type Method = "POST" | "PATCH" | "DELETE";
 // How resource files reach the API.
 export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;

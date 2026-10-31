@@ -12,10 +12,10 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/auth/logout` | Session, CSRF, Origin | 204; session revoked, cookie cleared |
 | DELETE | `/api/auth/sessions` | Session, CSRF, Origin | 204; every other session revoked |
 | POST | `/api/auth/password/verify` | Session, CSRF, Origin, rate limit | 204 if `{password}` is the current password; 422 with `field: "password"` if not |
-| PUT | `/api/auth/password` | Session, CSRF, Origin, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie; every earlier session revoked. 422 with `field` (`currentPassword` or `newPassword`) when refused |
+| PATCH | `/api/auth/password` | Session, CSRF, Origin, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a new session cookie; every earlier session revoked. 422 with `field` (`currentPassword` or `newPassword`) when refused |
 | POST | `/api/auth/password-reset` | Origin, JSON, reset rate limits | 202 for every valid `{email}`, whether or not an account uses it; the link is sent later by a listener. 422 with `field: "email"` for a malformed address, 429 per IP or email, 503 when the limit for everyone is reached or `MAIL_DRIVER=off` ([auth.md](auth.md#password-reset-by-link)) |
 | POST | `/api/auth/password-reset/check` | Origin, JSON, rate limit | 204 if `{token}` is a live reset link; 422 with `field: "token"` if not |
-| PUT | `/api/auth/password-reset` | Origin, JSON, rate limit | 200 `{email}` after setting `newPassword` with a live `token`; every session revoked, nobody signed in. 422 with `field` (`token` or `newPassword`) when refused |
+| PATCH | `/api/auth/password-reset` | Origin, JSON, rate limit | 200 `{email}` after setting `newPassword` with a live `token`; every session revoked, nobody signed in. 422 with `field` (`token` or `newPassword`) when refused |
 | GET | `/api/workspaces` | Session | One page of your workspaces with your role and permissions, newest first ([pagination.md](pagination.md)) |
 | POST | `/api/workspaces` | Session, CSRF, Origin | 201 with the created workspace; you are its `owner` |
 | GET | `/api/workspaces/{workspace}` | Member | The workspace with your role and permissions |
@@ -92,7 +92,7 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 
 Name the route, its handler, permission, store method and events as in [../naming.md](../naming.md).
 
-1. Handler and validation in `httpapi` (one file per resource), query in `store` taking the workspace's internal ID (`currentWorkspace(r).ID`).
+1. Handler and validation in `httpapi` (one file per resource). Handlers are methods on the resource's handler type, named after the action (`projectHandlers.index`, `.show`, `.store`, `.update`, `.destroy`); the query goes in `store`, taking the workspace's internal ID (`currentWorkspace(r).ID`).
 2. Register it in `routes.go`: workspace routes go in `workspaceRoutes` (`requireSession` and `requireWorkspace`), mutations with `ws.Can(…, auth.<Permission>, …)` ([auth.md](auth.md#protecting-a-new-endpoint)); account-level routes use `requireSession`.
 3. Integration tests for success, validation, 401, a non-member (404), another workspace's data (404 or empty), and a row in the role × route matrix (`workspaceRoutesMatrix`).
 4. Add it to this table.

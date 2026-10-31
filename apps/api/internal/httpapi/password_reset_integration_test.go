@@ -138,11 +138,11 @@ func TestPasswordResetSetsANewPassword(t *testing.T) {
 	token := tokenIn(t, box.sent[0])
 
 	call(t, h, "POST", "/api/auth/password-reset/check", checkBody(token), "", nil, 204)
-	short := call(t, h, "PUT", "/api/auth/password-reset", resetBody(token, "too short"), "", nil, 422)
+	short := call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, "too short"), "", nil, 422)
 	if errorField(t, short) != "newPassword" || !storedPasswordIs(t, db, user.ID, factory.DefaultPassword) {
 		t.Fatal("a short password was accepted or changed something")
 	}
-	done := call(t, h, "PUT", "/api/auth/password-reset", resetBody(token, newPassword), "", nil, 200)
+	done := call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, newPassword), "", nil, 200)
 	if strings.TrimSpace(done.Body.String()) != fmt.Sprintf(`{"email":%q}`, user.Email) {
 		t.Fatalf("reset response: %s", done.Body.String())
 	}
@@ -157,7 +157,7 @@ func TestPasswordResetSetsANewPassword(t *testing.T) {
 	}
 	// The link works once.
 	call(t, h, "POST", "/api/auth/password-reset/check", checkBody(token), "", nil, 422)
-	again := call(t, h, "PUT", "/api/auth/password-reset", resetBody(token, "yet another passphrase"), "", nil, 422)
+	again := call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, "yet another passphrase"), "", nil, 422)
 	if errorField(t, again) != "token" || !storedPasswordIs(t, db, user.ID, newPassword) {
 		t.Fatal("a used link worked again")
 	}
@@ -174,12 +174,12 @@ func TestPasswordResetLinkLifetime(t *testing.T) {
 	f := factory.TestFaker(t)
 	for _, token := range []string{"", "short", strings.Repeat("!", 43), strings.Repeat("a", 44)} {
 		call(t, h, "POST", "/api/auth/password-reset/check", checkBody(token), "", nil, 422)
-		call(t, h, "PUT", "/api/auth/password-reset", resetBody(token, newPassword), "", nil, 422)
+		call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, newPassword), "", nil, 422)
 	}
 	expiredUser := must(factory.Users.CreateOne(ctx, db, f))(t)
 	expired := must(factory.PasswordResets.State(factory.ResetFor(expiredUser.ID)).State(factory.ExpiredReset).CreateOne(ctx, db, f))(t)
 	call(t, h, "POST", "/api/auth/password-reset/check", checkBody(expired.Token), "", nil, 422)
-	call(t, h, "PUT", "/api/auth/password-reset", resetBody(expired.Token, newPassword), "", nil, 422)
+	call(t, h, "PATCH", "/api/auth/password-reset", resetBody(expired.Token, newPassword), "", nil, 422)
 
 	user := must(factory.Users.CreateOne(ctx, db, f))(t)
 	requestReset(t, h, user.Email, 202)
@@ -191,8 +191,8 @@ func TestPasswordResetLinkLifetime(t *testing.T) {
 	call(t, h, "POST", "/api/auth/password-reset/check", checkBody(second), "", nil, 204)
 
 	session := must(factory.SessionFor(ctx, db, f, user.ID))(t)
-	call(t, h, "PUT", "/api/auth/password", changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, session.Cookie(), 200)
-	call(t, h, "PUT", "/api/auth/password-reset", resetBody(second, "an attacker's passphrase"), "", nil, 422)
+	call(t, h, "PATCH", "/api/auth/password", changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, session.Cookie(), 200)
+	call(t, h, "PATCH", "/api/auth/password-reset", resetBody(second, "an attacker's passphrase"), "", nil, 422)
 	if !storedPasswordIs(t, db, user.ID, newPassword) {
 		t.Fatal("a link from before the change undid it")
 	}
@@ -211,7 +211,7 @@ func TestPasswordResetLinkWorksOnceUnderConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	for i, password := range passwords {
 		wg.Go(func() {
-			r := httptest.NewRequest("PUT", "/api/auth/password-reset", strings.NewReader(resetBody(reset.Token, password)))
+			r := httptest.NewRequest("PATCH", "/api/auth/password-reset", strings.NewReader(resetBody(reset.Token, password)))
 			r.Header.Set("Origin", "http://localhost:3000")
 			r.Header.Set("Content-Type", "application/json")
 			r.RemoteAddr = "127.0.0.1:1234"

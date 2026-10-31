@@ -66,7 +66,11 @@ func projectID(r *http.Request) (string, bool) {
 	id := r.PathValue("project")
 	return id, validPublicID("prj", id)
 }
-func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
+
+// projectHandlers are the …/projects routes inside a workspace (routes.go).
+type projectHandlers struct{ *Server }
+
+func (h projectHandlers) index(w http.ResponseWriter, r *http.Request) {
 	params, ok := queryParams(r, "page", "perPage", "q", "status", "sort")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
@@ -82,20 +86,20 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Check the search, status, and sort.")
 		return
 	}
-	page, err := s.Store.IndexProjects(r.Context(), currentWorkspace(r).ID, filter, req)
+	page, err := h.Store.IndexProjects(r.Context(), currentWorkspace(r).ID, filter, req)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 	jsonResponse(w, 200, page)
 }
-func (s *Server) project(w http.ResponseWriter, r *http.Request) {
+func (h projectHandlers) show(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
 		fail(w, 404, "Project not found.")
 		return
 	}
-	p, err := s.Store.Project(r.Context(), currentWorkspace(r).ID, id)
+	p, err := h.Store.FindProject(r.Context(), currentWorkspace(r).ID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Project not found.")
 		return
@@ -106,19 +110,19 @@ func (s *Server) project(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, p)
 }
-func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
+func (h projectHandlers) store(w http.ResponseWriter, r *http.Request) {
 	in, ok := decodeValid(w, r, validProject, invalidProject)
 	if !ok {
 		return
 	}
-	p, err := s.Store.CreateProject(r.Context(), currentWorkspace(r), in)
+	p, err := h.Store.CreateProject(r.Context(), currentWorkspace(r), in)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 	jsonResponse(w, 201, p)
 }
-func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
+func (h projectHandlers) update(w http.ResponseWriter, r *http.Request) {
 	id, ok := projectID(r)
 	if !ok {
 		fail(w, 404, "Project not found.")
@@ -128,7 +132,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, err := s.Store.UpdateProject(r.Context(), currentWorkspace(r), id, in)
+	p, err := h.Store.UpdateProject(r.Context(), currentWorkspace(r), id, in)
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "Project not found.")
 		return

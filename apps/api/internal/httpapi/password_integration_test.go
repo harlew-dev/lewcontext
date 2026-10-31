@@ -68,8 +68,11 @@ func TestChangePassword(t *testing.T) {
 	stranger := signedIn(t, db, f)
 	const path = "/api/auth/password"
 
-	call(t, h, "PUT", path, changeBody(factory.DefaultPassword, newPassword), "", nil, 401)
-	call(t, h, "PUT", path, changeBody(factory.DefaultPassword, newPassword), "", cookie, 403)
+	// Both password routes are updates, so PATCH; PUT isn't routed.
+	call(t, h, "PUT", path, changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, cookie, 405)
+	call(t, h, "PUT", "/api/auth/password-reset", `{"token":"x","newPassword":"y"}`, "", nil, 405)
+	call(t, h, "PATCH", path, changeBody(factory.DefaultPassword, newPassword), "", nil, 401)
+	call(t, h, "PATCH", path, changeBody(factory.DefaultPassword, newPassword), "", cookie, 403)
 	for _, tc := range []struct{ body, field string }{
 		{changeBody("not my password", newPassword), "currentPassword"},
 		{changeBody("", newPassword), "currentPassword"},
@@ -77,7 +80,7 @@ func TestChangePassword(t *testing.T) {
 		{changeBody(factory.DefaultPassword, strings.Repeat("x", 129)), "newPassword"},
 		{changeBody(factory.DefaultPassword, factory.DefaultPassword), "newPassword"},
 	} {
-		refused := call(t, h, "PUT", path, tc.body, session.CSRFToken, cookie, 422)
+		refused := call(t, h, "PATCH", path, tc.body, session.CSRFToken, cookie, 422)
 		if errorField(t, refused) != tc.field {
 			t.Fatalf("%s: want field %s: %s", tc.body, tc.field, refused.Body.String())
 		}
@@ -88,7 +91,7 @@ func TestChangePassword(t *testing.T) {
 	}
 	call(t, h, "GET", "/api/auth/me", "", "", other.Cookie(), 200)
 
-	changed := call(t, h, "PUT", path, changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, cookie, 200)
+	changed := call(t, h, "PATCH", path, changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, cookie, 200)
 	var signed response
 	if err := json.Unmarshal(changed.Body.Bytes(), &signed); err != nil {
 		t.Fatal(err)
@@ -125,7 +128,7 @@ func TestPasswordRateLimit(t *testing.T) {
 	if locked.Header().Get("Retry-After") != "900" {
 		t.Fatal("rate-limited check without Retry-After")
 	}
-	call(t, h, "PUT", "/api/auth/password", changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, session.Cookie(), 429)
+	call(t, h, "PATCH", "/api/auth/password", changeBody(factory.DefaultPassword, newPassword), session.CSRFToken, session.Cookie(), 429)
 	if !storedPasswordIs(t, db, session.UserID, factory.DefaultPassword) {
 		t.Fatal("rate-limited change altered the password")
 	}
@@ -135,7 +138,7 @@ func TestPasswordRateLimit(t *testing.T) {
 func TestPasswordChangeNeedsOrigin(t *testing.T) {
 	s, db := integrationServer(t)
 	session := signedIn(t, db, factory.TestFaker(t))
-	r := httptest.NewRequest("PUT", "/api/auth/password", strings.NewReader(changeBody(factory.DefaultPassword, newPassword)))
+	r := httptest.NewRequest("PATCH", "/api/auth/password", strings.NewReader(changeBody(factory.DefaultPassword, newPassword)))
 	r.Header.Set("Origin", "https://evil.test")
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-CSRF-Token", session.CSRFToken)

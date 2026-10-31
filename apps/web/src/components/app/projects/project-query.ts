@@ -33,7 +33,7 @@ function queryParams({ page, q, status, sort }: ProjectQuery) {
 }
 // A workspace's projects page URL for a query.
 export function projectsPath(workspace: string, query: ProjectQuery): string {
-  return url(routes.projects(workspace), queryParams(query));
+  return url(routes.projects.index(workspace), queryParams(query));
 }
 // The API query for the page state ("all" statuses means no filter); pass it
 // to api.projects(workspace).index() or paths.projects(workspace).index().

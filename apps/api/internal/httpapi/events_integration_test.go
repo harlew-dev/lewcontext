@@ -190,7 +190,7 @@ func TestPasswordEvents(t *testing.T) {
 		call(t, h, "POST", "/api/auth/password/verify", fmt.Sprintf(`{"password":%q}`, password), session.CSRFToken, cookie, want)
 	}
 	change := func(current, next string, want int) {
-		call(t, h, "PUT", "/api/auth/password", changeBody(current, next), session.CSRFToken, cookie, want)
+		call(t, h, "PATCH", "/api/auth/password", changeBody(current, next), session.CSRFToken, cookie, want)
 	}
 	verify("not my password", 422)
 	verify(factory.DefaultPassword, 204)

@@ -67,8 +67,8 @@ func containsPattern(term string) string {
 	return "%" + escaped + "%"
 }
 
-// Project returns sql.ErrNoRows when the project does not exist or belongs to another workspace.
-func (s *Store) Project(ctx context.Context, workspaceID int64, publicID string) (Project, error) {
+// FindProject returns sql.ErrNoRows when the project does not exist or belongs to another workspace.
+func (s *Store) FindProject(ctx context.Context, workspaceID int64, publicID string) (Project, error) {
 	var p Project
 	err := s.DB.NewSelect().Model(&p).
 		Where("p.public_id = ? AND p.workspace_id = ?", publicID, workspaceID).

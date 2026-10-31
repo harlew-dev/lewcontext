@@ -69,9 +69,7 @@ function ProjectForm({
   const [form, setForm] = useState<ProjectInput>(project ?? emptyProject);
   const save = useAction((input: ProjectInput) => {
     const projects = api.projects(workspace.id);
-    return project
-      ? projects.update(project.id, input)
-      : projects.create(input);
+    return project ? projects.update(project.id, input) : projects.store(input);
   });
   async function submit(event: FormEvent) {
     event.preventDefault();
