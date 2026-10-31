@@ -12,6 +12,8 @@ export const workspaceRoutes = {
   show: (id: string) => path<Workspace>(`${base}/${id}`),
   create: () => base,
   update: (id: string) => `${base}/${id}`,
+  // Your own membership of the workspace.
+  membership: (id: string) => `${base}/${id}/membership`,
 };
 export function workspaces(http: Http) {
   return {
@@ -24,5 +26,8 @@ export function workspaces(http: Http) {
     // Owners and admins only.
     update: (id: string, { name }: WorkspaceInput) =>
       http.send<Workspace>("PATCH", workspaceRoutes.update(id), { name }),
+    // Leaves the workspace. Refused (409) for its last owner.
+    leave: (id: string) =>
+      http.send<void>("DELETE", workspaceRoutes.membership(id)),
   };
 }

@@ -81,17 +81,23 @@ Data belongs to workspaces; users reach a workspace through a `workspace_user` r
 | `workspace.update` | ✓ | ✓ | | | `PATCH /workspaces/{ws}` |
 | `workspace.destroy` | ✓ | | | | no endpoint yet |
 | `workspace.invitation.index` / `.store` / `.destroy` | ✓ | ✓ | | | no endpoints yet (invitations) |
-| `workspace.member.index` / `.update` / `.destroy` | ✓ | ✓ | | | no endpoints yet (members) |
+| `workspace.member.index` | ✓ | ✓ | | | `GET …/members` |
+| `workspace.member.update` | ✓ | ✓ | | | `PATCH …/members/{usr}` |
+| `workspace.member.destroy` | ✓ | ✓ | | | `DELETE …/members/{usr}` |
+| `auth.AnyMember` | ✓ | ✓ | ✓ | ✓ | `DELETE …/membership` (leave) |
 | `project.store` | ✓ | ✓ | ✓ | | `POST …/projects` |
 | `project.update` | ✓ | ✓ | ✓ | | `PATCH …/projects/{prj}` |
 | `project.destroy` | ✓ | ✓ | | | no endpoint yet |
 
-A viewer reads everything except the member and invitation lists (which hold other people's emails) and changes nothing. For actions on another person's role, `Role.AssignableRoles()` also says which roles may be targeted: an owner any role, an admin only `member` and `viewer` (so only owners create admins or touch owners), others none. An action on a member will need the permission and the target's current (and new) role in that list.
+A viewer reads everything except the member and invitation lists (which hold other people's emails) and changes nothing. For actions on another person's role, `Role.AssignableRoles()` also says which roles may be targeted: an owner any role, an admin only `member` and `viewer` (so only owners create admins or touch owners), others none. An action on a member needs the permission, and the target's current role (and, for a role change, the new one) in that list; otherwise 403. Acting on yourself goes through leaving, not `members/{usr}` (422).
 
 - **`requireWorkspace`** (after `requireSession`) checks the `{workspace}` ID's shape, then loads it through the session user's membership in one query. A non-member, a missing workspace and a malformed ID all get the same 404, so workspace IDs can't be probed. The workspace and role go in the request context (`currentWorkspace(r)`).
 - **`ws.Can(method, path, permission, handler)`** registers a workspace route behind `requirePermission`, which answers 403 when `currentWorkspace(r).Role.Can(permission)` is false. The `ws` group panics at startup on any other mutation (`Handle` with a method other than GET or HEAD), so a mutation can't ship without naming its permission; one every member may do names `auth.AnyMember`. Unknown roles grant nothing.
 - The workspace response carries `permissions` and `assignableRoles`, computed from the role, and the web app hides controls with `can(workspace, permission)` instead of keeping its own copy of the rules. The API is what enforces them.
-- Creating a workspace makes the creator its `owner`, in the same transaction. Invites, member management, ownership transfer and deleting workspaces are not implemented.
+- Creating a workspace makes the creator its `owner`, in the same transaction.
+- **Members** (`internal/store/members.go`): changing a role, removing someone and leaving each run in one transaction that first locks the workspace row (`FOR UPDATE`), then re-reads the actor's role and the target's membership, so concurrent changes are serialised. A change that would leave no owner (demoting, removing or leaving as the only owner) is refused with 409 (`ErrLastOwner`); two owners demoting each other at once leave one. Promoting someone to owner, then stepping down, is how ownership moves. Workspace responses carry `canLeave` (false for the only owner) so the web app can say so before you try.
+- **Removal** deletes only the `workspace_user` row: the user's next request to that workspace gets 404, their sessions and account stay, and the workspace's projects stay (projects have no owner). Only owners and admins can list members, so members and viewers never see other members' emails.
+- Invites, ownership transfer as its own flow, and deleting workspaces are not implemented.
 - Public IDs are unguessable (about 83 random bits), but access never depends on that: every workspace route checks membership.
 
 ## Protecting a new endpoint

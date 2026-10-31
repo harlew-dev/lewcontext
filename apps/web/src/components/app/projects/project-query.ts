@@ -1,4 +1,4 @@
-import { page, param, sort, url } from "@/lib/pagination";
+import { cleanSearch, page, param, sort, url } from "@/lib/pagination";
 import type { ProjectIndexQuery } from "@/lib/api";
 import { routes } from "@/lib/routes";
 import {
@@ -8,8 +8,6 @@ import {
   type ProjectQuery,
   type StatusFilter,
 } from "@/types/projects";
-// Matches the API's search limit (maxSearchLength in httpapi/projects.go).
-const maxSearch = 100;
 // The projects page state in a URL query. Values the API would reject fall
 // back to defaults, so a hand-edited URL still renders a page.
 export function projectQuery(query: URLSearchParams): ProjectQuery {
@@ -20,13 +18,6 @@ export function projectQuery(query: URLSearchParams): ProjectQuery {
     status: isStatus(status) ? status : "all",
     sort: sort(query, sortable, defaultSort),
   };
-}
-// Trims, drops control characters and caps the length like the API does.
-export function cleanSearch(value: string): string {
-  return Array.from(value.replace(/\p{Cc}/gu, "").trim())
-    .slice(0, maxSearch)
-    .join("")
-    .trim();
 }
 function isStatus(value: string): value is Exclude<StatusFilter, "all"> {
   return (statuses as readonly string[]).includes(value);

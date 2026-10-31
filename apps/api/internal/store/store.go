@@ -38,13 +38,15 @@ type Session struct {
 }
 
 // Workspace is a workspace as one member sees it: Role is that member's role,
-// read from workspace_user.
+// read from workspace_user, and CanLeave whether they may leave it (anyone but
+// its only owner).
 type Workspace struct {
 	bun.BaseModel `bun:"table:workspaces,alias:w"`
 	ID            int64     `bun:",pk,autoincrement" json:"-"`
 	PublicID      string    `bun:",nullzero" json:"id"`
 	Name          string    `json:"name"`
 	Role          auth.Role `bun:",scanonly" json:"role"`
+	CanLeave      bool      `bun:",scanonly" json:"canLeave"`
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"createdAt"`
 	UpdatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updatedAt"`
 }

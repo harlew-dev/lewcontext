@@ -38,7 +38,8 @@ navigate(projectsPath(workspace.id, { ...query, page: 1, status }), { preventScr
 
 - **Changing the URL** re-renders the page with the new query, and SWR fetches the new key. Pages have no loaders, so nothing else runs. Opening the URL directly renders the same state.
 - **Search, filter and sort changes reset to page 1.** Search waits 300 ms after typing and navigates with `replace: true` so history doesn't fill up. Back and forward restore the state.
-- **Normalise the same way the API validates** (`cleanSearch` trims, strips control characters and caps at 100), so a hand-edited URL never sends a request the API would reject.
+- **Search box:** `SearchField` (`components/ui/search-field.tsx`), used by projects and members.
+- **Normalise the same way the API validates** (`cleanSearch` in `lib/pagination.ts` trims, strips control characters and caps at 100), so a hand-edited URL never sends a request the API would reject.
 
 ## `PaginatedTable` (`components/ui/paginated-table.tsx`)
 

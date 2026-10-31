@@ -82,7 +82,7 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Check the search, status, and sort.")
 		return
 	}
-	page, err := s.Store.ProjectPage(r.Context(), currentWorkspace(r).ID, filter, req)
+	page, err := s.Store.IndexProjects(r.Context(), currentWorkspace(r).ID, filter, req)
 	if err != nil {
 		internalError(w, err)
 		return

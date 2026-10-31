@@ -1,5 +1,5 @@
 // Package events defines what the API records as having happened: sign-ins,
-// password changes, workspaces and projects created or changed.
+// password changes, workspaces, their members and projects created or changed.
 //
 // Each event is a struct whose JSON is the stored payload. Payloads identify
 // records by public ID only (usr_, wsp_, prj_) and never hold passwords,
@@ -26,6 +26,7 @@ var Catalogue = []Event{
 	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
 	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
 	WorkspaceCreated{}, WorkspaceRenamed{},
+	WorkspaceMemberUpdated{}, WorkspaceMemberRemoved{}, WorkspaceMemberLeft{},
 	ProjectCreated{}, ProjectUpdated{},
 }
 

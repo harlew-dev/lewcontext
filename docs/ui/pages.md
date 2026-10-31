@@ -4,6 +4,8 @@ The web app is a single-page app on React Router v7 (framework mode, `ssr: false
 
 ## URLs
 
+Route constants are grouped by resource with the page actions (`routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`), and resource pages' default exports are `<Resource><Action>` (`ProjectIndex`); see [../naming.md](../naming.md#web-app).
+
 Every page is registered with its URL in `src/routes.ts`; there is no file-system routing.
 
 | Path | Page | Notes |
@@ -18,7 +20,8 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | `/app/wsp_…/dashboard` | `pages/app/[workspace]/dashboard.tsx` | |
 | `/app/wsp_…/projects` | `pages/app/[workspace]/projects.tsx` | New project only with `project.store` |
 | `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | Edit project only with `project.update` |
-| `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (`workspace.update`), copy the ID, your role |
+| `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (`workspace.update`), copy the ID, leave (disabled when `workspace.canLeave` is false: the only owner). It loads no member data; only the Members tab does |
+| `/app/wsp_…/settings/members` | `pages/app/[workspace]/settings/members.tsx` | Owners and admins (`workspace.member.index`): search members, change a role, remove. Anyone else sees a notice and nothing is fetched. Both settings pages share `SettingsTabs` (General / Members), shown only with that permission |
 | anything else | `pages/not-found.tsx` | Go answers it with status 404 |
 
 `app/settings` and `app/onboarding` are fixed segments, so React Router ranks them above `app/:workspace/...`, and workspace IDs always start with `wsp_`, so they can't collide. There are no redirects from older URLs (`/app/dashboard`, `/app/projects/42`, `/login`).

@@ -11,6 +11,8 @@ export type Sort<F extends string> = F | `-${F}`;
 export type SortDirection = "ascending" | "descending";
 // Matches store.MaxPage; larger page numbers in a URL fall back to page 1.
 const maxPage = 10_000;
+// Matches the API's search limit (maxSearchLength in httpapi/projects.go).
+const maxSearch = 100;
 // One query-string value. Repeated keys count as absent.
 export function param(query: URLSearchParams, key: string): string {
   const values = query.getAll(key);
@@ -21,6 +23,14 @@ export function page(query: URLSearchParams): number {
   const value = param(query, "page");
   const number = /^\d{1,5}$/.test(value) ? Number(value) : 1;
   return number >= 1 && number <= maxPage ? number : 1;
+}
+// A search term ("q") as the API accepts it: trimmed, without control
+// characters, and at most 100 characters (validSearch in httpapi/projects.go).
+export function cleanSearch(value: string): string {
+  return Array.from(value.replace(/\p{Cc}/gu, "").trim())
+    .slice(0, maxSearch)
+    .join("")
+    .trim();
 }
 // The sort in a URL query, or the fallback when it isn't an allowed field.
 export function sort<F extends string>(

@@ -55,15 +55,8 @@ import { appName } from "@/lib/app";
 import { navigation, routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useWorkspace, useWorkspaceList } from "@/lib/workspace";
-import type { User } from "@/lib/types";
+import { initials } from "@/lib/format";
 import { SidebarLayout } from "./sidebar-layout";
-function initialsOf(user: User) {
-  return user.name
-    .split(" ")
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join("");
-}
 function AccountDropdownMenu({
   anchor,
   onSignOut,
@@ -241,7 +234,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
   const [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false);
   const currentPath = useCurrentPath();
-  const initials = initialsOf(session.user);
+  const userInitials = initials(session.user.name);
   async function signOut() {
     try {
       await api.auth().logout();
@@ -276,7 +269,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
               >
                 <Avatar
                   square
-                  initials={initials}
+                  initials={userInitials}
                   className="bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
                 />
                 <NavbarLabel>{session.user.name}</NavbarLabel>
@@ -327,7 +320,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
                 <span className="flex min-w-0 items-center gap-3">
                   <Avatar
                     square
-                    initials={initials}
+                    initials={userInitials}
                     className="size-10 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
                   />
                   <span className="min-w-0">

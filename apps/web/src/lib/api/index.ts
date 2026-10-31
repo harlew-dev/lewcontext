@@ -3,10 +3,12 @@ import { useOptionalSession } from "@/lib/session";
 import { browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
 import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
+import { memberRoutes, members } from "./members";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
 export { ApiError, errorMessage } from "./http";
 export type { ApiPath } from "./paths";
+export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
 export type { WorkspaceIndexQuery } from "./workspaces";
 export type {
@@ -21,6 +23,7 @@ export type {
 export const paths = {
   workspaces: workspaceRoutes,
   projects: projectRoutes,
+  members: memberRoutes,
   auth: authRoutes,
   sessions: sessionRoutes,
 };
@@ -45,6 +48,7 @@ export function client(http: Http) {
     workspaces: () => workspaces(http),
     // Projects belong to a workspace, so their client takes its ID.
     projects: (workspace: string) => projects(http, workspace),
+    members: (workspace: string) => members(http, workspace),
     auth: () => auth(http),
     sessions: () => sessions(http),
   };

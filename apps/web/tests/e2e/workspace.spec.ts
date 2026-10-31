@@ -10,6 +10,8 @@ const ownerEmail = `e2e-${stamp}-owner@lewcontext.test`;
 const passwordEmail = `e2e-${stamp}-password@lewcontext.test`;
 const sidebarEmail = `e2e-${stamp}-sidebar@lewcontext.test`;
 const resetEmail = `e2e-${stamp}-reset@lewcontext.test`;
+const crewEmail = `e2e-${stamp}-crew@lewcontext.test`;
+const teammateEmail = `e2e-${stamp}-teammate@lewcontext.test`;
 const emails = [
   email,
   returnEmail,
@@ -19,6 +21,8 @@ const emails = [
   passwordEmail,
   sidebarEmail,
   resetEmail,
+  crewEmail,
+  teammateEmail,
 ];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
@@ -403,7 +407,10 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
   await page.getByRole("button", { name: "Workspace menu" }).click();
   await page.getByRole("menuitem", { name: "Workspace settings" }).click();
   await expect(page).toHaveURL(`/app/${first}/settings`);
-  await expect(page.getByText("Owner", { exact: true })).toBeVisible();
+  // The only owner can't leave (canLeave in the workspace response).
+  await expect(
+    page.getByRole("button", { name: "Leave workspace" }),
+  ).toBeDisabled();
   await page.getByLabel("Name", { exact: true }).fill("Renamed studio");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Workspace renamed.")).toBeVisible();
@@ -505,7 +512,6 @@ test("other people's workspaces are not found until you're a member; members can
     page.getByText("Only owners and admins can rename this workspace."),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
-  await expect(page.getByText("Member", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Projects", exact: true }).click();
   await expect(page.getByText("Shared plans")).toBeVisible();
   await expect(page.getByRole("button", { name: "New project" })).toBeVisible();
@@ -534,7 +540,68 @@ test("other people's workspaces are not found until you're a member; members can
   );
   expect(refused.status()).toBe(403);
   await page.goto(`/app/${theirs}/settings`);
-  await expect(page.getByText("Viewer", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Leave workspace" }),
+  ).toBeEnabled();
+});
+test("members: an owner changes a member to viewer, then removes them", async ({
+  page,
+  browser,
+}) => {
+  // Invites don't exist yet, so the membership is added in the database.
+  test.skip(!process.env.TEST_DATABASE_URL, "needs TEST_DATABASE_URL");
+  const teammate = await browser.newContext();
+  const origin = { Origin: process.env.APP_ORIGIN || "http://localhost:3000" };
+  const signedUp = await teammate.request.post("/api/auth/register", {
+    headers: { ...origin, "Content-Type": "application/json" },
+    data: { name: "Terry Teammate", email: teammateEmail, password },
+  });
+  expect(signedUp.status()).toBe(201);
+  await register(page, crewEmail, "Casey Crew");
+  const crew = await onboard(page, "Crew HQ");
+  sql(
+    `INSERT INTO workspace_user (user_id, workspace_id, role) SELECT u.id, w.id, 'member' FROM users u, workspaces w WHERE u.email = '${teammateEmail}' AND w.public_id = '${crew}'`,
+  );
+  expect((await teammate.request.get(`/api/workspaces/${crew}`)).status()).toBe(
+    200,
+  );
+
+  await page.goto(`/app/${crew}/settings`);
+  await page.getByRole("link", { name: "Members" }).click();
+  await expect(page).toHaveURL(`/app/${crew}/settings/members`);
+  const row = page.getByRole("row").filter({ hasText: "Terry Teammate" });
+  await expect(row.getByText("Member", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("row").filter({ hasText: "Casey Crew" }).getByText("You"),
+  ).toBeVisible();
+
+  await row.getByRole("button", { name: "Actions for Terry Teammate" }).click();
+  await page.getByRole("menuitem", { name: "Change role" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").click();
+  await page.getByRole("option", { name: "Viewer" }).click();
+  await dialog.getByRole("button", { name: "Save role" }).click();
+  await expect(page.getByText("Terry Teammate is now a viewer.")).toBeVisible();
+  await expect(row.getByText("Viewer", { exact: true })).toBeVisible();
+  // BaseUI keeps a closed dialog for its 500 ms exit animation.
+  await expect(dialog).toHaveCount(0);
+
+  await row.getByRole("button", { name: "Actions for Terry Teammate" }).click();
+  await page.getByRole("menuitem", { name: "Remove from workspace" }).click();
+  await expect(dialog.getByRole("heading")).toHaveText(
+    "Remove Terry Teammate from Crew HQ?",
+  );
+  await dialog.getByRole("button", { name: "Remove" }).click();
+  await expect(
+    page.getByText("Terry Teammate was removed from Crew HQ."),
+  ).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await expect(page.getByText("1 member", { exact: true })).toBeVisible();
+  expect((await teammate.request.get(`/api/workspaces/${crew}`)).status()).toBe(
+    404,
+  );
+  await teammate.close();
 });
 test("change password: checks the current one twice and signs out other sessions", async ({
   page,

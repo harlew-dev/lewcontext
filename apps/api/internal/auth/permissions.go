@@ -107,3 +107,9 @@ func (r Role) AssignableRoles() []Role {
 	}
 	return roles
 }
+
+// Manages reports whether r may give the target role, or act on a member who
+// has it (AssignableRoles).
+func (r Role) Manages(target Role) bool {
+	return slices.Contains(assignable[r], target)
+}

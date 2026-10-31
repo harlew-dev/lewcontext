@@ -120,6 +120,13 @@ func TestAssignableRoles(t *testing.T) {
 			t.Errorf("%s may assign %#v, want %v", role, got, roles)
 		}
 	}
+	for _, actor := range Roles {
+		for _, target := range append(slices.Clone(Roles), "", "root") {
+			if actor.Manages(target) != slices.Contains(want[actor], target) {
+				t.Errorf("%s manages %q: %v", actor, target, actor.Manages(target))
+			}
+		}
+	}
 	RoleOwner.AssignableRoles()[0] = RoleViewer
 	if Roles[0] != RoleOwner {
 		t.Fatal("AssignableRoles returned Roles itself")

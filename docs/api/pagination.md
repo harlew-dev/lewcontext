@@ -1,6 +1,6 @@
 # Pagination, search and sort
 
-Lists are paged, filtered and sorted in the API, never in the browser. Code: `internal/store/pagination.go` (shared), `internal/httpapi/pagination.go` (parsing), `internal/store/projects.go` and `internal/httpapi/projects.go` (projects), `internal/store/workspaces.go` and `internal/httpapi/workspaces.go` (workspaces).
+Lists are paged, filtered and sorted in the API, never in the browser. Code: `internal/store/pagination.go` (shared), `internal/httpapi/pagination.go` (parsing), `internal/store/projects.go` and `internal/httpapi/projects.go` (projects), `internal/store/workspaces.go` and `internal/httpapi/workspaces.go` (workspaces), `internal/store/members.go` and `internal/httpapi/members.go` (members).
 
 ## Response
 
@@ -27,6 +27,10 @@ Lists are paged, filtered and sorted in the API, never in the browser. Code: `in
 
 Unknown, repeated or malformed parameters return 400. Signs, spaces and exponents (`+2`, ` 2`, `1e3`) are rejected, not coerced.
 
+## Parameters (`GET /api/workspaces/{workspace}/members`)
+
+`page`, `perPage` and `q` (name or email, same rules and `LIKE` escaping as projects). There is no `sort`: members are always ordered by role, then name, then ID: `array_position(?::text[], m.role)` with `auth.Roles` passed as a placeholder, so the order comes from Go and no SQL text comes from input.
+
 ## Parameters (`GET /api/workspaces`)
 
 `page` and `perPage` only, with the same rules and defaults. Workspaces are always newest first (`created_at DESC, id DESC`), and there is no search or sort. The web app loads them a page at a time as the switcher scrolls ([../ui/pagination.md](../ui/pagination.md#infinite-lists)).
@@ -42,7 +46,7 @@ Unknown, repeated or malformed parameters return 400. Signs, spaces and exponent
 
 ```go
 // store: scope, order deterministically, then hand over.
-func (s *Store) TaskPage(ctx context.Context, workspaceID int64, f TaskFilter, req PageRequest) (Page[Task], error) {
+func (s *Store) IndexTasks(ctx context.Context, workspaceID int64, f TaskFilter, req PageRequest) (Page[Task], error) {
 	q := s.DB.NewSelect().Model((*Task)(nil)).
 		Where("t.workspace_id = ?", workspaceID).
 		OrderExpr(taskSorts[f.Sort]) // fixed SQL ending in t.id

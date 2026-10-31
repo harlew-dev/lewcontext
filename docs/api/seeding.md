@@ -5,7 +5,7 @@ Factories build fake records for every table, and seeders use them to fill a dev
 ## Seeding a database
 
 ```sh
-make seed                                   # demo account test@example.com, its "Acme" workspace + 6 projects (skipped if it exists)
+make seed                                   # demo account test@example.com, its "Acme" workspace + 6 projects + 4 members (skipped if it exists)
 make seed only=volume count=500             # projects in the demo account's newest workspace
 make seed only=volume email=you@example.com # …or another existing account's (it needs a workspace)
 make seed only=users count=25 projects=20   # 25 fake accounts, each owning a workspace with 0–20 projects
@@ -13,7 +13,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 
 | Seeder | Default count | Idempotent |
 | --- | --- | --- |
-| `demo` | The "Acme" workspace and 6 named projects | Yes |
+| `demo` | The "Acme" workspace, 6 named projects, and 4 fake members (admin, two members, viewer) who can't sign in | Yes |
 | `volume` | 120 projects | No (insert-only; refuses unknown accounts and accounts without a workspace) |
 | `users` | 10 users, each owning a workspace with up to 60 projects | No (insert-only) |
 

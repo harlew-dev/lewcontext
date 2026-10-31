@@ -72,11 +72,13 @@ type workspaceAccess struct {
 	Role            auth.Role         `json:"role"`
 	Permissions     []auth.Permission `json:"permissions"`
 	AssignableRoles []auth.Role       `json:"assignableRoles"`
+	CanLeave        bool              `json:"canLeave"`
 }
 
-// sameAccess reports whether a response carries what role allows.
+// sameAccess reports whether a response carries what role allows, in a
+// workspace with one owner (who therefore can't leave).
 func sameAccess(got workspaceAccess, role auth.Role) bool {
-	return got.Role == role && slices.Equal(got.Permissions, role.Permissions()) && slices.Equal(got.AssignableRoles, role.AssignableRoles()) && got.Permissions != nil && got.AssignableRoles != nil
+	return got.Role == role && got.CanLeave == (role != auth.RoleOwner) && slices.Equal(got.Permissions, role.Permissions()) && slices.Equal(got.AssignableRoles, role.AssignableRoles()) && got.Permissions != nil && got.AssignableRoles != nil
 }
 func TestWorkspaceMembershipAndRoles(t *testing.T) {
 	s, db := integrationServer(t)
@@ -154,22 +156,30 @@ type workspaceRoute struct {
 	body    string
 	ok      int
 	allowed []auth.Role // nil: every member
+	// target appends a fresh viewer's user ID to path for each request, for
+	// routes that change or remove the member they name.
+	target bool
 }
 
 // Every route inside a workspace, for every role: allowed roles get the
 // route's status, refused roles 403 and outsiders 404. A new workspace route
-// fails TestWorkspacePermissionMatrix until it has a row here.
+// fails TestWorkspacePermissionMatrix until it has a row here. Leaving comes
+// last, since each role then stops being a member.
 func workspaceRoutesMatrix(projectID string) []workspaceRoute {
 	project := `{"name":"Matrix","description":"","status":"Planned","color":"blue"}`
 	owners := []auth.Role{auth.RoleOwner, auth.RoleAdmin}
 	editors := []auth.Role{auth.RoleOwner, auth.RoleAdmin, auth.RoleMember}
 	return []workspaceRoute{
-		{"GET /api/workspaces/{workspace}", "", "", 200, nil},
-		{"PATCH /api/workspaces/{workspace}", "", `{"name":"Renamed"}`, 200, owners},
-		{"GET /api/workspaces/{workspace}/projects", "/projects", "", 200, nil},
-		{"POST /api/workspaces/{workspace}/projects", "/projects", project, 201, editors},
-		{"GET /api/workspaces/{workspace}/projects/{project}", "/projects/" + projectID, "", 200, nil},
-		{"PATCH /api/workspaces/{workspace}/projects/{project}", "/projects/" + projectID, project, 200, editors},
+		{pattern: "GET /api/workspaces/{workspace}", ok: 200},
+		{pattern: "PATCH /api/workspaces/{workspace}", body: `{"name":"Renamed"}`, ok: 200, allowed: owners},
+		{pattern: "GET /api/workspaces/{workspace}/projects", path: "/projects", ok: 200},
+		{pattern: "POST /api/workspaces/{workspace}/projects", path: "/projects", body: project, ok: 201, allowed: editors},
+		{pattern: "GET /api/workspaces/{workspace}/projects/{project}", path: "/projects/" + projectID, ok: 200},
+		{pattern: "PATCH /api/workspaces/{workspace}/projects/{project}", path: "/projects/" + projectID, body: project, ok: 200, allowed: editors},
+		{pattern: "GET /api/workspaces/{workspace}/members", path: "/members", ok: 200, allowed: owners},
+		{pattern: "PATCH /api/workspaces/{workspace}/members/{member}", path: "/members", body: `{"role":"member"}`, ok: 200, allowed: owners, target: true},
+		{pattern: "DELETE /api/workspaces/{workspace}/members/{member}", path: "/members", ok: 204, allowed: owners, target: true},
+		{pattern: "DELETE /api/workspaces/{workspace}/membership", path: "/membership", ok: 204},
 	}
 }
 func TestWorkspacePermissionMatrix(t *testing.T) {
@@ -184,6 +194,13 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 	for _, role := range auth.Roles[1:] {
 		sessions[role] = signedIn(t, db, f)
 		must(factory.MemberOf(ctx, db, f, sessions[role].UserID, workspace.ID, role))(t)
+	}
+	// A second owner, so the first may leave.
+	must(factory.MemberOf(ctx, db, f, signedIn(t, db, f).UserID, workspace.ID, auth.RoleOwner))(t)
+	newViewer := func() string {
+		user := must(factory.Users.CreateOne(ctx, db, f))(t)
+		must(factory.MemberOf(ctx, db, f, user.ID, workspace.ID, auth.RoleViewer))(t)
+		return user.PublicID
 	}
 	outsider := signedIn(t, db, f)
 	matrix := workspaceRoutesMatrix(project.PublicID)
@@ -201,7 +218,12 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 
 	for _, route := range matrix {
 		method, _, _ := strings.Cut(route.pattern, " ")
-		path := workspacePath(workspace.PublicID, route.path)
+		pathFor := func() string {
+			if route.target {
+				return workspacePath(workspace.PublicID, route.path+"/"+newViewer())
+			}
+			return workspacePath(workspace.PublicID, route.path)
+		}
 		for _, role := range auth.Roles {
 			want := 403
 			if route.allowed == nil || slices.Contains(route.allowed, role) {
@@ -209,11 +231,11 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 			}
 			session := sessions[role]
 			t.Run(route.pattern+" as "+string(role), func(t *testing.T) {
-				call(t, h, method, path, route.body, session.CSRFToken, session.Cookie(), want)
+				call(t, h, method, pathFor(), route.body, session.CSRFToken, session.Cookie(), want)
 			})
 		}
 		t.Run(route.pattern+" as an outsider", func(t *testing.T) {
-			call(t, h, method, path, route.body, outsider.CSRFToken, outsider.Cookie(), 404)
+			call(t, h, method, pathFor(), route.body, outsider.CSRFToken, outsider.Cookie(), 404)
 		})
 	}
 }

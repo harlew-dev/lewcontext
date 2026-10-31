@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/16/solid";
+import { PlusIcon } from "@heroicons/react/16/solid";
 import { ProjectDialog } from "@/components/app/projects/project-dialog";
 import { ProjectNotices } from "@/components/app/projects/project-notices";
 import {
-  cleanSearch,
   projectQuery,
   indexQuery,
   projectsPath,
@@ -18,9 +16,9 @@ import { RefreshButton } from "@/components/app/projects/refresh-button";
 import { useProjectEditor } from "@/components/app/projects/use-project-editor";
 import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
-import { Input, InputGroup } from "@/components/ui/input";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { PaginatedTable } from "@/components/ui/paginated-table";
+import { SearchField } from "@/components/ui/search-field";
 import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
 import { useResource } from "@/lib/use-resource";
@@ -65,6 +63,7 @@ export default function Projects() {
           <div className="mt-4 flex max-w-xl gap-4">
             <div className="flex-1">
               <SearchField
+                label="Search projects"
                 value={query.q}
                 onSearch={(q) => navigate({ q }, true)}
               />
@@ -123,54 +122,6 @@ function projectCount(items: number, filtered: boolean) {
   return filtered
     ? `${items} matching ${projects}`
     : `${items} ${projects} in this workspace`;
-}
-// Search box that updates the URL once typing pauses. It follows the URL when
-// that changes elsewhere (back/forward), without discarding text being typed.
-function SearchField({
-  value,
-  onSearch,
-}: {
-  value: string;
-  onSearch: (q: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const [shown, setShown] = useState(value);
-  // The last search this field sent; the URL catching up to it is no reason
-  // to overwrite the draft.
-  const [sent, setSent] = useState(value);
-  if (value !== shown) {
-    setShown(value);
-    if (value !== sent) {
-      setDraft(value);
-      setSent(value);
-    }
-  }
-  const search = useRef(onSearch);
-  useEffect(() => {
-    search.current = onSearch;
-  });
-  useEffect(() => {
-    const q = cleanSearch(draft);
-    if (q === value) return;
-    const timer = setTimeout(() => {
-      setSent(q);
-      search.current(q);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [draft, value]);
-  return (
-    <InputGroup>
-      <MagnifyingGlassIcon />
-      <Input
-        type="search"
-        aria-label="Search projects"
-        placeholder="Search projects…"
-        maxLength={100}
-        value={draft}
-        onChange={(e) => setDraft(e.currentTarget.value)}
-      />
-    </InputGroup>
-  );
 }
 function StatusField({
   value,

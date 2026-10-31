@@ -3,6 +3,7 @@ package seed
 import (
 	"context"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/database/dbtest"
 	"lewcontext/api/internal/factory"
@@ -62,6 +63,21 @@ func TestDemoRunsOnce(t *testing.T) {
 		Scan(context.Background(), &names)
 	if err != nil || len(names) != 1 || names[0] != DemoWorkspace {
 		t.Fatalf("demo workspace: %v (%v)", names, err)
+	}
+	var roles []string
+	var hashes []string
+	err = db.NewSelect().Model((*factory.WorkspaceUser)(nil)).ColumnExpr("m.role, u.password_hash").
+		Join("JOIN users AS u ON u.id = m.user_id").
+		Where("u.email <> ?", DemoEmail).
+		OrderExpr("m.created_at").
+		Scan(context.Background(), &roles, &hashes)
+	if err != nil || strings.Join(roles, ",") != "admin,member,member,viewer" {
+		t.Fatalf("demo members: %v (%v)", roles, err)
+	}
+	for _, hash := range hashes {
+		if auth.CheckPassword(factory.DefaultPassword, hash) || auth.CheckPassword("fake-hash", hash) || !strings.HasPrefix(hash, "unusable:") {
+			t.Fatalf("a demo member can sign in: %q", hash)
+		}
 	}
 }
 func TestVolumeAddsToOneAccount(t *testing.T) {

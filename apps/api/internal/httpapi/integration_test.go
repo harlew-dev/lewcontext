@@ -39,8 +39,9 @@ type response struct {
 
 const testUserAgent = "lewcontext-integration-test/1.0"
 
-func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
-	t.Helper()
+// send makes a request as the web app would and returns the response. It
+// doesn't fail the test, so goroutines can use it.
+func send(h http.Handler, method, path, body, csrf string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	r.Header.Set("Origin", "http://localhost:3000")
 	r.Header.Set("Content-Type", "application/json")
@@ -52,6 +53,13 @@ func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie 
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
+	return w
+}
+
+// call is send, failing the test unless the status is want.
+func call(t *testing.T, h http.Handler, method, path, body, csrf string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
+	t.Helper()
+	w := send(h, method, path, body, csrf, cookie)
 	if w.Code != want {
 		t.Fatalf("%s %s: want %d got %d: %s", method, path, want, w.Code, w.Body.String())
 	}

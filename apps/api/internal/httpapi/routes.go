@@ -58,6 +58,11 @@ func (s *Server) workspaceRoutes(ws routeGroup) {
 	ws.Can("POST", "/projects", auth.ProjectStore, s.createProject)
 	ws.HandleFunc("GET", "/projects/{project}", s.project)
 	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, s.updateProject)
+	ws.Can("GET", "/members", auth.WorkspaceMemberIndex, s.members)
+	ws.Can("PATCH", "/members/{member}", auth.WorkspaceMemberUpdate, s.updateMember)
+	ws.Can("DELETE", "/members/{member}", auth.WorkspaceMemberDestroy, s.removeMember)
+	// Your own membership: anyone may leave, apart from the last owner.
+	ws.Can("DELETE", "/membership", auth.AnyMember, s.leaveWorkspace)
 }
 
 // pageRoutes serve the built web app (internal/web) for every other GET.

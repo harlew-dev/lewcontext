@@ -14,6 +14,7 @@ export const routes = {
   project: (workspace: string, project: string) =>
     `/app/${workspace}/projects/${project}`,
   workspaceSettings: (workspace: string) => `/app/${workspace}/settings`,
+  members: (workspace: string) => `/app/${workspace}/settings/members`,
   login: "/auth/login",
   register: "/auth/register",
   // Asks for a reset link; the link itself is /auth/forgot-password/<token>.
@@ -43,6 +44,7 @@ const returnRoutes = [
   new RegExp(`^/app/${wsp}/projects$`),
   new RegExp(`^/app/${wsp}/projects/${prj}$`),
   new RegExp(`^/app/${wsp}/settings$`),
+  new RegExp(`^/app/${wsp}/settings/members$`),
 ];
 const origin = "http://lewcontext.invalid";
 // A same-site path and query from ?next=, or null. It must start with "/";

@@ -51,6 +51,8 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 | --- | --- |
 | `TestAuthenticationAndProjectIsolation` | Register (no workspace yet), public IDs, cookies, digests, CSRF, creating a workspace, cross-user and cross-workspace 404, old routes gone, rotation, logout, idle/expiry, session cap, account limit |
 | `TestWorkspaceList`, `TestWorkspaceMembershipAndRoles` | Newest-first paging, list isolation, each role's `permissions` and `assignableRoles` in the show, list, rename and create responses, outsiders and malformed IDs 404, name validation |
+| `TestMemberList`, `TestChangeMemberRole`, `TestRemoveMember`, `TestLeaveWorkspace` (`members_integration_test.go`) | Role-then-name order, paging, search with `%` and `_`, `addedAt`; admins limited to member ↔ viewer; the last owner can't step down or leave; bad roles 422, extra fields 400, other workspaces' users 404; removing yourself 422; removed users get 404; each event's payload |
+| `TestOwnersDemotingEachOther` | Two owners demoting each other at once, five times: one succeeds, one owner always remains (fails without the workspace row lock) |
 | `TestWorkspacePermissionMatrix` | Every workspace route × every role: allowed roles succeed, others 403, outsiders 404. Fails when a route is registered but missing from `workspaceRoutesMatrix` |
 | `TestWorkspaceMutationsNeedAPermission`, `TestRequirePermission`, `internal/auth` tests | An unguarded `ws` mutation panics; 403 for roles without the permission. The matrix: owner has every declared permission (read from the source), viewer none, each role a subset of the one above, `ParseRole`, `AssignableRoles` |
 | `TestAccountRateLimit`, `TestIPRateLimit` | 429 and `Retry-After` from pre-filled counters |

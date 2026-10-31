@@ -88,6 +88,9 @@ type DropdownButtonProps = {
   children?: ReactNode;
   className?: string;
   "aria-label"?: string;
+  // Button styles, when `as` is the default Button (e.g. a plain ⋯ trigger).
+  plain?: true;
+  outline?: true;
 };
 export const DropdownButton = forwardRef<HTMLElement, DropdownButtonProps>(
   function DropdownButton({ as, ...props }, ref) {

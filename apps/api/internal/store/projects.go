@@ -42,8 +42,8 @@ type ProjectFilter struct {
 	Sort   string
 }
 
-// ProjectPage returns one page of the workspace's projects that match f.
-func (s *Store) ProjectPage(ctx context.Context, workspaceID int64, f ProjectFilter, req PageRequest) (Page[Project], error) {
+// IndexProjects returns one page of the workspace's projects that match f.
+func (s *Store) IndexProjects(ctx context.Context, workspaceID int64, f ProjectFilter, req PageRequest) (Page[Project], error) {
 	order, ok := projectSorts[f.Sort]
 	if !ok {
 		order = projectSorts[DefaultProjectSort]

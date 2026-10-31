@@ -1,8 +1,15 @@
 import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router";
 import { CheckIcon, DocumentDuplicateIcon } from "@heroicons/react/16/solid";
+import { SettingsTabs } from "@/components/app/workspaces/settings-tabs";
 import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
-import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogActions,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Divider } from "@/components/ui/divider";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
@@ -19,22 +26,17 @@ import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useApi } from "@/lib/api";
 import { cx } from "@/lib/cx";
+import { routes } from "@/lib/routes";
 import { useAction } from "@/lib/use-action";
 import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
-import { can, workspaceName, type Role } from "@/types/workspaces";
-const roleBadges: Record<Role, { label: string; color: BadgeColor }> = {
-  owner: { label: "Owner", color: "purple" },
-  admin: { label: "Admin", color: "pink" },
-  member: { label: "Member", color: "zinc" },
-  viewer: { label: "Viewer", color: "zinc" },
-};
+import { can, workspaceName } from "@/types/workspaces";
 export default function WorkspaceSettings() {
   const workspace = useWorkspace();
-  const role = roleBadges[workspace.role];
   const canRename = can(workspace, "workspace.update");
   return (
     <div className="mx-auto max-w-4xl">
       <Heading>Workspace settings</Heading>
+      <SettingsTabs current="general" />
       <Divider className="my-10 mt-6" />
       <SettingsSection
         title="General"
@@ -70,14 +72,7 @@ export default function WorkspaceSettings() {
         />
       </SettingsSection>
       <Divider className="my-10" soft />
-      <SettingsSection
-        title="Your role"
-        description="What you can do in this workspace."
-      >
-        <div>
-          <Badge color={role.color}>{role.label}</Badge>
-        </div>
-      </SettingsSection>
+      <LeaveSection key={workspace.id} />
     </div>
   );
 }
@@ -173,5 +168,58 @@ function CopyField({
         {status}
       </p>
     </div>
+  );
+}
+// Leaving takes you out of the workspace at once; /app then opens your next
+// workspace, or onboarding when there is none. That page is the confirmation:
+// onboarding has no toaster.
+function LeaveSection() {
+  const api = useApi();
+  const workspace = useWorkspace();
+  const refresh = useRefreshWorkspaces();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const leave = useAction(() => api.workspaces().leave(workspace.id));
+  async function confirm() {
+    if (!(await leave.run()).ok) return;
+    refresh();
+    await navigate(routes.app);
+  }
+  const close = () => !leave.busy && setOpen(false);
+  return (
+    <SettingsSection
+      title="Leave workspace"
+      description={
+        !workspace.canLeave
+          ? "You’re its only owner. Make someone else an owner before you leave."
+          : "You lose access to this workspace and its projects."
+      }
+    >
+      <div>
+        <Button
+          outline
+          disabled={!workspace.canLeave}
+          onClick={() => setOpen(true)}
+        >
+          Leave workspace
+        </Button>
+      </div>
+      <Dialog open={open} onClose={close} size="md">
+        <DialogTitle>Leave {workspace.name}?</DialogTitle>
+        <DialogDescription>
+          You lose access at once. To come back, someone will need to add you
+          again.
+        </DialogDescription>
+        <ErrorNotice error={leave.error} className="mt-6" />
+        <DialogActions>
+          <Button plain onClick={close} disabled={leave.loading}>
+            Cancel
+          </Button>
+          <Button color="red" loading={leave.loading} onClick={confirm}>
+            Leave workspace
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </SettingsSection>
   );
 }

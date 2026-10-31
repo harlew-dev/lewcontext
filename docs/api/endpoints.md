@@ -20,6 +20,10 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/workspaces` | Session, CSRF, Origin | 201 with the created workspace; you are its `owner` |
 | GET | `/api/workspaces/{workspace}` | Member | The workspace with your role and permissions |
 | PATCH | `/api/workspaces/{workspace}` | `workspace.update`, CSRF, Origin | 200 with the renamed workspace; 403 for members and viewers |
+| GET | `/api/workspaces/{workspace}/members` | `workspace.member.index` | One page of members, by role then name ([pagination.md](pagination.md)); 403 for members and viewers |
+| PATCH | `/api/workspaces/{workspace}/members/{member}` | `workspace.member.update`, CSRF, Origin | 200 with the member. Body `{role}`. 403 when their role or the new one isn't in your `assignableRoles`, 404 for someone not in this workspace, 409 for the last owner, 422 for an unknown role |
+| DELETE | `/api/workspaces/{workspace}/members/{member}` | `workspace.member.destroy`, CSRF, Origin | 204; their account stays. 403 not assignable, 404, 422 for yourself ("To leave, use Leave workspace.") |
+| DELETE | `/api/workspaces/{workspace}/membership` | Member, CSRF, Origin | 204: you leave. 409 for the last owner |
 | GET | `/api/workspaces/{workspace}/projects` | Member | One page of the workspace's projects ([pagination.md](pagination.md)) |
 | POST | `/api/workspaces/{workspace}/projects` | `project.store`, CSRF, Origin | 201 with the created project; 403 for viewers |
 | GET | `/api/workspaces/{workspace}/projects/{project}` | Member | The project, or 404 |
@@ -36,14 +40,27 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 ```json
 { "id": "wsp_2yEHYLwiwPVhLW", "name": "Acme", "role": "admin",
   "permissions": ["project.destroy", "project.store", "project.update", "workspace.invitation.destroy", "…"],
-  "assignableRoles": ["member", "viewer"],
+  "assignableRoles": ["member", "viewer"], "canLeave": true,
   "createdAt": "2026-10-30T12:00:00Z", "updatedAt": "2026-10-30T12:00:00Z" }
 ```
 
 - **Body for POST/PATCH:** `name` (trimmed, 1–80 characters, no control characters). Unknown fields, such as `id` or `role`, are rejected.
 - **Membership:** the `{workspace}` routes go through `requireWorkspace`, which looks the workspace up through your membership. Another user's workspace, a missing one and a malformed ID all get the same 404.
+- **`canLeave`**: whether you may leave (`DELETE …/membership`). False only for a workspace's only owner. Read with the role in the same query, so the web app never loads the member list to tell.
 - **`permissions`** (sorted) and **`assignableRoles`** (most access first) come from your role, at no query cost, in every workspace response including the list. Empty lists for a viewer, never `null`.
 - **The list** takes `page` and `perPage` only (no search or sort). A new account has none; the web app's onboarding creates the first.
+
+## Members
+
+```json
+{ "id": "usr_2yEHYLwiwPVhLW", "name": "Ada Lovelace", "email": "ada@example.com",
+  "role": "admin", "addedAt": "2026-10-30T12:00:00Z" }
+```
+
+- **`{member}` and `id`** are the user's `usr_` public ID; `addedAt` is when they joined the workspace (`workspace_user.created_at`).
+- **The list** takes `page`, `perPage` and `q` (name or email) and is always ordered owner, admin, member, viewer, then by name.
+- **Scope:** a member is looked up by the workspace from the path and their public ID, so a user in another workspace, or no user, is the same 404.
+- **Leaving** is `DELETE` on your own membership, a singleton resource, rather than a verb route. Every member may leave except the last owner ([auth.md](auth.md#workspaces-and-roles)).
 
 ## Projects
 
@@ -64,6 +81,7 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 | 401 | No session, expired session, or wrong sign-in credentials (a wrong *current* password while signed in is 422) |
 | 403 | Bad Origin or CSRF token, or a role without the permission |
 | 404 | Not found, not yours, or a malformed ID |
+| 409 | The change would leave a workspace without an owner |
 | 409 | Email already registered (generic message) |
 | 415 | Mutation without JSON content type |
 | 422 | Body failed validation. Errors about one field add `"field"`, e.g. `{"error": "Current password is incorrect.", "field": "currentPassword"}` |
@@ -71,6 +89,8 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 | 503 | Database unavailable, or sign-in concurrency full |
 
 ## Adding an endpoint
+
+Name the route, its handler, permission, store method and events as in [../naming.md](../naming.md).
 
 1. Handler and validation in `httpapi` (one file per resource), query in `store` taking the workspace's internal ID (`currentWorkspace(r).ID`).
 2. Register it in `routes.go`: workspace routes go in `workspaceRoutes` (`requireSession` and `requireWorkspace`), mutations with `ws.Can(…, auth.<Permission>, …)` ([auth.md](auth.md#protecting-a-new-endpoint)); account-level routes use `requireSession`.

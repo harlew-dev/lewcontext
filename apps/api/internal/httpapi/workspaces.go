@@ -28,7 +28,7 @@ func (s *Server) workspaces(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid page.")
 		return
 	}
-	page, err := s.Store.WorkspacePage(r.Context(), current(r).User.ID, req)
+	page, err := s.Store.IndexWorkspaces(r.Context(), current(r).User.ID, req)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -61,6 +61,6 @@ func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	workspace.Role = current.Role
+	workspace.Role, workspace.CanLeave = current.Role, current.CanLeave
 	jsonResponse(w, 200, workspace)
 }

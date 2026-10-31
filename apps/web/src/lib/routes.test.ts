@@ -8,6 +8,7 @@ describe("routes", () => {
     expect(routes.projects(ws)).toBe(`/app/${ws}/projects`);
     expect(routes.project(ws, prj)).toBe(`/app/${ws}/projects/${prj}`);
     expect(routes.workspaceSettings(ws)).toBe(`/app/${ws}/settings`);
+    expect(routes.members(ws)).toBe(`/app/${ws}/settings/members`);
     expect(navigation(ws).map((item) => item.href)).toEqual([
       routes.dashboard(ws),
       routes.projects(ws),
@@ -23,6 +24,7 @@ describe("returnPath()", () => {
       routes.projects(ws),
       routes.project(ws, prj),
       routes.workspaceSettings(ws),
+      routes.members(ws),
     ])
       expect(returnPath(path)).toBe(path);
     expect(returnPath(`/app/${ws}/projects?status=Planned&page=2`)).toBe(

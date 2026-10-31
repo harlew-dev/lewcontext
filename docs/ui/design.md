@@ -37,7 +37,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 
 | File | Exports and main props |
 | --- | --- |
-| `button.tsx` | `Button` `color` \| `outline` \| `plain`, `href` (renders a React Router link), `loading`, `disabled` · `TouchTarget` |
+| `button.tsx` | `Button` `color` (`dark/zinc`, or `red` for destructive actions: remove, leave) \| `outline` \| `plain`, `href` (renders a React Router link), `loading`, `disabled` · `TouchTarget` |
 | `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
 | `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
@@ -48,11 +48,12 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `tooltip.tsx` | `Tooltip content placement` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
-| `dropdown.tsx` | `Dropdown`, `DropdownButton`, `DropdownMenu`, `DropdownItem href keepOpen aria-current`, `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
+| `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current`, `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
 | `settings-section.tsx` | `SettingsSection title description` (account and workspace settings) |
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
+| `search-field.tsx` | `SearchField label value onSearch`: updates the URL 300 ms after typing pauses ([pagination.md](pagination.md#url-state)) |
 | `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current`), `SidebarToggle` ([Sidebar layout](#sidebar-layout)) · `Navbar*` (`NavbarItem`, `NavbarLabel`) |
 | `heading.tsx` / `text.tsx` | `Heading level`, `Subheading` · `Text`, `TextLink`, `Strong`, `Code` |
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |

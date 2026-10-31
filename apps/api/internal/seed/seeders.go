@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/factory"
 	"strings"
 	"time"
@@ -27,7 +28,12 @@ var demoProjects = []factory.Project{
 	{Name: "Product launch", Description: "Make our next chapter a memorable one.", Status: "Planned", Color: "violet"},
 }
 
-// seedDemo creates the demo account and its workspace with fixed names, once.
+// demoMembers are the roles of the fake people the demo seed adds to Acme
+// beside its owner, so the members page has someone to show.
+var demoMembers = []auth.Role{auth.RoleAdmin, auth.RoleMember, auth.RoleMember, auth.RoleViewer}
+
+// seedDemo creates the demo account and its workspace with fixed names, once,
+// with a few fake members who can't sign in.
 func seedDemo(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (string, error) {
 	exists, err := tx.NewSelect().Model((*factory.User)(nil)).Where("email = ?", DemoEmail).Exists(ctx)
 	if err != nil || exists {
@@ -53,7 +59,33 @@ func seedDemo(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (str
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Created demo account %s with workspace %s and %d projects", DemoEmail, DemoWorkspace, len(demoProjects)), nil
+	if err := addDemoMembers(ctx, tx, f, workspace.ID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Created demo account %s with workspace %s, %d projects and %d more members", DemoEmail, DemoWorkspace, len(demoProjects), len(demoMembers)), nil
+}
+
+// addDemoMembers adds fake @example.test users to the workspace, joined over
+// the past weeks. Their password hash is random text, not a hash, so no
+// password signs them in.
+func addDemoMembers(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, workspaceID int64) error {
+	users, err := factory.Users.State(func(u *factory.User) {
+		u.PasswordHash = "unusable:" + f.LetterN(32)
+	}).Create(ctx, tx, f, len(demoMembers))
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for i, user := range users {
+		_, err := factory.WorkspaceUsers.State(func(m *factory.WorkspaceUser) {
+			m.UserID, m.WorkspaceID, m.Role = user.ID, workspaceID, demoMembers[i]
+			m.CreatedAt = now.AddDate(0, 0, -(10 - 2*i))
+		}).CreateOne(ctx, tx, f)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // seedVolume adds fake projects to an existing account's newest workspace.

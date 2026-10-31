@@ -18,7 +18,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `public_id` | `evt_` + 14 base62 |
 | `name` | `<area>.<past_tense>`, e.g. `project.updated` |
 | `actor_id` | Who acted: the signed-in user (`events.WithActor`, set by `requireSession`), or the user who registered or signed in. Null for login attempts and anonymous rate limits |
-| `user_id` | The account the event is about (auth events) |
+| `user_id` | The account the event is about (auth events, and the member in member events) |
 | `workspace_id` | The workspace (workspace and project events) |
 | `payload` | The event struct as JSON (`jsonb`) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
@@ -44,6 +44,9 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
 | `workspace.renamed` | `workspace`, `changes.name` (`from`, `to`) | `RenameWorkspace`, only when the name changed |
+| `workspace.member_updated` | `workspace`, `user`, `changes.role` (`from`, `to`); `user_id` is the member, the actor who changed it | `UpdateMemberRole`, only when the role changed |
+| `workspace.member_removed` | `workspace`, `user`, `role` (the role they had); `user_id` is the member | `RemoveMember` |
+| `workspace.member_left` | `workspace`, `role`; the member is both actor and `user_id` | `LeaveWorkspace` |
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
 | `project.updated` | `project`, `workspace`, `changes` per changed field (`from`, `to`) | `UpdateProject`, only when something changed |
 

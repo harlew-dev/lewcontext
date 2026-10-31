@@ -27,6 +27,10 @@ export default [
       "pages/app/[workspace]/projects/[project].tsx",
     ),
     route("app/:workspace/settings", "pages/app/[workspace]/settings.tsx"),
+    route(
+      "app/:workspace/settings/members",
+      "pages/app/[workspace]/settings/members.tsx",
+    ),
   ]),
   route("*", "pages/not-found.tsx"),
 ] satisfies RouteConfig;

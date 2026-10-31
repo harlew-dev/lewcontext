@@ -18,13 +18,15 @@ export const permissions = [
 ] as const;
 export type Permission = (typeof permissions)[number];
 // A workspace as the signed-in member sees it: their role, what it allows,
-// and the roles they may give others.
+// the roles they may give others, and whether they may leave (anyone but its
+// only owner).
 export type Workspace = {
   id: string;
   name: string;
   role: Role;
   permissions: Permission[];
   assignableRoles: Role[];
+  canLeave: boolean;
   createdAt: string;
   updatedAt: string;
 };

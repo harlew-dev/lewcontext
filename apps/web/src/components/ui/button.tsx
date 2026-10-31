@@ -45,6 +45,11 @@ const styles = {
       "dark:text-white dark:[--btn-bg:var(--color-zinc-600)] dark:[--btn-hover-overlay:var(--color-white)]/5",
       "[--btn-icon:var(--color-zinc-400)] data-active:[--btn-icon:var(--color-zinc-300)] data-hover:[--btn-icon:var(--color-zinc-300)]",
     ],
+    // Destructive actions: remove, leave, revoke.
+    red: [
+      "text-white [--btn-bg:var(--color-red-600)] [--btn-border:var(--color-red-700)]/90 [--btn-hover-overlay:var(--color-white)]/10",
+      "[--btn-icon:var(--color-red-300)] data-active:[--btn-icon:var(--color-red-200)] data-hover:[--btn-icon:var(--color-red-200)]",
+    ],
   },
 };
 type Style =

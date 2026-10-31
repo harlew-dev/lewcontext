@@ -19,8 +19,9 @@ const granted: Record<
   },
   viewer: { permissions: [], assignableRoles: [] },
 };
-// A workspace the signed-in member sees with `role`. Override what a test
-// checks: testWorkspace("viewer", { name: "Acme" })
+// A workspace the signed-in member sees with `role`, where they are the only
+// owner if `role` is owner. Override what a test checks:
+//   testWorkspace("viewer", { name: "Acme" })
 export function testWorkspace(
   role: Role = "owner",
   overrides: Partial<Workspace> = {},
@@ -30,6 +31,7 @@ export function testWorkspace(
     name: "Acme",
     role,
     ...granted[role],
+    canLeave: role !== "owner",
     createdAt: "",
     updatedAt: "",
     ...overrides,
