@@ -285,7 +285,16 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
     }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Account menu" }).click();
+  // The top bar has the workspace menu; the account menu is at the bottom
+  // of the slide-over sidebar.
+  await expect(
+    page.getByRole("banner").getByRole("button", { name: "Workspace menu" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await page
+    .getByRole("dialog", { name: "Navigation" })
+    .getByRole("button", { name: "Account menu" })
+    .click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/auth/login");
   await page.getByLabel("Email").fill(email);
@@ -331,14 +340,16 @@ test("the desktop sidebar hides and is remembered without flashing; the mobile o
   await page.setViewportSize({ width: 1280, height: 800 });
   await register(page, sidebarEmail, "Jordan Example");
   await onboard(page, "Jordan’s desk");
+  // The account menu is only in the sidebar; the workspace menu is in the
+  // sidebar and, while it's hidden, in the top bar.
+  const accountMenu = page.getByRole("button", { name: "Account menu" });
   const workspaceMenu = page.getByRole("button", { name: "Workspace menu" });
-  await expect(workspaceMenu).toBeVisible();
+  await expect(accountMenu).toBeVisible();
   await page.getByRole("button", { name: "Hide sidebar" }).click();
-  await expect(workspaceMenu).toBeHidden();
-  // The top bar takes over the account menu, with the member's name.
+  await expect(accountMenu).toBeHidden();
   await expect(
-    page.getByRole("button", { name: "Account menu" }),
-  ).toContainText("Jordan Example");
+    page.getByRole("banner").getByRole("button", { name: "Workspace menu" }),
+  ).toContainText("Jordan’s desk");
   // Reloading opens it hidden, without rendering it docked even for a moment.
   await page.addInitScript(() => {
     new MutationObserver(() => {
@@ -350,10 +361,12 @@ test("the desktop sidebar hides and is remembered without flashing; the mobile o
   await expect(
     page.getByRole("button", { name: "Show sidebar" }),
   ).toBeVisible();
-  await expect(workspaceMenu).toBeHidden();
+  await expect(accountMenu).toBeHidden();
   expect(await page.evaluate(() => window.sawDockedSidebar)).toBeUndefined();
   await page.getByRole("button", { name: "Show sidebar" }).click();
-  await expect(workspaceMenu).toBeVisible();
+  await expect(accountMenu).toBeVisible();
+  // Docked, the top bar (and its workspace menu) is out of reach again.
+  await expect(workspaceMenu).toHaveCount(1);
   // On a phone the drawer's close button sits beside the workspace menu.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Open navigation" }).click();
@@ -361,7 +374,16 @@ test("the desktop sidebar hides and is remembered without flashing; the mobile o
   await expect(
     drawer.getByRole("button", { name: "Workspace menu" }),
   ).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "Account menu" }),
+  ).toBeVisible();
   await drawer.getByRole("button", { name: "Close navigation" }).click();
+  await expect(drawer).toBeHidden();
+  // Opening a page from a menu in it closes it too.
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await drawer.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Account & security" }).click();
+  await expect(page).toHaveURL("/app/settings");
   await expect(drawer).toBeHidden();
 });
 test("signing in returns to the page that needed it, and only to our pages", async ({

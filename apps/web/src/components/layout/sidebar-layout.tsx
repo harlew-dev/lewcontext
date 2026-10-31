@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useLocation } from "react-router";
 import { Drawer } from "baseui/drawer";
 import { slot } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
@@ -141,6 +142,15 @@ export function SidebarLayout({
   children: ReactNode;
 }) {
   const [showSidebar, setShowSidebar] = useState(false);
+  // Opening another page closes the mobile sidebar, including from a menu in
+  // it (Workspace settings, Account & security, another workspace); its own
+  // links close it as they're clicked.
+  const { pathname } = useLocation();
+  const [shownFor, setShownFor] = useState(pathname);
+  if (pathname !== shownFor) {
+    setShownFor(pathname);
+    setShowSidebar(false);
+  }
   const { docked, toggle } = useDockedSidebar();
   return (
     <div className="relative isolate flex min-h-svh w-full flex-col bg-white lg:bg-zinc-100 dark:bg-zinc-900 dark:lg:bg-zinc-950">

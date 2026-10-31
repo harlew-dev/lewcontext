@@ -6,7 +6,6 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   Cog8ToothIcon,
-  LightBulbIcon,
   PlusIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/16/solid";
@@ -61,12 +60,7 @@ import { SidebarLayout } from "./sidebar-layout";
 function AccountDropdownMenu({
   anchor,
   onSignOut,
-  onHelp,
-}: Pick<DropdownMenuProps, "anchor"> & {
-  onSignOut: () => void;
-  // Shows "Getting started"; left out where the sidebar already has it.
-  onHelp?: () => void;
-}) {
+}: Pick<DropdownMenuProps, "anchor"> & { onSignOut: () => void }) {
   const current = useCurrentPath() === routes.settings;
   return (
     <DropdownMenu className="min-w-64" anchor={anchor}>
@@ -78,12 +72,6 @@ function AccountDropdownMenu({
         <ShieldCheckIcon />
         <DropdownLabel>Account & security</DropdownLabel>
       </DropdownItem>
-      {onHelp && (
-        <DropdownItem onClick={onHelp}>
-          <LightBulbIcon />
-          <DropdownLabel>Getting started</DropdownLabel>
-        </DropdownItem>
-      )}
       <DropdownDivider />
       <DropdownItem variant="danger" onClick={onSignOut}>
         <ArrowRightStartOnRectangleIcon />
@@ -95,14 +83,20 @@ function AccountDropdownMenu({
 // Workspace switcher: the current workspace, its settings, every workspace
 // the member belongs to (a check on the current one) and "New workspace…". On
 // workspace settings (General or Members) its button is selected, and the
-// menu's highlight rests on Workspace settings.
+// menu's highlight rests on Workspace settings. It's in the sidebar's header
+// and, for phones and the hidden desktop sidebar, at the right of the top bar
+// (`navbar`, its menu opening from that edge).
 function WorkspaceDropdown({
   onCreate,
+  navbar = false,
   className,
 }: {
   onCreate: () => void;
+  navbar?: boolean;
   className?: string;
 }) {
+  const Item = navbar ? NavbarItem : SidebarItem;
+  const Label = navbar ? NavbarLabel : SidebarLabel;
   const workspace = useWorkspace();
   const settings = routes.workspaces.edit(workspace.id);
   const path = useCurrentPath();
@@ -110,16 +104,19 @@ function WorkspaceDropdown({
   return (
     <Dropdown>
       <DropdownButton
-        as={SidebarItem}
+        as={Item}
         className={className}
         selected={onSettings}
         aria-label="Workspace menu"
       >
         <WorkspaceAvatar workspace={workspace} />
-        <SidebarLabel>{workspace.name}</SidebarLabel>
+        <Label>{workspace.name}</Label>
         <ChevronDownIcon />
       </DropdownButton>
-      <DropdownMenu className="min-w-80 lg:min-w-64" anchor="bottom start">
+      <DropdownMenu
+        className="min-w-80 lg:min-w-64"
+        anchor={navbar ? "bottom end" : "bottom start"}
+      >
         <DropdownItem
           href={settings}
           aria-current={onSettings ? "page" : undefined}
@@ -263,41 +260,17 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
       toast.error(errorMessage(e));
     }
   }
-  // On desktop "Getting started" sits in the sidebar just above the account
-  // menu, so only the mobile navbar's menu repeats it.
-  const accountMenu = (
-    anchor: DropdownMenuProps["anchor"],
-    { help }: { help: boolean },
-  ) => (
-    <AccountDropdownMenu
-      anchor={anchor}
-      onSignOut={signOut}
-      onHelp={help ? () => setHelp(true) : undefined}
-    />
-  );
   return (
     <SidebarLayout
       navbar={
         <Navbar>
           <NavbarSpacer />
           <NavbarSection className="min-w-0">
-            <Dropdown>
-              <DropdownButton
-                as={NavbarItem}
-                className="min-w-0"
-                selected={onAccount}
-                aria-label="Account menu"
-              >
-                <Avatar
-                  square
-                  initials={userInitials}
-                  className="bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
-                />
-                <NavbarLabel>{session.user.name}</NavbarLabel>
-                <ChevronDownIcon />
-              </DropdownButton>
-              {accountMenu("bottom end", { help: true })}
-            </Dropdown>
+            <WorkspaceDropdown
+              navbar
+              className="min-w-0"
+              onCreate={() => setCreating(true)}
+            />
           </NavbarSection>
         </Navbar>
       }
@@ -335,7 +308,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
               </SidebarItem>
             </SidebarSection>
           </SidebarBody>
-          <SidebarFooter className="max-lg:hidden">
+          <SidebarFooter>
             <Dropdown>
               <DropdownButton
                 as={SidebarItem}
@@ -359,7 +332,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
                 </span>
                 <ChevronUpIcon />
               </DropdownButton>
-              {accountMenu("top start", { help: false })}
+              <AccountDropdownMenu anchor="top start" onSignOut={signOut} />
             </Dropdown>
           </SidebarFooter>
         </Sidebar>

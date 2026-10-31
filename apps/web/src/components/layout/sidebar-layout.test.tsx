@@ -1,5 +1,6 @@
 import { useContext } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarToggle } from "@/components/ui/sidebar";
 import { SidebarToggleContext } from "@/components/ui/sidebar-context";
@@ -14,17 +15,19 @@ function renderLayout(labels: string[] = []) {
     return null;
   }
   return render(
-    <SidebarLayout
-      navbar={<span>Navbar</span>}
-      sidebar={
-        <div>
-          <SidebarToggle />
-          <Probe />
-        </div>
-      }
-    >
-      Content
-    </SidebarLayout>,
+    <MemoryRouter>
+      <SidebarLayout
+        navbar={<span>Navbar</span>}
+        sidebar={
+          <div>
+            <SidebarToggle />
+            <Probe />
+          </div>
+        }
+      >
+        Content
+      </SidebarLayout>
+    </MemoryRouter>,
   );
 }
 afterEach(() => {
