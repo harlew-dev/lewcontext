@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+**/node_modules
+bin
+apps/web/build
+apps/web/.react-router
+apps/web/test-results
+apps/web/playwright-report
+apps/api/internal/web/dist/*
+!apps/api/internal/web/dist/.gitkeep
+plans
+docs

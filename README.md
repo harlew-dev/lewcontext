@@ -204,18 +204,36 @@ It is a working app, not a mockup. The dashboard shows real database data: you c
 
 ### Getting started
 
-**Requirements:** Go 1.26+, Node 24+, npm and PostgreSQL 15+. PostgreSQL must already be running (on this computer, check it with `lewagent-services status`).
+There are two ways to run it: entirely in Docker, or with Go and Node on your machine and only the database in Docker.
 
-1. **Install and set up the database.**
+#### Run in Docker
+
+**Requirements:** Docker with Compose.
+
+```sh
+cp .env.example .env
+make docker-dev
+```
+
+This starts PostgreSQL (with pgvector), builds the app from the `Dockerfile`, migrates and seeds the database, then starts the app. Run it again after pulling changes: it rebuilds the image, and migrating and seeding are safe to repeat.
+
+Open **http://localhost:3000** and sign in as described in step 4 below. `make docker-down` stops the containers and keeps the data. The image builds the web app with Node and the server with Go, so neither is needed on your machine.
+
+#### Run for development
+
+**Requirements:** Go 1.26+, Node 24+, npm and Docker with Compose (or your own PostgreSQL 15+ with pgvector).
+
+1. **Start the database and set it up.**
 
    ```sh
    cp .env.example .env
+   make db
    make install
    make migrate
    make seed
    ```
 
-   The example environment points at the supplied local test database (`127.0.0.1:5432/lewcontext`); its credentials are for local testing only. Setup never drops existing tables or data, and the seed runs only when invoked, refuses to run in production, and leaves an existing demo account unchanged.
+   `make db` starts PostgreSQL 17 with pgvector from `compose.yaml`, on `127.0.0.1:5432` with the credentials in `.env.example`, which are for local development only. Setup never drops existing tables or data, and the seed runs only when invoked, refuses to run in production, and leaves an existing demo account unchanged.
 
 2. **Start the dev server** from the repository root.
 
@@ -244,6 +262,7 @@ Fake records come from the factories in `apps/api/internal/factory`, one per tab
 
 | Command | Does |
 | --- | --- |
+| `make db` | Start PostgreSQL (with pgvector) in Docker |
 | `make dev` | API and Vite together in one terminal (or `make api` and `make web` in two) |
 | `make serve` | Build the production binary and run it on `:3000` |
 | `make migrate` | Apply pending migrations |
@@ -251,6 +270,9 @@ Fake records come from the factories in `apps/api/internal/factory`, one per tab
 | `make migration name=add_tasks` | Create an up/down migration pair |
 | `make migrate-rollback` | Preview undoing the last migration group; `CONFIRM=1` runs it and can drop data |
 | `make seed` | Seed the demo account (see [Sample data](#sample-data) for other seeders) |
+| `make docker-dev` | Start the whole app in Docker on `:3000`: database, build, migrate, seed, app |
+| `make docker-up` / `make docker-down` | Build and start, or stop, the whole app in Docker without migrating or seeding |
+| `make docker-migrate` / `make docker-seed` | Migrate or seed from the app container |
 
 Configuration lives in `.env` (see [configuration](docs/testing.md#configuration)). `APP_NAME` sets the product name used in page titles, the logo and app copy (`lewcontext` by default); it is baked into the web build, so rebuild after changing it.
 

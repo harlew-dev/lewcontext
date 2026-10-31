@@ -53,7 +53,7 @@ Short summaries of how each part works (API, auth, pagination, database, seeding
 
 ## Commands and validation
 
-Use `make install`, `make migrate` (`make migrate-status` to inspect), `make seed`, then `make dev` (`scripts/dev.sh`: the API and Vite in one terminal, Vite on :3000 proxying `/api` to Go; or `make api` and `make web` in separate terminals). `make serve` instead builds the single binary with the web app embedded and runs it on :3000, as in production. Make loads root `.env`. Browse `http://localhost:3000` with the default origin configuration.
+Use `make db` (PostgreSQL with pgvector in Docker), `make install`, `make migrate` (`make migrate-status` to inspect), `make seed`, then `make dev` (`scripts/dev.sh`: the API and Vite in one terminal, Vite on :3000 proxying `/api` to Go; or `make api` and `make web` in separate terminals). `make serve` instead builds the single binary with the web app embedded and runs it on :3000, as in production. `make docker-dev` runs the whole app in Docker from the `Dockerfile` instead (database, image build, migrate, seed, then the app). Make loads root `.env`. Browse `http://localhost:3000` with the default origin configuration.
 
 Before claiming completion, run relevant checks and report failures:
 
@@ -66,7 +66,7 @@ Before claiming completion, run relevant checks and report failures:
 
 ## Working on this computer
 
-- Check `lewagent-services status` before starting services. Reuse the running PostgreSQL instance; never install a second DB server. Restart a registered process after config changes instead of duplicating it.
+- PostgreSQL runs in Docker (`compose.yaml`, `make db`; `docker compose ps` shows it). Reuse that container; never install a second DB server. Restart a running process after config changes instead of duplicating it.
 - Use the using-the-browser skill and Playwright tools for web flows; desktop tools for other applications/visual artifact handoff. Do not touch windows you did not open.
 - Show the result with a saved screenshot or published file in the user's Artifacts panel.
 - Keep scope to the request. Do not push, merge, force-push, delete branches, or perform destructive operations unless explicitly asked. No external messages without authorization.

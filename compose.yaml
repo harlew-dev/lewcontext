@@ -1,0 +1,51 @@
+# Local stack: PostgreSQL 17 with the pgvector extension available (enable it
+# per database with CREATE EXTENSION vector), and the app built from the
+# Dockerfile. `make db` starts only the database (for make dev on the host);
+# `make docker-up` starts both. Credentials are for local development only.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lewcontext
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: lewcontext
+    # Localhost only: the database is not reachable from the network.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lewcontext -d lewcontext"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The API and web app on http://localhost:3000, as make serve runs them.
+  # Migrations stay explicit: make docker-migrate (no migration on startup).
+  app:
+    build:
+      context: .
+      args:
+        APP_NAME: ${APP_NAME:-lewcontext}
+    image: lewcontext:local
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://lewcontext:password@postgres:5432/lewcontext?sslmode=disable
+      APP_ENV: development
+      APP_ORIGIN: http://localhost:3000
+      # Used only by the explicit seed command (make docker-seed).
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-password}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres:

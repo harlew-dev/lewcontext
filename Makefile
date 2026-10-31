@@ -5,9 +5,9 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
-.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check
+.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-up docker-migrate docker-seed docker-down
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-up docker-migrate docker-seed docker-down'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -50,6 +50,27 @@ build: web-build
 # Production-like: the built binary serves both on :3000 (APP_ORIGIN). Stop make api and make web first.
 serve: build
 	API_ADDR=127.0.0.1:3000 ./bin/api
+# Docker (compose.yaml): PostgreSQL 17 with pgvector, and the app built from the Dockerfile.
+# The database alone, for make dev and the tests on this machine:
+db:
+	docker compose up -d --wait postgres
+# The whole app in Docker on :3000 in one command (stop make dev / make serve first): starts the
+# database, builds the image, migrates and seeds, then starts the app once the schema is ready.
+docker-dev: db
+	docker compose build app
+	docker compose run --rm app migrate
+	docker compose run --rm app seed
+	docker compose up -d --wait app
+# Or step by step: start everything, then migrate and seed.
+docker-up:
+	docker compose up -d --build --wait
+docker-migrate:
+	docker compose run --rm app migrate
+docker-seed:
+	docker compose run --rm app seed
+# Stops the containers; the database volume (and its data) is kept.
+docker-down:
+	docker compose down
 test:
 	cd apps/api && go test -race ./...
 	cd apps/web && npm test

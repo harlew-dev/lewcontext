@@ -89,4 +89,4 @@ cd apps/api && go run ./cmd/prune -h                # lists targets and their de
 ## Rules
 
 - Never drop or reset a database other than the local development one, and that one only with `make migrate-fresh`. Integration tests use their own temporary schema.
-- The local test database is `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`. Reuse the running PostgreSQL (`lewagent-services status`).
+- The local test database is `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`. It runs in Docker: `make db` (`compose.yaml`, PostgreSQL 17 with pgvector).
