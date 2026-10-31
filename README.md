@@ -1,4 +1,4 @@
-<img src="apps/web/public/favicon.svg" alt="" width="56" height="56">
+<img src="lewcontext.png" alt="" width="56" height="56">
 
 # lewcontext
 
