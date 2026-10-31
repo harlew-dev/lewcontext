@@ -4,13 +4,38 @@
 
 This project replaces the previous project completely. The previous README was stale and was not used as project context. The current README documents the new application.
 
-Short summaries of how each part works (API, auth, pagination, database, seeding, pages, components, testing) are indexed in [`docs/README.md`](docs/README.md). Read the relevant doc before changing an area, and update it when what it summarises changes.
-
 - Backend: Go 1.26+, standard-library `net/http` method-aware routing, Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql` driver, PostgreSQL 15+. In production the same Go binary serves the web app (`internal/web`, the build embedded with `//go:embed`): one process, one origin.
 - Frontend: React 18, TypeScript in strict mode, a single-page app on React Router v7 framework mode (`ssr: false`; public pages such as `/` prerendered at build time for SEO), built by Vite, Tailwind CSS v4 on top of Uber Base Web (`baseui`) behaviour, SWR, Heroicons, `motion` (sliding sidebar indicator and hover background), Inter (self-hosted via Fontsource).
 - Component standard: `components/ui` holds the app's Tailwind components (restrained zinc styling, sidebar and auth layouts). Match the existing components' APIs, class patterns and data attributes when adding or changing one.
 - Testing: Go testing + httptest + race detector + real PostgreSQL integration tests; Vitest + React Testing Library; Playwright end-to-end tests. ESLint, TypeScript, go vet, gofmt, Prettier.
 - This is a working demo of authenticated Go API ↔ React communication with durable PostgreSQL projects, not a static mockup.
+
+## Docs and plans
+
+Short summaries of how each part works live in `docs/`, indexed in [`docs/README.md`](docs/README.md). Read the relevant doc before changing an area, and update it in the same change when what it summarises changes. A new doc gets a row in `docs/README.md`.
+
+| Doc | Covers |
+| --- | --- |
+| `docs/testing.md` | Local setup, `make dev`, `make build`/`make serve`, manual demo and failure checks |
+| `docs/api/README.md` | Go package layout, request flow, serving the web app, environment variables |
+| `docs/api/endpoints.md` | Every API endpoint, its protection and responses |
+| `docs/api/auth.md` | Passwords, password reset, sessions, CSRF, rate limits, headers, workspace roles |
+| `docs/api/events.md` | The `events` audit trail, the event catalogue, listeners and the delivery worker |
+| `docs/api/mail.md` | `mailer.Send`, mail templates and their safety rules, the development mailbox |
+| `docs/api/pagination.md` | Listing, searching and sorting a resource |
+| `docs/api/database.md` | Tables, queries, migrations, adding a table, pruning |
+| `docs/api/seeding.md` | Factories, seeders, `make seed` |
+| `docs/api/testing.md` | Go unit and integration tests, helpers, notable tests |
+| `docs/ui/README.md` | Web app folder layout and where new code goes |
+| `docs/ui/pages.md` | Pages, routes, loaders, prerendering, `?next=` |
+| `docs/ui/api.md` | Fetching and mutating API data from components and loaders |
+| `docs/ui/pagination.md` | Paginated, searchable, sortable lists |
+| `docs/ui/design.md` | Building and styling components |
+| `docs/ui/base-ui.md` | Using and customising BaseUI, and its known issues |
+| `docs/ui/strict-mode.md` | Behaviour seen only under `make dev` (double renders, effects twice) |
+| `docs/ui/testing.md` | Vitest and Playwright tests |
+
+**Plan before changing the architecture.** A new feature, a new table, package, event, listener or endpoint family, a new dependency, or a change to auth, security, rate limits or how layers fit together needs a completed plan in `plans/features/<name>.md` before any code is written. Follow the existing plans: Why, the design or flow, API and data changes, security risks and how they're avoided, tests, Decisions (each open question with a recommendation), and Not included. Write the plan, have the user confirm its decisions, then implement. When it ships, set its `Status:` line to implemented with the date, note where the build differs from the plan, and link the docs it updated. Small fixes and changes within an existing design don't need a plan.
 
 ## Non-negotiable architecture conventions
 
