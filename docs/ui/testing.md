@@ -3,12 +3,11 @@
 ## Running
 
 ```sh
-make test       # includes Vitest (cd apps/web && npm test)
-make check      # TypeScript, ESLint (zero warnings), Prettier (and the Go checks)
-make build      # web build (react-router build), embedded into bin/api
-make serve      # run it on :3000, then in another terminal:
-TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable' make test-e2e
-# …with the server started as RATE_LIMITS=off make serve (see below)
+make test                  # includes Vitest (cd apps/web && npm test)
+make check                 # TypeScript, ESLint (zero warnings), Prettier (and the Go checks)
+make build                 # web build (react-router build), embedded into bin/api
+make test-e2e              # Playwright: builds and starts its own server on :3100
+make test-e2e E2E_PORT=auto  # the same on a free port, beside another run
 cd apps/web && npm audit
 ```
 
@@ -35,13 +34,14 @@ cd apps/web && npm audit
 
 ## Playwright end-to-end (`tests/e2e/workspace.spec.ts`)
 
-- **Runs against `RATE_LIMITS=off make serve`:** the Go binary serving the API and the built web app, with `APP_ORIGIN` as the base URL (default `http://localhost:3000`). One run signs up about a dozen users from one IP, past `register:per-ip` (10 an hour), so the server it runs against needs its rate limits off ([../api/rate-limits.md](../api/rate-limits.md#switching-limits-off-for-tests-rate_limits)); quotas still apply. CI starts the server that way. It also runs against `make dev`, except the checks of Go's `/app` redirect, CSP and status codes.
-- **Self-contained:** it signs up unique `e2e-<timestamp>-…@lewcontext.test` users, creates its own data through the UI and the API (22 projects for the pagination flow; 19 workspaces through the API, the 21st refused by the quota, and 4 memberships in the database for the switcher), and afterwards deletes only those users and their workspaces through `TEST_DATABASE_URL`. It doesn't depend on seeded data. The membership tests (read-only members and viewers; an owner changing a member to viewer, then removing them) add their `member` row through `TEST_DATABASE_URL` and are skipped without it, and so is the switcher test: a user can own 20 workspaces, so it fills the rest of the switcher's second page with memberships.
+- **Starts its own server:** Playwright's `webServer` runs `make serve-test`, which builds `bin/api` (the Go binary serving the API and the built web app) and starts it on `E2E_PORT` (3100, from `.env.testing`) against a database of its own, `lewcontext_test_<port>`, rebuilt from scratch at every start (`scripts/serve-test.sh`). It never reuses a server already on the port, which may be another run's; `E2E_REUSE=1` asks it to, for iterating against a `make serve-test` you started yourself. `.env.testing` sets `RATE_LIMITS=off`: one run signs up about a dozen users from one IP, past `register:per-ip` (10 an hour) ([../api/rate-limits.md](../api/rate-limits.md#switching-limits-off-for-tests-rate_limits)); quotas still apply. The server's output appears prefixed `[WebServer]`.
+- **Settings come from `.env.testing`,** which `playwright.config.ts` loads over the environment, so `npx playwright test` run directly behaves like `make test-e2e` (minus the port check below). The config derives `APP_ORIGIN`, `DATABASE_URL` (the run's database) and the absolute `MAIL_FILE` from `E2E_PORT`.
+- **Self-contained:** it signs up unique `e2e-<timestamp>-…@lewcontext.test` users, creates its own data through the UI and the API (22 projects for the pagination flow; 19 workspaces through the API, the 21st refused by the quota, and 4 memberships in the database for the switcher), and afterwards deletes only those users and their workspaces through `psql` on the run's `DATABASE_URL`. It doesn't depend on seeded data. The membership tests (read-only members and viewers; an owner changing a member to viewer, then removing them) add their `member` row through `psql` too, and so does the switcher test: a user can own 20 workspaces, so it fills the rest of the switcher's second page with memberships.
 - **Browser:** `/usr/bin/chromium` by default. Without a system Chromium, use the one Playwright installs (`npx playwright install chromium`): `CHROMIUM_PATH=~/.cache/ms-playwright/chromium-<revision>/chrome-linux64/chrome`. Write the whole path: a glob in the variable isn't expanded. If the browser can't launch, every browser test fails within seconds; `test-results/<test>/error-context.md` gives the reason.
 - **Covers:** registration → onboarding → the new workspace's dashboard, creating with a pending state, editing on the project page (from its ⋯ menu), "not found" for unknown projects and workspaces, filters, refresh failure with Retry, paging, sorting, server search, back/forward, opening `?page=2` directly, past-the-end, creating from page 2, CSP script hashes and no CSP violations, security headers, mobile layout, session revocation, logout and login, returning to `?next=` after sign-in (with other sites rejected), the prerendered homepage's HTML (title, description, Styletron styles), signed-out `/app` → 302 to login, the old URLs 404ing, creating ("… created.") and switching workspaces, the menus marking Workspace settings and Account & security as the current page, renaming, copying the ID, the owned-workspace quota, infinite scrolling in the switcher, opening the newest workspace after sign-in, "not found" for non-members and members' read-only settings, and hiding the desktop sidebar: remembered after a reload without it ever rendering docked (a `MutationObserver` added with `addInitScript` watches from the first byte), and the mobile sidebar closing from beside the workspace menu, deleting a project from its row, then the account's only workspace from the last-owner warning (landing in onboarding), then the account from onboarding's menu (login says so, and signing in fails), invitations (an owner invites, the list shows "Sending…" until the worker has emailed each, revokes one; a new account opens its link from the mailbox, signs up through it with the callout and the email filled in, and lands in the workspace with "You joined …"; the link then shows expired; an existing account joins while signed in; the revoked link shows expired; the owner sees both members), and forgot password: requesting a link from login, reading it from the server's mailbox file, setting a new password (the token never in an API URL), signing in with it, and the link refused the second time.
-- **Mailbox:** the forgot-password and invitation tests read links from `MAIL_FILE` (`mailedLink`), by default `<repo>/tmp/mail.log`, where `make serve` writes them. A server started another way must use the same file (set `MAIL_FILE` for both).
+- **Mailbox:** the forgot-password and invitation tests read links from `MAIL_FILE` (`mailedLink`), `<repo>/tmp/mail-test.log` from `.env.testing`, where the e2e server writes them. It's separate from the development mailbox (`tmp/mail.log`). Runs on other ports share it, and each finds its own mail by its unique recipients.
 - Any `pageerror` or CSP violation in the console fails the main flow. API calls made from the test send the page's own Origin and the CSRF token from `/api/auth/me`.
-- Against a server with rate limits on, a run fails at the eleventh sign-up (429 "Too many requests"): restart it with `RATE_LIMITS=off`.
+- With `E2E_REUSE=1` against a server with rate limits on, a run fails at the eleventh sign-up (429 "Too many requests"): start that server with `make serve-test`, which turns them off.
 
 ## Tips
 
@@ -50,29 +50,34 @@ cd apps/web && npm audit
 - `page.route(`**/api/workspaces/${ws}/projects`)` matches only the bare path. Use a regex such as `new RegExp(`/api/workspaces/${ws}/projects(\\?.*)?$`)` to catch list requests with query strings.
 - Test emails come from a timestamp taken when each Playwright worker starts, and a failed test restarts the worker. Don't share data between tests through module variables; set up what a test needs inside it.
 
-## Against a server of your own
+## Running several at once
 
-`make serve` + `make test-e2e` assumes :3000 is free and the database is yours. Often it isn't: `make dev` or the Docker `app` container (`make docker-dev`, an older build) may hold :3000, and another server on the same database runs its own delivery worker. That worker claims the invitation and reset emails, so they go to *its* mailbox, and the mailbox tests time out waiting for a link. In that case, run a build on its own port against its own database:
+Other people or agents may run the suite on the same machine. Each run gets its own port and database from one variable, and finds out within a second, before anything is built, if it can't have them:
+
+| `E2E_PORT` | Server | Database |
+| --- | --- | --- |
+| unset (3100, from `.env.testing`) | `http://localhost:3100` | `lewcontext_test_3100` |
+| a port, e.g. `3101` | `http://localhost:3101` | `lewcontext_test_3101`, created on first use |
+| `auto` | the first free port from 3101 up | `lewcontext_test_<port>` |
 
 ```sh
-make build
-# Once: a second database in the same PostgreSQL container, migrated.
-psql 'postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable' -c 'CREATE DATABASE lewcontext_e2e'
-E2E_DB='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext_e2e?sslmode=disable'
-(cd apps/api && DATABASE_URL=$E2E_DB go run ./cmd/migrate)   # not ./bin/api migrate
-
-# Terminal 1, from the repository root (MAIL_FILE defaults to tmp/mail.log here):
-ss -ltn | grep :3100   # must print nothing
-set -a; . ./.env; set +a
-DATABASE_URL=$E2E_DB API_ADDR=127.0.0.1:3100 APP_ORIGIN=http://localhost:3100 RATE_LIMITS=off ./bin/api
-
-# Terminal 2:
-cd apps/web
-APP_ORIGIN=http://localhost:3100 TEST_DATABASE_URL=$E2E_DB CHROMIUM_PATH=… npx playwright test
+make test-e2e                  # :3100
+make test-e2e E2E_PORT=3101    # a second run beside it
+make test-e2e E2E_PORT=auto    # pick a free one; it prints what it took
 ```
 
-- **Check the port is free first.** If `bin/api` can't bind, it exits, but whatever already listens there keeps answering, and Playwright tests that server instead of yours.
-- **Call Playwright directly, not `make test-e2e`.** `make` loads `.env`, and its `APP_ORIGIN` wins over one set on the command line ([../testing.md](../testing.md#configuration)), so the tests would go to :3000.
-- **The server and Playwright must agree** on `APP_ORIGIN` and on the mailbox. The server writes `MAIL_FILE` relative to its working directory, so start it from the repository root, or give both the same absolute `MAIL_FILE`.
-- **One server per database.** Don't start a second server (or `./bin/api` with a stray argument, which also starts one) against the database a run is using. If someone else may use `lewcontext_e2e` at the same time, create your own database.
-- **Clean up accounts you add by hand.** Accounts you make against this server (for screenshots or a manual check) aren't removed by the suite, which deletes only its own run's users. Give them an `e2e-…@lewcontext.test` address and delete them with the suite's cleanup SQL (`test.afterAll` in `workspace.spec.ts`).
+- **The preflight** (`scripts/e2e-preflight.sh`, the first step of `make test-e2e`) checks the test database answers, then reserves the port: an exclusive lock on `/tmp/lewcontext-e2e-<port>.lock` (`flock`), held for the whole run and released when it ends or crashes, plus a check that nothing listens there. A taken port stops the run with a free port to use instead:
+
+  ```
+  Port 3100 is in use: another e2e run (or a server) has it.
+  Run this one beside it on a free port:
+    make test-e2e E2E_PORT=3104
+  Or let it pick one: make test-e2e E2E_PORT=auto
+  ```
+
+  A run that gets its port says what it uses: `E2E run: app http://localhost:3104 · database lewcontext_test_3104`.
+- **Why a lock, not only a port check:** the build takes a while and the server rebuilds its database before binding the port, so two runs starting together would both pass a port check, and the second would wipe the first's database. The lock is taken before both. It's the same file for every checkout and worktree on the machine.
+- **Shared on purpose:** the PostgreSQL container (a database per port) and the e2e mailbox file. Go and Vitest runs don't collide: Go tests use throwaway schemas in `lewcontext_test`.
+- **`make serve-test` on its own** (a server to check something by hand) reserves the port the same way; under `make test-e2e` it uses the reservation its parent holds. Accounts you make by hand on it vanish at the next start, when its database is rebuilt.
+- **Not covered: two runs in the same checkout.** They share `bin/api` and the web build, so one build can replace the other's mid-run. Give each agent its own git worktree.
+- **Be considerate of the machine:** several suites at once can overload it and make every run slow and flaky. Check what's running first, and wait for a run to finish if the machine is busy.

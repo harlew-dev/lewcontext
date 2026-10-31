@@ -43,29 +43,25 @@ declare global {
     sawDockedSidebar?: boolean;
   }
 }
-// Runs SQL against the test database and returns its output; only for setup
-// the UI can't do yet (invites) and cleanup.
+// Runs SQL against this run's database (DATABASE_URL, which
+// playwright.config.ts derives from .env.testing) and returns its output; only
+// for setup the UI can't do yet (invites) and cleanup.
 function sql(statement: string): string {
   return execFileSync(
     "psql",
-    [
-      process.env.TEST_DATABASE_URL!,
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-Atc",
-      statement,
-    ],
+    [process.env.DATABASE_URL!, "-v", "ON_ERROR_STOP=1", "-Atc", statement],
     { encoding: "utf8" },
   ).trim();
 }
 const quoted = emails.map((e) => `'${e}'`).join(", ");
 test.afterAll(() => {
   // Only remove the uniquely named accounts this run created, and the
-  // workspaces they belong to. Cascades remove projects, memberships and sessions.
-  if (process.env.TEST_DATABASE_URL)
-    sql(
-      `DELETE FROM workspaces WHERE id IN (SELECT m.workspace_id FROM workspace_user m JOIN users u ON u.id = m.user_id WHERE u.email IN (${quoted})); DELETE FROM users WHERE email IN (${quoted})`,
-    );
+  // workspaces they belong to. Cascades remove projects, memberships and
+  // sessions. The database is rebuilt on the next server start anyway, but a
+  // reused server (E2E_REUSE=1) isn't.
+  sql(
+    `DELETE FROM workspaces WHERE id IN (SELECT m.workspace_id FROM workspace_user m JOIN users u ON u.id = m.user_id WHERE u.email IN (${quoted})); DELETE FROM users WHERE email IN (${quoted})`,
+  );
 });
 // The workspace ID in the current URL.
 function workspaceOf(page: Page): string {
@@ -463,7 +459,6 @@ test("the switcher loads more workspaces as it scrolls, and signing in opens the
 }) => {
   // You can own 20 workspaces, so the ones past a page of the switcher that
   // aren't yours are added as memberships in the database (no invites yet).
-  test.skip(!process.env.TEST_DATABASE_URL, "needs TEST_DATABASE_URL");
   await register(page, switcherEmail, "Sam Switcher");
   await onboard(page, "First studio");
   const headers = await apiHeaders(page);
@@ -514,7 +509,6 @@ test("other people's workspaces are not found until you're a member; members can
   browser,
 }) => {
   // Invites don't exist yet, so the membership is added in the database.
-  test.skip(!process.env.TEST_DATABASE_URL, "needs TEST_DATABASE_URL");
   // The owner, set up through the API in a browser context of their own.
   const owner = await browser.newContext();
   const origin = { Origin: process.env.APP_ORIGIN || "http://localhost:3000" };
@@ -601,7 +595,6 @@ test("members: an owner changes a member to viewer, then removes them", async ({
   browser,
 }) => {
   // Invites don't exist yet, so the membership is added in the database.
-  test.skip(!process.env.TEST_DATABASE_URL, "needs TEST_DATABASE_URL");
   const teammate = await browser.newContext();
   const origin = { Origin: process.env.APP_ORIGIN || "http://localhost:3000" };
   const signedUp = await teammate.request.post("/api/auth/register", {
@@ -708,11 +701,9 @@ test("change password: checks the current one twice and signs out other sessions
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(workspaceUrl);
 });
-// The development mailbox the server writes email to (MAIL_FILE; make sets
-// it to tmp/mail.log in the repository).
-const mailbox =
-  process.env.MAIL_FILE ||
-  new URL("../../../../tmp/mail.log", import.meta.url).pathname;
+// The mailbox the e2e server writes email to: MAIL_FILE from .env.testing,
+// made absolute by playwright.config.ts.
+const mailbox = process.env.MAIL_FILE!;
 // The path of the newest link of a kind (a reset link, or an invitation)
 // sent to `to`, once the server's worker has written it (it polls every
 // second).

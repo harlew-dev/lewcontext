@@ -7,23 +7,23 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/database"
 	"net/url"
-	"os"
 	"testing"
 	"time"
 )
 
-// Open connects to TEST_DATABASE_URL with search_path pinned to a new unique schema that is
-// dropped at cleanup. Existing application data is never touched. Skips when the URL is unset.
+// Open connects to the DATABASE_URL in .env.testing with search_path pinned to a new unique
+// schema that is dropped at cleanup. Existing application data is never touched. The
+// database must be running: the test fails rather than skips without it.
 func Open(t *testing.T) *bun.DB {
 	t.Helper()
-	raw := os.Getenv("TEST_DATABASE_URL")
-	if raw == "" {
-		t.Skip("set TEST_DATABASE_URL to run PostgreSQL integration tests")
+	raw := testEnv(t)["DATABASE_URL"]
+	if err := localTestDatabase(raw); err != nil {
+		t.Fatal(err)
 	}
 	ctx := context.Background()
 	admin, err := database.Open(ctx, raw)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the test database isn't reachable (start it with make db): %v", err)
 	}
 	schema := fmt.Sprintf("lewcontext_test_%d", time.Now().UnixNano())
 	if _, err = admin.ExecContext(ctx, "CREATE SCHEMA ?", bun.Ident(schema)); err != nil {

@@ -104,5 +104,16 @@ cd apps/api && go run ./cmd/prune -h                # lists targets and their de
 
 ## Rules
 
-- Never drop or reset a database other than the local development one, and that one only with `make migrate-fresh`. Integration tests use their own temporary schema.
-- The local test database is `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`. It runs in Docker: `make db` (`compose.yaml`, PostgreSQL 17 with pgvector).
+- Never drop or reset a database other than the local development one, and that one only with `make migrate-fresh`. The exception is an e2e run's local `lewcontext_test_<port>`, which `make serve-test` rebuilds (`migrate fresh`) on every start and refuses to do for any other name or host. Integration tests use their own temporary schema in `lewcontext_test`.
+- The local development database is `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`. It runs in Docker: `make db` (`compose.yaml`, PostgreSQL 17 with pgvector).
+
+## Test databases
+
+In the same container, named in the committed `.env.testing` ([../testing.md](../testing.md#configuration)):
+
+| Database | Used by | Created by | Rebuilt |
+| --- | --- | --- | --- |
+| `lewcontext_test` | Go integration tests, each in a throwaway schema (`dbtest.Open`) | `make db` | never; each test drops only its own schema |
+| `lewcontext_test_<port>` (`lewcontext_test_3100` by default) | one e2e run on that port: its server and the spec's setup and cleanup | `make serve-test`, on first use | at every `make serve-test` start, so each run begins empty and a changed create migration applies |
+
+Old `lewcontext_test_<port>` databases stay until that port is used again; drop them by hand if they pile up.

@@ -1,6 +1,6 @@
 # Email delivery over SMTP
 
-Status: **decisions confirmed 2026-10-31**, to implement after the test environment. Builds on [test environment](test-environment.md) (`.env.testing`, the test database, Playwright starting the server), which ships first. Completes what [forgot password](implemented/forgot-password.md) and [workspace invitations](implemented/workspace-invitations.md) left out: real delivery.
+Status: **decisions confirmed 2026-10-31**, to implement after the test environment. Builds on [test environment](implemented/test-environment.md) (`.env.testing`, the test database, Playwright starting the server), which ships first. Completes what [forgot password](implemented/forgot-password.md) and [workspace invitations](implemented/workspace-invitations.md) left out: real delivery.
 
 ## Why
 
@@ -126,7 +126,7 @@ SMTP_PASSWORD=
 
 `mailedLink` in `workspace.spec.ts` polls `GET {MAILPIT_URL}/api/v1/search?query=to:"<address>"` for the newest message, fetches it (`/api/v1/message/{ID}`), and takes the link from the HTML part. It also checks the plain-text part has the same link. Each run's recipients are unique (`e2e-<timestamp>-…`), so messages from other runs or from development never match. Nothing needs clearing between runs.
 
-CI adds a `mailpit` service container with the same ports. The e2e preflight ([test environment](test-environment.md#running-several-at-once-e2e_port)) also checks that Mailpit answers at `MAILPIT_URL` and on `SMTP_PORT`, and if not, stops before the build with "Mailpit isn't running: start it with `make db`". Parallel runs share one Mailpit, since each finds its mail by its own recipients.
+CI adds a `mailpit` service container with the same ports. The e2e preflight ([test environment](implemented/test-environment.md#running-several-at-once-e2e_port)) also checks that Mailpit answers at `MAILPIT_URL` and on `SMTP_PORT`, and if not, stops before the build with "Mailpit isn't running: start it with `make db`". Parallel runs share one Mailpit, since each finds its mail by its own recipients.
 
 ## Security risks and how they're avoided
 

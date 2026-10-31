@@ -5,17 +5,17 @@ Go `testing`, `httptest`, the race detector and real PostgreSQL.
 ## Running
 
 ```sh
-make test                 # unit tests; integration tests skip without TEST_DATABASE_URL
-TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable' make test-integration
+make db                   # PostgreSQL and the tests' database, lewcontext_test
+make test                 # unit and integration tests (and Vitest), with .env.testing
 make check                # gofmt + go vet (and the web checks)
 cd apps/api && go run golang.org/x/vuln/cmd/govulncheck@latest ./...   # dependency audit
 ```
 
-A skipped integration test is not database verification. Set `TEST_DATABASE_URL` whenever you touch auth, SQL, migrations, middleware or authorization.
+Integration tests never skip: without the database they fail with "start it with make db". One package or test runs directly too (`cd apps/api && go test ./internal/mail -run TestX`), with the same database, since `dbtest` reads `.env.testing` itself.
 
 ## Integration tests
 
-- `dbtest.Open(t)` creates a unique `lewcontext_test_<timestamp>` schema, pins `search_path` to it, and drops only that schema at cleanup. Existing data is never touched.
+- `dbtest.Open(t)` connects to the `DATABASE_URL` in `.env.testing` (`lewcontext_test`), found by walking up from the working directory and **never read from the process environment**, so a development `DATABASE_URL` can't be used by mistake. It refuses a host that isn't local (`127.0.0.1`, `::1`, `localhost`, `postgres`) or a database not named `*_test` / `*_test_<port>`. It creates a unique `lewcontext_test_<timestamp>` schema, pins `search_path` to it, and drops only that schema at cleanup. Existing data is never touched.
 - `integrationServer(t)` (in `httpapi`) migrates the schema (and checks a second migrate is a no-op), then returns a `*Server` and the DB.
 - `call(t, handler, method, path, body, csrf, cookie, wantStatus)` sends a request with the trusted Origin and JSON content type, from `127.0.0.1`, and fails on an unexpected status. To test the client IP behind a proxy, set `s.Config.ClientIPHeader` and `TrustedProxies` before `s.Routes()` (`behindProxy` in `client_ip_integration_test.go`).
 - `signedIn(t, db, faker)` returns a fake user's `factory.Session`. Use `session.UserID`, `session.Cookie()` and `session.CSRFToken`.
@@ -66,6 +66,7 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 | `client_ip_test.go` | `TestResolveClientIP` (table-driven): an untrusted connection ignores the header; `X-Forwarded-For` read from the right (a forged left entry never chosen, several hops, all trusted gives the leftmost, a bad or empty entry stops at the last trusted hop, several lines joined, the 20-entry cap); single-value headers (one valid value, or fall back); IPv4-mapped and zoned addresses normalised. `TestLimitSubject`: one IPv6 /64 shares a key, IPv4 addresses don't |
 | `client_ip_integration_test.go` | Behind a trusted proxy, two header addresses get separate `auth:per-ip` budgets and events record the header's address; from an untrusted connection a changing header doesn't reset the budget; an IPv6 /64 is one budget |
 | `TestProjectPagination` | Every sort across pages, past-the-end, filters, literal wildcards, isolation, bad parameters |
+| `dbtest` tests | `TestParseEnv` (plain `KEY=value` only: quotes, `export`, spaces, `$`, backslashes and repeated keys refused), `TestLocalTestDatabase` (local hosts and `_test` names only), `TestEnvTestingHoldsNoSecrets` (the committed file parses, points at a local test database, and nothing named like a secret has a value) |
 | `TestEveryTableHasAFactory` | Each migrated table has a factory, and every factory inserts |
 | `TestFactoriesMatchValidation` | Fake values pass API validation |
 | `internal/database` tests | Migrations up/down, idempotency, `public_id()` uniqueness and format, the `events.name` CHECK (two or three segments), `Fresh` (refused in production, rebuilds the schema) |

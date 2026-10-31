@@ -80,7 +80,7 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
 
-`make` loads the root `.env` and exports it, and its values win over variables set on the command line. To point a command at another database, run the Go command directly.
+`make` loads the root `.env` and exports it, and its values win over variables set on the command line. To point a command at another database, run the Go command directly. Tests don't use `.env`: they use the committed `.env.testing` ([../testing.md](../testing.md#configuration)).
 
 ## More
 

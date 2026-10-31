@@ -282,26 +282,16 @@ Migrations use Bun's migrator: explicit, versioned, transactional per file, grou
 ### Testing and checks
 
 ```sh
-make test     # Go unit tests (race detector), React and API client tests
+make db       # PostgreSQL, and the tests' database (lewcontext_test)
+make test     # Go unit and PostgreSQL integration tests (race detector), React and API client tests
 make check    # gofmt, go vet, TypeScript, ESLint, Prettier
 make build    # web build, embedded into one Go executable (bin/api)
+make test-e2e # end-to-end tests in Chromium, against the production binary
 ```
 
-**Integration tests** run against a real PostgreSQL database, each in a fresh temporary schema that is removed afterwards:
+Tests use the committed `.env.testing` and nothing from `.env`, however they're started. **Integration tests** run against a real PostgreSQL database, `lewcontext_test`, each in a fresh temporary schema that is removed afterwards; `make test` fails if the database isn't running.
 
-```sh
-export TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable'
-make test-integration
-```
-
-**End-to-end tests** run in Chromium against `make serve` (stop `make dev` first):
-
-```sh
-RATE_LIMITS=off make serve   # in one terminal; one run signs up more users than the per-IP limit allows
-make test-e2e   # in another
-```
-
-They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium defaults to `/usr/bin/chromium`; set `CHROMIUM_PATH` to use another. With `TEST_DATABASE_URL` set, the uniquely created test account is removed after the run; without it, the account remains. See the [test environment guide](docs/testing.md).
+**End-to-end tests** build the single binary and start it on :3100 against a database of their own (`lewcontext_test_3100`), so they run beside `make dev`. Another run at the same time takes another port and database: `make test-e2e E2E_PORT=auto`. They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium defaults to `/usr/bin/chromium`; set `CHROMIUM_PATH` to use another. See the [test environment guide](docs/testing.md).
 
 ### Architecture
 

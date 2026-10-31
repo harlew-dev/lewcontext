@@ -1,14 +1,14 @@
 # Test environment (`.env.testing`)
 
-Status: **decisions confirmed 2026-10-31**, ready to implement. Comes before [email delivery](email-delivery.md), which adds Mailpit's settings to `.env.testing` and has the end-to-end tests read mail from it.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)). Docs: [testing.md](../../../docs/testing.md#configuration), [api/testing.md](../../../docs/api/testing.md), [ui/testing.md](../../../docs/ui/testing.md#running-several-at-once), [api/database.md](../../../docs/api/database.md#test-databases), [api/README.md](../../../docs/api/README.md#environment), `README.md` and AGENTS.md. Comes before [email delivery](../email-delivery.md), which adds Mailpit's settings to `.env.testing` and has the end-to-end tests read mail from it.
 
 ## Why
 
 Tests currently run on whatever environment they're started from:
 
-- **Make passes the development `.env` to every target.** The [Makefile](../../Makefile) runs `include .env` then `export`, so `make test` and `make test-e2e` see the development `DATABASE_URL`, `MAIL_*`, `CLIENT_IP_HEADER` and so on. If `.env` ever pointed at a shared or staging database, tests would run against it.
+- **Make passes the development `.env` to every target.** The [Makefile](../../../Makefile) runs `include .env` then `export`, so `make test` and `make test-e2e` see the development `DATABASE_URL`, `MAIL_*`, `CLIENT_IP_HEADER` and so on. If `.env` ever pointed at a shared or staging database, tests would run against it.
 - **Integration tests skip quietly.** They need `TEST_DATABASE_URL` typed on the command line. Without it, `make test` passes having skipped every database test, and AGENTS.md has to warn that this isn't database verification.
-- **End-to-end tests share the development app.** They use the development database (their users show up in your app until cleanup), port :3000 (so `make dev` or the Docker `app` container must be stopped first), and the development mailbox. A second server's delivery worker on the same database takes the emails the tests are waiting for ([ui/testing.md](../../docs/ui/testing.md#against-a-server-of-your-own)).
+- **End-to-end tests share the development app.** They use the development database (their users show up in your app until cleanup), port :3000 (so `make dev` or the Docker `app` container must be stopped first), and the development mailbox. A second server's delivery worker on the same database takes the emails the tests are waiting for ([ui/testing.md](../../../docs/ui/testing.md), then).
 - **Starting the e2e server is manual:** `RATE_LIMITS=off make serve` in one terminal, `TEST_DATABASE_URL=… make test-e2e` in another.
 
 Laravel solves this with test settings that override the app's (`phpunit.xml`, `.env.testing`). This plan gives the project the same: **one committed `.env.testing` that every test reads, however it's started, and separate test databases: `lewcontext_test` for Go tests, and a fresh `lewcontext_test_<port>` for each e2e run.** `make test` then runs everything, including integration tests, with nothing to type.
@@ -41,7 +41,7 @@ MAIL_FILE=tmp/mail-test.log
 - **One format that every reader understands.** `KEY=value`, `#` comments and blank lines. The Go loader, Node's `util.parseEnv`, bash's `source` and Make all read that the same way. Anything else (quotes, `export`, `$` expansion, a repeated key) is refused by the Go loader, and a test runs it over the committed file.
 - **`TEST_DATABASE_URL` goes away.** Tests use `DATABASE_URL` from this file, the same name the server uses, as in Laravel.
 - **Port 3100** so the e2e server runs beside `make dev`, `make serve` or the Docker `app` container on :3000. A second run at the same time picks another port with `E2E_PORT` ([below](#running-several-at-once-e2e_port)).
-- **Its own mailbox file** (`tmp/mail-test.log`) until [email delivery](email-delivery.md) switches it to Mailpit.
+- **Its own mailbox file** (`tmp/mail-test.log`) until [email delivery](../email-delivery.md) switches it to Mailpit.
 
 ### The test database
 
@@ -116,7 +116,7 @@ make test-e2e E2E_PORT=auto    # pick a free one (what AGENTS.md tells agents to
 ```
 
 - **`E2E_PORT` is the one value a caller can override in `.env.testing`.** `test-env.sh` keeps the caller's value (or the file's 3100) and derives `API_ADDR`, `APP_ORIGIN` and `DATABASE_URL` (`lewcontext_test_<port>`) for the e2e server and the spec. `playwright.config.ts` does the same for a direct `npx playwright test`. Everything else stays forced.
-- **Shared on purpose, at fixed ports:** the PostgreSQL container (with a unique database per run) and Mailpit, once [email delivery](email-delivery.md) ships (each run finds its mail by its own unique recipient addresses). Go and Vitest runs already don't collide: Go tests use throwaway schemas.
+- **Shared on purpose, at fixed ports:** the PostgreSQL container (with a unique database per run) and Mailpit, once [email delivery](../email-delivery.md) ships (each run finds its mail by its own unique recipient addresses). Go and Vitest runs already don't collide: Go tests use throwaway schemas.
 - **Preflight** (`scripts/e2e-preflight.sh`, the first step of `make test-e2e`, which takes under a second):
   1. **Services:** PostgreSQL answers at the URL's host and port (and Mailpit, once email delivery ships). Otherwise it stops with "The test database isn't running: start it with `make db`."
   2. **Reserves the port** with an exclusive lock on `/tmp/lewcontext-e2e-<port>.lock` (`flock -n`), held until the run ends, and checks nothing else listens on it. The lock covers the whole machine, so it works across git worktrees, and it's released automatically when the run ends or crashes.
@@ -203,6 +203,19 @@ The workflow's `env:` block loses `DATABASE_URL`, `TEST_DATABASE_URL`, `APP_ORIG
 | 8 | Clean environment for `make` test targets | Yes, `scripts/test-env.sh` with a short list of kept variables. Without it, `.env` values such as `CLIENT_IP_HEADER` reach tests that call `config.Load`. |
 | 9 | Guard on the database URL | Local host (or `postgres`) and a test database name: `_test` or `_test_<port>` in Go, only `_test_<port>` in `serve-test.sh` (which rebuilds it). |
 | 10 | An `APP_ENV=testing` value | No. Config only distinguishes production from everything else, and the test server should behave like development. |
+
+## How the build differs
+
+- **Shared helpers in `scripts/e2e-lib.sh`** (sourced by the preflight and `serve-test.sh`): reserving a port, the clash message, and deriving the database URL, so the two can't disagree.
+- **`.env.testing` holds `E2E_PORT`, not `APP_ORIGIN` and `API_ADDR`.** Both are derived from the port at run time, by `serve-test.sh` and `playwright.config.ts`, as is the run's `DATABASE_URL`.
+- **`test-env.sh` keeps a few more variables** than listed: `USER`, `TERM`, `FAKER_SEED` (to rerun a failing seed) and `PLAYWRIGHT_*`. Empty `E2E_*` values count as unset, since make passes `E2E_PORT=''` when none is given.
+- **Ports:** `auto` searches 3101–3199, and a port must be 1024–65535. `E2E_REUSE=1` needs a real port (not `auto`) and skips the reservation and the database check.
+- **`serve-test.sh` creates the run's database with `psql`** (`CREATE DATABASE`, after checking the name against `^[a-z0-9_]+_test_[0-9]+$`) rather than `createdb`, connecting to `lewcontext_test`. It also refuses a non-local host itself, besides the name.
+- **The lock files are made world-writable** (`chmod a+rw`), so a second user on the machine can take a port after the first has released it.
+- **The Go parser also refuses backslashes**, and the secret check matches keys containing `PASSWORD`, `SECRET` or `TOKEN`, or ending in `KEY`.
+- **CI** also drops its `make migrate` step: the run's database is migrated by `make serve-test`.
+- **The spec** keeps its `APP_ORIGIN || "http://localhost:3000"` fallbacks (always set now) to keep the change small.
+- **Verified:** `make test` (integration tests included, against `lewcontext_test`), `make check`, `make test-e2e E2E_PORT=auto` on :3101, a second run on :3101 stopping in 0.1 s with `E2E_PORT=3102` suggested, and `serve-test.sh` refusing the development database and a remote host.
 
 ## Not included
 

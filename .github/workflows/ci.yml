@@ -7,16 +7,14 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg17
         env:
+          # The credentials and database .env.testing names: every test run
+          # uses that file, here as on a laptop.
           POSTGRES_USER: lewcontext
-          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_PASSWORD: password
           POSTGRES_DB: lewcontext_test
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://lewcontext:test-only-password@127.0.0.1:5432/lewcontext_test?sslmode=disable
-      TEST_DATABASE_URL: postgresql://lewcontext:test-only-password@127.0.0.1:5432/lewcontext_test?sslmode=disable
-      APP_ORIGIN: http://localhost:3000
-      APP_ENV: development
       APP_NAME: lewcontext
     steps:
       - uses: actions/checkout@v4
@@ -31,19 +29,10 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: make install
       - run: make test check build
-      - run: make migrate
       - run: npm --prefix apps/web exec -- playwright install --with-deps chromium
-      # As make serve: the binary built above serves the API and the embedded web app on :3000.
-      # Rate limits off: one e2e run signs up more users from one IP than register:per-ip allows.
-      - name: Start application
-        run: |
-          API_ADDR=127.0.0.1:3000 RATE_LIMITS=off ./bin/api > /tmp/lewcontext-api.log 2>&1 &
-          for attempt in $(seq 1 30); do curl -sf http://localhost:3000/auth/login > /dev/null && exit 0; sleep 2; done
-          echo 'The app did not start on :3000'; cat /tmp/lewcontext-api.log; exit 1
+      # Playwright builds and starts the server (make serve-test) on :3100 against its own
+      # lewcontext_test_3100; its output appears in the log prefixed [WebServer].
       - name: Browser tests
         run: |
           export CHROMIUM_PATH=$(node -e "console.log(require('./apps/web/node_modules/playwright').chromium.executablePath())")
           make test-e2e
-      - name: Logs on failure
-        if: failure()
-        run: cat /tmp/lewcontext-api.log || true

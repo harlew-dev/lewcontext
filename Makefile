@@ -6,12 +6,12 @@ include .env
 export
 endif
 # Development email goes to one mailbox file whichever directory a target runs
-# from (MAIL_DRIVER=file); make test-e2e reads reset links from it.
+# from (MAIL_DRIVER=file). The e2e server has its own (.env.testing).
 MAIL_FILE ?= $(CURDIR)/tmp/mail.log
 export MAIL_FILE
-.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
+.PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
 help:
-	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
+	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -55,9 +55,11 @@ build: web-build
 serve: build
 	API_ADDR=127.0.0.1:3000 ./bin/api
 # Docker (compose.yaml): PostgreSQL 17 with pgvector, and the app built from the Dockerfile.
-# The database alone, for make dev and the tests on this machine:
+# The database alone, for make dev and the tests on this machine. Also creates the Go tests'
+# database (lewcontext_test, .env.testing) if it's missing; e2e runs create their own.
 db:
 	docker compose up -d --wait postgres
+	@docker compose exec -T postgres psql -U lewcontext -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'lewcontext_test'" | grep -q 1 || docker compose exec -T postgres createdb -U lewcontext lewcontext_test
 # The whole app in Docker on :3000 in one command (stop make dev / make serve first): starts the
 # database, builds the image, migrates and seeds, then starts the app once the schema is ready.
 docker-dev: db
@@ -80,14 +82,19 @@ docker-seed:
 # Stops the containers; the database volume (and its data) is kept.
 docker-down:
 	docker compose down
+# Tests run with .env.testing and nothing from .env (scripts/test-env.sh).
+# Go (unit and PostgreSQL integration) and Vitest. Needs the database: make db.
 test:
-	cd apps/api && go test -race ./...
-	cd apps/web && npm test
-test-integration:
-	@test -n "$$TEST_DATABASE_URL" || (echo 'Set TEST_DATABASE_URL to a dedicated test database URL'; exit 1)
-	cd apps/api && go test -race -count=1 ./...
+	./scripts/test-env.sh sh -c 'cd apps/api && go test -race ./... && cd ../web && npm test'
+# The e2e server on E2E_PORT (3100) against a freshly rebuilt lewcontext_test_<port>.
+# Playwright starts it; run it yourself only to check something by hand.
+serve-test: build
+	E2E_PORT='$(E2E_PORT)' ./scripts/test-env.sh ./scripts/serve-test.sh
+# make test-e2e [E2E_PORT=3101|auto] [E2E_REUSE=1]: checks the database, reserves the port
+# (another run's port stops it at once, suggesting a free one), then runs Playwright, which
+# builds and starts make serve-test. E2E_REUSE=1 tests a server you already started instead.
 test-e2e:
-	cd apps/web && npm run test:e2e
+	E2E_PORT='$(E2E_PORT)' E2E_REUSE='$(E2E_REUSE)' ./scripts/test-env.sh ./scripts/e2e-preflight.sh sh -c 'cd apps/web && npm run test:e2e'
 check:
 	@test -z "$$(gofmt -l apps/api)" || (echo 'Run gofmt -w apps/api'; exit 1)
 	cd apps/api && go vet ./...

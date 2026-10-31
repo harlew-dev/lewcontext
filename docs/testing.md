@@ -7,8 +7,8 @@ How to set up a local environment, run and build the app, and check it by hand. 
 
 ## Start from a clean checkout
 
-1. Install Go 1.26+, Node 24+, npm, Docker with Compose, Chromium for browser tests, a C compiler (`gcc`, needed by `go test -race` in `make test`), and the PostgreSQL client (`psql`, used by the end-to-end tests' membership setup and cleanup). On Ubuntu: `sudo apt install gcc postgresql-client`.
-2. Start the database: `make db` runs PostgreSQL 17 with pgvector from `compose.yaml` on `127.0.0.1:5432`. To run the whole app in Docker instead, `make docker-dev` starts the database, builds the image, migrates, seeds and starts the app on `:3000`. After changing the code, `make docker-app` rebuilds the image and restarts only the app container: no migrate or seed, and the database keeps running. The web app is embedded in the Go binary, so a UI-only change rebuilds the image too; Docker's cache skips the unchanged steps (dependency installs). Run `make docker-migrate` as well if the change added a migration.
+1. Install Go 1.26+, Node 24+, npm, Docker with Compose, Chromium for browser tests, a C compiler (`gcc`, needed by `go test -race` in `make test`), the PostgreSQL client (`psql`, used by the end-to-end tests to create their database, set up memberships and clean up), and `flock` (reserves an end-to-end run's port; part of util-linux on Linux, `brew install flock` on macOS). On Ubuntu: `sudo apt install gcc postgresql-client`.
+2. Start the database: `make db` runs PostgreSQL 17 with pgvector from `compose.yaml` on `127.0.0.1:5432`, and creates the tests' database, `lewcontext_test`, if it's missing. To run the whole app in Docker instead, `make docker-dev` starts the database, builds the image, migrates, seeds and starts the app on `:3000`. After changing the code, `make docker-app` rebuilds the image and restarts only the app container: no migrate or seed, and the database keeps running. The web app is embedded in the Go binary, so a UI-only change rebuilds the image too; Docker's cache skips the unchanged steps (dependency installs). Run `make docker-migrate` as well if the change added a migration.
 3. Copy `.env.example` to `.env`. It contains the local test DB URL: `postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable`.
 4. Run `make install`, `make migrate`, and optionally `make seed` (more fake data: [api/seeding.md](api/seeding.md)). After pulling a schema change, rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed` (migrations are squashed while in development; [api/database.md](api/database.md#migrations)).
 5. Start the dev server: `make dev` ([below](#run-the-dev-server)).
@@ -55,11 +55,13 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Configuration
 
+**Tests don't use `.env`.** They use the committed `.env.testing`: `make test`, `make test-e2e` and `make serve-test` run with an emptied environment plus that file (`scripts/test-env.sh`), `go test` run directly reads the database from it (`dbtest`), and `playwright.config.ts` loads it over whatever is set. It holds only local, throwaway values (a test checks that nothing named like a secret has a value), with the plain `KEY=value` form bash, make, Go and Node all read alike. Edit `.env` for development; tests behave the same on every machine and in CI.
+
 `make` loads `.env` for its subprocesses, and its values win over variables set on the command line. If you run Go or npm commands directly, export the variables yourself (`scripts/dev.sh` does). Vite doesn't read the root `.env` from `apps/web`; its dev proxy uses `API_URL` (default `http://127.0.0.1:8080`), and `APP_NAME` (default `lewcontext`) is baked into the web build as the product name in page titles, the logo and app copy, so rebuild after changing it. Keep `APP_ORIGIN=http://localhost:3000`: Vite forwards the browser's Origin unchanged, and `make serve` listens on :3000. Restart the servers after changing configuration.
 
 ## Before claiming a change works
 
-`make test`, `make check`, `make test-integration` (with `TEST_DATABASE_URL`) for anything touching SQL, auth, middleware or migrations, `make test-e2e` (against `RATE_LIMITS=off make serve`, [ui/testing.md](ui/testing.md)) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them.
+`make test` (which includes the PostgreSQL integration tests and needs `make db`), `make check`, `make test-e2e` ([ui/testing.md](ui/testing.md); `E2E_PORT=auto` if another run may be going) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them. Other people's runs may share the machine: check what's running before starting a heavy one.
 
 ## Manual demo
 
