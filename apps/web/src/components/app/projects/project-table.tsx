@@ -10,6 +10,8 @@ import { routes } from "@/lib/routes";
 import { formatDate } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace";
 import type { Project, ProjectSort, ProjectSortField } from "@/types/projects";
+import { can } from "@/types/workspaces";
+import { ProjectActions } from "./project-actions";
 import { ProjectAvatar, ProjectStatusBadge } from "./project-display";
 // Project table columns. Dates sort newest first on the first click.
 const columns: {
@@ -34,6 +36,7 @@ const columns: {
   },
 ];
 // Header row for project rows. With `sortHref` each column links to its sort.
+// Members who may delete projects get a last column for each row's ⋯ menu.
 export function ProjectTableHead({
   sort,
   sortHref,
@@ -41,6 +44,7 @@ export function ProjectTableHead({
   sort?: ProjectSort;
   sortHref?: (sort: ProjectSort) => string;
 }) {
+  const actions = can(useWorkspace(), "project.destroy");
   return (
     <TableRow>
       {columns.map(({ field, label, first, className }) => (
@@ -57,10 +61,16 @@ export function ProjectTableHead({
           {label}
         </TableHeader>
       ))}
+      {actions && (
+        <TableHeader>
+          <span className="sr-only">Actions</span>
+        </TableHeader>
+      )}
     </TableRow>
   );
 }
-// A row that links to the project's page in the current workspace.
+// A row that links to the project's page in the current workspace, with the
+// project's ⋯ menu for members who may delete it.
 export function ProjectRow({ project }: { project: Project }) {
   const workspace = useWorkspace();
   return (
@@ -88,6 +98,14 @@ export function ProjectRow({ project }: { project: Project }) {
       <TableCell className="text-zinc-500 max-sm:hidden">
         {formatDate(project.updatedAt)}
       </TableCell>
+      {can(workspace, "project.destroy") && (
+        <TableCell className="w-0 text-right">
+          {/* Above the row's link, so it's a control of its own. */}
+          <div className="relative">
+            <ProjectActions project={project} />
+          </div>
+        </TableCell>
+      )}
     </TableRow>
   );
 }

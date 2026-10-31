@@ -15,12 +15,12 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | `/auth/forgot-password` | `pages/auth/forgot-password.tsx` | Signed out: asks for a reset link. Login passes the typed email in navigation state, not the URL (`authPageState`) |
 | `/auth/forgot-password/<token>` | `pages/auth/forgot-password/[token].tsx` | The reset link: checks it, then sets a new password and opens login with the email filled in. No `guestLoader`, so it works while signed in ([auth.md](../api/auth.md#password-reset-by-link)) |
 | `/app` | `pages/app/index.tsx` | Its loader redirects to the newest workspace's dashboard, onboarding, or login |
-| `/app/onboarding` | `pages/app/onboarding.tsx` | Signed in without a workspace: create the first one (`AuthLayout`) |
-| `/app/settings` | `pages/app/settings.tsx` | Account & security (per user) |
+| `/app/onboarding` | `pages/app/onboarding.tsx` | Signed in without a workspace: create the first one (`AuthLayout`). A ⋯ menu at the top right says who is signed in and offers Sign out and Delete account (settings need a workspace, so an account without one deletes itself here). After deleting the last workspace it says "<name> deleted." (`onboardingState`) |
+| `/app/settings` | `pages/app/settings.tsx` | Account & security (per user). Danger zone: Delete account, which loads `GET /api/workspaces?canLeave=false` with the page and, while you're the only owner of any workspace, opens a warning linking to each one's settings instead of the confirmation (the API's 409 switches to it too) |
 | `/app/wsp_…/dashboard` | `pages/app/[workspace]/dashboard.tsx` | |
 | `/app/wsp_…/projects` | `pages/app/[workspace]/projects.tsx` | New project only with `project.store` |
-| `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | Edit project only with `project.update` |
-| `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (`workspace.update`), copy the ID, leave (disabled when `workspace.canLeave` is false: the only owner). It loads no member data; only the Members tab does |
+| `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | Edit project only with `project.update`; the ⋯ menu (Delete project) only with `project.destroy`, returning to Projects |
+| `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` | Rename (`workspace.update`), copy the ID, and a danger zone: Leave (hidden when `workspace.canLeave` is false: the only owner) and Delete workspace (`workspace.destroy`: type the name, plus your password; then the next workspace's dashboard with a toast, or onboarding). It loads no member data; only the Members tab does |
 | `/app/wsp_…/settings/members` | `pages/app/[workspace]/settings/members.tsx` | Owners and admins (`workspace.member.index`): search members, change a role, remove. Anyone else sees a notice and nothing is fetched. Both settings pages share `SettingsTabs` (General / Members), shown only with that permission |
 | anything else | `pages/not-found.tsx` | Go answers it with status 404 |
 

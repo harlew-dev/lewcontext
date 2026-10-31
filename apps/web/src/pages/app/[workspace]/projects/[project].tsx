@@ -1,5 +1,6 @@
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { ChevronLeftIcon, PencilSquareIcon } from "@heroicons/react/16/solid";
+import { ProjectActions } from "@/components/app/projects/project-actions";
 import {
   ProjectAvatar,
   ProjectStatusBadge,
@@ -36,6 +37,7 @@ function ProjectContent({ id }: { id: string }) {
   const workspace = useWorkspace();
   const project = useResource(paths.projects(workspace.id).show(id));
   const editor = useProjectEditor();
+  const navigate = useNavigate();
   if (project.missing) return <ProjectNotFound />;
   return (
     <>
@@ -55,6 +57,7 @@ function ProjectContent({ id }: { id: string }) {
               ? () => project.data && editor.setDialog(project.data)
               : undefined
           }
+          onDeleted={() => navigate(routes.projects.index(workspace.id))}
         />
       ) : (
         project.loading && <ListSkeleton label="Loading project" rows={1} />
@@ -63,13 +66,16 @@ function ProjectContent({ id }: { id: string }) {
     </>
   );
 }
-// Without onEdit (members who can't edit projects) there's no Edit button.
+// Without onEdit (members who can't edit projects) there's no Edit button;
+// the ⋯ menu (Delete) shows only to those who may delete it.
 function ProjectDetails({
   project,
   onEdit,
+  onDeleted,
 }: {
   project: Project;
   onEdit?: () => void;
+  onDeleted: () => unknown;
 }) {
   return (
     <>
@@ -86,12 +92,15 @@ function ProjectDetails({
             </Text>
           </div>
         </div>
-        {onEdit && (
-          <Button outline onClick={onEdit}>
-            <PencilSquareIcon />
-            Edit project
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {onEdit && (
+            <Button outline onClick={onEdit}>
+              <PencilSquareIcon />
+              Edit project
+            </Button>
+          )}
+          <ProjectActions project={project} onDeleted={onDeleted} />
+        </div>
       </div>
       <div className="mt-12">
         <Subheading>Details</Subheading>

@@ -199,11 +199,16 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	s.clearSessionCookie(w)
+	w.WriteHeader(204)
+}
+
+// clearSessionCookie tells the browser to drop its session cookie.
+func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	expired := auth.Cookie("", s.Config.Production)
 	expired.MaxAge = -1
 	expired.Expires = time.Unix(0, 0)
 	http.SetCookie(w, expired)
-	w.WriteHeader(204)
 }
 func (s *Server) revokeOthers(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.DeleteOtherSessions(r.Context(), current(r).User, s.sessionDigest(r)); err != nil {

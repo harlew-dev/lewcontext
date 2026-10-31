@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"errors"
+	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strings"
@@ -8,7 +10,10 @@ import (
 	"unicode/utf8"
 )
 
-const invalidWorkspace = "Use a workspace name of 1–80 characters."
+const (
+	invalidWorkspace   = "Use a workspace name of 1–80 characters."
+	wrongWorkspaceName = "Type the workspace’s name to confirm."
+)
 
 // validWorkspace trims the name and requires 1–80 characters without control
 // characters, matching the column's CHECK.
@@ -21,8 +26,22 @@ func validWorkspace(in *store.WorkspaceInput) bool {
 // workspaceHandlers are the /api/workspaces routes (routes.go).
 type workspaceHandlers struct{ *Server }
 
+// workspaceFilter reads the listing's "canLeave" parameter. Only "false" (the
+// workspaces you're the only owner of, which block deleting your account) has
+// a use, so it's the only value accepted.
+func workspaceFilter(params map[string]string) (store.WorkspaceFilter, bool) {
+	value, ok := params["canLeave"]
+	if !ok {
+		return store.WorkspaceFilter{}, true
+	}
+	if value != "false" {
+		return store.WorkspaceFilter{}, false
+	}
+	canLeave := false
+	return store.WorkspaceFilter{CanLeave: &canLeave}, true
+}
 func (h workspaceHandlers) index(w http.ResponseWriter, r *http.Request) {
-	params, ok := queryParams(r, "page", "perPage")
+	params, ok := queryParams(r, "page", "perPage", "canLeave")
 	if !ok {
 		fail(w, 400, "Invalid query parameters.")
 		return
@@ -32,7 +51,12 @@ func (h workspaceHandlers) index(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid page.")
 		return
 	}
-	page, err := h.Store.IndexWorkspaces(r.Context(), current(r).User.ID, req)
+	filter, ok := workspaceFilter(params)
+	if !ok {
+		fail(w, 400, "Invalid canLeave filter.")
+		return
+	}
+	page, err := h.Store.IndexWorkspaces(r.Context(), current(r).User.ID, filter, req)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -67,4 +91,40 @@ func (h workspaceHandlers) update(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace.Role, workspace.CanLeave = current.Role, current.CanLeave
 	jsonResponse(w, 200, workspace)
+}
+
+// workspaceDeletion confirms deleting a workspace: its name, typed, and the
+// owner's password.
+type workspaceDeletion struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+// destroy deletes the workspace, with its projects and memberships. The name
+// is compared with the current one, here and again under the workspace lock,
+// so a tab opened before a rename can't delete it under its old name.
+func (h workspaceHandlers) destroy(w http.ResponseWriter, r *http.Request) {
+	var in workspaceDeletion
+	if !decode(w, r, &in) {
+		return
+	}
+	workspace := currentWorkspace(r)
+	name := strings.TrimSpace(in.Name)
+	if name != workspace.Name {
+		failField(w, 422, "name", wrongWorkspaceName)
+		return
+	}
+	if !h.passwordConfirmed(w, r, in.Password, events.PasswordStepDestroyWorkspace) {
+		return
+	}
+	err := h.Store.DeleteWorkspace(r.Context(), workspace, name)
+	if errors.Is(err, store.ErrWrongName) {
+		failField(w, 422, "name", wrongWorkspaceName)
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(204)
 }

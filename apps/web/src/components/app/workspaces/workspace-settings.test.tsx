@@ -5,11 +5,12 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 import { Toaster } from "@/components/ui/toast";
 import WorkspaceEdit from "@/pages/app/[workspace]/settings";
+import { onboardingState } from "@/lib/routes";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { stubApi } from "@/test/api";
@@ -17,6 +18,11 @@ import { testSession } from "@/test/session";
 import { testWorkspace } from "@/test/workspace";
 import type { Role, Workspace } from "@/types/workspaces";
 const session = testSession();
+// Stands in for onboarding, showing what workspace settings told it.
+function OnboardingProbe() {
+  const { deletedWorkspace } = onboardingState(useLocation().state);
+  return <p>Onboarding after deleting {deletedWorkspace}</p>;
+}
 function renderAs(role: Role, overrides: Partial<Workspace> = {}) {
   const workspace = testWorkspace(role, overrides);
   const first = {
@@ -34,6 +40,7 @@ function renderAs(role: Role, overrides: Partial<Workspace> = {}) {
                 element={<WorkspaceEdit />}
               />
               <Route path="/app" element={<p>Opening your next workspace</p>} />
+              <Route path="/app/onboarding" element={<OnboardingProbe />} />
             </Routes>
           </MemoryRouter>
           <Toaster />
@@ -140,17 +147,15 @@ describe("workspace settings", () => {
     ).toBeInTheDocument();
     expect(api.sent("DELETE")).toHaveLength(1);
   });
-  it("won't let the only owner leave, without loading members", () => {
+  it("doesn't offer the only owner Leave, without loading members", () => {
     const api = stubApi({});
     renderAs("owner");
     expect(
-      screen.getByText(
-        "You’re its only owner. Make someone else an owner before you leave.",
-      ),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Leave workspace" }),
+    ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Leave workspace" }),
-    ).toBeDisabled();
+      screen.getByRole("button", { name: "Delete workspace" }),
+    ).toBeInTheDocument();
     expect(api.sent()).toHaveLength(0);
   });
   it("lets an owner leave when there's another owner", () => {
@@ -158,5 +163,68 @@ describe("workspace settings", () => {
     expect(
       screen.getByRole("button", { name: "Leave workspace" }),
     ).toBeEnabled();
+  });
+  it.each(["admin", "member", "viewer"] as const)(
+    "offers a %s Leave but not Delete",
+    (role) => {
+      renderAs(role);
+      expect(screen.getByText("Danger zone")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Leave workspace" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Delete workspace" }),
+      ).toBeNull();
+    },
+  );
+  it("deletes the workspace once its name and the password are given", async () => {
+    const path = "DELETE /api/workspaces/wsp_2yEHYLwiwPVhLW";
+    const api = stubApi({
+      [path]: [
+        {
+          status: 422,
+          body: { error: "Current password is incorrect.", field: "password" },
+        },
+        { status: 204 },
+      ],
+      "*": {
+        body: {
+          data: [],
+          pages: { current: 1, total: 1, perPage: 20, items: 0 },
+        },
+      },
+    });
+    renderAs("owner");
+    fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading")).toHaveTextContent(
+      "Delete Acme?",
+    );
+    const confirm = within(dialog).getByRole("button", {
+      name: "Delete workspace",
+    });
+    const type = (label: RegExp | string, value: string) =>
+      fireEvent.change(within(dialog).getByLabelText(label), {
+        target: { value },
+      });
+    type(/to confirm/, "acme");
+    type("Your password", "secret");
+    expect(confirm).toBeDisabled();
+    type(/to confirm/, "Acme ");
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    expect(
+      await within(dialog).findByText("Current password is incorrect."),
+    ).toBeInTheDocument();
+    type("Your password", "correct horse battery staple");
+    fireEvent.click(confirm);
+    // It was the account's only workspace.
+    expect(
+      await screen.findByText("Onboarding after deleting Acme"),
+    ).toBeInTheDocument();
+    expect(api.sent("DELETE").map((sent) => sent.body)).toEqual([
+      { name: "Acme ", password: "secret" },
+      { name: "Acme ", password: "correct horse battery staple" },
+    ]);
   });
 });

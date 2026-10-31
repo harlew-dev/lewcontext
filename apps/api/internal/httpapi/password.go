@@ -12,6 +12,8 @@ import (
 // password so the web app can move on to the new one, and change checks it
 // again, because nothing remembers that verify passed. Both count against the
 // account's sign-in rate limit, so a stolen session can't guess the password.
+// Deleting a workspace or the account checks it the same way
+// (passwordConfirmed).
 
 const wrongCurrentPassword = "Current password is incorrect."
 
@@ -33,29 +35,39 @@ func (s *Server) verifyPassword(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !passwordInBounds(in.Password) {
+	if s.passwordConfirmed(w, r, in.Password, events.PasswordStepVerify) {
+		w.WriteHeader(204)
+	}
+}
+
+// passwordConfirmed checks that password is the signed-in user's, for the
+// request step, counting against the account's sign-in limit and recording
+// auth.password_checked. When it isn't, it answers 422 with field
+// "password"; it returns false whenever it has answered. Routes using it run
+// behind limitAuth.
+func (s *Server) passwordConfirmed(w http.ResponseWriter, r *http.Request, password, step string) bool {
+	if !passwordInBounds(password) {
 		failField(w, 422, "password", wrongCurrentPassword)
-		return
+		return false
 	}
 	user := current(r).User
 	if !s.accountLimit(w, r, user.Email) {
-		return
+		return false
 	}
 	hash, err := s.Store.FindPasswordHash(r.Context(), user.ID)
 	if err != nil {
 		internalError(w, err)
-		return
+		return false
 	}
-	ok := auth.CheckPassword(in.Password, hash)
-	if err := s.recordPasswordCheck(r, user, ok, events.PasswordStepVerify); err != nil {
+	ok := auth.CheckPassword(password, hash)
+	if err := s.recordPasswordCheck(r, user, ok, step); err != nil {
 		internalError(w, err)
-		return
+		return false
 	}
 	if !ok {
 		failField(w, 422, "password", wrongCurrentPassword)
-		return
 	}
-	w.WriteHeader(204)
+	return ok
 }
 
 // recordPasswordCheck records auth.password_checked.

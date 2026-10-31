@@ -4,7 +4,7 @@ CREATE TABLE events (
  name text NOT NULL CHECK (name ~ '^[a-z][a-z_]*(\.[a-z][a-z_]*){1,2}$'),
  actor_id bigint REFERENCES users(id) ON DELETE SET NULL,
  user_id bigint REFERENCES users(id) ON DELETE CASCADE,
- workspace_id bigint REFERENCES workspaces(id) ON DELETE CASCADE,
+ workspace_id bigint REFERENCES workspaces(id) ON DELETE SET NULL,
  payload jsonb NOT NULL,
  user_agent text NOT NULL DEFAULT '' CHECK (length(user_agent) <= 256),
  created_at timestamptz NOT NULL DEFAULT now()

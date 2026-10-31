@@ -55,7 +55,8 @@ func (s *Server) security(next http.Handler) http.Handler {
 				fail(w, 403, "Request origin is not allowed.")
 				return
 			}
-			if r.Method != "DELETE" {
+			// A DELETE may have no body; one that has a body sends JSON too.
+			if r.Method != "DELETE" || r.ContentLength != 0 {
 				media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || media != "application/json" {
 					fail(w, 415, "Content-Type must be application/json.")

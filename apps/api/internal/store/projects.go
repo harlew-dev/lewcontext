@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
 	"strings"
@@ -119,6 +120,30 @@ func (s *Store) UpdateProject(ctx context.Context, w Workspace, publicID string,
 		return s.record(ctx, tx, events.ProjectUpdated{Project: p.PublicID, Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: w.ID})
 	})
 	return p, err
+}
+
+// DeleteProject deletes the project and records project.deleted. It returns
+// sql.ErrNoRows when the project does not exist or belongs to another
+// workspace.
+func (s *Store) DeleteProject(ctx context.Context, w Workspace, publicID string) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var p Project
+		result, err := tx.NewDelete().Model(&p).
+			Where("p.public_id = ? AND p.workspace_id = ?", publicID, w.ID).
+			Returning("p.public_id, p.name").
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return s.record(ctx, tx, events.ProjectDeleted{Project: p.PublicID, Workspace: w.PublicID, Name: p.Name}, EventScope{WorkspaceID: w.ID})
+	})
 }
 
 // projectChanges lists the editable fields that differ between before and after.

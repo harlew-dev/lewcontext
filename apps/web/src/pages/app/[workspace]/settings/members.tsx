@@ -7,6 +7,7 @@ import { SettingsTabs } from "@/components/app/workspaces/settings-tabs";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   Dialog,
   DialogActions,
@@ -237,6 +238,7 @@ function MemberRow({
               )}
               {canRemove && (
                 <DropdownItem
+                  variant="danger"
                   onClick={() => onAction({ kind: "remove", member })}
                 >
                   <DropdownLabel>Remove from workspace</DropdownLabel>
@@ -313,29 +315,18 @@ function article(role: Role) {
 function RemoveDialog({ open, member, onClose, onDone }: MemberDialogProps) {
   const api = useApi();
   const workspace = useWorkspace();
-  const remove = useAction(() => api.members(workspace.id).destroy(member.id));
-  async function confirm() {
-    if ((await remove.run()).ok)
-      onDone(`${member.name} was removed from ${workspace.name}.`);
-  }
-  const close = () => !remove.busy && onClose();
   return (
-    <Dialog open={open} onClose={close} size="md">
-      <DialogTitle>
-        Remove {member.name} from {workspace.name}?
-      </DialogTitle>
-      <DialogDescription>
-        They lose access at once. Their projects stay.
-      </DialogDescription>
-      <ErrorNotice error={remove.error} className="mt-6" />
-      <DialogActions>
-        <Button plain onClick={close} disabled={remove.loading}>
-          Cancel
-        </Button>
-        <Button color="red" loading={remove.loading} onClick={confirm}>
-          Remove
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ConfirmationDialog
+      open={open}
+      onClose={onClose}
+      title={`Remove ${member.name} from ${workspace.name}?`}
+      description="They lose access at once. Their projects stay."
+      confirm="Remove"
+      variant="danger"
+      onConfirm={() => api.members(workspace.id).destroy(member.id)}
+      onConfirmed={() =>
+        onDone(`${member.name} was removed from ${workspace.name}.`)
+      }
+    />
   );
 }

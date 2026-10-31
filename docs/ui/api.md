@@ -25,16 +25,16 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `destroy(id)` | `DELETE /api/<resource>/{id}` | `void` |
 
 - `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths. **Workspace resources take the workspace ID explicitly**, both in `paths.projects(ws)` and `api.projects(ws)`, so the same paths work in components, SWR keys and route loaders.
-- Resources implement only what the API supports. Projects have `destroy` commented out until a delete endpoint exists.
+- Resources implement only what the API supports.
 - **`index()` takes a typed query object** (`ProjectIndexQuery`: `page`, `perPage`, `q`, `status`, `sort`). Unknown keys and values the API would reject are type errors. Defaults are left out, so each query has one path.
 - **Bodies contain only the editable fields** (`store`/`update` pick them from the input), because the API rejects unknown fields.
 
 | Resource | Methods |
 | --- | --- |
-| `workspaces()` | `index({ page, perPage })`, `show(id)`, `store({ name })`, `update(id, { name })` (owners and admins), `leave(id)` (`DELETE …/membership`) |
-| `projects(workspace)` | `index`, `show`, `store`, `update` (`destroy` commented out) |
+| `workspaces()` | `index({ page, perPage, canLeave: false })`, `show(id)`, `store({ name })`, `update(id, { name })` (owners and admins), `destroy(id, { name, password })` (owners), `leave(id)` (`DELETE …/membership`) |
+| `projects(workspace)` | `index`, `show`, `store`, `update`, `destroy` (owners and admins) |
 | `members(workspace)` | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins) |
-| `auth()` | `me`, `login(credentials)`, `register(registration)`, `logout()` |
+| `auth()` | `me`, `login(credentials)`, `register(registration)`, `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces) |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 
 ## Calling the API: `useApi()`
@@ -96,6 +96,9 @@ list.refresh()   // Retry, refresh, or after a mutation
   `run` ignores calls while one is in flight (a double click submits once) and awaits everything the action awaits, so an action that ends with `navigate(...)` stays busy (and loading) until the next page has loaded. A failure goes to `save.error` for `<ErrorNotice>`, unless `onError` handles it and returns `true`: an action that is only a button, with no fields (sign out other sessions), shows `toast.error(errorMessage(e))` there instead; and when the API names the field (`ApiError.field`, e.g. the change-password dialog's `currentPassword`), show the message on that field with `ErrorMessage`.
 - **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects(workspace.id).matches()` (that workspace's lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
 - **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function, with the workspace's ID after a rename, so the switcher and the current workspace reload.
+- **Errors** are `ApiError`s with the message, `status`, the `field` the API named, and `details` (the rest of the body, e.g. the 409's `workspaces`).
+- **After signing out or deleting the account,** navigate away, then call `useClearCache()`'s function (`lib/use-clear-cache.ts`), which empties SWR's cache, infinite lists included, so none of the account's data stays in memory.
+- **After deleting a project,** `ProjectActions` clears its `show` key without refetching (so Back shows "not found", not stale data) and revalidates every key `projects.matches()`.
 - **Success messages are toasts:** `toast.success("Workspace renamed.")` ([design.md](design.md#toasts)), not a `done` state and an inline Notice.
 
 ## Adding a resource

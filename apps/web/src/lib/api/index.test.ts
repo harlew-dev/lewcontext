@@ -74,6 +74,13 @@ describe("paths.workspaces", () => {
     // @ts-expect-error the list has no search
     paths.workspaces.index({ q: "Acme" });
   });
+  it("filters to the workspaces you can't leave", () => {
+    expect(paths.workspaces.index({ canLeave: false })).toBe(
+      "/api/workspaces?canLeave=false",
+    );
+    // @ts-expect-error false is the only value the API accepts
+    paths.workspaces.index({ canLeave: true });
+  });
 });
 describe("projects(workspace)", () => {
   it("creates with the session's CSRF token and only the editable fields", async () => {
@@ -85,17 +92,20 @@ describe("projects(workspace)", () => {
     expect(sent.csrf).toBe("csrf");
     expect(sent.body).toEqual(input);
   });
-  it("updates, shows and lists", async () => {
+  it("updates, shows, lists and deletes", async () => {
     const stub = stubFetch();
     const projects = api("csrf").projects(ws);
     await projects.update(prj, input);
     await projects.show(prj);
     await projects.index({ status: "Completed" });
+    await projects.destroy(prj);
     expect(requests(stub)).toEqual([
       `PATCH ${base}/${prj}`,
       `GET ${base}/${prj}`,
       `GET ${base}?status=Completed`,
+      `DELETE ${base}/${prj}`,
     ]);
+    expect(stub.sent()[3].body).toBeUndefined();
   });
 });
 describe("workspaces()", () => {
@@ -115,8 +125,28 @@ describe("workspaces()", () => {
     expect(stub.sent()[1].body).toEqual({ name: "Acme Inc" });
     expect(stub.sent()[0].csrf).toBe("csrf");
   });
+  it("deletes with the typed name and the password", async () => {
+    const stub = stubApi({ "*": { status: 204 } });
+    await api("csrf")
+      .workspaces()
+      .destroy(ws, { name: "Acme", password: "secret" });
+    expect(stub.sent()).toEqual([
+      {
+        method: "DELETE",
+        url: `/api/workspaces/${ws}`,
+        body: { name: "Acme", password: "secret" },
+        csrf: "csrf",
+      },
+    ]);
+  });
 });
 describe("auth() and sessions()", () => {
+  it("deletes the account with the password", async () => {
+    const stub = stubApi({ "*": { status: 204 } });
+    await api("csrf").auth().destroy({ password: "secret" });
+    expect(requests(stub)).toEqual(["DELETE /api/auth/me"]);
+    expect(stub.sent()[0].body).toEqual({ password: "secret" });
+  });
   it("signs in, signs out and revokes other sessions", async () => {
     const stub = stubFetch();
     await api().auth().login({ email: "a@b.test", password: "long password" });

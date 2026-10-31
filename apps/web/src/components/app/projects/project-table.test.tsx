@@ -15,6 +15,10 @@ import {
   ProjectTableHead,
 } from "./project-table";
 const workspace = testWorkspace();
+const first = {
+  data: [workspace],
+  pages: { current: 1, total: 1, perPage: 20, items: 1 },
+};
 const project: Project = {
   id: "prj_j292s2S2j7Qx4B",
   name: "Research sprint",
@@ -52,14 +56,16 @@ describe("project table", () => {
   });
   it("links headers to the next sort and reports the current one", () => {
     render(
-      <Table>
-        <TableHead>
-          <ProjectTableHead
-            sort="name"
-            sortHref={(sort) => `/x?sort=${sort}`}
-          />
-        </TableHead>
-      </Table>,
+      <WorkspaceProvider workspace={workspace} first={first}>
+        <Table>
+          <TableHead>
+            <ProjectTableHead
+              sort="name"
+              sortHref={(sort) => `/x?sort=${sort}`}
+            />
+          </TableHead>
+        </Table>
+      </WorkspaceProvider>,
       { wrapper: MemoryRouter },
     );
     expect(screen.getByRole("link", { name: "Project" })).toHaveAttribute(

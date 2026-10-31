@@ -144,15 +144,23 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
 // item takes real focus on hover, so `focus:` gives the same highlight.
 const itemClasses = cx(
   "group cursor-default rounded-lg px-3.5 py-2.5 focus:outline-hidden sm:px-3 sm:py-1.5",
-  "text-left text-base/6 text-zinc-950 sm:text-sm/6 dark:text-white forced-colors:text-[CanvasText]",
+  "text-left text-base/6 sm:text-sm/6 forced-colors:text-[CanvasText]",
   "focus:bg-blue-500 focus:text-white",
   "disabled:opacity-50",
   "forced-color-adjust-none forced-colors:focus:bg-[Highlight] forced-colors:focus:text-[HighlightText] forced-colors:focus:*:data-[slot=icon]:text-[HighlightText]",
   "col-span-full grid grid-cols-[auto_1fr_1.5rem_0.5rem_auto] items-center supports-[grid-template-columns:subgrid]:grid-cols-subgrid",
   "*:data-[slot=icon]:col-start-1 *:data-[slot=icon]:row-start-1 *:data-[slot=icon]:mr-2.5 *:data-[slot=icon]:-ml-0.5 *:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:mr-2 sm:*:data-[slot=icon]:size-4",
-  "*:data-[slot=icon]:text-zinc-500 focus:*:data-[slot=icon]:text-white dark:*:data-[slot=icon]:text-zinc-400 dark:focus:*:data-[slot=icon]:text-white",
+  "focus:*:data-[slot=icon]:text-white dark:focus:text-white dark:focus:*:data-[slot=icon]:text-white",
   "*:data-[slot=avatar]:mr-2.5 *:data-[slot=avatar]:-ml-1 *:data-[slot=avatar]:size-6 sm:*:data-[slot=avatar]:mr-2 sm:*:data-[slot=avatar]:size-5",
 );
+// Text and icon colours for each item variant, before focus turns them white;
+// "danger" is for destructive actions (Delete).
+const itemVariants = {
+  default:
+    "text-zinc-950 *:data-[slot=icon]:text-zinc-500 dark:text-white dark:*:data-[slot=icon]:text-zinc-400",
+  danger:
+    "text-red-600 *:data-[slot=icon]:text-red-500 dark:text-red-400 dark:*:data-[slot=icon]:text-red-400",
+};
 // Items close the menu when chosen, then act once it has closed and returned
 // focus to its trigger, so a dialog an item opens returns focus there too
 // (the item itself is gone by then). `keepOpen` items (e.g. "Show more") act
@@ -162,6 +170,7 @@ type DropdownItemProps = {
   children: ReactNode;
   onClick?: (event: MouseEvent<HTMLElement>) => void;
   "aria-current"?: "page";
+  variant?: keyof typeof itemVariants;
 } & (
   | { href: string; keepOpen?: never }
   | { href?: never; disabled?: boolean; keepOpen?: boolean }
@@ -170,12 +179,13 @@ export function DropdownItem({
   className,
   onClick,
   keepOpen = false,
+  variant = "default",
   ...props
 }: DropdownItemProps) {
   const { close } = useContext(DropdownContext);
   const shared = {
     role: "menuitem",
-    className: cx(className, itemClasses),
+    className: cx(className, itemClasses, itemVariants[variant]),
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) =>
       event.currentTarget.focus(),
     onClick: (event: MouseEvent<HTMLElement>) => {

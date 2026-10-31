@@ -20,3 +20,12 @@ type ProjectUpdated struct {
 }
 
 func (ProjectUpdated) EventName() string { return "project.updated" }
+
+// ProjectDeleted: a project was deleted. Name is the one it had.
+type ProjectDeleted struct {
+	Project   string `json:"project"`
+	Workspace string `json:"workspace"`
+	Name      string `json:"name"`
+}
+
+func (ProjectDeleted) EventName() string { return "project.deleted" }

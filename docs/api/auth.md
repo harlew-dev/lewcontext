@@ -8,6 +8,7 @@ Code: `internal/auth` (primitives), `internal/httpapi/auth.go` (handlers), `inte
 - Sign-up requires 12+ Unicode characters; every password is at most 128 UTF-8 bytes. Login only checks that cap, so seeded development accounts with a short `DEMO_PASSWORD` (`password`) can sign in. Emails are trimmed and lowercased; names are 1–80 characters.
 - Login against an unknown email still checks a dummy hash, and every failure gives the same message.
 - At most 4 password hashes run at once per process (503 when busy).
+- **Deleting a workspace or the account** also checks the current password, in the same request, the same way (`passwordConfirmed`: `auth:per-account`, behind `limitAuth`), so a stolen session can't destroy either ([Deleting](#deleting)).
 - **Changing the password** (signed in) takes the current password twice: `POST /api/auth/password/verify` checks it so the web app can move on to the new one, and `PATCH /api/auth/password` checks it again, because nothing remembers that the first check passed. The new password follows the sign-up rule and must differ from the current one. Verifying, saving the new hash and deleting **every** session of the user's run in one transaction with the user row locked; then this browser gets a new session (cookie and CSRF token), like login. A wrong current password is 422 with `field`, not 401, which the web app treats as an expired session.
 - Plaintext passwords are never logged or stored.
 
@@ -39,7 +40,7 @@ For every mutation (anything except GET, HEAD and OPTIONS), the `security` middl
 
 - an `Origin` exactly equal to `APP_ORIGIN`,
 - no `Sec-Fetch-Site: cross-site`,
-- `Content-Type: application/json` (except DELETE).
+- `Content-Type: application/json`, except on a DELETE without a body (a DELETE that has one, such as deleting a workspace with its name and password, needs it too).
 
 Signed-in mutations also need `X-CSRF-Token`: an independent random token returned by login, register and `/api/auth/me`, compared in constant time. CORS is not enabled.
 
@@ -49,8 +50,8 @@ Stored in `auth_attempts` in fixed windows; successful attempts count too. Each 
 
 | Name | Limit | Where | Refusal |
 | --- | --- | --- | --- |
-| `auth:per-ip` | 60 / 15 min | `limitAuth` on register, login, both signed-in password endpoints and the reset itself; directly on reset requests and checks | 429 |
-| `auth:per-account` | 10 / 15 min | `accountLimit` in register, login and both signed-in password endpoints (the session user's email), so a stolen session can't guess the password faster than a login could. Password reset never touches it | 429 |
+| `auth:per-ip` | 60 / 15 min | `limitAuth` on register, login, both signed-in password endpoints, deleting a workspace or the account, and the reset itself; directly on reset requests and checks | 429 |
+| `auth:per-account` | 10 / 15 min | `accountLimit` in register, login, both signed-in password endpoints and both deletions (the session user's email), so a stolen session can't guess the password faster than a login could. Password reset never touches it | 429 |
 | `password-reset:per-ip` | 10 / hour | reset requests: one IP can't mail many people | 429 |
 | `password-reset:per-email` | 3 / hour | reset requests, from any IP, known email or not: caps mail to one inbox | 429 |
 | `password-reset:all-accounts` | 100 / hour | reset requests from everyone: caps mail in a distributed flood. Also logs a warning | 503 |
@@ -61,7 +62,7 @@ Forwarded-IP headers are ignored, so everyone behind a reverse proxy (or Vite's 
 
 ## Audit trail
 
-Sign-ups, login attempts (with the email typed and the connection IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, reset links requested, sent and used, and the first refusal of each rate-limit window are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups, login attempts (with the email typed and the connection IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, deleted accounts, reset links requested, sent and used, and the first refusal of each rate-limit window are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 
@@ -79,7 +80,7 @@ Data belongs to workspaces; users reach a workspace through a `workspace_user` r
 | --- | --- | --- | --- | --- | --- |
 | *(membership)* | ✓ | ✓ | ✓ | ✓ | `GET` the workspace and its projects |
 | `workspace.update` | ✓ | ✓ | | | `PATCH /workspaces/{ws}` |
-| `workspace.destroy` | ✓ | | | | no endpoint yet |
+| `workspace.destroy` | ✓ | | | | `DELETE /workspaces/{ws}` |
 | `workspace.invitation.index` / `.store` / `.destroy` | ✓ | ✓ | | | no endpoints yet (invitations) |
 | `workspace.member.index` | ✓ | ✓ | | | `GET …/members` |
 | `workspace.member.update` | ✓ | ✓ | | | `PATCH …/members/{usr}` |
@@ -87,7 +88,7 @@ Data belongs to workspaces; users reach a workspace through a `workspace_user` r
 | `auth.AnyMember` | ✓ | ✓ | ✓ | ✓ | `DELETE …/membership` (leave) |
 | `project.store` | ✓ | ✓ | ✓ | | `POST …/projects` |
 | `project.update` | ✓ | ✓ | ✓ | | `PATCH …/projects/{prj}` |
-| `project.destroy` | ✓ | ✓ | | | no endpoint yet |
+| `project.destroy` | ✓ | ✓ | | | `DELETE …/projects/{prj}` |
 
 A viewer reads everything except the member and invitation lists (which hold other people's emails) and changes nothing. For actions on another person's role, `Role.AssignableRoles()` also says which roles may be targeted: an owner any role, an admin only `member` and `viewer` (so only owners create admins or touch owners), others none. An action on a member needs the permission, and the target's current role (and, for a role change, the new one) in that list; otherwise 403. Acting on yourself goes through leaving, not `members/{usr}` (422).
 
@@ -97,8 +98,18 @@ A viewer reads everything except the member and invitation lists (which hold oth
 - Creating a workspace makes the creator its `owner`, in the same transaction.
 - **Members** (`internal/store/members.go`): changing a role, removing someone and leaving each run in one transaction that first locks the workspace row (`FOR UPDATE`), then re-reads the actor's role and the target's membership, so concurrent changes are serialised. A change that would leave no owner (demoting, removing or leaving as the only owner) is refused with 409 (`ErrLastOwner`); two owners demoting each other at once leave one. Promoting someone to owner, then stepping down, is how ownership moves. Workspace responses carry `canLeave` (false for the only owner) so the web app can say so before you try.
 - **Removal** deletes only the `workspace_user` row: the user's next request to that workspace gets 404, their sessions and account stay, and the workspace's projects stay (projects have no owner). Only owners and admins can list members, so members and viewers never see other members' emails.
-- Invites, ownership transfer as its own flow, and deleting workspaces are not implemented.
+- Invites and ownership transfer as its own flow are not implemented.
 - Public IDs are unguessable (about 83 random bits), but access never depends on that: every workspace route checks membership.
+
+## Deleting
+
+Plan: [plans/features/deletion.md](../../plans/features/deletion.md). What each deletion removes is in [endpoints.md](endpoints.md#deleting).
+
+- **A project** needs only `project.destroy` (owners and admins) and the confirmation dialog: its blast radius is one project.
+- **A workspace** needs `workspace.destroy` (owners only), its current name typed, and the owner's password, checked as sign-in checks one. `DeleteWorkspace` takes the workspace row lock, so a membership change in flight finishes first or finds the workspace gone. Other members' next request gets 404.
+- **The account** needs the password. `DeleteAccount` locks every workspace the user owns, in `id` order, and refuses (409, `LastOwnerError`, which matches `ErrLastOwner`) while they're the only owner of any, so two co-owners deleting their accounts at once leave one owner, and two deletions can't deadlock. On success every session goes (other tabs get 401), the cookie is cleared, and the email can register again.
+- **Events:** `project.deleted`, `workspace.deleted` and `auth.account_deleted` ([events.md](events.md)); each password check records `auth.password_checked` with step `destroy_workspace` or `destroy_account`.
+- Emails in event payloads that aren't linked to the account (sign-in attempts and reset requests typed before it existed) aren't scrubbed; the 90-day prune removes them.
 
 ## Protecting a new endpoint
 

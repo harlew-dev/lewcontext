@@ -29,6 +29,8 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	mux.Handle("POST /api/auth/login", s.limitAuth(http.HandlerFunc(s.login)))
 	mux.Handle("GET /api/auth/me", s.requireSession(http.HandlerFunc(s.me)))
 	mux.Handle("PATCH /api/auth/me", s.requireSession(http.HandlerFunc(s.updateProfile)))
+	// Deleting the account checks the password, like the routes below.
+	mux.Handle("DELETE /api/auth/me", s.requireSession(s.limitAuth(http.HandlerFunc(s.destroyAccount))))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.logout)))
 	mux.Handle("DELETE /api/auth/sessions", s.requireSession(http.HandlerFunc(s.revokeOthers)))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
@@ -59,10 +61,13 @@ func (s *Server) workspaceRoutes(ws routeGroup) {
 	membership := membershipHandlers{s}
 	ws.HandleFunc("GET", "", workspaces.show)
 	ws.Can("PATCH", "", auth.WorkspaceUpdate, workspaces.update)
+	// Deleting checks the owner's password, so it shares sign-in's limits.
+	ws.Can("DELETE", "", auth.WorkspaceDestroy, s.limitAuth(http.HandlerFunc(workspaces.destroy)).ServeHTTP)
 	ws.HandleFunc("GET", "/projects", projects.index)
 	ws.Can("POST", "/projects", auth.ProjectStore, projects.store)
 	ws.HandleFunc("GET", "/projects/{project}", projects.show)
 	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, projects.update)
+	ws.Can("DELETE", "/projects/{project}", auth.ProjectDestroy, projects.destroy)
 	ws.Can("GET", "/members", auth.WorkspaceMemberIndex, members.index)
 	ws.Can("PATCH", "/members/{member}", auth.WorkspaceMemberUpdate, members.update)
 	ws.Can("DELETE", "/members/{member}", auth.WorkspaceMemberDestroy, members.destroy)

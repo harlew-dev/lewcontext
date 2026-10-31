@@ -7,10 +7,13 @@ const (
 	LoginUnknownAccount = "unknown_account"
 )
 
-// Steps of a password change that check the current password.
+// Steps that check the current password: the two of a password change, and
+// deleting a workspace or the account.
 const (
-	PasswordStepVerify = "verify"
-	PasswordStepUpdate = "update"
+	PasswordStepVerify           = "verify"
+	PasswordStepUpdate           = "update"
+	PasswordStepDestroyWorkspace = "destroy_workspace"
+	PasswordStepDestroyAccount   = "destroy_account"
 )
 
 // Registered: an account was created.
@@ -66,7 +69,8 @@ type OtherSessionsRevoked struct {
 
 func (OtherSessionsRevoked) EventName() string { return "auth.other_sessions_revoked" }
 
-// PasswordChecked: a password change checked the current password.
+// PasswordChecked: the current password was checked, by a password change or
+// before deleting a workspace or the account (Step).
 type PasswordChecked struct {
 	User string `json:"user"`
 	OK   bool   `json:"ok"`
@@ -83,6 +87,15 @@ type PasswordChanged struct {
 }
 
 func (PasswordChanged) EventName() string { return "auth.password_changed" }
+
+// AccountDeleted: a user deleted their account. It holds no name or email,
+// since the account's personal data is what's being erased, and has no user
+// or actor: both would be the deleted account.
+type AccountDeleted struct {
+	User string `json:"user"`
+}
+
+func (AccountDeleted) EventName() string { return "auth.account_deleted" }
 
 // ProfileUpdated: a user changed their account's name.
 type ProfileUpdated struct {

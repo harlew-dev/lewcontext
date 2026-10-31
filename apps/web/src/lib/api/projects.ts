@@ -35,8 +35,7 @@ export function projectRoutes(workspace: string) {
     show: (id: string) => path<Project>(`${base}/${id}`),
     store: () => base,
     update: (id: string) => `${base}/${id}`,
-    // Needs DELETE /api/workspaces/{workspace}/projects/{project} in the Go API first.
-    // destroy: (id: string) => `${base}/${id}`,
+    destroy: (id: string) => `${base}/${id}`,
     // Whether an API path (e.g. an SWR key) belongs to this workspace's projects.
     matches: (key: string) =>
       key === base || key.startsWith(`${base}/`) || key.startsWith(`${base}?`),
@@ -55,7 +54,7 @@ export function projects(http: Http, workspace: string) {
       http.send<Project>("POST", routes.store(), body(input)),
     update: (id: string, input: ProjectInput) =>
       http.send<Project>("PATCH", routes.update(id), body(input)),
-    // Needs DELETE /api/workspaces/{workspace}/projects/{project} in the Go API first.
-    // destroy: (id: string) => http.send<void>("DELETE", routes.destroy(id)),
+    // Owners and admins only (project.destroy).
+    destroy: (id: string) => http.send<void>("DELETE", routes.destroy(id)),
   };
 }

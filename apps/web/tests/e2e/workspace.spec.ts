@@ -12,6 +12,7 @@ const sidebarEmail = `e2e-${stamp}-sidebar@lewcontext.test`;
 const resetEmail = `e2e-${stamp}-reset@lewcontext.test`;
 const crewEmail = `e2e-${stamp}-crew@lewcontext.test`;
 const teammateEmail = `e2e-${stamp}-teammate@lewcontext.test`;
+const deleteEmail = `e2e-${stamp}-delete@lewcontext.test`;
 const emails = [
   email,
   returnEmail,
@@ -23,6 +24,7 @@ const emails = [
   resetEmail,
   crewEmail,
   teammateEmail,
+  deleteEmail,
 ];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
@@ -112,7 +114,9 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await page.getByRole("button", { name: "Create account" }).click();
   // A new account starts at onboarding, and can't skip it.
   await expect(page).toHaveURL("/app/onboarding");
+  await page.getByRole("button", { name: "Account" }).click();
   await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.goto("/app");
   await expect(page).toHaveURL("/app/onboarding");
   await expect(
@@ -407,10 +411,14 @@ test("workspaces: switch, create, rename, copy the ID, and open the newest", asy
   await page.getByRole("button", { name: "Workspace menu" }).click();
   await page.getByRole("menuitem", { name: "Workspace settings" }).click();
   await expect(page).toHaveURL(`/app/${first}/settings`);
-  // The only owner can't leave (canLeave in the workspace response).
+  // The only owner can't leave (canLeave in the workspace response), so
+  // Leave isn't offered.
+  await expect(
+    page.getByRole("button", { name: "Delete workspace" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Leave workspace" }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await page.getByLabel("Name", { exact: true }).fill("Renamed studio");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Workspace renamed.")).toBeVisible();
@@ -738,6 +746,73 @@ test("forgot password: a link from the mailbox sets a new password once", async 
   await expect(
     page.getByRole("heading", { name: "This link has expired" }),
   ).toBeVisible();
+});
+test("deleting: a project from its row, the only workspace, then the account", async ({
+  page,
+}) => {
+  await register(page, deleteEmail, "Dana Delete");
+  const ws = await onboard(page, "Doomed HQ");
+  const created = await page.request.post(`/api/workspaces/${ws}/projects`, {
+    headers: await apiHeaders(page),
+    data: {
+      name: "Short-lived",
+      description: "",
+      status: "Planned",
+      color: "rose",
+    },
+  });
+  expect(created.status()).toBe(201);
+  const dialog = page.getByRole("dialog");
+
+  await page.goto(`/app/${ws}/projects`);
+  const row = page.getByRole("row").filter({ hasText: "Short-lived" });
+  await row.getByRole("button", { name: "Actions for Short-lived" }).click();
+  await page.getByRole("menuitem", { name: "Delete project" }).click();
+  await expect(dialog.getByRole("heading")).toHaveText("Delete Short-lived?");
+  await dialog.getByRole("button", { name: "Delete project" }).click();
+  await expect(page.getByText("Project deleted.")).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+
+  // The only owner of a workspace is sent there first.
+  await page.goto("/app/settings");
+  await expect(
+    page.getByText(/You’re the only owner of a workspace/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete account" }).click();
+  await expect(dialog.getByRole("heading")).toHaveText(
+    "Delete your workspaces first",
+  );
+  await expect(dialog.getByRole("button", { name: /Delete/ })).toHaveCount(0);
+  await dialog.getByRole("link", { name: "Doomed HQ" }).click();
+  await expect(page).toHaveURL(`/app/${ws}/settings`);
+  await expect(dialog).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Delete workspace" }).click();
+  const confirm = dialog.getByRole("button", { name: "Delete workspace" });
+  await dialog.getByLabel(/to confirm/).fill("Doomed");
+  await dialog.getByLabel("Your password").fill(password);
+  await expect(confirm).toBeDisabled();
+  await dialog.getByLabel(/to confirm/).fill("Doomed HQ");
+  await confirm.click();
+  // It was the only workspace, so onboarding opens.
+  await expect(page).toHaveURL("/app/onboarding");
+  await expect(page.getByText("Doomed HQ deleted.")).toBeVisible();
+  expect((await page.request.get(`/api/workspaces/${ws}`)).status()).toBe(404);
+
+  // Without a workspace, onboarding's menu deletes the account.
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Delete account" }).click();
+  await expect(dialog.getByRole("heading")).toHaveText("Delete your account?");
+  await dialog.getByLabel("Your password").fill(password);
+  await dialog.getByRole("button", { name: "Delete account" }).click();
+  await expect(page).toHaveURL("/auth/login");
+  await expect(page.getByText("Your account has been deleted.")).toBeVisible();
+  expect((await page.request.get("/api/auth/me")).status()).toBe(401);
+  await page.getByLabel("Email").fill(deleteEmail);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("Email or password is incorrect.")).toBeVisible();
 });
 test("unauthenticated API requests are rejected", async ({ request }) => {
   for (const path of [

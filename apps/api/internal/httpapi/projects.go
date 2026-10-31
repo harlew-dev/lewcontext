@@ -143,3 +143,20 @@ func (h projectHandlers) update(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, p)
 }
+func (h projectHandlers) destroy(w http.ResponseWriter, r *http.Request) {
+	id, ok := projectID(r)
+	if !ok {
+		fail(w, 404, "Project not found.")
+		return
+	}
+	err := h.Store.DeleteProject(r.Context(), currentWorkspace(r), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		fail(w, 404, "Project not found.")
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(204)
+}

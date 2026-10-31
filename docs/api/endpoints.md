@@ -9,6 +9,7 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie |
 | GET | `/api/auth/me` | Session | `{user, csrfToken, expiresAt, signedInAt}` |
 | PATCH | `/api/auth/me` | Session, CSRF, Origin | 200 with the updated user. Body `{name}` (trimmed, 1–80 characters, no control characters); the email address can't change, so other fields are rejected (400) |
+| DELETE | `/api/auth/me` | Session, CSRF, Origin, rate limit | 204; the account, its sessions, memberships and the events about it are deleted, and the cookie is cleared. Body `{password}`. 422 with `field: "password"`; 409 for the only owner of a workspace, listing them ([below](#deleting)) |
 | POST | `/api/auth/logout` | Session, CSRF, Origin | 204; session revoked, cookie cleared |
 | DELETE | `/api/auth/sessions` | Session, CSRF, Origin | 204; every other session revoked |
 | POST | `/api/auth/password/verify` | Session, CSRF, Origin, rate limit | 204 if `{password}` is the current password; 422 with `field: "password"` if not |
@@ -16,10 +17,11 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/auth/password-reset` | Origin, JSON, reset rate limits | 202 for every valid `{email}`, whether or not an account uses it; the link is sent later by a listener. 422 with `field: "email"` for a malformed address, 429 per IP or email, 503 when the limit for everyone is reached or `MAIL_DRIVER=off` ([auth.md](auth.md#password-reset-by-link)) |
 | POST | `/api/auth/password-reset/check` | Origin, JSON, rate limit | 204 if `{token}` is a live reset link; 422 with `field: "token"` if not |
 | PATCH | `/api/auth/password-reset` | Origin, JSON, rate limit | 200 `{email}` after setting `newPassword` with a live `token`; every session revoked, nobody signed in. 422 with `field` (`token` or `newPassword`) when refused |
-| GET | `/api/workspaces` | Session | One page of your workspaces with your role and permissions, newest first ([pagination.md](pagination.md)) |
+| GET | `/api/workspaces` | Session | One page of your workspaces with your role and permissions, newest first ([pagination.md](pagination.md)). `canLeave=false` lists only those you can't leave |
 | POST | `/api/workspaces` | Session, CSRF, Origin | 201 with the created workspace; you are its `owner` |
 | GET | `/api/workspaces/{workspace}` | Member | The workspace with your role and permissions |
 | PATCH | `/api/workspaces/{workspace}` | `workspace.update`, CSRF, Origin | 200 with the renamed workspace; 403 for members and viewers |
+| DELETE | `/api/workspaces/{workspace}` | `workspace.destroy`, CSRF, Origin, rate limit | 204; its projects and memberships go too, its events stay. Body `{name, password}`. 403 for everyone but owners; 422 with `field` (`name`: not its current name, or `password`) |
 | GET | `/api/workspaces/{workspace}/members` | `workspace.member.index` | One page of members, by role then name ([pagination.md](pagination.md)); 403 for members and viewers |
 | PATCH | `/api/workspaces/{workspace}/members/{member}` | `workspace.member.update`, CSRF, Origin | 200 with the member. Body `{role}`. 403 when their role or the new one isn't in your `assignableRoles`, 404 for someone not in this workspace, 409 for the last owner, 422 for an unknown role |
 | DELETE | `/api/workspaces/{workspace}/members/{member}` | `workspace.member.destroy`, CSRF, Origin | 204; their account stays. 403 not assignable, 404, 422 for yourself ("To leave, use Leave workspace.") |
@@ -28,8 +30,9 @@ All routes are registered in `apps/api/internal/httpapi/routes.go`. The browser 
 | POST | `/api/workspaces/{workspace}/projects` | `project.store`, CSRF, Origin | 201 with the created project; 403 for viewers |
 | GET | `/api/workspaces/{workspace}/projects/{project}` | Member | The project, or 404 |
 | PATCH | `/api/workspaces/{workspace}/projects/{project}` | `project.update`, CSRF, Origin | 200 with the updated project, or 404; 403 for viewers |
+| DELETE | `/api/workspaces/{workspace}/projects/{project}` | `project.destroy`, CSRF, Origin | 204, or 404; 403 for members and viewers |
 
-"Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST and PATCH. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
+"Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST, PATCH and any DELETE with a body. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
 
 ## IDs
 
@@ -70,8 +73,30 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 ```
 
 - **Body for POST/PATCH:** `name` (1–100 characters), `description` (≤ 500), `status` (`Planned`, `In progress`, `Completed`), `color` (`violet`, `blue`, `amber`, `emerald`, `rose`). Unknown fields are rejected.
-- **PATCH replaces the whole editable representation.** There is no delete endpoint.
+- **PATCH replaces the whole editable representation.**
+- **DELETE** removes it at once; nothing else references a project. Its events stay.
 - **Scope:** projects belong to a workspace, taken from the path; a workspace ID is never accepted in the body or returned. A project ID from another workspace, even one of yours, behaves exactly like a missing one (404).
+
+## Deleting
+
+Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` removing what belongs to the row. Plan: [plans/features/deletion.md](../../plans/features/deletion.md).
+
+| Deleted | Removed with it | Kept |
+| --- | --- | --- |
+| project | nothing else | its events (payloads hold `prj_…` only) |
+| workspace | memberships, projects | its events, with `workspace_id` set to null |
+| account | sessions, memberships, reset link, the events about it (`events.user_id`) | events it acted in for others, with `actor_id` set to null |
+
+- **Workspace:** the typed `name` must be the current name, checked again under the workspace lock, so a tab opened before a rename can't delete it under the old name. Then the owner's password.
+- **Account:** the password, then every workspace you own is locked in `id` order and checked with the same rule as `canLeave`. The only owner of any of them gets:
+
+  ```json
+  { "error": "Delete the workspaces you own first, or make someone else an owner.",
+    "workspaces": [ { "id": "wsp_2yEHYLwiwPVhLW", "name": "Acme" } ] }
+  ```
+
+  At most 100 are listed. The web app loads `GET /api/workspaces?canLeave=false` first, so this is the backstop.
+- **Password checks** work as `POST /api/auth/password/verify` does: `limitAuth` (`auth:per-ip`, a hashing slot) and `auth:per-account`, recording `auth.password_checked` ([auth.md](auth.md#deleting)).
 
 ## Status codes
 
@@ -81,9 +106,9 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 | 401 | No session, expired session, or wrong sign-in credentials (a wrong *current* password while signed in is 422) |
 | 403 | Bad Origin or CSRF token, or a role without the permission |
 | 404 | Not found, not yours, or a malformed ID |
-| 409 | The change would leave a workspace without an owner |
+| 409 | The change would leave a workspace without an owner (for deleting an account, with the `workspaces`) |
 | 409 | Email already registered (generic message) |
-| 415 | Mutation without JSON content type |
+| 415 | Mutation without JSON content type (a DELETE needs one only when it has a body) |
 | 422 | Body failed validation. Errors about one field add `"field"`, e.g. `{"error": "Current password is incorrect.", "field": "currentPassword"}` |
 | 429 | Rate limited; `Retry-After: 900` |
 | 503 | Database unavailable, or sign-in concurrency full |

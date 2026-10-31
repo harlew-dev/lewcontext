@@ -38,8 +38,23 @@ describe("browser transport", () => {
       }),
     );
     await expect(browserHttp().get(path("/api/auth/me"))).rejects.toEqual(
-      new ApiError("Session expired", 401),
+      new ApiError("Session expired", 401, undefined, {
+        error: "Session expired",
+      }),
     );
+  });
+  it("keeps the rest of an error's body", async () => {
+    const workspaces = [{ id: "wsp_2yEHYLwiwPVhLW", name: "Acme" }];
+    stubFetch(
+      new Response(JSON.stringify({ error: "Delete them first", workspaces }), {
+        status: 409,
+      }),
+    );
+    const error = await browserHttp("csrf")
+      .send("DELETE", "/api/auth/me", { password: "x" })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).details.workspaces).toEqual(workspaces);
   });
   it("handles an empty 204 response", async () => {
     stubFetch(new Response(null, { status: 204 }));

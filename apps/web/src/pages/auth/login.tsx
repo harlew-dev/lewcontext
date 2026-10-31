@@ -18,7 +18,8 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return guestLoader(request);
 }
 export default function Login() {
-  // After a password reset, the reset page passes the account's email.
+  // After a password reset, the reset page passes the account's email; after
+  // deleting an account, settings says so.
   const arrived = authPageState(useLocation().state);
   const [email, setEmail] = useState(arrived.email ?? "");
   const [password, setPassword] = useState("");
@@ -37,6 +38,9 @@ export default function Login() {
           <Notice variant="success">
             Password updated. Sign in with your new password.
           </Notice>
+        )}
+        {arrived.accountDeleted && !error.message && (
+          <Notice variant="success">Your account has been deleted.</Notice>
         )}
         <ErrorNotice error={error} />
         <Field disabled={loading}>

@@ -1,18 +1,40 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
 import { Toaster } from "@/components/ui/toast";
 import AccountSettings from "@/pages/app/settings";
+import Login from "@/pages/auth/login";
 import { SessionProvider } from "@/lib/session";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 const session = testSession({ csrfToken: "csrf-old" });
 const rotated = { ...session, csrfToken: "csrf-new" };
+// Account settings at /app/settings, with login (where deleting the account
+// leads) and a workspace's settings (where the last-owner warning links).
 function renderPage() {
   render(
-    <SessionProvider session={session}>
-      <AccountSettings />
-      <Toaster />
-    </SessionProvider>,
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <SessionProvider session={session}>
+        <MemoryRouter initialEntries={["/app/settings"]}>
+          <Routes>
+            <Route path="/app/settings" element={<AccountSettings />} />
+            <Route path="/auth/login" element={<Login />} />
+            <Route
+              path="/app/:workspace/settings"
+              element={<p>Workspace settings</p>}
+            />
+          </Routes>
+        </MemoryRouter>
+        <Toaster />
+      </SessionProvider>
+    </SWRConfig>,
   );
 }
 function renderSettings() {
@@ -182,5 +204,113 @@ describe("change password", () => {
       await screen.findByText("Too many attempts. Try again in 15 minutes."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Current password")).toBeInTheDocument();
+  });
+});
+describe("deleting the account", () => {
+  const acme = { id: "wsp_2yEHYLwiwPVhLW", name: "Acme" };
+  // The workspaces you can't leave, and how many you're in.
+  function workspaceStubs(blocking: (typeof acme)[], total: number) {
+    const page = (data: unknown[], items: number) => ({
+      body: { data, pages: { current: 1, total: 1, perPage: 20, items } },
+    });
+    return {
+      "GET /api/workspaces?perPage=100&canLeave=false": page(
+        blocking,
+        blocking.length,
+      ),
+      "GET /api/workspaces": page([], total),
+    };
+  }
+  async function openDeletion() {
+    const button = screen.getByRole("button", { name: "Delete account" });
+    await waitFor(() => expect(button).not.toHaveAttribute("data-loading"));
+    fireEvent.click(button);
+    return screen.findByRole("dialog");
+  }
+  it("sends the only owner of a workspace there first, with no way to delete", async () => {
+    stubApi(workspaceStubs([acme], 3));
+    renderPage();
+    expect(
+      await screen.findByText(/You’re the only owner of a workspace/),
+    ).toBeInTheDocument();
+    const dialog = await openDeletion();
+    expect(within(dialog).getByRole("heading")).toHaveTextContent(
+      "Delete your workspaces first",
+    );
+    expect(within(dialog).queryByRole("button", { name: /Delete/ })).toBeNull();
+    const link = within(dialog).getByRole("link", { name: "Acme" });
+    expect(link).toHaveAttribute("href", "/app/wsp_2yEHYLwiwPVhLW/settings");
+    fireEvent.click(link);
+    expect(await screen.findByText("Workspace settings")).toBeInTheDocument();
+  });
+  it("asks for the password, then signs out to login", async () => {
+    const api = stubApi({
+      ...workspaceStubs([], 2),
+      "DELETE /api/auth/me": [
+        {
+          status: 422,
+          body: { error: "Current password is incorrect.", field: "password" },
+        },
+        { status: 204 },
+      ],
+    });
+    renderPage();
+    const dialog = await openDeletion();
+    expect(within(dialog).getByRole("heading")).toHaveTextContent(
+      "Delete your account?",
+    );
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent("removes you from 2 workspaces"),
+    );
+    const confirm = within(dialog).getByRole("button", {
+      name: "Delete account",
+    });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Your password"), {
+      target: { value: "wrong" },
+    });
+    fireEvent.click(confirm);
+    expect(
+      await within(dialog).findByText("Current password is incorrect."),
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Your password"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(confirm);
+    expect(
+      await screen.findByText("Your account has been deleted."),
+    ).toBeInTheDocument();
+    expect(api.sent("DELETE")[1]).toEqual({
+      method: "DELETE",
+      url: "/api/auth/me",
+      body: { password: "correct horse battery staple" },
+      csrf: "csrf-old",
+    });
+  });
+  it("switches to the warning when the API says you're still an only owner", async () => {
+    stubApi({
+      ...workspaceStubs([], 1),
+      "DELETE /api/auth/me": {
+        status: 409,
+        body: {
+          error: "Delete the workspaces you own first.",
+          workspaces: [acme],
+        },
+      },
+    });
+    renderPage();
+    const dialog = await openDeletion();
+    fireEvent.change(within(dialog).getByLabelText("Your password"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete account" }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "Delete your workspaces first",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Acme" })).toBeInTheDocument();
   });
 });

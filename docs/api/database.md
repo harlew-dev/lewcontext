@@ -13,7 +13,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `projects` | Projects in a workspace (`ON DELETE CASCADE`) | `Project` |
 | `auth_attempts` | Rate-limit counters, keyed `<limit name>:<digest>` ([auth.md](auth.md#rate-limits)) | unexported `authAttempt` |
 | `password_resets` | One live reset link per user: the token's SHA-256 digest and `expires_at`; deleted when used, replaced, or the password changes | unexported `passwordReset` |
-| `events` | What happened: name, actor, user, workspace, `jsonb` payload, user agent ([events.md](events.md)) | unexported `eventRecord` |
+| `events` | What happened: name, actor, user, workspace, `jsonb` payload, user agent ([events.md](events.md)). Deleting a user deletes the events about them (`user_id`, `CASCADE`) and nulls `actor_id`; deleting a workspace nulls `workspace_id` (`SET NULL`), so its history survives until pruned | unexported `eventRecord` |
 | `event_deliveries` | One row per event and listener: attempts, `next_attempt_at` (also the claim lease), `delivered_at`, `failed_at`, `last_error` | unexported `deliveryRecord` |
 | `bun_migrations`, `bun_migration_locks` | Migration history | (Bun) |
 
@@ -33,13 +33,14 @@ Store methods are named verb first ([../naming.md](../naming.md#store-methods-in
 | --- | --- | --- |
 | `Index<Resources>` | one page of a list, with its search and filters | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
 | `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindProject`, `FindSession`, `FindWorkspace` (through the user's membership), `FindUser` |
-| `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject` |
+| `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject`, `DeleteWorkspace`, `DeleteAccount` |
 | a domain verb | when it says more | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset` |
 | `Check<Thing>` | a yes/no question | `CheckPasswordReset` |
 
 Methods implementing an interface from elsewhere keep its names (`Claim`, `Delivered`, `Fail`, `Retry` for `events.Queue`).
 
 - All SQL lives in `internal/store`. Handlers never build queries.
+- **Deleting** relies on the foreign keys' `ON DELETE CASCADE` (and `SET NULL` for `events.actor_id` and `events.workspace_id`), in one transaction with the event. `DeleteWorkspace` and `DeleteAccount` take the workspace lock first, as every membership change does; `DeleteAccount` locks every workspace the user owns in `id` order, so two deletions can't deadlock ([endpoints.md](endpoints.md#deleting)).
 - **Scope by membership:** workspaces are only read through a `workspace_user` row for the session's user (`memberWorkspaces`). Workspace data (projects) is scoped by the workspace's internal ID from `requireWorkspace`: `WHERE p.public_id = ? AND p.workspace_id = ?`, returning `sql.ErrNoRows` (404) when the row isn't in that workspace.
 - **Bun's builder only:** write queries with `NewSelect`/`NewInsert`/`NewUpdate`/`NewDelete` (and `With`, `ColumnExpr`, `WhereGroup` for the harder ones), in tests too; no SQL strings through `NewRaw`, `QueryContext` or `ExecContext`. Only `internal/database` (schemas, advisory locks) and migration files write SQL directly.
 - **Placeholders only:** values always go through Bun `?` placeholders, and SQL text is never built from input. Dynamic `ORDER BY` uses a fixed map of SQL strings (see [pagination.md](pagination.md)).

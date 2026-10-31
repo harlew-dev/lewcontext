@@ -5,6 +5,9 @@ export class ApiError extends Error {
     public status: number,
     // The request body field the error is about, when the API names one.
     public field?: string,
+    // The rest of the error's body, for errors that carry more (the
+    // workspaces in the 409 for deleting an account).
+    public details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -55,6 +58,7 @@ async function request<T>(
       data.error || "Unable to connect. Please try again.",
       response.status,
       typeof data.field === "string" ? data.field : undefined,
+      typeof data === "object" && data !== null ? data : {},
     );
   }
   // 204, and 202 for work done later (a password reset link), carry no body.

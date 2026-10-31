@@ -37,7 +37,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 
 | File | Exports and main props |
 | --- | --- |
-| `button.tsx` | `Button` `color` (`dark/zinc`, or `red` for destructive actions: remove, leave) \| `outline` \| `plain`, `href` (renders a React Router link), `loading`, `disabled` · `TouchTarget` |
+| `button.tsx` | `Button` `color` (`dark/zinc`, or `red` for destructive actions: remove, leave, delete) \| `outline` \| `plain`, `href` (renders a React Router link), `loading`, `disabled` · `TouchTarget` |
 | `link.tsx` / `clickable.tsx` | `Link` (React Router link with data attributes; `href` instead of `to`) · `Clickable` (a link with `href`, otherwise a button) |
 | `badge.tsx` | `Badge color` (`zinc`, `lime`, `purple`, `pink`, `rose`) |
 | `avatar.tsx` | `Avatar src`, `initials`, `square` |
@@ -48,8 +48,9 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `tooltip.tsx` | `Tooltip content placement` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
-| `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current`, `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
-| `settings-section.tsx` | `SettingsSection title description` (account and workspace settings) |
+| `confirmation-dialog.tsx` | `ConfirmationDialog open onClose title description confirm variant disabled onConfirm onConfirmed onError` ([Confirmations](#confirmations)) |
+| `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current variant` (`danger`: red text and icon, for Delete), `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
+| `settings-section.tsx` | `SettingsSection title description variant stacked` (account and workspace settings): content beside the title, or under it at full width with `stacked`; `variant="danger"` is the danger zone, always stacked, with a red title and the content in a red-tinted panel · `DangerAction title description action`: one row of that panel, text on the left and its button on the right (below on phones) |
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
 | `pagination.tsx` | `Pagination`, `PaginationPrevious href`, `PaginationNext href`, `PaginationList`, `PaginationPage href current`, `PaginationGap` |
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
@@ -59,12 +60,40 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
 | `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` (`href` makes it a link; the sign-in pages link it to `/`) |
 
+## Confirmations
+
+Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dialog.tsx`): removing a member, leaving or deleting a workspace, deleting a project or the account. Don't build one from `Dialog` by hand.
+
+```tsx
+<ConfirmationDialog
+  open={open}
+  onClose={() => setOpen(false)}
+  title={`Delete ${project.name}?`}
+  description="This permanently deletes the project. It can’t be undone."
+  confirm="Delete project"     // the button says what it does
+  variant="danger"             // red confirm button; "default" is dark/zinc
+  disabled={typed !== name}    // e.g. type-to-confirm
+  onConfirm={() => api.projects(ws).destroy(project.id)}
+  onConfirmed={() => toast.success("Project deleted.")}
+  onError={showOnField}        // optional: an ApiError with a field, shown under it
+>
+  {/* optional fields: type-to-confirm, password */}
+</ConfirmationDialog>
+```
+
+- `onConfirm` runs through `useAction`: the button shows `loading`, a double click confirms once, and Cancel, Escape and the backdrop do nothing until it settles. The fields are disabled meanwhile.
+- A failure keeps the dialog open with the error (`ErrorNotice`) and the typed fields. Success closes it, then calls `onConfirmed`.
+- Key the dialog per opening (`key={opened}`) when it has fields, so each opening starts empty.
+- Labels name what they act on: "Delete project", "Delete workspace", "Delete account", never a bare "Delete".
+- Destructive actions sit in a danger zone at the bottom of settings (`SettingsSection variant="danger"` with `DangerAction` rows), or as a `DropdownItem variant="danger"` in a ⋯ menu (`ProjectActions`).
+
 ## Toasts
 
 `toast.success(message)` and `toast.error(message)` (`components/ui/toast.tsx`) show a short-lived message in a stack at the bottom right (across the bottom on phones).
 
 - **Successes** of any action are toasts: "Workspace renamed.", "Project created.", "All other sessions have been signed out."
 - **Errors** stay inline when the action is a form (`<ErrorNotice error={action.error}>` beside its fields, see [api.md](api.md#changing-data)), and load failures keep their `Notice` with Retry. An action that is only a button, with no fields (sign out, sign out other sessions), reports its error as `toast.error`.
+- A toast belongs to the `Toaster` that was mounted last. A toast shown just before navigating to a page outside the app layout (onboarding, login) is lost with the layout, and React Router commits a redirect after `navigate()` resolves. Say it on the next page instead, through navigation state: login's "Your account has been deleted.", onboarding's "<workspace> deleted.".
 - A toast hides after 5 seconds, paused while it's hovered or focused. Pass `{ duration }` in milliseconds to change that, or `Infinity` to keep it until dismissed.
 - It's BaseUI's `toaster` (timer, stacking) with its slots replaced by `slot()`: a zinc panel with the `Notice` variant's icon and role (`messageVariants` in `feedback.tsx`, so the two stay alike), fading and sliding on `data-closed`. BaseUI's close icon can't be reached by keyboard, so the toast renders our `DismissButton` instead.
 - `<Toaster />` is mounted by `pages/app/layout.tsx` and onboarding only, so signing out unmounts it and any open toasts. Calling `toast` where no `Toaster` is mounted throws in development (in tests, render a `<Toaster />`).
@@ -82,7 +111,8 @@ Files are kebab-case and export a family of named components. Keep these props s
 
 ## Feature components (`components/app/<feature>`)
 
-- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
-- **`workspaces`**, shared by onboarding, the switcher and workspace settings: `WorkspaceAvatar` (the name's first letter), `WorkspaceNameField`, `useCreateWorkspace` and `CreateWorkspaceDialog`.
+- **`projects`**, shared by the dashboard, projects list and project page: `ProjectTableHead`, `ProjectRow` (links within `useWorkspace()`; with `project.destroy`, a last column with `ProjectActions`), `ProjectActions` (the ⋯ menu: Delete project, with a confirmation; also in the project page's header), `ProjectEmptyState`, `ProjectAvatar`, `ProjectStatusBadge`, `ProjectDialog`, `ProjectNotices` (load error with Retry), `RefreshButton`, `useProjectEditor`, and `projectQuery` / `projectsPath(workspace, query)` / `indexQuery`.
+- **`workspaces`**, shared by onboarding, the switcher and workspace settings: `WorkspaceAvatar` (the name's first letter; also in the account's last-owner warning), `WorkspaceNameField`, `useCreateWorkspace` and `CreateWorkspaceDialog`.
+- **`account`**, shared by account settings, onboarding and the reset link page: `PasswordField`, `NewPasswordFields`, and `DeleteAccountDialog` (password confirmation; a 409 goes to `onLastOwner`).
 
 The workspace switcher (`WorkspaceDropdown` in `application-layout.tsx`) shows the current workspace and lists every workspace newest first, loading more as the list scrolls ([pagination.md](pagination.md#infinite-lists)).

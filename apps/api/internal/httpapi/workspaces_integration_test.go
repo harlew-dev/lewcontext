@@ -156,9 +156,13 @@ type workspaceRoute struct {
 	body    string
 	ok      int
 	allowed []auth.Role // nil: every member
-	// target appends a fresh viewer's user ID to path for each request, for
-	// routes that change or remove the member they name.
-	target bool
+	// target appends a new record's ID to path for each request, for routes
+	// that change or delete the record they name: "member" (a viewer's user
+	// ID) or "project".
+	target string
+	// fresh sends each request to a new workspace named "Matrix" that every
+	// role belongs to, for routes that delete the workspace.
+	fresh bool
 }
 
 // Every route inside a workspace, for every role: allowed roles get the
@@ -167,18 +171,21 @@ type workspaceRoute struct {
 // last, since each role then stops being a member.
 func workspaceRoutesMatrix(projectID string) []workspaceRoute {
 	project := `{"name":"Matrix","description":"","status":"Planned","color":"blue"}`
+	deletion := fmt.Sprintf(`{"name":"Matrix","password":%q}`, factory.DefaultPassword)
 	owners := []auth.Role{auth.RoleOwner, auth.RoleAdmin}
 	editors := []auth.Role{auth.RoleOwner, auth.RoleAdmin, auth.RoleMember}
 	return []workspaceRoute{
 		{pattern: "GET /api/workspaces/{workspace}", ok: 200},
 		{pattern: "PATCH /api/workspaces/{workspace}", body: `{"name":"Renamed"}`, ok: 200, allowed: owners},
+		{pattern: "DELETE /api/workspaces/{workspace}", body: deletion, ok: 204, allowed: []auth.Role{auth.RoleOwner}, fresh: true},
 		{pattern: "GET /api/workspaces/{workspace}/projects", path: "/projects", ok: 200},
 		{pattern: "POST /api/workspaces/{workspace}/projects", path: "/projects", body: project, ok: 201, allowed: editors},
 		{pattern: "GET /api/workspaces/{workspace}/projects/{project}", path: "/projects/" + projectID, ok: 200},
 		{pattern: "PATCH /api/workspaces/{workspace}/projects/{project}", path: "/projects/" + projectID, body: project, ok: 200, allowed: editors},
+		{pattern: "DELETE /api/workspaces/{workspace}/projects/{project}", path: "/projects", ok: 204, allowed: owners, target: "project"},
 		{pattern: "GET /api/workspaces/{workspace}/members", path: "/members", ok: 200, allowed: owners},
-		{pattern: "PATCH /api/workspaces/{workspace}/members/{member}", path: "/members", body: `{"role":"member"}`, ok: 200, allowed: owners, target: true},
-		{pattern: "DELETE /api/workspaces/{workspace}/members/{member}", path: "/members", ok: 204, allowed: owners, target: true},
+		{pattern: "PATCH /api/workspaces/{workspace}/members/{member}", path: "/members", body: `{"role":"member"}`, ok: 200, allowed: owners, target: "member"},
+		{pattern: "DELETE /api/workspaces/{workspace}/members/{member}", path: "/members", ok: 204, allowed: owners, target: "member"},
 		{pattern: "DELETE /api/workspaces/{workspace}/membership", path: "/membership", ok: 204},
 	}
 }
@@ -202,6 +209,16 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 		must(factory.MemberOf(ctx, db, f, user.ID, workspace.ID, auth.RoleViewer))(t)
 		return user.PublicID
 	}
+	newProject := func() string {
+		return must(factory.ProjectsIn(workspace.ID).CreateOne(ctx, db, f))(t).PublicID
+	}
+	newWorkspace := func() string {
+		w := must(factory.WorkspaceFor(ctx, db, f, owner.UserID, factory.Named("Matrix")))(t)
+		for _, role := range auth.Roles[1:] {
+			must(factory.MemberOf(ctx, db, f, sessions[role].UserID, w.ID, role))(t)
+		}
+		return w.PublicID
+	}
 	outsider := signedIn(t, db, f)
 	matrix := workspaceRoutesMatrix(project.PublicID)
 
@@ -219,10 +236,17 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 	for _, route := range matrix {
 		method, _, _ := strings.Cut(route.pattern, " ")
 		pathFor := func() string {
-			if route.target {
-				return workspacePath(workspace.PublicID, route.path+"/"+newViewer())
+			id := workspace.PublicID
+			if route.fresh {
+				id = newWorkspace()
 			}
-			return workspacePath(workspace.PublicID, route.path)
+			switch route.target {
+			case "member":
+				return workspacePath(id, route.path+"/"+newViewer())
+			case "project":
+				return workspacePath(id, route.path+"/"+newProject())
+			}
+			return workspacePath(id, route.path)
 		}
 		for _, role := range auth.Roles {
 			want := 403

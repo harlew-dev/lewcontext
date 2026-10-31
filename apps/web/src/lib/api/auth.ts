@@ -1,5 +1,5 @@
 import type { Session, User } from "@/lib/types";
-import type { Http } from "./http";
+import { ApiError, type Http } from "./http";
 import { path } from "./paths";
 export type Credentials = { email: string; password: string };
 export type Registration = Credentials & { name: string };
@@ -18,6 +18,19 @@ export const authRoutes = {
 export type ProfileInput = { name: string };
 export type PasswordChange = { currentPassword: string; newPassword: string };
 export type PasswordReset = { token: string; newPassword: string };
+// A workspace named in an error: one you're the only owner of.
+export type WorkspaceSummary = { id: string; name: string };
+// The workspaces in the API's 409 for deleting the account of a workspace's
+// only owner, or null for any other error.
+export function lastOwnerWorkspaces(error: unknown): WorkspaceSummary[] | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const { workspaces } = error.details;
+  if (!Array.isArray(workspaces)) return null;
+  return workspaces.filter(
+    (w): w is WorkspaceSummary =>
+      typeof w?.id === "string" && typeof w?.name === "string",
+  );
+}
 export function auth(http: Http) {
   return {
     me: () => http.get(authRoutes.me()),
@@ -30,6 +43,11 @@ export function auth(http: Http) {
         password,
       }),
     logout: () => http.send<void>("POST", authRoutes.logout(), {}),
+    // Deletes the account and signs it out. A wrong password is an ApiError
+    // with field "password"; the only owner of a workspace gets a 409 whose
+    // workspaces lastOwnerWorkspaces() reads.
+    destroy: ({ password }: { password: string }) =>
+      http.send<void>("DELETE", authRoutes.me(), { password }),
     // Saves the user's name; the email address can't change.
     updateProfile: ({ name }: ProfileInput) =>
       http.send<User>("PATCH", authRoutes.me(), { name }),

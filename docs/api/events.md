@@ -2,7 +2,7 @@
 
 Code: `internal/events` (event types, request metadata, `Bus`, `Listen`, `Worker`), `internal/store/events.go` (`record`, `Record`, `EventScope`), `internal/store/deliveries.go` (the delivery queue). Plan: [plans/features/events.md](../../plans/features/events.md).
 
-The API records what happens (sign-ins, password changes, workspaces and projects created or changed) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. One listener is registered: `mail.password_reset` sends reset links ([mail.md](mail.md)).
+The API records what happens (sign-ins, password changes, workspaces and projects created, changed or deleted, accounts deleted) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. One listener is registered: `mail.password_reset` sends reset links ([mail.md](mail.md)).
 
 ## How an event is recorded
 
@@ -17,9 +17,9 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | --- | --- |
 | `public_id` | `evt_` + 14 base62 |
 | `name` | `<resource>.<fact>` ([naming.md](../naming.md#events-internalevents)), e.g. `project.updated`, `workspace.member.removed`; a CHECK allows two or three snake_case segments |
-| `actor_id` | Who acted: the signed-in user (`events.WithActor`, set by `requireSession`), or the user who registered or signed in. Null for login attempts and anonymous rate limits |
-| `user_id` | The account the event is about (auth events, and the member in member events) |
-| `workspace_id` | The workspace (workspace and project events) |
+| `actor_id` | Who acted: the signed-in user (`events.WithActor`, set by `requireSession`), or the user who registered or signed in. Null for login attempts and anonymous rate limits, and once the actor's account is deleted |
+| `user_id` | The account the event is about (auth events, and the member in member events). Deleting the account deletes these events |
+| `workspace_id` | The workspace (workspace and project events). Deleting the workspace sets it to null; the events stay, readable through the `wsp_` in their payload, until pruned |
 | `payload` | The event struct as JSON (`jsonb`) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
 | `created_at` | When |
@@ -36,19 +36,22 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.rate_limited` | `scope`: the limit's name, e.g. `auth:per-ip`, `password-reset:per-email` ([auth.md](auth.md#rate-limits)), `user` (when signed in) | `allowAuth`, only for the first refused request in a window |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
-| `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` | both password endpoints, whenever the current password was checked |
+| `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` | both password endpoints and both deletions that need it, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
 | `auth.password_reset.requested` | `email`, `ip` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
 | `auth.password_reset.sent` | `user`, `email`, `request` (the requested event's `evt_` ID) | the `mail.password_reset` listener, after writing the link |
 | `auth.password_reset.completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
+| `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
 | `workspace.renamed` | `workspace`, `changes.name` (`from`, `to`) | `RenameWorkspace`, only when the name changed |
+| `workspace.deleted` | `workspace`, `name`, `projects` and `members` (how many it had); `workspace_id` becomes null with the workspace | `DeleteWorkspace` |
 | `workspace.member.updated` | `workspace`, `user`, `changes.role` (`from`, `to`); `user_id` is the member, the actor who changed it | `UpdateMemberRole`, only when the role changed |
 | `workspace.member.removed` | `workspace`, `user`, `role` (the role they had); `user_id` is the member | `RemoveMember` |
 | `workspace.member.left` | `workspace`, `role`; the member is both actor and `user_id` | `LeaveWorkspace` |
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
 | `project.updated` | `project`, `workspace`, `changes` per changed field (`from`, `to`) | `UpdateProject`, only when something changed |
+| `project.deleted` | `project`, `workspace`, `name` | `DeleteProject` |
 
 ## What's stored, and what never is
 

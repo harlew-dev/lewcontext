@@ -1,18 +1,19 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { CheckIcon, DocumentDuplicateIcon } from "@heroicons/react/16/solid";
+import { PasswordField } from "@/components/app/account/password-fields";
 import { SettingsTabs } from "@/components/app/workspaces/settings-tabs";
 import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogActions,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Divider } from "@/components/ui/divider";
 import { ErrorNotice } from "@/components/ui/feedback";
-import { Field, Label } from "@/components/ui/fieldset";
+import {
+  ErrorMessage,
+  Field,
+  FieldGroup,
+  Label,
+} from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import {
   Input,
@@ -21,14 +22,22 @@ import {
   InputGroup,
   InputLock,
 } from "@/components/ui/input";
-import { SettingsSection } from "@/components/ui/settings-section";
+import {
+  DangerAction,
+  SettingsSection,
+} from "@/components/ui/settings-section";
+import { Strong } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useApi } from "@/lib/api";
+import { ApiError, errorMessage, useApi } from "@/lib/api";
 import { cx } from "@/lib/cx";
-import { routes } from "@/lib/routes";
+import { routes, type OnboardingState } from "@/lib/routes";
 import { useAction } from "@/lib/use-action";
-import { useRefreshWorkspaces, useWorkspace } from "@/lib/workspace";
+import {
+  useRefreshWorkspaces,
+  useWorkspace,
+  useWorkspaceList,
+} from "@/lib/workspace";
 import { can, workspaceName } from "@/types/workspaces";
 export default function WorkspaceEdit() {
   const workspace = useWorkspace();
@@ -72,7 +81,7 @@ export default function WorkspaceEdit() {
         />
       </SettingsSection>
       <Divider className="my-10" soft />
-      <LeaveSection key={workspace.id} />
+      <DangerZone key={workspace.id} />
     </div>
   );
 }
@@ -103,13 +112,15 @@ function RenameForm() {
         onChange={setName}
         disabled={rename.loading}
       />
-      <Button
-        type="submit"
-        loading={rename.loading}
-        disabled={clean === null || clean === workspace.name}
-      >
-        Save
-      </Button>
+      <div className="flex justify-end">
+        <Button
+          type="submit"
+          loading={rename.loading}
+          disabled={clean === null || clean === workspace.name}
+        >
+          Save
+        </Button>
+      </div>
       <ErrorNotice error={rename.error} />
     </form>
   );
@@ -170,56 +181,167 @@ function CopyField({
     </div>
   );
 }
+// Leaving, for every member but the only owner, and deleting, for owners.
+// Neither can be undone.
+function DangerZone() {
+  const workspace = useWorkspace();
+  const canDelete = can(workspace, "workspace.destroy");
+  if (!workspace.canLeave && !canDelete) return null;
+  return (
+    <SettingsSection
+      title="Danger zone"
+      description="These take effect at once and can’t be undone."
+      variant="danger"
+    >
+      {workspace.canLeave && <LeaveAction />}
+      {canDelete && <DeleteWorkspaceAction />}
+    </SettingsSection>
+  );
+}
 // Leaving takes you out of the workspace at once; /app then opens your next
-// workspace, or onboarding when there is none. That page is the confirmation:
-// onboarding has no toaster.
-function LeaveSection() {
+// workspace, or onboarding when there is none. The dialog stays busy until
+// that page has loaded. The only owner doesn't see it: they can't leave.
+function LeaveAction() {
   const api = useApi();
   const workspace = useWorkspace();
   const refresh = useRefreshWorkspaces();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const leave = useAction(() => api.workspaces().leave(workspace.id));
-  async function confirm() {
-    if (!(await leave.run()).ok) return;
+  async function leave() {
+    await api.workspaces().leave(workspace.id);
     refresh();
     await navigate(routes.app);
   }
-  const close = () => !leave.busy && setOpen(false);
   return (
-    <SettingsSection
-      title="Leave workspace"
-      description={
-        !workspace.canLeave
-          ? "You’re its only owner. Make someone else an owner before you leave."
-          : "You lose access to this workspace and its projects."
-      }
-    >
-      <div>
-        <Button
-          outline
-          disabled={!workspace.canLeave}
-          onClick={() => setOpen(true)}
-        >
-          Leave workspace
-        </Button>
-      </div>
-      <Dialog open={open} onClose={close} size="md">
-        <DialogTitle>Leave {workspace.name}?</DialogTitle>
-        <DialogDescription>
-          You lose access at once. To come back, someone will need to add you
-          again.
-        </DialogDescription>
-        <ErrorNotice error={leave.error} className="mt-6" />
-        <DialogActions>
-          <Button plain onClick={close} disabled={leave.loading}>
-            Cancel
-          </Button>
-          <Button color="red" loading={leave.loading} onClick={confirm}>
+    <>
+      <DangerAction
+        title="Leave workspace"
+        description="You lose access to this workspace and its projects."
+        action={
+          <Button color="red" onClick={() => setOpen(true)}>
             Leave workspace
           </Button>
-        </DialogActions>
-      </Dialog>
-    </SettingsSection>
+        }
+      />
+      <ConfirmationDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Leave ${workspace.name}?`}
+        description="You lose access at once. To come back, someone will need to add you again."
+        confirm="Leave workspace"
+        variant="danger"
+        onConfirm={leave}
+      />
+    </>
+  );
+}
+function DeleteWorkspaceAction() {
+  const [open, setOpen] = useState(false);
+  // Each opening starts with empty fields.
+  const [opened, setOpened] = useState(0);
+  return (
+    <>
+      <DangerAction
+        title="Delete workspace"
+        description="Deletes it for everyone, with its projects and memberships."
+        action={
+          <Button
+            color="red"
+            onClick={() => {
+              setOpened(opened + 1);
+              setOpen(true);
+            }}
+          >
+            Delete workspace
+          </Button>
+        }
+      />
+      <DeleteWorkspaceDialog
+        key={opened}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  );
+}
+// Type the workspace's name, plus your password. The API checks both again:
+// the name against the current one, so a stale tab can't delete it under an
+// old name. Afterwards your next workspace's dashboard opens, with a toast;
+// without one, onboarding opens and says so itself, since the app layout
+// (and its toaster) goes away.
+function DeleteWorkspaceDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const workspace = useWorkspace();
+  const refresh = useRefreshWorkspaces();
+  const list = useWorkspaceList();
+  const navigate = useNavigate();
+  const [typed, setTyped] = useState("");
+  const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // A wrong name or password shows under its field.
+  function showOnField(e: unknown): boolean {
+    const field = e instanceof ApiError ? e.field : undefined;
+    if (field !== "name" && field !== "password") return false;
+    setFieldErrors({ [field]: errorMessage(e) });
+    return true;
+  }
+  async function destroy() {
+    setFieldErrors({});
+    await api.workspaces().destroy(workspace.id, { name: typed, password });
+    const next = list.items.find((other) => other.id !== workspace.id);
+    refresh();
+    if (next) {
+      await navigate(routes.dashboard(next.id));
+      toast.success(`${workspace.name} deleted.`);
+      return;
+    }
+    const state: OnboardingState = { deletedWorkspace: workspace.name };
+    await navigate(routes.onboarding, { state });
+  }
+  return (
+    <ConfirmationDialog
+      open={open}
+      onClose={onClose}
+      title={`Delete ${workspace.name}?`}
+      description="This permanently deletes the workspace, its projects and every membership, for everyone in it. It can’t be undone."
+      confirm="Delete workspace"
+      variant="danger"
+      disabled={typed.trim() !== workspace.name || password === ""}
+      onConfirm={destroy}
+      onError={showOnField}
+    >
+      <FieldGroup>
+        <Field>
+          <Label>
+            Type <Strong>{workspace.name}</Strong> to confirm
+          </Label>
+          <Input
+            autoComplete="off"
+            autoFocus
+            invalid={Boolean(fieldErrors.name)}
+            value={typed}
+            onChange={(e) => setTyped(e.currentTarget.value)}
+          />
+          {fieldErrors.name && (
+            <ErrorMessage role="alert">{fieldErrors.name}</ErrorMessage>
+          )}
+        </Field>
+        <PasswordField
+          label="Your password"
+          autoComplete="current-password"
+          autoFocus={false}
+          value={password}
+          onChange={setPassword}
+          error={fieldErrors.password}
+          disabled={false}
+        />
+      </FieldGroup>
+    </ConfirmationDialog>
   );
 }

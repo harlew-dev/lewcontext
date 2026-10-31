@@ -17,6 +17,17 @@ type WorkspaceRenamed struct {
 
 func (WorkspaceRenamed) EventName() string { return "workspace.renamed" }
 
+// WorkspaceDeleted: an owner (the actor) deleted a workspace, with its
+// projects and memberships, counted when it was deleted.
+type WorkspaceDeleted struct {
+	Workspace string `json:"workspace"`
+	Name      string `json:"name"`
+	Projects  int    `json:"projects"`
+	Members   int    `json:"members"`
+}
+
+func (WorkspaceDeleted) EventName() string { return "workspace.deleted" }
+
 // WorkspaceMemberUpdated: someone (the actor) changed a member's role.
 type WorkspaceMemberUpdated struct {
 	Workspace string  `json:"workspace"`

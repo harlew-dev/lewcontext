@@ -33,7 +33,9 @@ Unknown, repeated or malformed parameters return 400. Signs, spaces and exponent
 
 ## Parameters (`GET /api/workspaces`)
 
-`page` and `perPage` only, with the same rules and defaults. Workspaces are always newest first (`created_at DESC, id DESC`), and there is no search or sort. The web app loads them a page at a time as the switcher scrolls ([../ui/pagination.md](../ui/pagination.md#infinite-lists)).
+`page` and `perPage`, with the same rules and defaults, and `canLeave`. Workspaces are always newest first (`created_at DESC, id DESC`), and there is no search or sort.
+
+- **`canLeave=false`** lists only the workspaces you can't leave: those you're the only owner of, which block deleting your account. It filters on the same SQL expression as the `canLeave` field (`canLeave` in `store/workspaces.go`). It's the only value accepted; `true`, `0` or an empty value is 400. The web app loads them a page at a time as the switcher scrolls ([../ui/pagination.md](../ui/pagination.md#infinite-lists)).
 
 ## How it is safe
 

@@ -54,6 +54,7 @@ import { errorMessage, useApi } from "@/lib/api";
 import { appName } from "@/lib/app";
 import { navigation, routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
+import { useClearCache } from "@/lib/use-clear-cache";
 import { useWorkspace, useWorkspaceList } from "@/lib/workspace";
 import { initials } from "@/lib/format";
 import { SidebarLayout } from "./sidebar-layout";
@@ -231,6 +232,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
   const session = useSession();
   const workspace = useWorkspace();
   const navigate = useNavigate();
+  const clearCache = useClearCache();
   const [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false);
   const currentPath = useCurrentPath();
@@ -239,6 +241,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
     try {
       await api.auth().logout();
       await navigate(routes.login);
+      clearCache();
     } catch (e) {
       toast.error(errorMessage(e));
     }

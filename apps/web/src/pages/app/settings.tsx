@@ -1,4 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { ChevronRightIcon } from "@heroicons/react/16/solid";
+import { DeleteAccountDialog } from "@/components/app/account/delete-account-dialog";
+import { WorkspaceAvatar } from "@/components/app/workspaces/workspace-avatar";
 import {
   NewPasswordFields,
   newPasswordProblems,
@@ -23,13 +26,25 @@ import {
   InputGroup,
   InputLock,
 } from "@/components/ui/input";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { Link } from "@/components/ui/link";
+import {
+  DangerAction,
+  SettingsSection,
+} from "@/components/ui/settings-section";
 import { Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
-import { ApiError, errorMessage, useApi } from "@/lib/api";
+import {
+  ApiError,
+  errorMessage,
+  paths,
+  useApi,
+  type WorkspaceSummary,
+} from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { routes } from "@/lib/routes";
 import { useRenewSession, useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
+import { useResource } from "@/lib/use-resource";
 export default function AccountSettings() {
   const session = useSession();
   return (
@@ -55,6 +70,14 @@ export default function AccountSettings() {
         description="You’re signed out automatically after 30 minutes of inactivity."
       >
         <SessionControls />
+      </SettingsSection>
+      <Divider className="my-10" soft />
+      <SettingsSection
+        title="Danger zone"
+        description="Deleting your account takes effect at once and can’t be undone."
+        variant="danger"
+      >
+        <DeleteAccountControls />
       </SettingsSection>
     </div>
   );
@@ -111,13 +134,15 @@ function ProfileForm() {
           </InputGroup>
         </Field>
       </FieldGroup>
-      <Button
-        type="submit"
-        loading={save.loading}
-        disabled={clean === null || clean === session.user.name}
-      >
-        Save
-      </Button>
+      <div className="flex justify-end">
+        <Button
+          type="submit"
+          loading={save.loading}
+          disabled={clean === null || clean === session.user.name}
+        >
+          Save
+        </Button>
+      </div>
       <ErrorNotice error={save.error} />
     </form>
   );
@@ -127,7 +152,7 @@ function PasswordControls() {
   // Each opening starts a fresh dialog at its first step.
   const [opened, setOpened] = useState(0);
   return (
-    <div>
+    <div className="flex items-start justify-end">
       <Button
         outline
         onClick={() => {
@@ -307,9 +332,107 @@ function SessionControls() {
         </div>
         <Badge color="purple">Current session</Badge>
       </div>
-      <Button outline loading={revoke.loading} onClick={revokeOthers}>
-        Sign out other sessions
-      </Button>
+      <div className="flex justify-end">
+        <Button outline loading={revoke.loading} onClick={revokeOthers}>
+          Sign out other sessions
+        </Button>
+      </div>
     </div>
+  );
+}
+// The workspaces you're the only owner of block deleting your account, so the
+// page loads them first and opens a warning instead of the confirmation. The
+// API refuses the same way (409) if they changed since, and the warning then
+// takes over from the confirmation.
+function DeleteAccountControls() {
+  const stuck = useResource(
+    paths.workspaces.index({ canLeave: false, perPage: 100 }),
+  );
+  // Every workspace you're in, for the confirmation's count.
+  const all = useResource(paths.workspaces.index());
+  const [dialog, setDialog] = useState<"confirm" | "last-owner" | null>(null);
+  // Each opening starts with an empty password.
+  const [opened, setOpened] = useState(0);
+  // From the API's 409, when it knows better than the loaded list.
+  const [refused, setRefused] = useState<WorkspaceSummary[] | null>(null);
+  const blocking = refused ?? stuck.data?.data ?? [];
+  function open() {
+    setOpened(opened + 1);
+    setDialog(blocking.length > 0 ? "last-owner" : "confirm");
+  }
+  return (
+    <>
+      <DangerAction
+        title="Delete account"
+        description={
+          blocking.length > 0
+            ? `You’re the only owner of ${blocking.length === 1 ? "a workspace" : `${blocking.length} workspaces`}. Delete ${blocking.length === 1 ? "it" : "them"}, or make someone else an owner, first.`
+            : "Deletes your account and removes you from every workspace you’re in."
+        }
+        action={
+          <Button color="red" loading={stuck.loading} onClick={open}>
+            Delete account
+          </Button>
+        }
+      />
+      <DeleteAccountDialog
+        key={opened}
+        open={dialog === "confirm"}
+        workspaces={all.data?.pages.items}
+        onClose={() => setDialog(null)}
+        onLastOwner={(workspaces) => {
+          setRefused(workspaces);
+          setDialog("last-owner");
+        }}
+      />
+      <LastOwnerDialog
+        open={dialog === "last-owner"}
+        workspaces={blocking}
+        onClose={() => setDialog(null)}
+      />
+    </>
+  );
+}
+// Shown instead of the confirmation while you're the only owner of a
+// workspace: each links to its settings (Danger zone, Members), and there's
+// no way to delete from here.
+function LastOwnerDialog({
+  open,
+  workspaces,
+  onClose,
+}: {
+  open: boolean;
+  workspaces: WorkspaceSummary[];
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} size="md">
+      <DialogTitle>Delete your workspaces first</DialogTitle>
+      <DialogDescription>
+        You’re the only owner of these workspaces. Delete them, or make someone
+        else an owner, before deleting your account.
+      </DialogDescription>
+      <DialogBody>
+        <ul className="divide-y divide-zinc-950/5 dark:divide-white/5">
+          {workspaces.map((workspace) => (
+            <li key={workspace.id}>
+              <Link
+                href={routes.workspaces.edit(workspace.id)}
+                className="flex items-center justify-between gap-4 py-3 text-base/6 font-medium text-zinc-950 data-hover:text-zinc-600 sm:text-sm/6 dark:text-white dark:data-hover:text-zinc-300"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <WorkspaceAvatar workspace={workspace} className="size-6" />
+                  <span className="truncate">{workspace.name}</span>
+                </span>
+                <ChevronRightIcon className="size-4 shrink-0 fill-zinc-400" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </DialogBody>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
   );
 }

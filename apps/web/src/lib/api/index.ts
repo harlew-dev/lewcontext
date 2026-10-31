@@ -10,13 +10,15 @@ export { ApiError, errorMessage } from "./http";
 export type { ApiPath } from "./paths";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
-export type { WorkspaceIndexQuery } from "./workspaces";
+export type { WorkspaceDeletion, WorkspaceIndexQuery } from "./workspaces";
+export { lastOwnerWorkspaces } from "./auth";
 export type {
   Credentials,
   PasswordChange,
   PasswordReset,
   Registration,
   SignedIn,
+  WorkspaceSummary,
 } from "./auth";
 // Typed API paths, for SWR keys and module constants:
 //   paths.workspaces.index()   paths.projects(workspace).index({ page: 2 })

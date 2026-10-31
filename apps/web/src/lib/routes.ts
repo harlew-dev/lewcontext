@@ -80,9 +80,14 @@ export function authPath(page: string, next: unknown): string {
   return path ? `${page}?next=${encodeURIComponent(path)}` : page;
 }
 // Navigation state the sign-in pages pass each other, rather than the URL, so
-// an email stays out of history and server logs: the email typed so far, and
-// whether the password was just reset.
-export type AuthPageState = { email?: string; passwordReset?: boolean };
+// an email stays out of history and server logs: the email typed so far,
+// whether the password was just reset, and whether the account was just
+// deleted (account settings sends you to login afterwards).
+export type AuthPageState = {
+  email?: string;
+  passwordReset?: boolean;
+  accountDeleted?: boolean;
+};
 export function authPageState(state: unknown): AuthPageState {
   if (typeof state !== "object" || state === null) return {};
   return {
@@ -91,7 +96,19 @@ export function authPageState(state: unknown): AuthPageState {
         ? state.email
         : undefined,
     passwordReset: "passwordReset" in state && state.passwordReset === true,
+    accountDeleted: "accountDeleted" in state && state.accountDeleted === true,
   };
+}
+// Navigation state for onboarding: the name of the workspace just deleted,
+// when it was the account's last one (onboarding then says so; a toast would
+// be lost as the app layout unmounts).
+export type OnboardingState = { deletedWorkspace?: string };
+export function onboardingState(state: unknown): OnboardingState {
+  if (typeof state !== "object" || state === null) return {};
+  return "deletedWorkspace" in state &&
+    typeof state.deletedWorkspace === "string"
+    ? { deletedWorkspace: state.deletedWorkspace }
+    : {};
 }
 // The login page, returning to `path` afterwards.
 export function loginPath(path: string): string {
