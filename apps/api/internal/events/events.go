@@ -24,6 +24,7 @@ type Event interface {
 var Catalogue = []Event{
 	Registered{}, LoginAttempted{}, LoggedIn{}, RateLimited{}, LoggedOut{},
 	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
+	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
 	WorkspaceCreated{}, WorkspaceRenamed{},
 	ProjectCreated{}, ProjectUpdated{},
 }

@@ -33,6 +33,11 @@ func (s *Server) apiRoutes() *http.ServeMux {
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
 	mux.Handle("POST /api/auth/password/verify", s.requireSession(s.limitAuth(http.HandlerFunc(s.verifyPassword))))
 	mux.Handle("PUT /api/auth/password", s.requireSession(s.limitAuth(http.HandlerFunc(s.changePassword))))
+	// Password reset by link, signed out (password_reset.go). Requesting a
+	// link and checking one don't hash, so they take only the IP quota.
+	mux.HandleFunc("POST /api/auth/password-reset", s.requestPasswordReset)
+	mux.HandleFunc("POST /api/auth/password-reset/check", s.checkPasswordReset)
+	mux.Handle("PUT /api/auth/password-reset", s.limitAuth(http.HandlerFunc(s.resetPassword)))
 	mux.Handle("GET /api/workspaces", s.requireSession(http.HandlerFunc(s.workspaces)))
 	mux.Handle("POST /api/workspaces", s.requireSession(http.HandlerFunc(s.createWorkspace)))
 

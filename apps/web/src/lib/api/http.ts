@@ -57,8 +57,9 @@ async function request<T>(
       typeof data.field === "string" ? data.field : undefined,
     );
   }
-  if (response.status === 204) return undefined as T;
-  return response.json();
+  // 204, and 202 for work done later (a password reset link), carry no body.
+  const text = await response.text();
+  return (text === "" ? undefined : JSON.parse(text)) as T;
 }
 // Requests go to the same-origin /api (Go serves it; Vite proxies it in
 // development) with the session cookie; mutations add the session's CSRF

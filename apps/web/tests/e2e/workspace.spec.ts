@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 const stamp = Date.now();
 const email = `e2e-${stamp}@lewcontext.test`;
 const returnEmail = `e2e-${stamp}-next@lewcontext.test`;
@@ -8,6 +9,7 @@ const memberEmail = `e2e-${stamp}-member@lewcontext.test`;
 const ownerEmail = `e2e-${stamp}-owner@lewcontext.test`;
 const passwordEmail = `e2e-${stamp}-password@lewcontext.test`;
 const sidebarEmail = `e2e-${stamp}-sidebar@lewcontext.test`;
+const resetEmail = `e2e-${stamp}-reset@lewcontext.test`;
 const emails = [
   email,
   returnEmail,
@@ -16,6 +18,7 @@ const emails = [
   ownerEmail,
   passwordEmail,
   sidebarEmail,
+  resetEmail,
 ];
 const password = "A thoughtful test passphrase!";
 const workspaceUrl = /\/app\/(wsp_[0-9A-Za-z]{14})\/dashboard$/;
@@ -559,6 +562,88 @@ test("change password: checks the current one twice and signs out other sessions
   await page.getByLabel("Password", { exact: true }).fill(changed);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(workspaceUrl);
+});
+// The development mailbox the server writes email to (MAIL_FILE; make sets
+// it to tmp/mail.log in the repository).
+const mailbox =
+  process.env.MAIL_FILE ||
+  new URL("../../../../tmp/mail.log", import.meta.url).pathname;
+// The path of the newest reset link sent to `to`, once the server's worker
+// has written it (it polls every second).
+async function resetLinkFor(to: string): Promise<string> {
+  let link = "";
+  await expect
+    .poll(
+      () => {
+        let content = "";
+        try {
+          content = readFileSync(mailbox, "utf8");
+        } catch {
+          return "";
+        }
+        const messages = content
+          .split("\n==== ")
+          .filter((m) => m.includes(`To: ${to}\n`));
+        const match = messages
+          .at(-1)
+          ?.match(
+            /href="https?:\/\/[^/"]+(\/auth\/forgot-password\/[\w-]{43})"/,
+          );
+        link = match?.[1] ?? "";
+        return link;
+      },
+      { message: `a reset link for ${to} in ${mailbox}`, timeout: 15000 },
+    )
+    .not.toBe("");
+  return link;
+}
+test("forgot password: a link from the mailbox sets a new password once", async ({
+  page,
+}) => {
+  await register(page, resetEmail, "Robin Reset");
+  await page.context().clearCookies();
+  await page.goto("/auth/login");
+  await page.getByLabel("Email").fill(resetEmail);
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+  await expect(page).toHaveURL("/auth/forgot-password");
+  // The email came along in navigation state, not the URL.
+  await expect(page.getByLabel("Email")).toHaveValue(resetEmail);
+  await page.getByRole("button", { name: "Send reset link" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Check your email" }),
+  ).toBeVisible();
+  const link = await resetLinkFor(resetEmail);
+  const token = link.split("/").at(-1)!;
+  // The token travels only in request bodies, never in an API URL.
+  const apiURLs: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname.startsWith("/api/")) apiURLs.push(r.url());
+  });
+  await page.goto(link);
+  const reset = "A recovered test passphrase!";
+  await page.getByLabel("New password", { exact: true }).fill(reset);
+  await page.getByLabel("Confirm new password").fill(reset);
+  await page.getByRole("button", { name: "Set new password" }).click();
+  await expect(page).toHaveURL("/auth/login");
+  await expect(
+    page.getByText("Password updated. Sign in with your new password."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Email")).toHaveValue(resetEmail);
+  expect(apiURLs.filter((url) => url.includes(token))).toEqual([]);
+  // The old password no longer works; the new one does.
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Email or password" }),
+  ).toBeVisible();
+  await page.getByLabel("Password", { exact: true }).fill(reset);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL("/app/onboarding");
+  // The link worked once.
+  await page.goto(link);
+  await expect(
+    page.getByRole("heading", { name: "This link has expired" }),
+  ).toBeVisible();
 });
 test("unauthenticated API requests are rejected", async ({ request }) => {
   for (const path of [

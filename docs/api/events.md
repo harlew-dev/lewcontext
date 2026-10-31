@@ -2,7 +2,7 @@
 
 Code: `internal/events` (event types, request metadata, `Bus`, `Listen`, `Worker`), `internal/store/events.go` (`record`, `Record`, `EventScope`), `internal/store/deliveries.go` (the delivery queue). Plan: [plans/features/events.md](../../plans/features/events.md).
 
-The API records what happens (sign-ins, password changes, workspaces and projects created or changed) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. No listeners are registered yet.
+The API records what happens (sign-ins, password changes, workspaces and projects created or changed) as rows in the `events` table: an **audit trail**. **Listeners** react to events (emails, webhooks, indexing) without the handlers knowing about them: each event is queued for its listeners in `event_deliveries`, and a worker in the server delivers it. One listener is registered: `mail.password_reset` sends reset links ([mail.md](mail.md)).
 
 ## How an event is recorded
 
@@ -33,11 +33,14 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.registered` | `user`, `name`, `email` | `CreateUser` |
 | `auth.login_attempted` | `email`, `ip`, `user` (if the account exists), `result`: `succeeded` / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (not on registration or a password change) |
-| `auth.rate_limited` | `scope`: `ip` / `account`, `user` (when signed in) | `allowAuth`, only for the first refused request in a window |
+| `auth.rate_limited` | `scope`: the limit's name, e.g. `auth:per-ip`, `password-reset:per-email` ([auth.md](auth.md#rate-limits)), `user` (when signed in) | `allowAuth`, only for the first refused request in a window |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
 | `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` | both password endpoints, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
+| `auth.password_reset_requested` | `email`, `ip` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
+| `auth.password_reset_sent` | `user`, `email`, `request` (the requested event's `evt_` ID) | the `mail.password_reset` listener, after writing the link |
+| `auth.password_reset_completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
 | `workspace.renamed` | `workspace`, `changes.name` (`from`, `to`) | `RenameWorkspace`, only when the name changed |
@@ -47,7 +50,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 ## What's stored, and what never is
 
 - **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
-- **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted`, and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
+- **Personal data, on purpose:** the email typed and the connection IP on `auth.login_attempted` and `auth.password_reset_requested`, and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is the connection's: behind a proxy (or Vite's dev proxy) every attempt shows the proxy's IP, because forwarded headers aren't trusted.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `auth.rate_limited`, so a flood writes one row.
 - Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).
@@ -56,6 +59,9 @@ The API records what happens (sign-ins, password changes, workspaces and project
 
 ```go
 // cmd/server/main.go, before anything records an event:
+events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
+
+// or inline:
 events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.PasswordChanged, d events.Delivered) error {
 	// e is the decoded payload; d.EventID (evt_…) identifies the event.
 	return nil
@@ -64,7 +70,7 @@ events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.P
 
 - **Typed:** `Listen[E]` decodes the stored payload into `E`, so a listener only ever gets its own event type.
 - **Named:** the name (1–100 characters, unique) is stored with each delivery. Renaming a listener makes it a new one; deliveries queued for the old name are marked failed ("no listener").
-- **Registered in one place**, `cmd/server`, so a search shows everything that reacts to an event.
+- **Registered in one place**, `listen` in `cmd/server`, so a search shows everything that reacts to an event.
 - **Write listeners to run more than once.** Delivery is at least once: if a server stops after a listener ran but before it was marked delivered, it runs again. Key side effects on `d.EventID` (e.g. "email for `evt_…` already sent").
 - **Respect `ctx`.** Each run has a 30 s timeout; a listener that ignores its context can't be stopped.
 - **No ordering.** Events are claimed roughly oldest first, but retries and concurrent workers mean a listener may see a later event before an earlier one.

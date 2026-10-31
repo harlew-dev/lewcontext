@@ -55,8 +55,8 @@ func (s *Store) PasswordHash(ctx context.Context, userID int64) (string, error) 
 	return hash, err
 }
 
-// ChangePassword replaces the user's password hash, deletes every session of
-// theirs (sessionHash is the one making the change) and records
+// ChangePassword replaces the user's password hash, deletes their reset link
+// and every session of theirs (sessionHash is the one making the change) and records
 // auth.password_changed, in one transaction with the user row locked.
 // replace receives the current hash and returns the new one; an error from it
 // changes nothing.
@@ -71,6 +71,10 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 			return err
 		}
 		if _, err := tx.NewUpdate().Model((*account)(nil)).Set("password_hash = ?", hash).Where("id = ?", u.ID).Exec(ctx); err != nil {
+			return err
+		}
+		// A reset link requested before the change must not undo it.
+		if err := deletePasswordReset(ctx, tx, u.ID); err != nil {
 			return err
 		}
 		others, err := deleteSessions(ctx, tx, "user_id = ? AND token_hash <> ?", u.ID, sessionHash)

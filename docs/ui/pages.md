@@ -10,6 +10,8 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | --- | --- | --- |
 | `/` | `pages/home.tsx` | Public homepage, **prerendered** for search engines |
 | `/auth/login`, `/auth/register` | `pages/auth/*` | Signed out |
+| `/auth/forgot-password` | `pages/auth/forgot-password.tsx` | Signed out: asks for a reset link. Login passes the typed email in navigation state, not the URL (`authPageState`) |
+| `/auth/forgot-password/<token>` | `pages/auth/forgot-password/[token].tsx` | The reset link: checks it, then sets a new password and opens login with the email filled in. No `guestLoader`, so it works while signed in ([auth.md](../api/auth.md#password-reset-by-link)) |
 | `/app` | `pages/app/index.tsx` | Its loader redirects to the newest workspace's dashboard, onboarding, or login |
 | `/app/onboarding` | `pages/app/onboarding.tsx` | Signed in without a workspace: create the first one (`AuthLayout`) |
 | `/app/settings` | `pages/app/settings.tsx` | Account & security (per user) |

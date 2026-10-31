@@ -10,6 +10,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [api/endpoints.md](api/endpoints.md) | call or add an endpoint |
 | [api/auth.md](api/auth.md) | touch sign-in, sessions, CSRF, rate limits or security headers |
 | [api/events.md](api/events.md) | record something that happened (the `events` audit trail), or add an event type |
+| [api/mail.md](api/mail.md) | send an email, add a mail template, or read the development mailbox |
 | [api/pagination.md](api/pagination.md) | list, search or sort a resource |
 | [api/database.md](api/database.md) | write a query, add a migration or a table, or prune old rows (`make prune`) |
 | [api/seeding.md](api/seeding.md) | need fake data: factories, seeders, `make seed` |

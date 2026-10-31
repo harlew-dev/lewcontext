@@ -185,7 +185,7 @@ func requireRole(min string, next http.Handler) http.Handler {
 }
 func (s *Server) limitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.allowAuth(w, r, "ip", "ip:"+auth.Digest(clientIP(r)), 60) {
+		if !s.allowAuth(w, r, authPerIP, authPerIP.key(clientIP(r))) {
 			return
 		}
 		select {

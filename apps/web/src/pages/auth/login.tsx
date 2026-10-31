@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
-import { ErrorNotice } from "@/components/ui/feedback";
+import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
-import { authPath, routes } from "@/lib/routes";
+import { authPageState, authPath, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
 import type { Route } from "./+types/login";
@@ -18,7 +18,9 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return guestLoader(request);
 }
 export default function Login() {
-  const [email, setEmail] = useState("");
+  // After a password reset, the reset page passes the account's email.
+  const arrived = authPageState(useLocation().state);
+  const [email, setEmail] = useState(arrived.email ?? "");
   const [password, setPassword] = useState("");
   const api = useApi();
   const [search] = useSearchParams();
@@ -29,8 +31,13 @@ export default function Login() {
         onSubmit={(event) => submit(event, { email, password })}
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
-        <Logo />
+        <Logo href={routes.home} />
         <Heading>Sign in to your account</Heading>
+        {arrived.passwordReset && !error.message && (
+          <Notice variant="success">
+            Password updated. Sign in with your new password.
+          </Notice>
+        )}
         <ErrorNotice error={error} />
         <Field disabled={loading}>
           <Label>Email</Label>
@@ -56,6 +63,12 @@ export default function Login() {
             onChange={(e) => setPassword(e.currentTarget.value)}
           />
         </Field>
+        {/* The email goes along in navigation state, not the URL. */}
+        <Text>
+          <TextLink href={routes.forgotPassword} state={{ email }}>
+            <Strong>Forgot password?</Strong>
+          </TextLink>
+        </Text>
         <Button type="submit" className="w-full" loading={loading}>
           Sign in
         </Button>

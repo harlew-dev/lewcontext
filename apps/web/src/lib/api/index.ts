@@ -12,6 +12,7 @@ export type { WorkspaceIndexQuery } from "./workspaces";
 export type {
   Credentials,
   PasswordChange,
+  PasswordReset,
   Registration,
   SignedIn,
 } from "./auth";

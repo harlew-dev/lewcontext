@@ -47,6 +47,12 @@ describe("browser transport", () => {
       browserHttp("csrf").send("POST", "/api/auth/logout", {}),
     ).resolves.toBeUndefined();
   });
+  it("handles an empty 202 response", async () => {
+    stubFetch(new Response(null, { status: 202 }));
+    await expect(
+      browserHttp().send("POST", "/api/auth/password-reset", {}),
+    ).resolves.toBeUndefined();
+  });
   it("handles non-JSON upstream errors", async () => {
     stubFetch(new Response("bad gateway", { status: 502 }));
     await expect(

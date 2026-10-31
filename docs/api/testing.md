@@ -34,7 +34,8 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 
 - Set only the fields a test asserts on (with `State` or `Sequence`) and leave the rest random. See [seeding.md](seeding.md).
 - Don't write rows by hand, and don't set up data through API calls. The exception is when that endpoint is what's being tested: registration, login, rotation, logout, the session cap and the limiters go through the real endpoints.
-- To test rate limits, pre-fill counters (`factory.AuthAttempts` with `ForAccount`/`ForIP` and `Exhausted`) in a test whose requests haven't created the counter yet.
+- To test rate limits, pre-fill counters (`factory.AuthAttempts` with `ForAccount`/`ForIP`, or `ForLimit(name, subject)` for any limit, and `Exhausted`) in a test whose requests haven't created the counter yet.
+- Reset links: `factory.PasswordResets` with `ResetFor(userID)` (and `ExpiredReset`) keeps the raw `Token`. To test the listener end to end, `resetServer(t)` registers it with a `mailbox` driver and returns `deliver()`, which runs the worker once; `tokenIn` reads the link from a sent message.
 - A failing test prints `fake data seed N`; rerun it with `FAKER_SEED=N`.
 
 ## What to cover
@@ -51,6 +52,9 @@ factory.ProjectsIn(workspace.ID).Create(ctx, db, f, 45)
 | `TestAuthenticationAndProjectIsolation` | Register (no workspace yet), public IDs, cookies, digests, CSRF, creating a workspace, cross-user and cross-workspace 404, old routes gone, rotation, logout, idle/expiry, session cap, account limit |
 | `TestWorkspaceList`, `TestWorkspaceMembershipAndRoles` | Newest-first paging, list isolation, roles on rename, members on projects, outsiders and malformed IDs 404, name validation |
 | `TestAccountRateLimit`, `TestIPRateLimit` | 429 and `Retry-After` from pre-filled counters |
+| `TestPasswordReset*` (`password_reset_integration_test.go`) | Identical answers for known and unknown emails; the listener mails only real accounts and stores only the digest; check, reset, every session revoked, sign-in with the new password; a link works once (also under concurrency), dies on expiry, a newer request or a password change; malformed tokens; each reset limit (unknown emails count, 503 for everyone, a refused request spends no later limit); Origin and `MAIL_DRIVER=off` |
+| `internal/mail` tests | Every template renders; `<script>` and `<h1>` in a name come out escaped, `javascript:` links are filtered; bad recipients, unknown templates and wrong data send nothing; no `text/template`; the mailbox file is `0600` and appends; the listener (unknown email, digest matches the link, rerun replaces it, stale request dropped) |
+| `internal/config` tests | `MAIL_DRIVER` defaults, and `file` refused in production |
 | `TestProjectPagination` | Every sort across pages, past-the-end, filters, literal wildcards, isolation, bad parameters |
 | `TestEveryTableHasAFactory` | Each migrated table has a factory, and every factory inserts |
 | `TestFactoriesMatchValidation` | Fake values pass API validation |

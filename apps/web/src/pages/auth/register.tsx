@@ -34,7 +34,7 @@ export default function Register() {
         onSubmit={(event) => submit(event, { name, email, password })}
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
-        <Logo />
+        <Logo href={routes.home} />
         <Heading>Create your account</Heading>
         <ErrorNotice error={error} />
         <Field disabled={loading}>

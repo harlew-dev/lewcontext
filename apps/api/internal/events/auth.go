@@ -42,7 +42,8 @@ type LoggedIn struct {
 func (LoggedIn) EventName() string { return "auth.logged_in" }
 
 // RateLimited: a rate limit refused its first request in a window. Scope is
-// "ip" or "account"; User is set when a signed-in user hit it.
+// the limit's name, e.g. "auth:per-ip" or "password-reset:per-email"
+// (httpapi/limits.go); User is set when a signed-in user hit it.
 type RateLimited struct {
 	Scope string `json:"scope"`
 	User  string `json:"user,omitempty"`
@@ -90,3 +91,33 @@ type ProfileUpdated struct {
 }
 
 func (ProfileUpdated) EventName() string { return "auth.profile_updated" }
+
+// PasswordResetRequested: someone asked for a password reset link. Email is
+// as typed (trimmed, lowercased, and a valid address), whether or not an
+// account uses it: the request doesn't look the account up, so its response
+// can't tell. IP is the connection's address.
+type PasswordResetRequested struct {
+	Email string `json:"email"`
+	IP    string `json:"ip"`
+}
+
+func (PasswordResetRequested) EventName() string { return "auth.password_reset_requested" }
+
+// PasswordResetSent: a reset link was sent to an account's email, for the
+// request event Request (evt_…).
+type PasswordResetSent struct {
+	User    string `json:"user"`
+	Email   string `json:"email"`
+	Request string `json:"request"`
+}
+
+func (PasswordResetSent) EventName() string { return "auth.password_reset_sent" }
+
+// PasswordResetCompleted: a reset link set a new password, which signed out
+// every session of the account's.
+type PasswordResetCompleted struct {
+	User                 string `json:"user"`
+	OtherSessionsRevoked int    `json:"otherSessionsRevoked"`
+}
+
+func (PasswordResetCompleted) EventName() string { return "auth.password_reset_completed" }

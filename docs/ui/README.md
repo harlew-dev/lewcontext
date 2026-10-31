@@ -10,11 +10,11 @@ React 18, strict TypeScript, a single-page app on React Router v7 (framework mod
 | `root.tsx` | The HTML document, providers, default title/description, error boundary |
 | `entry.client.tsx`, `entry.server.tsx` | Hydration in the browser; build-time rendering of prerendered pages with Styletron collection |
 | `pages/home.tsx` | The public homepage (`/`, prerendered) |
-| `pages/auth/*` | Signed-out pages (`/auth/login`, `/auth/register`) |
+| `pages/auth/*` | Signed-out pages (`/auth/login`, `/auth/register`, `/auth/forgot-password` and its link page `forgot-password/[token]`) |
 | `pages/app/*` | Signed-in pages: `layout.tsx` (the layout route), `/app` (redirect), `/app/onboarding`, `/app/settings`, and per workspace `/app/[workspace]/dashboard`, `projects`, `projects/[project]`, `settings` ([pages.md](pages.md)) |
 | `components/ui/*` | Reusable Tailwind components on BaseUI ([design.md](design.md)) |
 | `components/layout/*` | Page chrome: `application-layout`, `sidebar-layout`, `auth-layout`, `status-page` |
-| `components/app/<feature>/*` | Feature UI shared by several pages (`projects`: table parts, dialog, editor hook, query helpers; `workspaces`: avatar, name field, create form and dialog) |
+| `components/app/<feature>/*` | Feature UI shared by several pages (`projects`: table parts, dialog, editor hook, query helpers; `workspaces`: avatar, name field, create form and dialog; `account`: the password fields shared by the change-password dialog and the reset link page) |
 | `lib/api/*` | The typed API client, one file per resource: `const api = useApi()`, `api.projects(ws).create()`, `paths.projects(ws).index()`, `api.workspaces().create()` ([api.md](api.md)) |
 | `lib/*` | Other non-visual helpers: `session` (`useSession`), `use-action` (`useAction` for mutations), `use-delayed-loading` (`useDelayedLoading`: show a loading state only after 200 ms), `use-docked-sidebar` (`useDockedSidebar`: the desktop sidebar, remembered on this device), `format` (`formatDate`, `formatDateTime`, in UTC), `workspace` (`useWorkspace`, `useWorkspaceList`), `loaders` (route loaders), `use-resource`, `use-resource-pages`, `pagination`, `ids`, `routes`, `return-focus`, `baseui`, `interactive`, `styletron` |
 | `types/*` | Domain types and constants per resource (`types/projects.ts`, `types/workspaces.ts`) |

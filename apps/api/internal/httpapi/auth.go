@@ -7,8 +7,10 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/store"
+	"log/slog"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,10 +26,16 @@ type credentials struct {
 // register share. The 12-character minimum is a sign-up rule (strongPassword),
 // so accounts created another way, such as the development seed, can sign in.
 func validCredentials(in *credentials) bool {
-	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 	in.Name = strings.TrimSpace(in.Name)
-	address, err := mail.ParseAddress(in.Email)
-	return err == nil && address.Address == in.Email && len(in.Email) <= 254 && passwordInBounds(in.Password)
+	return validEmail(&in.Email) && passwordInBounds(in.Password)
+}
+
+// validEmail trims and lowercases an email, then checks it is a bare address
+// of at most 254 bytes.
+func validEmail(email *string) bool {
+	*email = strings.ToLower(strings.TrimSpace(*email))
+	address, err := mail.ParseAddress(*email)
+	return err == nil && address.Address == *email && len(*email) <= 254
 }
 
 // passwordInBounds is the shape any password a request sends must have: not
@@ -39,16 +47,19 @@ func strongPassword(password string) bool {
 	return utf8.RuneCountInString(password) >= 12
 }
 func (s *Server) accountLimit(w http.ResponseWriter, r *http.Request, email string) bool {
-	return s.allowAuth(w, r, "account", "account:"+auth.Digest(email), 10)
+	return s.allowAuth(w, r, authPerAccount, authPerAccount.key(email))
 }
 
-// allowAuth counts an attempt against a rate limit and answers 429 when it is
-// used up. The first refusal in a window records auth.rate_limited; the ones
-// after it don't, so a flood writes one event.
-func (s *Server) allowAuth(w http.ResponseWriter, r *http.Request, scope, key string, limit int) bool {
-	allowed, firstRefusal, err := s.Store.AllowAuth(r.Context(), key, limit)
+// allowAuth counts an attempt against a rate limit under key and answers 429
+// when it is used up. The first refusal in a window records
+// auth.rate_limited; the ones after it don't, so a flood writes one event.
+func (s *Server) allowAuth(w http.ResponseWriter, r *http.Request, l rateLimit, key string) bool {
+	allowed, firstRefusal, err := s.Store.AllowAuth(r.Context(), key, l.limit, l.window)
 	if err == nil && firstRefusal {
-		e := events.RateLimited{Scope: scope}
+		if l.busy != "" {
+			slog.Warn("a rate limit shared by everyone was reached", "limit", l.name, "window", l.window)
+		}
+		e := events.RateLimited{Scope: l.name}
 		var subject store.EventScope
 		if session, ok := optionalSession(r); ok {
 			e.User, subject.UserID = session.User.PublicID, session.User.ID
@@ -60,11 +71,23 @@ func (s *Server) allowAuth(w http.ResponseWriter, r *http.Request, scope, key st
 		return false
 	}
 	if !allowed {
-		w.Header().Set("Retry-After", "900")
-		fail(w, 429, "Too many attempts. Try again in 15 minutes.")
+		w.Header().Set("Retry-After", strconv.Itoa(int(l.window.Seconds())))
+		if l.busy != "" {
+			fail(w, 503, l.busy)
+		} else {
+			fail(w, 429, "Too many attempts. Try again in "+waitFor(l.window)+".")
+		}
 		return false
 	}
 	return true
+}
+
+// waitFor says how long a window is: "15 minutes" or "an hour".
+func waitFor(d time.Duration) string {
+	if d == time.Hour {
+		return "an hour"
+	}
+	return strconv.Itoa(int(d.Minutes())) + " minutes"
 }
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var in credentials

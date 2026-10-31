@@ -7,6 +7,7 @@ import (
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/mail"
 	"lewcontext/api/internal/store"
 	"lewcontext/api/internal/web"
 	"log/slog"
@@ -37,10 +38,12 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	// Listeners register on the bus here, before anything records an event:
-	//   events.Listen(bus, "mail.password_changed", mail.PasswordChanged)
 	bus := events.NewBus()
 	repository := &store.Store{DB: db, Listeners: bus}
+	// Listeners register on the bus here, before anything records an event.
+	if err := listen(bus, repository, c); err != nil {
+		return err
+	}
 	api, err := httpapi.New(repository, c)
 	if err != nil {
 		return err
@@ -90,6 +93,21 @@ func run() error {
 			return err
 		}
 	}
+}
+
+// listen registers every listener. Without email delivery (MAIL_DRIVER=off)
+// nothing sends a reset link, and the API refuses to take requests for one.
+func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
+	if c.MailDriver == config.MailOff {
+		return nil
+	}
+	mailer, err := mail.New(&mail.FileDriver{Path: c.MailFile})
+	if err != nil {
+		return err
+	}
+	slog.Info("mail goes to the development mailbox", "file", c.MailFile)
+	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
+	return nil
 }
 
 // servePages adds the embedded web build. Production requires it; in

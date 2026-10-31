@@ -6,7 +6,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 
 | Package | Owns |
 | --- | --- |
-| `cmd/server` | Startup (with the embedded web build when there is one), event listeners and the delivery worker, HTTP server timeouts, 15-minute cleanup of expired sessions and limits, graceful shutdown |
+| `cmd/server` | Startup (with the embedded web build when there is one), event listeners and the delivery worker, HTTP server timeouts, 15-minute cleanup of expired sessions, limits and reset links, graceful shutdown |
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
@@ -16,6 +16,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/web` | Serving the embedded web build: prerendered pages, the SPA fallback, assets, page security headers and CSP hashes |
 | `internal/store` | Bun models and every query, scoped by the user's workspace membership |
 | `internal/auth` | Argon2id passwords, random tokens, digests, cookies |
+| `internal/mail` | Email from embedded `html/template` files (`mailer.Send`), the development mailbox driver, and the password reset listener ([mail.md](mail.md)) |
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
@@ -70,6 +71,8 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `APP_ORIGIN` | `http://localhost:3000` | Exact origin allowed for mutations; HTTPS in production |
 | `API_ADDR` | `127.0.0.1:8080` | Listen address (loopback by default); `make serve` uses `127.0.0.1:3000` |
 | `API_URL` | `http://127.0.0.1:8080` | Only for Vite's dev proxy (`make dev`, `make web`) |
+| `MAIL_DRIVER` | `file`; `off` in production | `file` writes email to `MAIL_FILE`; `off` sends nothing, so password reset answers 503. Production refuses `file` ([mail.md](mail.md)) |
+| `MAIL_FILE` | `tmp/mail.log` | The development mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
 
@@ -77,4 +80,4 @@ Without a web build, the server serves the API only in development (Vite serves 
 
 ## More
 
-[endpoints.md](endpoints.md) · [auth.md](auth.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)
+[endpoints.md](endpoints.md) · [auth.md](auth.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)

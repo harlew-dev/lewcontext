@@ -5,6 +5,10 @@ ifneq (,$(wildcard .env))
 include .env
 export
 endif
+# Development email goes to one mailbox file whichever directory a target runs
+# from (MAIL_DRIVER=file); make test-e2e reads reset links from it.
+MAIL_FILE ?= $(CURDIR)/tmp/mail.log
+export MAIL_FILE
 .PHONY: help install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-up docker-migrate docker-seed docker-down
 help:
 	@echo 'Targets: install migrate migrate-status migrate-rollback migrate-fresh migration seed prune dev api web web-build build serve test test-integration test-e2e check db docker-dev docker-up docker-migrate docker-seed docker-down'

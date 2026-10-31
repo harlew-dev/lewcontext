@@ -34,6 +34,8 @@ services:
       DATABASE_URL: postgresql://lewcontext:password@postgres:5432/lewcontext?sslmode=disable
       APP_ENV: development
       APP_ORIGIN: http://localhost:3000
+      # Development mailbox for password reset links: docker compose exec app cat /tmp/mail.log
+      MAIL_FILE: /tmp/mail.log
       # Used only by the explicit seed command (make docker-seed).
       DEMO_PASSWORD: ${DEMO_PASSWORD:-password}
     ports:

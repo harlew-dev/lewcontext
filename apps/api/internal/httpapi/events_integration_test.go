@@ -158,7 +158,7 @@ func TestRateLimitRecordedOnce(t *testing.T) {
 		call(t, h, "POST", "/api/auth/login", login, "", nil, 429)
 	}
 	e := onlyEvent(t, db, "auth.rate_limited")
-	if e.Payload["scope"] != "account" || !is(e.UserID, 0) {
+	if e.Payload["scope"] != "auth:per-account" || !is(e.UserID, 0) {
 		t.Fatalf("rate limited: %+v", e)
 	}
 	if len(eventsNamed(t, db, "auth.login_attempted")) != 0 {
@@ -173,7 +173,7 @@ func TestIPRateLimitRecorded(t *testing.T) {
 	for range 2 {
 		call(t, s.Routes(), "POST", "/api/auth/login", `{"email":"a@example.com","password":"anything at all"}`, "", nil, 429)
 	}
-	if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "ip" {
+	if e := onlyEvent(t, db, "auth.rate_limited"); e.Payload["scope"] != "auth:per-ip" {
 		t.Fatalf("rate limited: %+v", e)
 	}
 }

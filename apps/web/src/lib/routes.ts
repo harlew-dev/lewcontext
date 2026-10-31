@@ -16,6 +16,8 @@ export const routes = {
   workspaceSettings: (workspace: string) => `/app/${workspace}/settings`,
   login: "/auth/login",
   register: "/auth/register",
+  // Asks for a reset link; the link itself is /auth/forgot-password/<token>.
+  forgotPassword: "/auth/forgot-password",
 } as const;
 // Sidebar items for a workspace. Account & security is in the account menu
 // and workspace settings in the workspace menu instead.
@@ -65,6 +67,20 @@ export function returnPath(next: unknown): string | null {
 export function authPath(page: string, next: unknown): string {
   const path = returnPath(next);
   return path ? `${page}?next=${encodeURIComponent(path)}` : page;
+}
+// Navigation state the sign-in pages pass each other, rather than the URL, so
+// an email stays out of history and server logs: the email typed so far, and
+// whether the password was just reset.
+export type AuthPageState = { email?: string; passwordReset?: boolean };
+export function authPageState(state: unknown): AuthPageState {
+  if (typeof state !== "object" || state === null) return {};
+  return {
+    email:
+      "email" in state && typeof state.email === "string"
+        ? state.email
+        : undefined,
+    passwordReset: "passwordReset" in state && state.passwordReset === true,
+  };
 }
 // The login page, returning to `path` afterwards.
 export function loginPath(path: string): string {

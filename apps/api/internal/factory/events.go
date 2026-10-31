@@ -25,7 +25,7 @@ var Events = Define(func(f *gofakeit.Faker) Event {
 	now := time.Now()
 	return Event{
 		Name:      "auth.rate_limited",
-		Payload:   map[string]any{"scope": "ip"},
+		Payload:   map[string]any{"scope": "auth:per-ip"},
 		UserAgent: truncate(f.UserAgent(), 256),
 		CreatedAt: f.DateRange(now.AddDate(0, 0, -90), now),
 	}

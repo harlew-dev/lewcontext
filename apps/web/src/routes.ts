@@ -11,6 +11,11 @@ export default [
   index("pages/home.tsx"),
   route("auth/login", "pages/auth/login.tsx"),
   route("auth/register", "pages/auth/register.tsx"),
+  route("auth/forgot-password", "pages/auth/forgot-password.tsx"),
+  route(
+    "auth/forgot-password/:token",
+    "pages/auth/forgot-password/[token].tsx",
+  ),
   route("app", "pages/app/index.tsx"),
   route("app/onboarding", "pages/app/onboarding.tsx"),
   layout("pages/app/layout.tsx", [

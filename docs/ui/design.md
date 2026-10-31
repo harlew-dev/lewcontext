@@ -56,7 +56,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current`), `SidebarToggle` ([Sidebar layout](#sidebar-layout)) · `Navbar*` (`NavbarItem`, `NavbarLabel`) |
 | `heading.tsx` / `text.tsx` | `Heading level`, `Subheading` · `Text`, `TextLink`, `Strong`, `Code` |
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
-| `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` |
+| `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` (`href` makes it a link; the sign-in pages link it to `/`) |
 
 ## Toasts
 

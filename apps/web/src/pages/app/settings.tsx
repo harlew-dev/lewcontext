@@ -1,4 +1,9 @@
 import { useState, type FormEvent } from "react";
+import {
+  NewPasswordFields,
+  newPasswordProblems,
+  PasswordField,
+} from "@/components/app/account/password-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,13 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Divider } from "@/components/ui/divider";
 import { ErrorNotice } from "@/components/ui/feedback";
-import {
-  Description,
-  ErrorMessage,
-  Field,
-  FieldGroup,
-  Label,
-} from "@/components/ui/fieldset";
+import { Field, FieldGroup, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import {
   Input,
@@ -146,7 +145,6 @@ function PasswordControls() {
     </div>
   );
 }
-const minimumLength = 12;
 // Two steps: the current password, checked by the API before moving on, then
 // the new one. Saving sends the current password again, since the API checks
 // it on every change. The passwords live only in this dialog's state and are
@@ -257,26 +255,14 @@ function ChangePasswordDialog({
               disabled={loading}
             />
           ) : (
-            <FieldGroup>
-              <PasswordField
-                label="New password"
-                description={`At least ${minimumLength} characters.`}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={setNewPassword}
-                error={fieldErrors.newPassword}
-                disabled={loading}
-              />
-              <PasswordField
-                label="Confirm new password"
-                autoComplete="new-password"
-                value={confirmation}
-                onChange={setConfirmation}
-                error={fieldErrors.confirmation}
-                disabled={loading}
-                autoFocus={false}
-              />
-            </FieldGroup>
+            <NewPasswordFields
+              password={newPassword}
+              confirmation={confirmation}
+              onPasswordChange={setNewPassword}
+              onConfirmationChange={setConfirmation}
+              errors={fieldErrors}
+              disabled={loading}
+            />
           )}
         </DialogBody>
         <DialogActions>
@@ -295,54 +281,6 @@ function ChangePasswordDialog({
         </DialogActions>
       </form>
     </Dialog>
-  );
-}
-// Checks the browser can make before sending a new password.
-function newPasswordProblems(
-  password: string,
-  confirmation: string,
-): Record<string, string> {
-  if ([...password].length < minimumLength)
-    return { newPassword: `Use at least ${minimumLength} characters.` };
-  if (password !== confirmation)
-    return { confirmation: "The passwords don’t match." };
-  return {};
-}
-function PasswordField({
-  label,
-  description,
-  autoComplete,
-  value,
-  onChange,
-  error,
-  disabled,
-  autoFocus = true,
-}: {
-  label: string;
-  description?: string;
-  autoComplete: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  disabled: boolean;
-  autoFocus?: boolean;
-}) {
-  return (
-    <Field disabled={disabled}>
-      <Label>{label}</Label>
-      {description && <Description>{description}</Description>}
-      <Input
-        type="password"
-        autoComplete={autoComplete}
-        autoFocus={autoFocus}
-        required
-        maxLength={128}
-        invalid={Boolean(error)}
-        value={value}
-        onChange={(e) => onChange(e.currentTarget.value)}
-      />
-      {error && <ErrorMessage role="alert">{error}</ErrorMessage>}
-    </Field>
   );
 }
 function SessionControls() {

@@ -11,3 +11,5 @@ apps/api/internal/web/dist/*
 !apps/api/internal/web/dist/.gitkeep
 plans
 docs
+# The development mailbox holds working password reset links.
+**/tmp

@@ -1,14 +1,21 @@
 import { appName } from "@/lib/app";
 import { cx } from "@/lib/cx";
+import { Link } from "./link";
 // Wordmark: a small graph of linked nodes and the app name. Inherits text colour.
-export function Logo({ className }: { className?: string }) {
-  return (
-    <span
-      className={cx(
-        className,
-        "inline-flex items-center gap-2 text-zinc-950 dark:text-white",
-      )}
-    >
+// With `href` it's a link (e.g. to the homepage), named by the app name.
+export function Logo({
+  className,
+  href,
+}: {
+  className?: string;
+  href?: string;
+}) {
+  const classes = cx(
+    className,
+    "inline-flex items-center gap-2 text-zinc-950 dark:text-white",
+  );
+  const mark = (
+    <>
       <svg
         viewBox="0 0 24 24"
         className="size-6 fill-current stroke-current"
@@ -29,6 +36,13 @@ export function Logo({ className }: { className?: string }) {
         <circle cx="19" cy="19.5" r="1.75" />
       </svg>
       <span className="text-lg/6 font-semibold tracking-tight">{appName}</span>
-    </span>
+    </>
+  );
+  if (href === undefined) return <span className={classes}>{mark}</span>;
+  // w-fit: in a grid or flex column, only the wordmark itself is clickable.
+  return (
+    <Link href={href} className={cx(classes, "w-fit rounded-md")}>
+      {mark}
+    </Link>
   );
 }

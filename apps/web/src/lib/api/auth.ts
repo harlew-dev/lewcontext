@@ -12,9 +12,12 @@ export const authRoutes = {
   logout: () => "/api/auth/logout",
   password: () => "/api/auth/password",
   verifyPassword: () => "/api/auth/password/verify",
+  passwordReset: () => "/api/auth/password-reset",
+  checkPasswordReset: () => "/api/auth/password-reset/check",
 };
 export type ProfileInput = { name: string };
 export type PasswordChange = { currentPassword: string; newPassword: string };
+export type PasswordReset = { token: string; newPassword: string };
 export function auth(http: Http) {
   return {
     me: () => http.get(authRoutes.me()),
@@ -38,6 +41,22 @@ export function auth(http: Http) {
     changePassword: ({ currentPassword, newPassword }: PasswordChange) =>
       http.send<Session>("PUT", authRoutes.password(), {
         currentPassword,
+        newPassword,
+      }),
+    // Asks for a reset link. The API answers the same whether or not an
+    // account uses the email; the link arrives by email (in development, the
+    // server's mailbox file).
+    requestPasswordReset: (email: string) =>
+      http.send<void>("POST", authRoutes.passwordReset(), { email }),
+    // Checks a reset link still works; a dead one is an ApiError with field
+    // "token". The token goes in the body, never in an API URL.
+    checkPasswordReset: (token: string) =>
+      http.send<void>("POST", authRoutes.checkPasswordReset(), { token }),
+    // Sets a new password with a reset link. Every session ends, so nobody is
+    // signed in afterwards; returns the account's email for the login form.
+    resetPassword: ({ token, newPassword }: PasswordReset) =>
+      http.send<{ email: string }>("PUT", authRoutes.passwordReset(), {
+        token,
         newPassword,
       }),
   };
