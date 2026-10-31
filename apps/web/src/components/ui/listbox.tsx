@@ -239,6 +239,7 @@ export function Listbox<T extends string>({
     .map((option) => ({
       id: option.props.value,
       label: option.props.children,
+      text: textOf(option.props.children),
     }));
   const renderLabel = ({ option }: { option?: Option }) =>
     option?.label as ReactNode;
@@ -262,6 +263,9 @@ export function Listbox<T extends string>({
       aria-describedby={field?.describedBy}
       getOptionLabel={renderLabel}
       getValueLabel={renderLabel}
+      // BaseUI names the control "Selected <labelKey>. <aria-label>", so it
+      // needs the option's text, not its markup ("[object Object]").
+      labelKey="text"
       overrides={{
         Root: { component: ListboxRoot, props: { className } },
         ControlContainer: { component: ListboxButton },
@@ -285,6 +289,15 @@ export function Listbox<T extends string>({
       }}
     />
   );
+}
+// The text inside an option's markup, e.g. "Planned" from
+// <ListboxLabel>Planned</ListboxLabel>.
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (isValidElement<{ children?: ReactNode }>(node))
+    return textOf(node.props.children);
+  return "";
 }
 // Declares an option; Listbox reads its props, so it renders nothing itself.
 export function ListboxOption<T extends string>(

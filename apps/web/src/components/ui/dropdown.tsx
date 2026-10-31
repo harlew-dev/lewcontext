@@ -154,7 +154,8 @@ const itemClasses = cx(
   "*:data-[slot=avatar]:mr-2.5 *:data-[slot=avatar]:-ml-1 *:data-[slot=avatar]:size-6 sm:*:data-[slot=avatar]:mr-2 sm:*:data-[slot=avatar]:size-5",
 );
 // Text and icon colours for each item variant, before focus turns them white;
-// "danger" is for destructive actions (Delete).
+// "danger" is for destructive actions (Delete), and for Sign out in the
+// account menus.
 const itemVariants = {
   default:
     "text-zinc-950 *:data-[slot=icon]:text-zinc-500 dark:text-white dark:*:data-[slot=icon]:text-zinc-400",

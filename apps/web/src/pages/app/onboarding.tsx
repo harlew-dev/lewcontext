@@ -123,7 +123,7 @@ function AccountMenu() {
             </Text>
           </DropdownHeader>
           <DropdownDivider />
-          <DropdownItem onClick={signOut}>
+          <DropdownItem variant="danger" onClick={signOut}>
             <ArrowRightStartOnRectangleIcon />
             <DropdownLabel>Sign out</DropdownLabel>
           </DropdownItem>

@@ -80,7 +80,7 @@ function AccountDropdownMenu({
         </DropdownItem>
       )}
       <DropdownDivider />
-      <DropdownItem onClick={onSignOut}>
+      <DropdownItem variant="danger" onClick={onSignOut}>
         <ArrowRightStartOnRectangleIcon />
         <DropdownLabel>Sign out</DropdownLabel>
       </DropdownItem>

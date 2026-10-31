@@ -65,7 +65,7 @@ list.data        // the last loaded data, kept while a new path loads
 list.loading     // nothing loaded for this path yet → <ListSkeleton />
 list.error       // message → <Notice variant="error"> with Retry
 list.missing     // the API answered 404 → render "not found"
-list.refreshing  // revalidating in the background → <RefreshButton>
+list.refreshing  // revalidating in the background
 list.refresh()   // Retry, refresh, or after a mutation
 ```
 

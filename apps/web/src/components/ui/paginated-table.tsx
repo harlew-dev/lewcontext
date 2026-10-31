@@ -12,6 +12,7 @@ import {
   PaginationPrevious,
 } from "./pagination";
 import { Table, TableBody, TableHead } from "./table";
+import { Text } from "./text";
 type PaginatedTableProps<T> = {
   // The current page; undefined until it loads, or when it failed to load.
   page: Page<T> | undefined;
@@ -29,7 +30,8 @@ type PaginatedTableProps<T> = {
   empty: ReactNode;
   className?: string;
 };
-// A table of one API page with a page selector below it. Loading shows a
+// A table of one API page with a footer below it: which rows are showing on
+// the left, the page selector on the right. Loading shows a
 // skeleton; failures are left to the page's notices, which offer a retry.
 export function PaginatedTable<T>({
   page,
@@ -74,9 +76,21 @@ export function PaginatedTable<T>({
           }
         />
       )}
-      <PageSelector pages={page.pages} label={label} href={href} />
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        {page.data.length > 0 && (
+          <Text>{showing(page.pages, page.data.length)}</Text>
+        )}
+        <PageSelector pages={page.pages} label={label} href={href} />
+      </div>
     </div>
   );
+}
+// "Showing 21–40 of 57": the rows on this page, counted across every page.
+function showing(pages: Pages, rows: number) {
+  const first = (pages.current - 1) * pages.perPage + 1;
+  const last = first + rows - 1;
+  const range = first === last ? `${first}` : `${first}–${last}`;
+  return `Showing ${range} of ${pages.items}`;
 }
 function PageSelector({
   pages,
@@ -87,7 +101,7 @@ function PageSelector({
   // From past the end, "Previous" goes to the last page.
   const previous = Math.min(pages.current - 1, pages.total);
   return (
-    <Pagination aria-label={`${label} pages`} className="mt-6">
+    <Pagination aria-label={`${label} pages`} className="ml-auto">
       <PaginationPrevious href={previous >= 1 ? href(previous) : null} />
       <PaginationList>
         {pageRange(pages).map((item, index) =>

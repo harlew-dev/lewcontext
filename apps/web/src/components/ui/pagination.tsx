@@ -29,7 +29,7 @@ export function PaginationPrevious({
   children?: ReactNode;
 }) {
   return (
-    <span className={cx(className, "grow basis-0")}>
+    <span className={className}>
       <PageStep href={href} label="Previous page">
         <ArrowLongLeftIcon />
         {children}
@@ -47,7 +47,7 @@ export function PaginationNext({
   children?: ReactNode;
 }) {
   return (
-    <span className={cx(className, "flex grow basis-0 justify-end")}>
+    <span className={className}>
       <PageStep href={href} label="Next page">
         {children}
         <ArrowLongRightIcon />

@@ -72,6 +72,7 @@ So our classes transition on `data-closed` in both directions. Popovers instead 
 | `returnFocus` loses track of the opener (focus landed on "Skip to content") | `returnFocus={false}` and `<ReturnFocus opener>` (`lib/return-focus.tsx`) |
 | The toast's close icon can't be reached by keyboard | Our `DismissButton` replaces it (`toast.tsx`) |
 | `Select` positions its panel below the button | A popper.js modifier, `alignSelection`, opens it over the button (`listbox.tsx`) |
+| `Select` names the control "Selected <option's `labelKey`>. <aria-label>", which reads "Selected [object Object]." when the label is markup | Each option also gets `text`, the text inside its children, and `labelKey="text"` (`listbox.tsx`, `listbox.test.tsx`) |
 | Dialogs don't animate open under `make dev` | Not fixed; production animates. See below |
 
 ### Dialogs don't animate open in dev

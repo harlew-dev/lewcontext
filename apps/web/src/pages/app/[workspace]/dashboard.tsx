@@ -7,7 +7,6 @@ import {
   ProjectTableHead,
 } from "@/components/app/projects/project-table";
 import { statusColors } from "@/components/app/projects/project-display";
-import { RefreshButton } from "@/components/app/projects/refresh-button";
 import { useProjectEditor } from "@/components/app/projects/use-project-editor";
 import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,10 +58,6 @@ export default function Dashboard() {
       <div className="mt-14 flex items-end justify-between">
         <Subheading>Recent projects</Subheading>
         <div className="flex items-center gap-2">
-          <RefreshButton
-            refreshing={list.refreshing}
-            onRefresh={list.refresh}
-          />
           <Button plain href={routes.projects.index(workspace.id)}>
             View all
           </Button>

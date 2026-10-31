@@ -111,11 +111,7 @@ function MemberList() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Subheading>Members</Subheading>
-          <Text className="mt-1">
-            {list.data
-              ? memberCount(list.data.pages.items, Boolean(query.q))
-              : "Everyone with access to this workspace."}
-          </Text>
+          <Text className="mt-1">Everyone with access to this workspace.</Text>
         </div>
         <div className="flex w-full items-end gap-3 sm:w-auto">
           <div className="w-full sm:w-64">
@@ -195,10 +191,6 @@ function MemberList() {
       />
     </>
   );
-}
-function memberCount(items: number, filtered: boolean) {
-  const members = items === 1 ? "member" : "members";
-  return filtered ? `${items} matching ${members}` : `${items} ${members}`;
 }
 // Revalidates every cached list whose path `matches` (every page and
 // search). SWR keys are [path, userId].

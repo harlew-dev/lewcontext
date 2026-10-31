@@ -58,7 +58,8 @@ navigate(projectsPath(workspace.id, { ...query, page: 1, status }), { preventScr
 
 - **Loading:** a `ListSkeleton` before the first page. While another page loads, the previous page stays visible, dimmed, with `aria-busy`.
 - **Empty and past the end:** `empty` when nothing matches. A page past the end shows "There’s nothing on page N" and a "Go to last page" link.
-- **Selector:** below the table when there is more than one page. Previous and Next are disabled at the ends. Page numbers are hidden on small screens.
+- **Footer:** below the table, "Showing 21–40 of 57" on the left (the rows on this page out of every matching record; left out past the end) and the selector on the right. Pages don't repeat the count in their header.
+- **Selector:** only when there is more than one page. Previous, the page numbers and Next sit together at the right. Previous and Next are disabled at the ends. Page numbers are hidden on small screens.
 - **Errors** stay with the page's `Notice` (with Retry), not inside the table.
 
 ## Infinite lists

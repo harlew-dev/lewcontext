@@ -121,7 +121,7 @@ describe("workspace members", () => {
   it("offers actions only on rows an admin may manage, never their own", async () => {
     stubApi({ [`GET ${members}`]: { body: page } });
     renderAs("admin");
-    expect(await screen.findByText("5 members")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 1–5 of 5")).toBeInTheDocument();
     expect(within(await rowOf("Ada Lovelace")).getByText("You")).toBeVisible();
     for (const [name, actions] of [
       ["Ada Lovelace", false],
@@ -319,7 +319,7 @@ describe("invitations", () => {
       [`GET ${invitations}`]: invitationPage([]),
     });
     renderAs("owner");
-    expect(await screen.findByText("5 members")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 1–5 of 5")).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Pending invitations" }),
     ).toBeNull();

@@ -220,7 +220,7 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await page.getByRole("option", { name: "Planned", exact: true }).click();
   await expect(page.getByText("No matching projects")).toBeVisible();
   await page.getByRole("combobox", { name: /Filter by status/ }).click();
-  await page.getByRole("option", { name: "All statuses" }).click();
+  await page.getByRole("option", { name: "All", exact: true }).click();
   await page
     .getByRole("searchbox", { name: "Search projects" })
     .fill("not-a-match");
@@ -228,7 +228,7 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await expect(page.getByText("No matching projects")).toBeVisible();
   await page.getByRole("searchbox", { name: "Search projects" }).fill("");
   // Search applies after a 300 ms pause; wait for the full list to be current,
-  // or Refresh would reload the "not-a-match" search instead.
+  // or the refresh below would reload the "not-a-match" search instead.
   await expect(page).toHaveURL(`/app/${ws}/projects`);
   await expect(
     page.getByRole("link", { name: "Launch the good stuff" }).first(),
@@ -242,22 +242,21 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
       body: JSON.stringify({ error: "Temporary service interruption" }),
     }),
   );
-  await page.getByRole("button", { name: "Refresh projects" }).click();
-  await expect(
-    page
-      .getByRole("alert")
-      .filter({ hasText: "Temporary service interruption" }),
-  ).toBeVisible();
+  // A background refresh: SWR revalidates on focus, but ignores focus for 5 s
+  // after the list mounts, so keep focusing until one gets through.
+  const interruption = page
+    .getByRole("alert")
+    .filter({ hasText: "Temporary service interruption" });
+  await expect(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(interruption).toBeVisible({ timeout: 1_000 });
+  }).toPass();
   await expect(
     page.getByRole("link", { name: "Launch the good stuff" }).first(),
   ).toBeVisible();
   await page.unroute(projectLists);
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    page
-      .getByRole("alert")
-      .filter({ hasText: "Temporary service interruption" }),
-  ).toHaveCount(0);
+  await expect(interruption).toHaveCount(0);
   await paginate(page, ws);
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Account & security" }).click();
@@ -631,7 +630,7 @@ test("members: an owner changes a member to viewer, then removes them", async ({
     page.getByText("Terry Teammate was removed from Crew HQ."),
   ).toBeVisible();
   await expect(row).toHaveCount(0);
-  await expect(page.getByText("1 member", { exact: true })).toBeVisible();
+  await expect(page.getByText("Showing 1 of 1")).toBeVisible();
   expect((await teammate.request.get(`/api/workspaces/${crew}`)).status()).toBe(
     404,
   );
@@ -869,7 +868,7 @@ async function paginate(page: Page, ws: string) {
     expect(response.status()).toBe(201);
   }
   await page.goto(projects);
-  await expect(page.getByText("23 projects in this workspace")).toBeVisible();
+  await expect(page.getByText("Showing 1–20 of 23")).toBeVisible();
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(20);
   await expect(rows.first()).toContainText("Bulk 21");
@@ -878,6 +877,7 @@ async function paginate(page: Page, ws: string) {
   await expect(page).toHaveURL(`${projects}?page=2`);
   await expect(rows).toHaveCount(3);
   await expect(rows.last()).toContainText("Launch the good stuff");
+  await expect(page.getByText("Showing 21–23 of 23")).toBeVisible();
   await expect(pages.getByRole("link", { name: "Page 2" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -899,7 +899,7 @@ async function paginate(page: Page, ws: string) {
   await page.getByRole("searchbox", { name: "Search projects" }).fill("launch");
   await expect(page).toHaveURL(`${projects}?q=launch&sort=name`);
   await expect(rows).toHaveCount(1);
-  await expect(page.getByText("1 matching project")).toBeVisible();
+  await expect(page.getByText("Showing 1 of 1")).toBeVisible();
   await page.getByRole("searchbox", { name: "Search projects" }).fill("");
   await expect(page).toHaveURL(`${projects}?sort=name`);
   // Opening a URL directly renders the same page.
@@ -920,7 +920,7 @@ async function paginate(page: Page, ws: string) {
   await dialog.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(projects);
   await expect(rows.first()).toContainText("Fresh idea");
-  await expect(page.getByText("24 projects in this workspace")).toBeVisible();
+  await expect(page.getByText("Showing 1–20 of 24")).toBeVisible();
 }
 test("invitations: invite by email, join through the link as a new or existing account, revoke", async ({
   page,

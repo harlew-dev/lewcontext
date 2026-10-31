@@ -12,14 +12,12 @@ import {
   ProjectRow,
   ProjectTableHead,
 } from "@/components/app/projects/project-table";
-import { RefreshButton } from "@/components/app/projects/refresh-button";
 import { useProjectEditor } from "@/components/app/projects/use-project-editor";
 import { Button } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
-import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
@@ -55,11 +53,6 @@ export default function ProjectIndex() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="max-sm:w-full sm:flex-1">
           <Heading>Projects</Heading>
-          <Text className="mt-1">
-            {list.data
-              ? projectCount(list.data.pages.items, filtered)
-              : workspace.name}
-          </Text>
           <div className="mt-4 flex max-w-xl gap-4">
             <div className="flex-1">
               <SearchField
@@ -77,10 +70,6 @@ export default function ProjectIndex() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <RefreshButton
-            refreshing={list.refreshing}
-            onRefresh={list.refresh}
-          />
           {canCreate && (
             <Button onClick={() => editor.setDialog("new")}>
               <PlusIcon />
@@ -117,12 +106,6 @@ export default function ProjectIndex() {
     </>
   );
 }
-function projectCount(items: number, filtered: boolean) {
-  const projects = items === 1 ? "project" : "projects";
-  return filtered
-    ? `${items} matching ${projects}`
-    : `${items} ${projects} in this workspace`;
-}
 function StatusField({
   value,
   onChange,
@@ -137,7 +120,7 @@ function StatusField({
       onChange={onChange}
     >
       <ListboxOption value="all">
-        <ListboxLabel>All statuses</ListboxLabel>
+        <ListboxLabel>All</ListboxLabel>
       </ListboxOption>
       {statuses.map((item) => (
         <ListboxOption key={item} value={item}>

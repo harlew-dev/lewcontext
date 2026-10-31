@@ -86,9 +86,26 @@ describe("PaginatedTable", () => {
     renderTable(result(1, 1, [{ id: 1, name: "One" }]));
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
+  it("shows which rows are on the page, out of every page", () => {
+    renderTable(
+      result(2, 3, [
+        { id: 3, name: "Three" },
+        { id: 4, name: "Four" },
+      ]),
+    );
+    expect(screen.getByText("Showing 3–4 of 5")).toBeInTheDocument();
+    cleanup();
+    renderTable({
+      data: [{ id: 1, name: "One" }],
+      pages: { current: 1, total: 1, perPage: 2, items: 1 },
+    });
+    expect(screen.getByText("Showing 1 of 1")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
   it("offers the last page from past the end", () => {
     renderTable(result(9, 3, []));
     expect(screen.getByText("There’s nothing on page 9")).toBeInTheDocument();
+    expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Go to last page" }),
     ).toHaveAttribute("href", "/items?page=3");
