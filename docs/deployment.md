@@ -51,6 +51,7 @@ make build                                                     # or, without Doc
 | `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 | `SHUTDOWN_DELAY` | unset: `5s` | How long a stopping server keeps serving with readiness already 503, so the load balancer takes it out first; 0 to 60 s. See [Releasing](#releasing-a-new-version) |
 | `METRICS_STORE` | unset: `on` | Each server writes a minute's metrics to the database: a row per route with traffic, never a row per request. `off` stops it; `/metrics` and the logs still work. See [Metrics](#metrics) |
+| `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_FORMAT`, `ALERT_WEBHOOK_SECRET`, `ALERT_HEARTBEAT_URL`, `ALERT_ALLOW_PRIVATE_TARGETS` | unset (email to admins only), or an https receiver and a 32+ character secret | Where alerts go besides admins' email, and the dead man's switch ([Alerts](#alerts)). The URLs and the secret are secrets: keep them in the secret store |
 | `METRICS_ADDR`, `METRICS_TOKEN` | unset (off), or for example `10.0.0.5:9090` and 32 random characters | `/metrics` for Prometheus or similar, on a listener of its own, never the public one. **In production, anything but a loopback or private address (a literal address: `127.0.0.1`, `10.0.0.5`, `fd00::5`) is refused without `METRICS_TOKEN`**: every interface (`:9090`, `0.0.0.0`, `::`, with a zone or not), a public or link-local address, a host name, `localhost` too (use `127.0.0.1`). In a container that means a token ([Metrics](#metrics)). The token is a secret |
 | `SLOW_QUERY_MS` | unset: `500` | A query slower than this is logged at warn, without its values |
 | `LOG_FORMAT`, `LOG_LEVEL`, `ACCESS_LOG` | unset: `json`, `info`, `all` | The server's log on stdout: one JSON object per line, a line per request. `ACCESS_LOG=errors` keeps only failures and slow requests, for a log store that charges by size. See [Logs and health checks](#logs-and-health-checks) |
@@ -175,6 +176,14 @@ Each server counts requests by route, errors, rate-limit refusals, queries, deli
 
 `server_instances` lists the running servers, their version and a summary of their configuration (which settings are set, never a secret's value), and `server.started` and `server.stopped` events mark each start and graceful stop: a release shows as starts with a new version, a crash loop as starts without stops.
 
+## Alerts
+
+Alerts ([api/monitoring.md](api/monitoring.md#alerts)) are evaluated every minute by **one server at a time** (a PostgreSQL session advisory lock; the others stand by and take over within a minute if it stops or dies), so run any number of servers. They email every admin whose own setting asks for it (critical alerts by default; each admin changes theirs on the Admins page), with signal names and numbers only: no link into the dashboard, no key, no personal data. Needs working mail (`MAIL_DRIVER=smtp`); with `MAIL_DRIVER=off` alerts are only on the dashboard and in the webhook.
+
+- **A webhook** (`ALERT_WEBHOOK_URL`, `json` or `slack`; `ALERT_WEBHOOK_SECRET` to sign it) for chat or paging tools. Requests go only to that URL: https in production, no credentials in it, never followed through a redirect, 10 s at most, and **refused if the host is, or resolves to, a loopback, private or link-local address** unless you set `ALERT_ALLOW_PRIVATE_TARGETS=true` for an internal relay. Don't set that for a public receiver: it is the guard against the server being pointed at your own network.
+- **A heartbeat** (`ALERT_HEARTBEAT_URL`): the server pings it each minute after alerts were evaluated. Point it at Healthchecks.io, Better Stack or Cronitor with a period of 1 minute and a grace of a few, and have it page someone when the pings stop. That catches what nothing inside the app can: every server down, the database unreachable, or the alert loop wedged. **Run it beside the external uptime check on `GET /api/health`**, which catches the app being down for users.
+- **Test it** after setting it up: stop the servers for five minutes and see the heartbeat service alert; raise a harmless warning (a seeded one in staging) and see the email.
+
 ## Running several servers
 
 Everything that must be shared lives in PostgreSQL, so several `api` processes behind one load balancer work without sticky sessions:
@@ -275,7 +284,8 @@ Check each provider's own docs for current values.
 - [ ] The database roles aren't superusers: `migrate` as the owner, the servers, `prune` and `admin` as a runtime role without DDL ([Database roles](#database-roles)); the database isn't reachable from the internet.
 - [ ] The server's port is reachable only by the proxy (private interface, firewall, or Tunnel).
 - [ ] Migrations frozen (append-only) before the first real data.
-- [ ] `prune` scheduled daily for every target (`pseudonymise`, `events`, `audit_events`, `app_errors`, `request_hours`, `metric_hours`), its failures reported, and `prune.completed` showing on Events ([Retention and erasure](#retention-and-erasure)).
+- [ ] `prune` scheduled daily for every target (`pseudonymise`, `events`, `audit_events`, `app_errors`, `alerts`, `request_hours`, `metric_hours`), its failures reported, and `prune.completed` showing on Events ([Retention and erasure](#retention-and-erasure)).
+- [ ] Alerts: an admin with `critical` or `all` email on, working SMTP, `ALERT_HEARTBEAT_URL` set to a dead man's switch that pages someone, and an external uptime check; any webhook is https with `ALERT_WEBHOOK_SECRET`, and `ALERT_ALLOW_PRIVATE_TARGETS` unset unless it must reach an internal relay ([Alerts](#alerts)).
 - [ ] `METRICS_ADDR` unset, or on a private address the public can't reach, with `METRICS_TOKEN` (32+ random characters) in the secret store; `/metrics` never routed through the public proxy.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
 - [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `ADMIN_ROUTE_KEY_PREVIOUS` unset outside a rotation; `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; `ADMIN_ALLOWED_IPS` set to your own addresses where possible (with `CLIENT_IP_HEADER` behind a proxy), or Cloudflare Access or a VPN in front of `/admin/`; admins granted only to people who need it, as viewers unless they must act (`admin list`, the Admins page), and reviewed quarterly.

@@ -64,7 +64,7 @@ One table per database table: each personal-data field, why it's kept (purpose a
 | **Emails in events** (login attempts, reset requests, invitations, admin door) | readable for 30 days, then replaced by a keyed hash (`HMAC-SHA256` with a key derived from `APP_KEY`) | `pseudonymise` |
 | `app_errors` | 30 days after last seen | [observability](observability.md) |
 | `request_minutes`, `metric_minutes` / their hourly sums | 48 hours / 90 days | observability |
-| `alerts` | 1 year | [alerts](../../admin/alerts.md) |
+| `alerts` | 1 year | [alerts](alerts.md) |
 | `table_stats_daily` | 400 days | [monitoring](../../admin/monitoring.md) |
 | Sessions, limits, links, challenges, IP blocks | until they end | the server's cleanup |
 | Accounts, workspaces, projects | until deleted by their owner | self-service deletion |

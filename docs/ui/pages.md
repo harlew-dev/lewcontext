@@ -41,6 +41,8 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 
 `app/settings` and `app/onboarding` are fixed segments, so React Router ranks them above `app/:workspace/...`, and workspace IDs always start with `wsp_`, so they can't collide. There are no redirects from older URLs (`/app/dashboard`, `/app/projects/42`, `/login`).
 
+The admin dashboard's Alerts pages (`/admin/:key/alerts`, `/admin/:key/alerts/:alert`) are in [../api/admin.md](../api/admin.md#web-app).
+
 ## Signed-in pages
 
 Pages under `pages/app/` (except `/app` and onboarding) sit inside the **layout route** `pages/app/layout.tsx` in `routes.ts`. It wraps them in `ApplicationLayout`, which stays mounted between pages (including when switching workspaces), so sidebar state and the sliding current-page indicator survive navigation. A page renders only its content, reads the session with `useSession()` and the workspace with `useWorkspace()`, and fetches its own data. The layout wraps each page in `PageTransition` keyed by pathname, so a new page fades in ([design.md](design.md#styling-rules)):

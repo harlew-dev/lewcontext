@@ -225,6 +225,12 @@ func TestMonitoringSeeder(t *testing.T) {
 			t.Errorf("%s: %v, want %v", r.Name, r.Value, value)
 		}
 	}
+	// Three alerts: two open (one critical), one resolved; the seeder
+	// emails and posts nothing.
+	open, err := (&store.Store{DB: db}).IndexOpenAlerts(context.Background())
+	if err != nil || len(open) != 2 || open[0].Signal != "admin.door_refusals" && open[1].Signal != "admin.door_refusals" {
+		t.Fatalf("open alerts: %+v (%v)", open, err)
+	}
 	var unseeded int
 	if err := db.NewSelect().Model((*factory.Event)(nil)).ColumnExpr("count(*)").Where("NOT (payload->>'seeded')::boolean").Scan(context.Background(), &unseeded); err != nil || unseeded != 0 {
 		t.Fatalf("%d events not marked seeded (%v)", unseeded, err)

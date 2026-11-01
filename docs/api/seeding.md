@@ -75,6 +75,8 @@ factory.ProjectsIn(workspace.ID).
 - **Public IDs** are left empty and filled by PostgreSQL's default; `Create` reads them back (`workspace.PublicID`).
 - **Randomness:** fresh every run. When a test fails it logs `fake data seed N`, and `FAKER_SEED=N` replays it. Seeders print the seed too.
 
+The `monitoring` seeder also plants three alerts for the Alerts page (a critical open one, an acknowledged warning, a resolved one): rows only, so nothing is emailed or posted for them.
+
 ## Rules
 
 - **Every table has a factory, with its own Bun model** (separate from `store`'s on purpose). `TestEveryTableHasAFactory` fails for a table without one. Every factory's output is inserted into a freshly migrated schema, so a new required column also needs a factory value.

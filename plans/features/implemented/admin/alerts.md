@@ -1,6 +1,6 @@
 # Admin: Alerts
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A5 of the [admin plans](README.md). Needs [monitoring](monitoring.md) (its signals and integrity checks) and [observability](../implemented/admin/observability.md). Docs it will change: [admin.md](../../../docs/api/admin.md), `docs/api/monitoring.md`, [events.md](../../../docs/api/events.md), [mail.md](../../../docs/api/mail.md), [database.md](../../../docs/api/database.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md).
+Status: **implemented 2026-11-01** on the events branch, every recommendation in the Decisions table confirmed as written (the user's go-ahead); see [How the build differs](#how-the-build-differs). Plan A5 of the [admin plans](../../admin/README.md). Needs [monitoring](../../admin/monitoring.md) (its signals and integrity checks) and [observability](observability.md). Docs updated: [monitoring.md](../../../../docs/api/monitoring.md#alerts) (the Alerts section: the evaluator, rules, notices, email, webhook, heartbeat, outbound requests, tests), [admin.md](../../../../docs/api/events.md), [mail.md](../../../../docs/api/mail.md), [database.md](../../../../docs/api/database.md), [api/README.md](../../../../docs/api/README.md), [deployment.md](../../../../docs/deployment.md#alerts), [rate-limits.md](../../../../docs/api/rate-limits.md), [seeding.md](../../../../docs/api/seeding.md), [compliance.md](../../../../docs/compliance.md), [api/testing.md](../../../../docs/api/testing.md), [ui/testing.md](../../../../docs/ui/testing.md), [ui/forms-and-actions.md](../../../../docs/ui/forms-and-actions.md), and AGENTS.md and `docs/README.md` (the monitoring doc's rows).
 
 ## Why
 
@@ -51,11 +51,11 @@ CREATE INDEX alerts_opened_idx ON alerts(opened_at DESC);
 
 `admins` gains `alert_email text NOT NULL DEFAULT 'critical' CHECK (alert_email IN ('all', 'critical', 'none'))` (decision 4).
 
-Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when did we detect it and how fast did we respond" is evidence an auditor asks for ([compliance](../implemented/admin/compliance.md)).
+Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when did we detect it and how fast did we respond" is evidence an auditor asks for ([compliance](compliance.md)).
 
 ## What alerts, at first
 
-| Signal (from [monitoring](monitoring.md)) | Level | For |
+| Signal (from [monitoring](../../admin/monitoring.md)) | Level | For |
 | --- | --- | --- |
 | 5xx share over 1% / 5% | warn / critical | 5 min |
 | p95 latency over 1 s / 3 s | warn / critical | 10 min |
@@ -78,9 +78,9 @@ Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when d
 
 ### Email to admins
 
-- **Who:** every admin whose `alert_email` covers the level: `critical` (the default), `all`, or `none`. Each admin sets their own on the Admins page ([access hardening](../implemented/admin/access-hardening.md)); it's the only setting there that changes data without a code, since it only affects their own inbox.
+- **Who:** every admin whose `alert_email` covers the level: `critical` (the default), `all`, or `none`. Each admin sets their own on the Admins page ([access hardening](access-hardening.md)); it's the only setting there that changes data without a code, since it only affects their own inbox.
 - **When:** on opening, on escalating to critical, and on resolving (for alerts that were emailed). A **critical alert still open and not acknowledged is emailed again every 4 hours** (decision 5). More than 5 alerts opening within 10 minutes become one digest email.
-- **Kind:** operational mail to people who took on the admin role, not a workspace notification, so the opt-in rule in [mail.md](../../../docs/api/mail.md#who-gets-email-and-how-often) is met by the per-admin setting, defaulting to critical only. It isn't triggered by any request, so there's no per-email limit; the hysteresis and digest bound it.
+- **Kind:** operational mail to people who took on the admin role, not a workspace notification, so the opt-in rule in [mail.md](../../../../docs/api/mail.md#who-gets-email-and-how-often) is met by the per-admin setting, defaulting to critical only. It isn't triggered by any request, so there's no per-email limit; the hysteresis and digest bound it.
 - **Content:** the signal's title, level, value, when it opened, and a sentence of what it usually means. **No link containing the admin key, and no personal data** (decision 6): the email says "Open the admin dashboard to see the details". An email passes through the provider and sits in an inbox; the key and the IPs and addresses behind an alert stay in the dashboard.
 - Template `alert.html` / `.txt`, subject from a fixed set ("Critical alert: …", "Resolved: …"), signal titles fixed strings in Go.
 
@@ -101,7 +101,7 @@ Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when d
 | --- | --- |
 | `ALERT_HEARTBEAT_URL` | Optional. The leader `GET`s it every minute after a successful evaluation |
 
-A dead-man's switch: services such as Healthchecks.io, Better Stack or Cronitor alert when the pings stop. That catches what nothing inside the app can: every server down, the database unreachable, or the alert loop wedged. [deployment.md](../../../docs/deployment.md) will recommend it alongside the external uptime check.
+A dead-man's switch: services such as Healthchecks.io, Better Stack or Cronitor alert when the pings stop. That catches what nothing inside the app can: every server down, the database unreachable, or the alert loop wedged. [deployment.md](../../../../docs/deployment.md) will recommend it alongside the external uptime check.
 
 ## Alerts page
 
@@ -113,7 +113,7 @@ A dead-man's switch: services such as Healthchecks.io, Better Stack or Cronitor 
 - `GET /api/admin/alerts` (`state`: `open` (default), `resolved`, `all`; cursor pagination as Events) and `GET /api/admin/alerts/{alert}`, recorded as `admin.alert.listed` and `admin.alert.viewed`.
 - Open alerts first, critical before warn; each with its signal, value, peak, how long it's been open, acknowledged by whom, and a link to the monitoring page and the Events filter behind it.
 - **The sidebar's Alerts item shows a count** of open alerts, from `/api/admin/me` (which gains `openAlerts`), so it's visible from any page without another recorded read.
-- Acknowledging and silencing are [actions](../implemented/admin/actions.md).
+- Acknowledging and silencing are [actions](actions.md).
 
 ## Events
 
@@ -155,6 +155,29 @@ With a fake clock and factory data: an alert opens only after `For`; doesn't fla
 | 7 | Watching the app from outside | `ALERT_HEARTBEAT_URL` pinged each minute, plus the external uptime check in the deployment docs |
 | 8 | Webhook formats | Generic JSON and Slack's shape, signed with HMAC when a secret is set |
 | 9 | Keeping alerts | One year, through `prune` |
+
+## How the build differs
+
+Built on the events worktree (branch `admin-run/events`), after A4's parts 1–3 and the Data page. Also the housekeeping actions of [actions](actions.md#housekeeping-built-with-alerts) (acknowledge, silence, resolve an error group).
+
+**Different from the plan**
+- **The tables.** `alerts` is migration `062`, and `admins.alert_email` is edited into `014_create_admins` (migrations are squashed). `acknowledged_by` and the new `silenced_by` reference `users`, as `ip_blocks.created_by` does (`SET NULL`), not `admins`, so revoking admin keeps who acted. `alerts` gained `notified` (`mail`, `held`, `digest`, `quiet`), which records how its opening was told, so a late or repeated delivery decides the same; `details` holds the signal's drill-down and an integrity check's sample IDs, for the dashboard only.
+- **The leader is a session lock on a connection of its own** (`database.TryLeadAlerts`, `Leader.Check`/`Release`), re-checked every minute from `pg_locks`, with a transaction lock (`LockAlertWrites`) around every change as a second backstop beside the unique open-alert index.
+- **Rules are in `monitor.AlertRules`** (signal, `For`, `Hourly`, `From`, `Cap`, `Title`, `Meaning`). Two signals were added for them: `admin.sessions_moved` and `errors.new_frequent` (a new server group with 10 or more occurrences; a browser's group isn't counted, since any account can report one). Rows of the plan's table that have no signal to read were left out: "a server silent for 2 minutes" (a stopped server's row stays a day, so the live count can't say it) and "oldest event over 97 days" (prune isn't running: the Data page owns it). "Mixed versions 30 minutes after a start" is `integrity.servers_out_of_step`, whose own grace is the 30 minutes. `errors.new_panics` alerts as a warning (the signal's critical is not reached by a rule's cap), and the sign-up cluster only at its critical (20+), as a warning. "Possible takeover" and "success after failures" alert as their signal's level.
+- **Flood bounds beyond the plan's** (because anyone with an account can raise a level, [monitoring](../../admin/monitoring.md#how-the-build-differs)): an **hour's cooldown per signal** (a signal that opened an alert in the last hour opens its next one quiet), a **silence carried** to the signal's next alert, reminders **only for critical alerts**, and a digest at most every 10 minutes; escalation emails once more.
+- **Email recipients** are decided when the listener runs, from each admin's own `alert_email`; a partial failure (some admins sent, some not) is done and reported, not retried, so the others aren't emailed twice. Listeners are one per event kind (`mail.alert`, `mail.alert_escalated`, `mail.alert_reminded`, `mail.alert_resolved`, `mail.alert_digest`, and `alert.webhook`, `alert.webhook_escalated`, `…_reminded`, `…_resolved`): a listener decodes one event type. Added events: `alert.reminded` and `alert.digested`.
+- **Subjects** are built in Go from the signal's title (`AlertData.Subject`), checked against a strict shape by `mail.subjectOf` (a `titled` template), since the plan's fixed set of subjects can't name a signal.
+- **Outbound requests** (decision 8's webhook, decision 7's heartbeat) refuse non-public addresses in production at connection time, not only by URL, and `ALERT_ALLOW_PRIVATE_TARGETS` lifts that; the plan only asked for https in production.
+- **Each admin's setting** is shown on the Admins page as a `Listbox` and changed with `PATCH /api/admin/me` (any role, no code), not a column per admin that an operator edits; the list also returns each admin's setting.
+- **The open count** (`openAlerts` in `/api/admin/me`) is read when the layout loads, so the sidebar's badge is as of the page load.
+- **Silencing** is `POST …/silence` with a length (`1h`, `4h`, `24h`), recorded as `admin.alert.silenced` (see [actions](actions.md#housekeeping-built-with-alerts)).
+- **No Alerts tile on the Overview**; the count is in the sidebar. `make seed only=monitoring` plants three alerts (rows only: nothing is emailed or posted).
+
+**Not done**
+- A tile for open alerts on the Overview; a **webhook-level cooldown** (every alert event is posted, unlike email); alerts for the plan's two left-out rows.
+- The coverage by Playwright is one flow (`admin-alerts.spec.ts`); the email and webhook paths are covered by Go tests with real PostgreSQL, a fake driver and a local receiver.
+
+**Security notes** (for the independent review): outbound HTTP is in `internal/alerts/outbound.go` (the guard, no redirects, bounded answers, no URL in errors) and `config/alerts.go`; the content test is `TestAlertContentHoldsNoSecretsOrPersonalData`; the leader is `TestAlertLeader`.
 
 ## Not included
 

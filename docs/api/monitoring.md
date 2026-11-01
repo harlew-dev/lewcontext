@@ -1,6 +1,6 @@
 # Monitoring
 
-Code: `internal/monitor` (every signal and its thresholds, the pages, their windows), `internal/store/monitor.go` (shared helpers: bucketed counts, metric rows across the minute and hour tables, live limit windows) and `monitor_overview.go`, `monitor_security.go`, `monitor_limits.go`, `monitor_ips.go`, `monitor_accounts.go`, `monitor_workspaces.go`, `monitor_usage.go`, `monitor_integrity.go`, `monitor_performance.go`, `monitor_errors.go`, `monitor_configuration.go` (each page's queries), `workspace_tables.go` (the workspace-tables registry), `internal/httpapi/endpoints/admin/monitoring.go` (`admin.Monitoring.Show`) `ip_addresses.go` (`admin.IPAddresses.Show`, one address) and `errors.go` (`admin.Errors.Show`, one error group), `internal/seed/monitoring.go`, `monitoring_abuse.go` and `monitoring_health.go` (`make seed only=monitoring`). Web: `pages/admin/[key]/monitoring/index.tsx`, `security.tsx`, `limits.tsx`, `ips.tsx`, `ips/[ip].tsx`, `accounts.tsx`, `workspaces.tsx`, `usage.tsx`, `integrity.tsx`, `performance.tsx`, `errors.tsx`, `errors/[error].tsx`, `configuration.tsx`, `components/app/admin/monitoring.tsx` and `errors.tsx`. Plan: [monitoring](../../plans/features/admin/monitoring.md) (A4), shipped page by page: **part 1 is the groundwork, the Overview, Security and Rate limits; part 2 IP addresses (and one address), Accounts, Workspaces and Usage; part 3 Integrity, Performance, Errors (and one group) and Configuration**. The Data page (and `prune.completed`) comes after.
+Code: `internal/monitor` (every signal and its thresholds, the pages, their windows), `internal/store/monitor.go` (shared helpers: bucketed counts, metric rows across the minute and hour tables, live limit windows) and `monitor_overview.go`, `monitor_security.go`, `monitor_limits.go`, `monitor_ips.go`, `monitor_accounts.go`, `monitor_workspaces.go`, `monitor_usage.go`, `monitor_integrity.go`, `monitor_performance.go`, `monitor_errors.go`, `monitor_configuration.go` (each page's queries), `workspace_tables.go` (the workspace-tables registry), `internal/httpapi/endpoints/admin/monitoring.go` (`admin.Monitoring.Show`) `ip_addresses.go` (`admin.IPAddresses.Show`, one address) and `errors.go` (`admin.Errors.Show`, one error group), `internal/seed/monitoring.go`, `monitoring_abuse.go` and `monitoring_health.go` (`make seed only=monitoring`). Web: `pages/admin/[key]/monitoring/index.tsx`, `security.tsx`, `limits.tsx`, `ips.tsx`, `ips/[ip].tsx`, `accounts.tsx`, `workspaces.tsx`, `usage.tsx`, `integrity.tsx`, `performance.tsx`, `errors.tsx`, `errors/[error].tsx`, `configuration.tsx`, `components/app/admin/monitoring.tsx` and `errors.tsx`. Plan: [monitoring](../../plans/features/admin/monitoring.md) (A4); alerts, below, are [A5](../../plans/features/implemented/admin/alerts.md), shipped page by page: **part 1 is the groundwork, the Overview, Security and Rate limits; part 2 IP addresses (and one address), Accounts, Workspaces and Usage; part 3 Integrity, Performance, Errors (and one group) and Configuration**. The Data page (and `prune.completed`) comes after.
 
 The app already records what an operator needs to spot trouble (every sign-in attempt and its result, every limit reached, request rates and latency, grouped errors). These pages turn each of those into a **signal**: a number with the levels at which it's a problem, a chart over time, and a link to the rows behind it. The dashboard runs inside the app it watches, so it can't say the app is down; an external uptime check does ([deployment.md](../deployment.md#logs-and-health-checks)).
 
@@ -34,7 +34,7 @@ The app already records what an operator needs to spot trouble (every sign-in at
 
 ## Signals (`internal/monitor`)
 
-Each signal is defined once, in Go (decision 2): its name (stable: alerts and these docs use it), its page, label, unit and window, its **warn** and **critical** thresholds (0: no such level), an optional **minimum sample** (below it the level is `ok` whatever the value: a share of a handful means nothing), how it's measured (a store query), and its drill-down. **A value at or over a threshold is at that level**, the higher winning. Thresholds change only by a reviewed commit, and this table with them. **Anyone with an account can raise a level**: their own wrong passwords, codes and password checks, junk emails at sign-in, limits they reach on purpose. A level says something is happening, not that it's an attack on someone else, so the alerts that will read these ([alerts](../../plans/features/admin/alerts.md)) must allow for a level raised on purpose, to cry wolf or to hide something else in the noise. Alerts ([alerts](../../plans/features/admin/alerts.md)) will read the same definitions.
+Each signal is defined once, in Go (decision 2): its name (stable: alerts and these docs use it), its page, label, unit and window, its **warn** and **critical** thresholds (0: no such level), an optional **minimum sample** (below it the level is `ok` whatever the value: a share of a handful means nothing), how it's measured (a store query), and its drill-down. **A value at or over a threshold is at that level**, the higher winning. Thresholds change only by a reviewed commit, and this table with them. **Anyone with an account can raise a level**: their own wrong passwords, codes and password checks, junk emails at sign-in, limits they reach on purpose. A level says something is happening, not that it's an attack on someone else, so the [alerts](#alerts) that read these allow for a level raised on purpose, to cry wolf or to hide something else in the noise. Alerts read the same definitions.
 
 A signal's span is its window before now, its start floored to the window's bucket as the Events page floors the same window (an hour to the minute, a day to 30 minutes), so its drill-down covers the rows it counted (and any recorded since). **Only some drill-downs list exactly the rows counted** (`drillExact: true`): failed sign-ins, the unknown-account share (the attempts it's a share of), limit windows reached and sign-ups. The others list the events the number was counted from, which is more: stuffing and guessing (every attempt in the hour, not only the address's or email's), success after failures, takeovers (every such change), failed codes and password checks (every failure, not only the accounts' at 3+), the reset and shared limits (every `rate_limit.reached`), the sign-up limit, and the admin door (its failures' list holds the refusals of real credentials too, and the refusals' list the wrong passwords: the Events page has no filter for one result). The Events page has no filter that would make them exact, and none was added for it. `TestSignalsAreWellFormed` checks names are unique, every drill-down names only catalogue names or groups and a window the Events page takes, and warn is below critical.
 
@@ -53,6 +53,7 @@ A signal's span is its window before now, its start floored to the window's buck
 | `auth.sign_up_limit_used` | Security | `register:global`'s live window, its hits as a share of its 1,000 | 1 h | 50% / 100% |
 | `admin.door_failures` | Security | `admin.login_attempted` with `wrong_password` or `unknown_account` | 24 h | 1 / – |
 | `admin.door_refusals` | Security | `admin.login_attempted` with `not_admin` or `mfa_off`, and `admin.access_refused`: someone holds the key, and maybe a real password | 24 h | – / 1 |
+| `admin.sessions_moved` | Security | `admin.session.moved`: an admin session used from another network than it signed in from | 1 h | 1 / – |
 | `limits.shared_reached` | Rate limits | windows reached of the limits shared by everyone (`*:global`): a feature switched off for everyone | 1 h | – / 1 |
 | `limits.windows_reached` | Rate limits | every `rate_limit.reached` | 1 h | – |
 | `servers.live` | Configuration | servers heard from in the last 2 minutes (`server_instances`) | now | – |
@@ -64,6 +65,7 @@ A signal's span is its window before now, its start floored to the window's buck
 | `mail.failed_deliveries` | Mail | deliveries failed for good | 24 h | 1 / 10 |
 | `errors.new` | Errors | error groups first seen | 24 h | 1 / – |
 | `errors.new_panics` | Errors | …of them, panics | 24 h | – / 1 |
+| `errors.new_frequent` | Errors | new groups the server reported (a browser's don't count) that happened 10+ times | 24 h | 1 / – |
 | `errors.open` | Errors | open (unresolved) error groups | now | – |
 | `http.slowest_route_p95` | Performance | the highest p95 of the routes with 20+ requests | 1 h | 2 s / 5 s |
 | `db.round_trip` | Performance | a round trip to the database from the server reading the page (`PingContext`, taking a connection from the pool included) | now | – / 500 ms |
@@ -100,7 +102,7 @@ Plan levels this build doesn't measure: **hashing wait p95** (no histogram of th
 
 A grid of tiles, each an area with one or more signals: its worst level in words, its first signal as the number, the others listed under it with their levels, a sparkline over the page's window, and a link. Tiles: **Servers** (live, versions), **Requests**, **Server errors**, **Latency**, **Database** (round trip, minutes with pool waits), **Mail** (oldest waiting, failed), **Errors** (new, new panics, open), **Integrity** (critical and warning checks failing), **Failed sign-ins**, **Shared limits**, **Admin door** (refusals, failures), **Sign-ups** (sign-ups, active accounts).
 
-- **Links:** every tile links to its page (Configuration, Performance, Errors, Integrity, Security, Rate limits, Usage), Mail to the Mail page. **Alerts** has no tile until its page exists. With metric storage off on every live server (`metricsStore: "off"` in the answer, from the servers' summaries), Requests, Server errors and Latency say "Metric storage is off.": zero there isn't no traffic.
+- **Links:** every tile links to its page (Configuration, Performance, Errors, Integrity, Security, Rate limits, Usage), Mail to the Mail page. **Alerts** has no tile: its count is the sidebar's. With metric storage off on every live server (`metricsStore: "off"` in the answer, from the servers' summaries), Requests, Server errors and Latency say "Metric storage is off.": zero there isn't no traffic.
 - **Sparklines:** connections in use (the pool gauge's average per server) per bucket; requests, 5xx share and p95 per bucket from the request minutes (over 7 days, the hours summed so far and the minutes after them, so nothing is counted twice: `requestRows`); failed sign-ins, shared limits reached, the admin door's failures and refusals, and sign-ups per bucket from events.
 
 ## Security
@@ -250,6 +252,103 @@ From each server's configuration summary (`server_instances.config`, `config.Sum
 `users.last_seen_at` is when the account last used a session, to the hour. The session check (`store.FindSession`, behind `RequireSession` and the `/app/*` page gate) moves it **in the same statement** that refreshes the session's idle time, and only when it's null or over an hour old (`seenEvery`), so an active account costs one row write an hour and the check no extra round trip. It never records an event: it isn't something the account did, and an event an hour per account would fill the audit trail. It's null until the account's first signed-in request; an expired or idle session, or a suspended account's ([admin.md](admin.md#suspending-an-account): the same statement doesn't find its session), moves nothing. It never waits for the account's row (`FOR NO KEY UPDATE SKIP LOCKED`): changing the password or making a session locks the account and then its sessions, the other way round from the session check, so waiting could deadlock; a locked account's time just moves on its next request (`TestSessionCheckSkipsALockedAccount`). A partial index (`users_last_seen_idx`) serves counting the accounts seen since a time. `TestSessionCheckMovesLastSeenHourly` (`internal/store`) checks it, a suspended account's session included.
 
 **Before migrations become append-only:** the column is edited into `002_create_users` while migrations are squashed, so every database rebuilt since has it from an account's first request. A database that gains it by a migration instead starts with it null for every existing account, which the inactive-accounts list reads as "never seen" (`coalesce(last_seen_at, created_at)`), so an old account active yesterday would look inactive. That migration needs a backfill first: each account's newest `sessions.last_seen_at` or `auth.logged_in` event (kept 90 days), whichever is later.
+
+## Alerts
+
+Code: `internal/alerts` (`evaluator.go`, `runner.go`, `listeners.go`, `webhook.go`, `outbound.go`, `format.go`), `internal/monitor/alerts.go` (the rules), `internal/store/alerts.go` and `admin_alerts.go`, `internal/database/lock.go` (the locks), `internal/httpapi/endpoints/admin/alerts.go`, `alert_silence.go` and `me.go`, `internal/mail/templates/alert*.{html,txt}`, `cmd/server/alerts.go`. Web: `pages/admin/[key]/alerts.tsx` and `alerts/[alert].tsx`, `components/app/admin/alerts.tsx`. Plan: [alerts](../plans/features/implemented/admin/alerts.md) (A5).
+
+A dashboard only helps when someone looks at it, so a signal that stays at its warning or critical level **opens an alert**, which reaches admins by email and an optional webhook within minutes. An alert is a monitoring signal ([Signals](#signals-internalmonitor)) with a rule (`monitor.AlertRules`), so a page and its alert always agree.
+
+```
+every minute, on one server (the leader)
+  for each rule: read its signal ──▶ level ok / warn / critical (the rule may narrow it)
+  not ok for the rule's For ──▶ open an alert (alert.opened); raise a warning to critical in place (alert.escalated)
+  ok for 10 minutes ──▶ resolve it (alert.resolved)
+  every hour: the integrity rules, the same way
+  a critical alert still open, unacknowledged and not silenced, 4 hours after its last email ──▶ alert.reminded
+  openings past the burst limit ──▶ one digest (alert.digested)
+  then GET ALERT_HEARTBEAT_URL, if the evaluation worked
+
+alert.* events ── listeners (the delivery queue and its retries) ──▶ email to admins (mail.alert*)
+                                                                └─▶ webhook (alert.webhook*)
+```
+
+### One evaluator across servers
+
+Every `cmd/server` runs the loop (`alerts.Runner`), but each minute only the process holding a PostgreSQL **session advisory lock** evaluates (`database.TryLeadAlerts`: `pg_try_advisory_lock` on a connection of its own, keyed by a hash of a fixed name and the schema, never waiting). Others stand by and try again the next minute. The lock ends with its connection, so a server that dies hands it over within a minute; a server that stops releases it at shutdown (`Runner.Release`, before the database closes); and a leader that finds its lock gone (`Leader.Check` reads `pg_locks` each turn) lets go and stands by, forgetting what it remembered (an alert's `For` and its time back at ok), so the new leader delays an alert at worst and never doubles one. Backstops: every change to an alert takes a transaction lock (`database.LockAlertWrites`) before it reads what it decides by, and the unique index `alerts_open_signal_idx` allows one open alert per signal, so even two evaluators at once could neither open nor tell about the same thing twice. The leader's evaluation has a 30 s deadline.
+
+### Rules
+
+A signal alerts when it has a rule. `For` is how long it must stay at a level before an alert opens (no flapping: a signal back at ok starts it again); `Cap` and `From` narrow the level. Thresholds stay the signals' (the table above). Anyone with an account can raise some of these on purpose ([Signals](#signals-internalmonitor)); the bounds below keep that to a few emails an hour.
+
+| Signal | Level | For |
+| --- | --- | --- |
+| `http.server_error_share` | warn / critical | 5 min |
+| `http.latency_p95` | warn / critical | 10 min |
+| `integrity.overdue_deliveries` (the event worker is stalled) | critical | at once |
+| `mail.failed_deliveries` | warn / critical | at once |
+| `limits.shared_reached` | critical | at once |
+| `auth.stuffing_addresses` / `auth.stuffing_successes` | warn / critical | at once |
+| `auth.success_after_failures`, `auth.possible_takeovers` | critical / warn | at once |
+| `admin.door_refusals` | critical | at once |
+| `admin.sessions_moved` (new signal: `admin.session.moved` in the last hour) | warn | at once |
+| `integrity.servers_out_of_step` (its 30-minute grace is the check's) | warn | at once |
+| `errors.new_panics` (capped at warn), `errors.new_frequent` (new server groups with 10+ occurrences; a browser's don't count: anyone can report one) | warn | at once |
+| `db.pool_wait_minutes` | warn | at once (the signal is itself sustained) |
+| `auth.password_hash_busy` | warn | 5 min |
+| `ips.sign_up_cluster` (20+ accounts from one address: its critical, alerting as a warning) | warn | at once |
+| `integrity.ownerless_workspaces`, `workspaces_over_quota`, `admins_without_mfa` | critical | hourly check |
+
+The plan's "A server silent for 2 minutes" and "oldest event older than 97 days" rows have no signal to alert on yet (a stopped server's row stays a day, so the live count can't say "silent"; the Data page, built later, owns retention) and are left out; `servers.versions` isn't a rule because `integrity.servers_out_of_step` already waits out the release's 30 minutes. `TestAlertRulesAreWellFormed` checks every rule names a signal with a level to alert at, a sentence of meaning and no duplicate.
+
+### When an alert opens, and who is told
+
+- **Opening** records `alert.opened` (no actor, the signal's name, level and value) in the transaction that inserts the row, and decides there how it is told (`alerts.notified`), so a delivery that runs again or late decides the same: `mail` (emailed and posted), `held` (the burst limit: waiting for a digest, posted), `digest` (in a digest), `quiet` (nobody).
+- **Bounds against floods.** One open alert per signal, however long it lasts. A signal that opened an alert within the last hour (`store.AlertCooldown`) opens its next one `quiet`: a flapping signal, or someone raising a level on purpose again and again, is told about once an hour at most. More than 5 openings within 10 minutes (`AlertBurst`, `AlertBurstWindow`) become one digest email (at most one every 10 minutes), the others held. A critical alert still open, not acknowledged and not silenced is emailed again every 4 hours (`AlertRemindEvery`); warnings are never reminded. Escalating to critical emails once more, in place, whatever the opening was.
+- **Silenced** (below): nothing is emailed or posted for the alert or for another alert of its signal opening meanwhile (`runningSilence`: the silence is carried to the new alert), and listeners check again when they run, so a silence set after an event was recorded still holds.
+- **Resolving** emails again those admins whose alert was emailed, and posts, unless silenced.
+
+### Email to admins
+
+Operational mail to the people who took the admin role, not a workspace notification: each admin's own `admins.alert_email` is the opt-in (`all`, `critical`, the default, or `none`), set by that admin on the Admins page (`PATCH /api/admin/me {alertEmail}`, any role, no code: it changes only their own inbox; recorded as `admin.updated` with `changes.alertEmail`). It's triggered by no request, so there's no per-email limit; the bounds above stop a flood. Listeners (`alerts.Listen`): `mail.alert`, `mail.alert_escalated`, `mail.alert_reminded`, `mail.alert_resolved` and `mail.alert_digest`, each sending through **`mailer.Send`**, so the email block list holds (`ErrBlocked` is done). One admin's refusal doesn't hold up the rest; when some sends fail and some succeed, the failures are logged and reported as an error group and the delivery is done (a retry would email the others twice); when all fail it is retried like any email.
+
+**Content (decision 6):** fixed text and numbers only: the signal's title, the level's word, its value in its unit, when it opened (UTC), how long it was open, and one sentence of what it usually means. Never the admin key, a link of any kind (the email says "Open the admin dashboard"), an email address, an IP, an account or workspace name or a sample ID: those stay in the dashboard. Templates `alert` and `alert-digest` (`html/template`; the plain text separately), the subject built in Go from the signal's title (`AlertData.Subject`, checked against a strict shape by `mail.subjectOf`: `"Critical alert: …"`, `"Warning: …"`, `"Now critical: …"`, `"Still open: …"`, `"Resolved: …"`); a rule's `Title` replaces a label that only reads on its own page. `TestAlertContentHoldsNoSecretsOrPersonalData` renders every kind for every rule's signal, a digest, and the webhook's bodies in both formats, with an alert whose details hold an account's ID and email, and fails on the admin key, the origin, any URL or `href`, an email address, an IP, an ID or a name.
+
+### Webhook
+
+`ALERT_WEBHOOK_URL` (optional) gets every alert event as a `POST`, from the `alert.webhook*` listeners, so retries and failures are in the Mail page's queue (the same 1 s … 1 h schedule). `ALERT_WEBHOOK_FORMAT`: `json` (default) `{alert, event, state, signal, title, level, value, unit, openedAt, resolvedAt, meaning}`, or `slack` (`{text}` with Slack's escaping of `& < >`; the many tools that accept Slack's incoming-webhook shape). `ALERT_WEBHOOK_SECRET` (32+ characters, optional) signs the body: `X-Lewcontext-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body">`, so the receiver can check it's ours and refuse an old body played again. The body holds what an email does, nothing more.
+
+### Heartbeat: watching the watcher
+
+`ALERT_HEARTBEAT_URL` (optional) is `GET` by the leader after each evaluation that worked (so nothing is pinged when the evaluation fails or no server leads): a dead man's switch for Healthchecks.io, Better Stack or Cronitor, which alert when the pings stop, catching every server down, the database unreachable, or the alert loop wedged. [deployment.md](../deployment.md#alerts) recommends it beside the external uptime check.
+
+### Outbound requests (webhook and heartbeat)
+
+Both URLs come **only from configuration**, never from a request, and the client (`alerts.NewClient`) is careful anyway:
+- **Validated at startup** (`config.loadAlerts`): an absolute URL with a host, **https** in production (http only outside it), no user name or password in it, no fragment, no space or line break, at most 2,048 characters. In production a host that is `localhost` or a loopback, private or link-local address is refused unless **`ALERT_ALLOW_PRIVATE_TARGETS=true`** (an internal relay). Messages never repeat the value: a Slack webhook *is* its URL.
+- **Checked again at connection time** (`Dialer.Control`, in production unless allowed): the address actually dialled, after DNS, must be a public unicast address (`alerts.PublicAddress`: not loopback, private, link-local, multicast, unspecified, carrier-grade NAT, benchmarking, reserved, NAT64 or 6to4; an IPv4-mapped address is judged as its IPv4), so a name that resolves, or later resolves, to the server's own network (DNS rebinding) is refused with `ErrPrivateTarget`. **The remaining risk** if an operator allows private targets, or sets a URL at an attacker-controlled name in development, is an outbound request to wherever the configuration says: only an operator can set it.
+- **No redirects followed** (`ErrUseLastResponse`: a 3xx is a failure), **no proxy from the environment**, TLS 1.2 at least, certificates verified, 5 s to connect, 10 s (webhook) or 5 s (heartbeat) in all, **at most 4 KiB of an answer read** and then ignored; only a 2xx is success.
+- **Errors never hold the URL** (`withoutURL`), and the secret is never logged; the Configuration page and `server_instances.config` hold only whether each is set, the format, whether bodies are signed and whether private targets are allowed (`TestSummaryHoldsNoSecret`).
+
+### The Alerts page and housekeeping
+
+`GET /api/admin/alerts?state=open|resolved|all&before=alt_…&perPage=` (open by default: every open alert, critical first; the others newest first as a cursor page) and `GET /api/admin/alerts/{alert}`, recorded as `admin.alert.listed` and `admin.alert.viewed`. Each alert carries its signal's title, unit, page and thresholds, the rule's meaning, its `details` (the Events drill-down and an integrity check's sample public IDs: for the dashboard only), who acknowledged or silenced it, and how its opening was told. **`/api/admin/me`** gains `openAlerts` (the sidebar's count: not a recorded read) and `alertEmail`; the count is as of the page load.
+
+| Action | Route | Tier | Event |
+| --- | --- | --- | --- |
+| **Acknowledge** an open alert (stops its reminders; the alert stays open and its webhook posts go on) | `PATCH /api/admin/alerts/{alert} {acknowledged: true}` | housekeeping (`operator`, `admin-action:per-user`, no code, no reason) | `admin.alert.acknowledged` |
+| **Resolve** an error group (a new occurrence opens it again) | `PATCH /api/admin/errors/{error} {resolved: true}` | housekeeping | `admin.error.resolved` |
+| **Silence** an alert's signal for 1, 4 or 24 hours | `POST /api/admin/alerts/{alert}/silence {duration, reason}` | account-and-access `Action` (fresh code, reason) | `admin.alert.silenced` |
+
+Silencing hides what may be a security alert, so it keeps `actions.md`'s step-up and reason. Housekeeping is registered with `Housekeeping`, which takes only the routes in `housekeepingRoutes` (the two above) and panics on any other (`TestAdminMutationsNeedARole`); the source test reads `routes.go` for it.
+
+### Retention
+
+Resolved alerts are kept **a year** (`make prune target=alerts`, on `resolved_at`; open ones never), the evidence of when something was detected and how fast it was answered; `alert.*` events are audit events (a year) ([compliance.md](../compliance.md#retention)).
+
+### Tests
+
+`internal/alerts`: an alert opens only after `For` and not before; doesn't flap across the 10 minutes; escalates in place instead of duplicating; resolves; a signal past its budget changes nothing; hourly rules once an hour; the notice for each opening (mail, held, digest, quiet, cooldown, a silence carried over); reminders every 4 hours unless acknowledged, never for a warning; only one of two runners evaluates and the other takes over when the first's session is terminated or released; the heartbeat only after an evaluation that worked; one email per admin at their setting and none for `none`; the webhook's body, signature, Slack shape, retries without the URL in the error, no redirect, the guard against non-public addresses, and the answer bound; no email or webhook holds the key, a link, an address, an IP or a name. `config`: the URL rules in production and development. `admin`: the pages, each read recorded once, bad parameters, viewers, the housekeeping and silence rules, `admin-action:per-user`.
 
 ## Web app
 

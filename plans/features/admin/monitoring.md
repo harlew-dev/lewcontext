@@ -22,7 +22,7 @@ These pages turn each of those into a **signal** with a threshold, a chart, and 
 
   ```go
   // A Signal is one number worth watching, with the levels at which it's a
-  // problem. Pages show it; alerts (alerts.md) evaluate the same definition.
+  // problem. Pages show it; alerts (implemented/admin/alerts.md) evaluate the same definition.
   type Signal struct {
   	Name     string        // "auth.failed_logins", stable: alerts and docs refer to it
   	Page     string        // "security"
@@ -79,7 +79,7 @@ A grid of tiles, each a signal from another page with its level, a sparkline ove
 | Admin door | refusals of real credentials (`not_admin`, `mfa_off`), `admin.access_refused` | none / any |
 | Integrity | checks failing | any warning check / any critical check |
 | Sign-ups, active accounts | per day | none |
-| Alerts | open ([alerts](alerts.md)) | any / any critical |
+| Alerts | open ([alerts](../implemented/admin/alerts.md)) | any / any critical |
 
 ### 2. Security
 
@@ -184,7 +184,7 @@ Written once a day by the hourly job ([observability](../implemented/admin/obser
 
 ### 9. Integrity
 
-**Checks of things that should never happen.** Each is one bounded query returning a count and up to 10 public IDs as samples, run when the page loads and every hour by [alerts](alerts.md):
+**Checks of things that should never happen.** Each is one bounded query returning a count and up to 10 public IDs as samples, run when the page loads and every hour by [alerts](../implemented/admin/alerts.md):
 
 | Check | Level | A failure means |
 | --- | --- | --- |
@@ -322,7 +322,7 @@ Docs: [monitoring.md](../../../docs/api/monitoring.md) (new), [admin.md](../../.
 - **Seeder:** `make seed only=monitoring` plants part 1's patterns (stuffing with a success, distributed guessing, success after failures, failed codes, a reset flood, `register:global` reached, the admin door, a takeover of a fake account). The invitation spammer, the workspace near its quota, the stuck delivery and the error group come with the pages that show them. It never writes `rate_limits` (a counter there would really refuse requests).
 - **Web:** `Stat` gained `level`, `href` and `chart` rather than a new tile component; `LevelBadge` lives in `badge.tsx` and takes `level` (the signal's value, not a style); `Sparkline` and `Meter` joined `chart.tsx`; `BarChart tableToggle` is the "Show as table". The sidebar's Monitoring heading lists only the pages built.
 - **Names:** the store's monitoring methods use `Count`, `Summarize`, `Index` and `Find` (the reasons of `Count` and `Summarize` in `TestStoreMethodNames` widened); `admin.monitoring.viewed` makes the admin reads 12.
-- **Levels can be raised by anyone with an account** (their own wrong passwords, codes, junk emails, limits reached on purpose); [monitoring.md](../../../docs/api/monitoring.md#signals-internalmonitor) says so, and [alerts](alerts.md) must allow for it.
+- **Levels can be raised by anyone with an account** (their own wrong passwords, codes, junk emails, limits reached on purpose); [monitoring.md](../../../docs/api/monitoring.md#signals-internalmonitor) says so, and [alerts](../implemented/admin/alerts.md) must allow for it.
 - **Review fixes** (after part 1's review): signing out other sessions records nothing when none was signed out and has `sessions-revoke:per-user`; the takeover check starts from sign-ins; each signal and section has its own 2 s budget, so one slow part shows as not loaded and the page still answers; the session check never waits for the account's row; drill-downs say whether they're exact; `METRICS_ADDR` takes literal addresses only; metrics nits.
 - **Not done in part 1:** the volume check at a million events (done in part 2, below); the alerts' reuse of `monitor.ReadAll`; `prune.completed` (part 3) and the workspace-tables registry (part 2).
 
@@ -370,4 +370,4 @@ Docs: [monitoring.md](../../../docs/api/monitoring.md) (the four pages, one grou
 - **A public status page.**
 - **Synthetic transactions** (a robot signing in every minute): the external check covers "up".
 - **Acting** on anything here: [actions](../implemented/admin/actions.md).
-- **Alerts:** [alerts](alerts.md).
+- **Alerts:** [alerts](../implemented/admin/alerts.md).

@@ -34,7 +34,10 @@ func seedHealth(a abuse) (string, error) {
 	if err := a.errorGroups(); err != nil {
 		return "", err
 	}
-	return "a delivery stuck 25 minutes and one failed with no listener, a double-submitted project, a reset sent twice, three error groups (one reported by a browser)", nil
+	if err := a.alerts(); err != nil {
+		return "", err
+	}
+	return "three alerts (a critical one open, a warning acknowledged, one resolved), a delivery stuck 25 minutes and one failed with no listener, a double-submitted project, a reset sent twice, three error groups (one reported by a browser)", nil
 }
 
 // stuckDeliveries queues a delivery 25 minutes overdue and one failed for
@@ -104,6 +107,47 @@ func (a abuse) errorGroups() error {
 		// than colliding with these (or a real one).
 		g.Fingerprint = observe.Fingerprint(g.Source, g.Route, g.Message+"\x00"+a.f.UUID())
 		if _, err := factory.AppErrors.State(func(e *factory.AppError) { *e = g }).CreateOne(a.ctx, a.tx, a.f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// alerts plants three alerts for the Alerts page: the admin door critical
+// and open, a latency warning acknowledged by nobody's account (its person
+// left), and a resolved failed-deliveries one. Rows only: nothing is
+// emailed or posted for them, and a running server's evaluator leaves an
+// open alert of a signal alone.
+func (a abuse) alerts() error {
+	for _, state := range []func(*factory.Alert){
+		func(x *factory.Alert) {
+			factory.AlertOn("admin.door_refusals", "critical")(x)
+			x.LastValue, x.PeakValue = 3, 4
+			x.OpenedAt = a.now.Add(-50 * time.Minute)
+			x.LastNotifiedAt = &x.OpenedAt
+			x.Details = []byte(`{"seeded": true, "drill": {"name": "admin.login_attempted,admin.access_refused", "outcome": "failed", "window": "1d"}}`)
+		},
+		func(x *factory.Alert) {
+			factory.AlertOn("http.latency_p95", "warn")(x)
+			x.LastValue, x.PeakValue = 1450, 2100
+			x.OpenedAt = a.now.Add(-3 * time.Hour)
+			x.LastNotifiedAt = nil
+			x.Notified = "quiet"
+			ack := a.now.Add(-2 * time.Hour)
+			x.AcknowledgedAt = &ack
+			x.Details = []byte(`{"seeded": true}`)
+		},
+		func(x *factory.Alert) {
+			factory.AlertOn("mail.failed_deliveries", "warn")(x)
+			x.LastValue, x.PeakValue = 1, 2
+			x.OpenedAt = a.now.Add(-26 * time.Hour)
+			x.LastNotifiedAt = &x.OpenedAt
+			resolved := a.now.Add(-25 * time.Hour)
+			x.ResolvedAt = &resolved
+			x.Details = []byte(`{"seeded": true}`)
+		},
+	} {
+		if _, err := factory.Alerts.State(state).CreateOne(a.ctx, a.tx, a.f); err != nil {
 			return err
 		}
 	}
