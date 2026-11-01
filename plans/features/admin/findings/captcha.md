@@ -78,4 +78,24 @@ The independent reviewer found these sound:
 
 **For the merge:** A3's server config summary needs the captcha settings: the provider, whether the secret is set (never its value), whether test keys are in use, and `PER_IP_LIMITS`. A non-production server using test keys now says so at startup.
 
-_Fix results: filled in once the fixes are committed._
+**Fix results:**
+
+| Commit | Fix |
+| --- | --- |
+| `8143cff` | Shared limits now keep a separate count of requests that passed the challenge, and that count decides the block level |
+| `007ec8f` | `idempotency_key` dropped; test-key answers trusted only with a test secret; no redirects; error codes mapped and logged |
+| `933ee41` | `PER_IP_LIMITS=off` with `CLIENT_IP_HEADER` refused in production |
+| `107c891` | The web challenge queue removes by id; providers looked up by own key |
+| `d184388` | Docs |
+
+**What the new tests replay:**
+- the reviewer's attack: 101 unsolved password-reset requests from 21 addresses now block nobody, and a solved one gets through;
+- with 100 concurrent requests (80 solved, 20 unsolved), exactly 50 get through.
+
+A non-production server on test keys now says so at startup. All checks passed:
+- `make check`;
+- `make test`: 355 Vitest tests;
+- `make build`;
+- e2e: 28 of 28.
+
+Because the first fix is new counting logic in security code, a short focused second review is checking it before the ui branch merges.
