@@ -297,7 +297,9 @@ func TestListenerReceivesEventsFromTheAPI(t *testing.T) {
 }
 
 // Signing out the other sessions skips the write budget (a recovery route)
-// but has a limit of its own, sessions-revoke:per-user.
+// but has a limit of its own, sessions-revoke:per-user, counted per
+// session: a second session of the same user (the owner, when the first
+// was stolen) isn't refused once the first has used its budget up.
 func TestSessionsRevokeLimited(t *testing.T) {
 	s, db := server(t)
 	h := router.New(s)
@@ -306,8 +308,8 @@ func TestSessionsRevokeLimited(t *testing.T) {
 	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
 	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
 	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 204)
-	// The first request opened the window; use the rest of it up.
-	key := "sessions-revoke:per-user:" + auth.Digest(user.PublicID)
+	// The first request opened the session's window; use the rest of it up.
+	key := httpapi.SessionsRevokePerUser.Key(auth.Digest(session.Token))
 	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", httpapi.SessionsRevokePerUser.Max).Where("key = ?", key).Exec(ctx))(t)
 	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 429)
 	if e := apitest.OnlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "sessions-revoke:per-user:block" {
@@ -315,5 +317,11 @@ func TestSessionsRevokeLimited(t *testing.T) {
 	}
 	if n := len(apitest.EventsNamed(t, db, "auth.other_sessions_revoked")); n != 0 {
 		t.Fatalf("%d revokes recorded with nothing signed out", n)
+	}
+	// The same user's other session still signs the first out.
+	owner := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
+	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", owner.CSRFToken, owner.Cookie(), 204)
+	if e := apitest.EventsNamed(t, db, "auth.other_sessions_revoked"); len(e) != 1 || e[0].Payload["count"] != 1.0 {
+		t.Fatalf("revoked: %+v", e)
 	}
 }
