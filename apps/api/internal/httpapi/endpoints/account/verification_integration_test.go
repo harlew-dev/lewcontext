@@ -114,8 +114,11 @@ func mustCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *http.C
 	return c
 }
 
+// signUpBody agrees to currentPolicies, which a server with POLICIES off
+// accepts and ignores.
 func signUpBody(email string) string {
-	return fmt.Sprintf(`{"name":"Ada Lovelace","email":%q,"password":"correct horse battery staple"}`, email)
+	return fmt.Sprintf(`{"name":"Ada Lovelace","email":%q,"password":"correct horse battery staple","policies":{"termsOfService":%q,"privacyPolicy":%q}}`,
+		email, currentPolicies.TermsOfService, currentPolicies.PrivacyPolicy)
 }
 
 // signUp starts a sign-up and returns its registration cookie.
@@ -237,6 +240,8 @@ func (q *queryLog) during(run func()) []string {
 // same queries (never users), and the same failures for every code tried.
 func TestSignUpLooksTheSameForATakenEmail(t *testing.T) {
 	s, db, box := verificationServer(t, false)
+	// Agreeing to the policies is checked from the body alone.
+	s.Policies = currentPolicies
 	h := router.New(s)
 	f := factory.TestFaker(t)
 	taken := apitest.Must(factory.Users.CreateOne(context.Background(), db, f))(t)

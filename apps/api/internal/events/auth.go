@@ -35,6 +35,15 @@ type Registered struct {
 	Name       string `json:"name"`
 	Email      string `json:"email"`
 	VerifiedBy string `json:"verifiedBy"`
+	// Policies are the terms of service and privacy policy versions agreed
+	// to, with POLICIES=on; absent when off.
+	Policies *PolicyVersions `json:"policies,omitempty"`
+}
+
+// PolicyVersions are the policy versions (updated dates) a sign-up agreed to.
+type PolicyVersions struct {
+	TermsOfService string `json:"termsOfService"`
+	PrivacyPolicy  string `json:"privacyPolicy"`
 }
 
 func (Registered) EventName() string { return "auth.registered" }

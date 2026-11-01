@@ -57,9 +57,12 @@ func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 		With("active", active).
 		TableExpr("active AS a").
 		Join("JOIN users AS u ON u.id = a.user_id").
-		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at, a.csrf_token, a.created_at, a.expires_at").
+		ColumnExpr(userColumns).
+		ColumnExpr("a.csrf_token, a.created_at, a.expires_at").
 		ColumnExpr("(?)", mfaEnabledAt(s.DB)).
-		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.User.EmailVerifiedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
+		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.User.EmailVerifiedAt,
+			&session.User.TermsOfServiceVersion, &session.User.PrivacyPolicyVersion, &session.User.PoliciesAcceptedAt,
+			&session.CSRF, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
 	return session, err
 }
 

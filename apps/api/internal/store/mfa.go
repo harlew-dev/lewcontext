@@ -336,7 +336,7 @@ func (s *Store) AnswerMFAChallenge(ctx context.Context, hash, purpose string, us
 		}
 		result.OK, result.FactorUsed = true, *used
 		return tx.NewSelect().Model(&result.User).
-			ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at").
+			ColumnExpr(userColumns).
 			ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(tx)).
 			Where("u.id = ?", userID).Scan(ctx)
 	})

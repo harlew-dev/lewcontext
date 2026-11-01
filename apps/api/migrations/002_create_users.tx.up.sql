@@ -7,5 +7,12 @@ CREATE TABLE users (
  -- When the account proved it owns the email with a code (or a password
  -- reset link). Null for accounts made while EMAIL_VERIFICATION was off.
  email_verified_at timestamptz,
- created_at timestamptz NOT NULL DEFAULT now()
+ -- The terms of service and privacy policy versions (their updated dates)
+ -- agreed to at sign-up with POLICIES=on, and when; all null otherwise.
+ terms_of_service_version date,
+ privacy_policy_version date,
+ policies_accepted_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK ((terms_of_service_version IS NULL) = (policies_accepted_at IS NULL)
+   AND (privacy_policy_version IS NULL) = (policies_accepted_at IS NULL))
 );

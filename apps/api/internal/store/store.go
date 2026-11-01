@@ -32,6 +32,11 @@ type User struct {
 	// while it's off. Read only where a query selects it (mfaEnabledAt);
 	// only ever sent in the user's own session responses.
 	MFAEnabledAt *time.Time `bun:"mfa_enabled_at,scanonly" json:"mfaEnabledAt"`
+	// The policy versions agreed to at sign-up (POLICIES=on) and when, or
+	// all nil. Sent as one "policies" object (MarshalJSON).
+	TermsOfServiceVersion *time.Time `bun:"terms_of_service_version" json:"-"`
+	PrivacyPolicyVersion  *time.Time `bun:"privacy_policy_version" json:"-"`
+	PoliciesAcceptedAt    *time.Time `bun:"policies_accepted_at" json:"-"`
 }
 
 // account carries the password hash so it never travels inside a User response.
