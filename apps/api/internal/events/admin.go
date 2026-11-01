@@ -138,12 +138,13 @@ type AdminLoggedOut struct {
 func (AdminLoggedOut) EventName() string { return "admin.logged_out" }
 
 // AdminUserListed: an admin loaded a page of the users list, with its
-// search, sort and page number.
+// search, sort and page number, and whether only suspended accounts.
 type AdminUserListed struct {
-	Admin string `json:"admin"`
-	Q     string `json:"q"`
-	Sort  string `json:"sort"`
-	Page  int    `json:"page"`
+	Admin     string `json:"admin"`
+	Q         string `json:"q"`
+	Sort      string `json:"sort"`
+	Page      int    `json:"page"`
+	Suspended bool   `json:"suspended,omitempty"`
 }
 
 func (AdminUserListed) EventName() string { return "admin.user.listed" }

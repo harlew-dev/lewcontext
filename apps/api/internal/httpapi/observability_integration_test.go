@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi"
@@ -117,6 +118,11 @@ func TestNothingSecretInTheLogs(t *testing.T) {
 	admin := apitest.WithMFA(t, db, f)
 	apitest.Must(factory.Admins.State(factory.AdminFor(admin.User.ID)).CreateOne(ctx, db, f))(t)
 	adminSession := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(admin.User.ID)).CreateOne(ctx, db, f))(t)
+	operator := apitest.WithMFA(t, db, f)
+	apitest.Must(factory.Admins.State(factory.AdminFor(operator.User.ID)).State(factory.AdminRole(auth.AdminOperator)).CreateOne(ctx, db, f))(t)
+	operatorSession := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(operator.User.ID)).State(factory.SteppedUp).CreateOne(ctx, db, f))(t)
+	target := apitest.SignedIn(t, db, f)
+	targetID := apitest.PublicIDOf(t, db, target.UserID)
 	key := factory.AdminRouteKey
 	door := apitest.Get(h, "GET", "/admin/"+key, nil)
 	pass := apitest.CookieNamed(door, "lewcontext_admin_assets")
@@ -127,6 +133,10 @@ func TestNothingSecretInTheLogs(t *testing.T) {
 	adminHeaders := map[string]string{"X-Admin-Key": key, "X-CSRF-Token": adminSession.CSRFToken}
 	appHeaders := map[string]string{"X-CSRF-Token": session.CSRFToken}
 	app, adminCookie := []*http.Cookie{session.Cookie()}, []*http.Cookie{adminSession.Cookie()}
+	// An action's reason goes into its event, never a log line.
+	reason := "secret-reason-only-for-the-audit-trail"
+	operatorHeaders := map[string]string{"X-Admin-Key": key, "X-CSRF-Token": operatorSession.CSRFToken}
+	operatorCookie := []*http.Cookie{operatorSession.Cookie()}
 
 	requests := []request{
 		{method: "GET", target: "/auth/forgot-password/" + reset.Token, route: "page /auth/*"},
@@ -146,6 +156,8 @@ func TestNothingSecretInTheLogs(t *testing.T) {
 		{method: "GET", target: "/api/admin/events?email=" + url.QueryEscape(emailSearched), route: "GET /api/admin/events", headers: adminHeaders, cookies: adminCookie, user: observe.AdminUser},
 		{method: "GET", target: "/api/admin/users", route: "GET /api/admin/users", headers: map[string]string{"X-Admin-Key": key + "x"}, cookies: adminCookie},
 		{method: "POST", target: "/api/admin/step-up", body: `{"code":"` + code + `"}`, route: "POST /api/admin/step-up", headers: adminHeaders, cookies: adminCookie, user: observe.AdminUser},
+		{method: "DELETE", target: "/api/admin/users/" + targetID + "/sessions", body: `{"reason":"` + reason + `"}`, route: "DELETE /api/admin/users/{user}/sessions", headers: operatorHeaders, cookies: operatorCookie, user: observe.AdminUser},
+		{method: "POST", target: "/api/admin/ip-blocks", body: `{"network":"198.51.100.0/24","expiresIn":"1h","reason":"` + reason + `"}`, route: "POST /api/admin/ip-blocks", headers: operatorHeaders, cookies: operatorCookie, user: observe.AdminUser},
 		{method: "GET", target: apitest.WorkspacePath(workspace.PublicID, "/members?q="+searched), route: "GET /api/workspaces/{workspace}/members", cookies: app, user: userID},
 		{method: "GET", target: "/api/auth/me", route: "GET /api/auth/me", cookies: app, user: userID},
 		{method: "POST", target: "/api/auth/password/verify", body: `{"password":"` + password + `"}`, route: "POST /api/auth/password/verify", headers: appHeaders, cookies: app, user: userID},
@@ -165,7 +177,7 @@ func TestNothingSecretInTheLogs(t *testing.T) {
 		reset.Token, invitation.Token, blockLink.Token, key, pass.Value,
 		session.Token, session.CSRFToken, adminSession.Token, adminSession.CSRFToken,
 		searched, emailSearched, url.QueryEscape(emailSearched), password, code,
-		"blocked-person@example.com", admin.User.Email,
+		"blocked-person@example.com", admin.User.Email, reason, operatorSession.Token, operatorSession.CSRFToken,
 	}
 	logged := logs.text()
 	for _, secret := range secrets {

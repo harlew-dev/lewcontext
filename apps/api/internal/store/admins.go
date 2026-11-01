@@ -294,7 +294,7 @@ func (s *Store) CreateAdminSession(ctx context.Context, n NewAdminSession, e eve
 			return err
 		}
 		if _, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).
-			Where("user_id = ? AND (expires <= now() OR last_seen_at <= now() - make_interval(secs => ?))", n.UserID, adminIdleSeconds).
+			Where("user_id = ? AND (expires_at <= now() OR last_seen_at <= now() - make_interval(secs => ?))", n.UserID, adminIdleSeconds).
 			Exec(ctx); err != nil {
 			return err
 		}
@@ -320,7 +320,8 @@ var adminIdleSeconds = int(auth.AdminSessionIdle.Seconds())
 // under the key whose digest is keyHash (the one the request came with),
 // and returns it with its admin and that digest. sql.ErrNoRows when it's
 // unknown, expired, idle, made under another key, or its user is no longer
-// an admin (or is suspended: never an admin, but this is the backstop). A session made under another key is never touched, so a
+// an admin (or is suspended: never an admin, but this is the backstop). A
+// session made under another key is never touched, so a
 // request with the wrong key can't keep it from idling out.
 func (s *Store) FindAdminSession(ctx context.Context, hash, keyHash string) (AdminSession, error) {
 	active := s.DB.NewUpdate().Model((*adminSessionRecord)(nil)).

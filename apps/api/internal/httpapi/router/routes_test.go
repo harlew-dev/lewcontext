@@ -66,9 +66,9 @@ func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
 		`signedIn.OwnSessions("POST", "/logout"`:     "signing out: ends only this session",
 		`signedIn.OwnSessions("DELETE", "/sessions"`: "signing out your other admin sessions (decision 5): only takes your own access away, so no role or code",
 	}
-	registration := regexp.MustCompile(`^\s*(\w+)\.(Handle|HandleFunc|Role|Action|OwnSessions)\("(\w+)", "([^"]*)"`)
+	registration := regexp.MustCompile(`^\s*(\w+)\.(Handle|HandleFunc|Role|Action|Housekeeping|OwnSessions)\("(\w+)", "([^"]*)"`)
 	// Any call that registers a route, however it's written.
-	call := regexp.MustCompile(`\b(\w+)\.(Handle|HandleFunc|Role|Action|OwnSessions|handle)\(`)
+	call := regexp.MustCompile(`\b(\w+)\.(Handle|HandleFunc|Role|Action|Housekeeping|OwnSessions|handle)\(`)
 	found := map[string]bool{}
 	for _, line := range strings.Split(inside, "\n") {
 		c := call.FindStringSubmatch(line)
@@ -84,7 +84,9 @@ func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
 			t.Errorf("a registration this test can't read (write it on one line, method and path as string literals): %s", strings.TrimSpace(line))
 			continue
 		}
-		if m[3] == "GET" || m[3] == "HEAD" || m[2] == "Action" {
+		// Action and Housekeeping add the operator role and the action
+		// limit themselves (Housekeeping only for housekeepingRoutes).
+		if m[3] == "GET" || m[3] == "HEAD" || m[2] == "Action" || m[2] == "Housekeeping" {
 			continue
 		}
 		// An operator's mutation is an Action (a fresh code and the action
@@ -153,6 +155,30 @@ func TestAdminMutationsNeedARole(t *testing.T) {
 		group(http.NewServeMux(), "/api/workspaces/{workspace}").Action("POST", "/things", ok)
 	}()
 	signedIn.OwnSessions("POST", "/logout", ok)
+	// Housekeeping takes only housekeepingRoutes (none yet), so an
+	// account-and-access action can't use it to skip its code; and only in
+	// the signed-in admin group.
+	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/users/{user}/sessions"}, {"PATCH", "/alerts/{alert}"}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("Housekeeping took %s %s", route[0], route[1])
+				}
+			}()
+			signedIn.Housekeeping(route[0], route[1], ok)
+		}()
+	}
+	housekeepingRoutes["PATCH /chores/{chore}"] = true
+	defer delete(housekeepingRoutes, "PATCH /chores/{chore}")
+	signedIn.Housekeeping("PATCH", "/chores/{chore}", ok)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("Housekeeping registered outside the admin group")
+			}
+		}()
+		group(http.NewServeMux(), "/api/workspaces/{workspace}").Housekeeping("PATCH", "/chores/{chore}", ok)
+	}()
 	// OwnSessions takes only the admin's own session routes.
 	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/users/{user}"}, {"POST", "/sessions"}, {"DELETE", "/logout"}} {
 		func() {

@@ -27,28 +27,44 @@ func adminFilter(params map[string]string, fallback string, sortable func(string
 }
 
 // adminListQuery parses an admin list's query string, answering 400 when it
-// is malformed.
-func adminListQuery(w http.ResponseWriter, r *http.Request, fallback string, sortable func(string) bool) (store.AdminFilter, store.PageRequest, bool) {
-	params, ok := input.Query(r, "page", "perPage", "q", "sort")
+// is malformed. extra names the list's own parameters, left in params.
+func adminListQuery(w http.ResponseWriter, r *http.Request, fallback string, sortable func(string) bool, extra ...string) (store.AdminFilter, store.PageRequest, bool) {
+	f, req, _, ok := adminListParams(w, r, fallback, sortable, extra...)
+	return f, req, ok
+}
+
+// adminListParams is adminListQuery, also returning every parameter.
+func adminListParams(w http.ResponseWriter, r *http.Request, fallback string, sortable func(string) bool, extra ...string) (store.AdminFilter, store.PageRequest, map[string]string, bool) {
+	params, ok := input.Query(r, append([]string{"page", "perPage", "q", "sort"}, extra...)...)
 	if !ok {
 		httpapi.Fail(w, 400, "Invalid query parameters.")
-		return store.AdminFilter{}, store.PageRequest{}, false
+		return store.AdminFilter{}, store.PageRequest{}, nil, false
 	}
 	req, ok := input.Page(params)
 	if !ok {
 		httpapi.Fail(w, 400, "Invalid page.")
-		return store.AdminFilter{}, req, false
+		return store.AdminFilter{}, req, nil, false
 	}
 	f, ok := adminFilter(params, fallback, sortable)
 	if !ok {
 		httpapi.Fail(w, 400, "Check the search and sort.")
 	}
-	return f, req, ok
+	return f, req, params, ok
 }
 
+// Index is one page of the accounts, with a search, a sort and
+// suspended=true for only the suspended ones. GET /api/admin/users.
 func (h Users) Index(w http.ResponseWriter, r *http.Request) {
-	f, req, ok := adminListQuery(w, r, store.DefaultAdminUserSort, store.AdminUserSortable)
+	f, req, params, ok := adminListParams(w, r, store.DefaultAdminUserSort, store.AdminUserSortable, "suspended")
 	if !ok {
+		return
+	}
+	switch params["suspended"] {
+	case "":
+	case "true":
+		f.Suspended = true
+	default:
+		httpapi.Fail(w, 400, "Check the filters.")
 		return
 	}
 	page, err := h.Repo.IndexAdminUsers(r.Context(), f, req)
@@ -56,7 +72,7 @@ func (h Users) Index(w http.ResponseWriter, r *http.Request) {
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	e := events.AdminUserListed{Admin: httpapi.Admin(r).User.PublicID, Q: f.Search, Sort: f.Sort, Page: req.Page}
+	e := events.AdminUserListed{Admin: httpapi.Admin(r).User.PublicID, Q: f.Search, Sort: f.Sort, Page: req.Page, Suspended: f.Suspended}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
 		httpapi.InternalError(w, r, err)
 		return

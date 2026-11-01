@@ -34,6 +34,9 @@ type Server struct {
 	adminRefusals *adminRefusals
 	// Summaries bound the admin dashboard's aggregates (summaries.go).
 	Summaries *Summaries
+	// ipBlocks are the live IP blocks, reloaded every IPBlocksReload, and
+	// what they refused (ip_blocks.go).
+	ipBlocks ipBlocks
 	// draining is set once shutdown has begun (Drain): readiness then
 	// answers 503.
 	draining atomic.Bool

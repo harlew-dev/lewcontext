@@ -74,6 +74,11 @@ func run() error {
 		// net/http's own complaints (a broken connection, a bad request
 		// line) go through the same handler, as warnings.
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)}
+	// The live IP blocks, before the first request, then every 30 seconds.
+	if err := api.ReloadIPBlocks(ctx); err != nil {
+		return err
+	}
+	go api.RunIPBlocks(ctx, httpapi.IPBlocksReload)
 	failures := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "address", c.Address, "pages", api.Pages != nil)

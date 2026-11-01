@@ -122,11 +122,13 @@ func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
 // key they answer as an unknown route; then the sign-in steps, under the
 // current key only, or an admin session, under the key it was made with
 // (the current one, or ADMIN_ROUTE_KEY_PREVIOUS while it is set). Apart
-// from signing in and out, stepping up and unblocking an address they
-// read, and every read is recorded; a route that changes anything names
-// the admin role it needs (Role), and an account-and-access action also
-// needs a fresh code (RequireAdminStepUp) and counts against
-// admin-action:per-user.
+// from signing in and out, stepping up and the actions they read, and
+// every read is recorded. A route that changes anything names the admin
+// role it needs: an account-and-access action is an Action (the operator
+// role, a fresh code from RequireAdminStepUp, admin-action:per-user), a
+// housekeeping one a Housekeeping (the operator role and the limit, no
+// code: plans/features/admin/actions.md), and each records who did it and
+// why.
 func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	sessions := admin.Sessions{Server: s}
 	users := admin.Users{Server: s}
@@ -138,6 +140,13 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	admins := admin.Admins{Server: s}
 	emailBlocks := admin.EmailBlocks{Server: s}
 	stepUp := admin.StepUp{Server: s}
+	userSessions := admin.UserSessions{Server: s}
+	userMFA := admin.UserMFA{Server: s}
+	userSuspension := admin.UserSuspension{Server: s}
+	workspaceInvitations := admin.WorkspaceInvitations{Server: s}
+	failedDeliveries := admin.FailedDeliveries{Server: s}
+	ipBlocks := admin.IPBlocks{Server: s}
+	adminSessions := admin.AdminSessions{Server: s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.RequireAdminKey(http.HandlerFunc(httpapi.NotFound)))
@@ -167,13 +176,36 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/deliveries", deliveries.Index)
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
 	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
+	signedIn.HandleFunc("GET", "/ip-blocks", ipBlocks.Index)
 	// A fresh code opens the session's 5-minute step-up window. Only the
 	// actions need it, and they need an operator, so it does too; the code
 	// counts against mfa:per-account, as at the door.
 	signedIn.Role("POST", "/step-up", auth.AdminOperator, stepUp.Store)
-	// Unblocking an address: an account-and-access action (Action: the
-	// operator role, the step-up window, then admin-action:per-user).
+	// The account-and-access actions (Action: the operator role, the
+	// step-up window, then admin-action:per-user; each needs a reason).
+	// Unblocking an address.
 	signedIn.Action("DELETE", "/email-blocks", emailBlocks.Destroy)
+	// On an account that isn't an admin, nor yours: Sign out everywhere,
+	// resetting its MFA, suspending and unsuspending it.
+	signedIn.Action("DELETE", "/users/{user}/sessions", userSessions.Destroy)
+	signedIn.Action("DELETE", "/users/{user}/mfa", userMFA.Destroy)
+	signedIn.Action("POST", "/users/{user}/suspension", userSuspension.Store)
+	signedIn.Action("DELETE", "/users/{user}/suspension", userSuspension.Destroy)
+	// Revoking a workspace's live invitations.
+	signedIn.Action("DELETE", "/workspaces/{workspace}/invitations", workspaceInvitations.Destroy)
+	// Queuing failed deliveries again: one, or a listener's since a time.
+	signedIn.Action("POST", "/deliveries/{event}/{listener}/retry", deliveries.Retry)
+	signedIn.Action("POST", "/deliveries/retry", failedDeliveries.Retry)
+	// Blocking a client address or range, and lifting a block.
+	signedIn.Action("POST", "/ip-blocks", ipBlocks.Store)
+	signedIn.Action("DELETE", "/ip-blocks/{block}", ipBlocks.Destroy)
+	// Signing another admin out: the one action on another admin.
+	signedIn.Action("DELETE", "/admins/{user}/sessions", adminSessions.Destroy)
+	// Housekeeping (Housekeeping: the operator role and
+	// admin-action:per-user, no code) arrives with the plans whose pages
+	// it acts on: acknowledging and silencing an alert with alerts (A5),
+	// resolving an error group with monitoring (A4). Silencing hides
+	// alerts, so it will be an Action.
 }
 
 // unknownRoutesAsJSON answers a request no API route matches with the JSON
@@ -319,9 +351,10 @@ type routeGroup struct {
 	// each mutation has to be registered with Can.
 	requirePermissions bool
 	// requireAdminRoles does the same for the admin dashboard: each
-	// mutation is registered with Role, Action or OwnSessions.
+	// mutation is registered with Role, Action, Housekeeping or
+	// OwnSessions.
 	requireAdminRoles bool
-	// server is the admin group's, for Action's limit.
+	// server is the admin group's, for Action's and Housekeeping's limit.
 	server *httpapi.Server
 	// registered collects each pattern, when set (the permission matrix test).
 	registered *[]string
@@ -371,6 +404,25 @@ func (g routeGroup) Action(method, path string, h http.HandlerFunc) {
 	}
 	limited := g.server.LimitAdmin(httpapi.AdminActionPerUser, h)
 	g.handle(method, path, httpapi.RequireAdminRole(auth.AdminOperator, httpapi.RequireAdminStepUp(limited)))
+}
+
+// housekeepingRoutes are the only admin mutations registered with
+// Housekeeping: an operator's routine actions that touch no account,
+// address or delivery (acknowledging an alert, resolving an error group),
+// so they need no fresh code. None exists yet: alerts (A5) and monitoring
+// (A4) add theirs here, each with its reason.
+var housekeepingRoutes = map[string]bool{}
+
+// Housekeeping registers one of housekeepingRoutes: the operator role
+// (httpapi.RequireAdminRole), then admin-action:per-user (LimitAdmin), with
+// no step-up. Anything else stops the server starting, so an
+// account-and-access action can't be registered here to skip its code.
+func (g routeGroup) Housekeeping(method, path string, h http.HandlerFunc) {
+	if !g.requireAdminRoles || g.server == nil || !housekeepingRoutes[method+" "+path] {
+		panic(fmt.Sprintf("%s %s%s isn't one of the admin's housekeeping routes: register it with Action", method, g.prefix, path))
+	}
+	limited := g.server.LimitAdmin(httpapi.AdminActionPerUser, h)
+	g.handle(method, path, httpapi.RequireAdminRole(auth.AdminOperator, limited))
 }
 
 // ownSessionRoutes are the only admin mutations registered without a role,
