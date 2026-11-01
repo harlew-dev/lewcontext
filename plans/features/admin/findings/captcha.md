@@ -114,4 +114,11 @@ Confirmed sound:
 - **Events:** each is recorded once.
 - **Shared limits:** `Shared()` covers exactly the four `:global` limits.
 
-_Fix results: filled in once committed._
+**Fix results:** `94c4f82`.
+- **Resend asks for a captcha.**
+- **Only a verified token counts as passed.**
+- **A runtime guard:** a shared limit with a challenge level, counted on a route that can't challenge, answers 503 with a logged error, even with `RATE_LIMITS=off`. So a route registered wrongly breaks on its first request in any test.
+- **The probe's flood:** 10 unsolved resends leave the passed count unchanged, with 0 calls to Cloudflare.
+- **A late request** now reports the window it was counted in.
+
+All checks passed: `make check`, `make test` (356 Vitest tests), `make build` and e2e (28 of 28).
