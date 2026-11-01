@@ -1,5 +1,9 @@
 import {
   BuildingOffice2Icon,
+  ChartBarIcon,
+  GlobeAltIcon,
+  RectangleStackIcon,
+  UserGroupIcon,
   EnvelopeIcon,
   KeyIcon,
   NoSymbolIcon,
@@ -65,8 +69,27 @@ export const adminRoutes = {
       monitoringUrl(`/admin/${key}/monitoring/security`, window),
     limits: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/limits`, window),
+    ips: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/ips`, window),
+    // One address, or an IPv6 /64 (its slash escaped in the path).
+    ip: (key: string, ip: string, window?: MonitoringWindow) =>
+      monitoringUrl(
+        `/admin/${key}/monitoring/ips/${addressSegment(ip)}`,
+        window,
+      ),
+    accounts: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/accounts`, window),
+    workspaces: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/workspaces`, window),
+    usage: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/usage`, window),
   },
 } as const;
+// An address as one path segment: an IPv6 /64's slash escaped, its colons
+// kept as they are (a path segment may hold them).
+export function addressSegment(ip: string): string {
+  return encodeURIComponent(ip).replaceAll("%3A", ":");
+}
 // A Monitoring page's URL, the default window left out.
 function monitoringUrl(path: string, window?: MonitoringWindow): string {
   return url(path, {
@@ -91,6 +114,26 @@ export function adminMonitoringNavigation(key: string) {
       label: "Rate limits",
       href: adminRoutes.monitoring.limits(key),
       icon: ClockIcon,
+    },
+    {
+      label: "IP addresses",
+      href: adminRoutes.monitoring.ips(key),
+      icon: GlobeAltIcon,
+    },
+    {
+      label: "Accounts",
+      href: adminRoutes.monitoring.accounts(key),
+      icon: UserGroupIcon,
+    },
+    {
+      label: "Workspaces",
+      href: adminRoutes.monitoring.workspaces(key),
+      icon: RectangleStackIcon,
+    },
+    {
+      label: "Usage",
+      href: adminRoutes.monitoring.usage(key),
+      icon: ChartBarIcon,
     },
   ];
 }

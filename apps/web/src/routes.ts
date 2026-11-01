@@ -76,6 +76,23 @@ const adminRoutes = [
       "admin/:key/monitoring/limits",
       "pages/admin/[key]/monitoring/limits.tsx",
     ),
+    route("admin/:key/monitoring/ips", "pages/admin/[key]/monitoring/ips.tsx"),
+    route(
+      "admin/:key/monitoring/ips/:ip",
+      "pages/admin/[key]/monitoring/ips/[ip].tsx",
+    ),
+    route(
+      "admin/:key/monitoring/accounts",
+      "pages/admin/[key]/monitoring/accounts.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/workspaces",
+      "pages/admin/[key]/monitoring/workspaces.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/usage",
+      "pages/admin/[key]/monitoring/usage.tsx",
+    ),
   ]),
 ] satisfies RouteConfig;
 

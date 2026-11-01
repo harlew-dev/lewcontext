@@ -6,7 +6,14 @@ import { ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Stat } from "@/components/ui/stat";
-import { Code, Text } from "@/components/ui/text";
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Code, Text, TextLink } from "@/components/ui/text";
 import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
@@ -67,7 +74,7 @@ export function MonitoringHeader({
   title: string;
   window: MonitoringWindow;
   onWindow: (w: MonitoringWindow) => void;
-  view?: MonitoringView<unknown>;
+  view?: { window: MonitoringView<unknown>["window"] };
 }) {
   return (
     <>
@@ -103,23 +110,30 @@ const MonitoringState = createContext<{
   unavailable: string[];
   retry: () => void;
 }>({ unavailable: [], retry: () => {} });
+// The parts a page couldn't read in time (a page's `unavailable`; none for
+// a page without parts).
+function unavailableParts(data: object): string[] {
+  return "unavailable" in data && Array.isArray(data.unavailable)
+    ? data.unavailable.filter((p): p is string => typeof p === "string")
+    : [];
+}
 // The page's states around its content: the failure (keeping what was
 // shown, with Retry), a skeleton while nothing has loaded, the content
 // dimmed while a new window loads.
-export function MonitoringBody<S>({
+export function MonitoringBody<V extends object>({
   resource,
   label,
   children,
 }: {
   resource: {
-    data?: MonitoringView<S>;
+    data?: V;
     error: string | null;
     loading: boolean;
     refreshing: boolean;
     refresh: () => void;
   };
   label: string;
-  children: (view: MonitoringView<S>) => ReactNode;
+  children: (view: V) => ReactNode;
 }) {
   return (
     <>
@@ -135,7 +149,7 @@ export function MonitoringBody<S>({
         >
           <MonitoringState.Provider
             value={{
-              unavailable: resource.data.unavailable ?? [],
+              unavailable: unavailableParts(resource.data),
               retry: resource.refresh,
             }}
           >
@@ -362,6 +376,45 @@ export function SeriesChart({
       series={chartSeries}
       tableToggle
     />
+  );
+}
+// A review list's or a count's table: a dense table with a header row.
+export function MonitoringTable({
+  head,
+  children,
+}: {
+  head: ReactNode[];
+  children: ReactNode;
+}) {
+  return (
+    <Table dense>
+      <TableHead>
+        <TableRow>
+          {head.map((h, i) => (
+            <TableHeader key={i}>{h}</TableHeader>
+          ))}
+        </TableRow>
+      </TableHead>
+      <TableBody>{children}</TableBody>
+    </Table>
+  );
+}
+// An address (or an IPv6 /64) linking to its page, over the window shown.
+export function AddressLink({
+  ip,
+  window,
+}: {
+  ip: string;
+  window?: MonitoringWindow;
+}) {
+  const key = useAdminKey();
+  return (
+    <TextLink
+      href={adminRoutes.monitoring.ip(key, ip, window)}
+      className="font-mono"
+    >
+      {ip}
+    </TextLink>
   );
 }
 // A short empty line for a review list with nothing in it.

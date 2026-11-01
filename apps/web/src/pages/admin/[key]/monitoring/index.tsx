@@ -63,8 +63,8 @@ function worst(signals: Signal[]): Level {
     "ok",
   );
 }
-// Where a tile's page is: Security and Rate limits are built, Mail is its
-// own page; the rest (Performance, Errors, Usage, Configuration) come
+// Where a tile's page is: Security, Rate limits and Usage are built, Mail
+// is its own page; the rest (Performance, Errors, Configuration) come
 // later, so their tiles link to their Events rows if they have any.
 function usePageHref() {
   const key = useAdminKey();
@@ -74,6 +74,8 @@ function usePageHref() {
         return adminRoutes.monitoring.security(key, window);
       case "limits":
         return adminRoutes.monitoring.limits(key, window);
+      case "usage":
+        return adminRoutes.monitoring.usage(key, window);
       case "mail":
         return adminRoutes.deliveries.index(key);
     }

@@ -291,7 +291,15 @@ export type AdminMail = {
 };
 // The Monitoring pages built so far (docs/api/monitoring.md), and their
 // windows: what the charts and review lists cover. Signals keep their own.
-export const monitoringPages = ["overview", "security", "limits"] as const;
+export const monitoringPages = [
+  "overview",
+  "security",
+  "limits",
+  "ips",
+  "accounts",
+  "workspaces",
+  "usage",
+] as const;
 export type MonitoringPage = (typeof monitoringPages)[number];
 export const monitoringWindows = ["1h", "24h", "7d"] as const;
 export type MonitoringWindow = (typeof monitoringWindows)[number];
@@ -441,4 +449,131 @@ export type LimitsSections = {
     requests: number;
     serverErrors: number;
   }[];
+};
+// The IP addresses page: the top addresses both ways (`network`: an IPv6
+// address grouped by its /64, as the signals count; otherwise each address
+// on its own; IPv4 rows are the same either way), and sign-up clusters.
+export type AddressRow = {
+  ip: string;
+  network: boolean;
+  events: number;
+  failedSignIns: number;
+  signUps: number;
+  limitsReached: number;
+  accounts: number;
+};
+export type IpsSections = {
+  addresses: AddressRow[];
+  clusters: { period: string; ip: string; accounts: number }[];
+};
+// One address's page: what an address (or an IPv6 /64) did in a window.
+export type AddressView = {
+  ip: string;
+  // An IPv6 address's /64, to open.
+  network?: string;
+  window: MonitoringView<unknown>["window"];
+  events: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  byName: { name: string; count: number }[];
+  accounts: {
+    account: AccountRef;
+    signedIn: number;
+    registered: number;
+    failed: number;
+  }[];
+  unknownEmails: number;
+  limits: { limit: string; windows: number; lastReached: string }[];
+  addresses: AddressCount[];
+};
+// The Accounts page's review list: each account with the signals it
+// tripped in its busiest day.
+export type AccountReviewSignal =
+  | "workspaces"
+  | "invitations"
+  | "acceptance"
+  | "projects"
+  | "links"
+  | "limits"
+  | "checks";
+export type WorkspaceRef = { id: string; name?: string };
+export type AccountReview = {
+  account: AccountRef;
+  createdAt: string;
+  new: boolean;
+  signals: {
+    signal: AccountReviewSignal;
+    count: number;
+    of?: number;
+    workspace?: WorkspaceRef;
+  }[];
+};
+export type AccountCount = { account: AccountRef; count: number };
+export type AccountsSections = {
+  review: AccountReview[];
+  topWriters: AccountCount[];
+  topOwners: AccountCount[];
+};
+// The Workspaces page.
+export type WorkspacesSections = {
+  quotas: {
+    caps: {
+      projects: number;
+      members: number;
+      invitations: number;
+      owned: number;
+    };
+    workspaces: {
+      workspace: WorkspaceRef;
+      projects: number;
+      members: number;
+      invitations: number;
+      used: number;
+    }[];
+    owners: { account: AccountRef; owned: number; used: number }[];
+  };
+  rows: {
+    tables: { table: string; label: string }[];
+    workspaces: { workspace: WorkspaceRef; counts: number[]; total: number }[];
+  };
+  growth: { workspace: WorkspaceRef; created: number; events: number }[];
+  invitations: {
+    workspace: WorkspaceRef;
+    sent: number;
+    accepted: number;
+    revoked: number;
+    expired: number;
+  }[];
+  throwaways: {
+    account: AccountRef;
+    workspaces: number;
+    invitations: number;
+    lastDeleted: string;
+  }[];
+  totals: { estimate: number; series: MonitorSeries };
+};
+// The Usage page.
+export type Activation = {
+  accounts: number;
+  activated: number;
+  from: string;
+  to: string;
+};
+export type SizeCount = { size: string; workspaces: number };
+export type UsageSections = {
+  active: { day: number; week: number; month: number; withMfa: number };
+  signUps: MonitorSeries;
+  activation: { workspace: Activation; invited: Activation };
+  features: MonitorSeries;
+  sizes: { members: SizeCount[]; projects: SizeCount[] };
+  inactive: {
+    before: string;
+    count: number;
+    accounts: {
+      account: AccountRef;
+      lastSeenAt: string | null;
+      createdAt: string;
+      admin: boolean;
+    }[];
+  };
 };
