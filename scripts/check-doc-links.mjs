@@ -137,7 +137,10 @@ function checkRepository() {
   let errors = 0;
   let warnings = 0;
   for (const file of markdown) {
-    const result = checkFile(file, read(file), { read, exists, tracked });
+    // A tracked file deleted in the working tree has nothing to check.
+    const text = read(file);
+    if (text === null) continue;
+    const result = checkFile(file, text, { read, exists, tracked });
     for (const e of result.errors) console.error(e);
     for (const w of result.warnings) console.warn(`warning: ${w}`);
     errors += result.errors.length;
