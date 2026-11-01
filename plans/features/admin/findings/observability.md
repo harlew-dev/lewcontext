@@ -160,3 +160,44 @@ All checks passed:
 - `make build`;
 - e2e: 23 of 23, with no ERROR lines and an empty `app_errors`;
 - benchmark: still 4.2 µs and 8 allocations.
+
+## Phase 3, and the events merge
+
+### The merge (`0cf723a`)
+
+The events branch (the Events page, convention checks, and A6's first commits) was merged into main before phase 3.
+- **Conflicts:** they were in AGENTS.md, `database.md` and the reading folder. Both sides were kept.
+- **Convention checks on main's newer code:** `store.ReportErrors` was renamed `RecordErrors`. No exceptions were added.
+- **One behaviour change for you to confirm:** the doc link check now reads only markdown that git tracks or has staged. Untracked files that other sessions keep in this checkout (`page-folders.md`, `plans/future/framework.md`) have dead links and would otherwise fail `make check` forever. A new doc is checked once it's `git add`-ed.
+- **The dev database was rebuilt** with the merged 007 and the new 021–025.
+
+### What phase 3 shipped
+
+| Commit | What |
+| --- | --- |
+| `063d6d2` | The metric registry, request metrics and `/metrics` |
+| `251ee7e` | Metrics in the database, server instances and slow queries |
+| `b8e5866` | Test: the Events catalogue has a Servers group |
+| `04411a0` | Docs; the plan implemented and moved to `plans/features/implemented/admin/observability.md` |
+| `ec5ed7d` | Test: `/metrics` never answers on the public listener |
+
+- **Metrics:** request counts, statuses, latency, timeouts, rate-limit and quota refusals, database query time, pool use, event deliveries and Go runtime figures. The labels come only from fixed sets, so a client can't create new series: 2,400 requests with random paths, invented methods and tokens produced at most 12 route labels.
+- **Stored per minute** (`request_minutes`, `metric_minutes`): one statement per server per minute, insert only. They're summed hourly into `request_hours` and `metric_hours` by one server under an advisory lock, and minute rows are deleted after 48 hours. **10,000 requests to one route write one row.**
+- **`METRICS_STORE=off`** stops the metric writes.
+- **`/metrics`** for Prometheus: off by default. `METRICS_ADDR` runs it on its own listener, never the public port. `METRICS_TOKEN` must be at least 32 characters, and production refuses a public bind without it.
+- **`server_instances`:** a heartbeat every minute with a non-secret configuration summary. A test confirms no 8-character run of any secret appears in it. Plus `server.started` and `server.stopped` events.
+- **Slow queries** (over `SLOW_QUERY_MS`, 500 ms) log the operation, table and store method, **never the SQL or its values**.
+- **Benchmark:** still 8 allocations per request; counting a request costs about 70–90 ns.
+
+### Where the build differs from the plan (recorded in the plan)
+
+- **One create migration per table** (AGENTS.md's rule), so 021–025 are five tables, not two pairs. The hour tables drop the `server` column.
+- **The heartbeat goes in the same statement as the minute rows.**
+- **Clients that hang up count as `aborted`,** never as a status class.
+- **`password_hash_wait_ms` became `password_hash_busy_total`,** because sign-in never waits for a hashing slot: it answers 503.
+- **If summing fails, minute rows older than 7 days are deleted anyway,** so the table can't grow without bound.
+- **A new `server` event area.**
+
+### Security review
+
+_Running on the committed range; fixes will go in as separate commits._
