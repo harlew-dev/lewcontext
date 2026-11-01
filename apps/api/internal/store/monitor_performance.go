@@ -292,8 +292,9 @@ type Statement struct {
 // StatementStats are the statements taking the most time in all, or
 // Available false, with Unavailable saying why, when they can't be read
 // (StatementsNotInstalled, StatementsNotLoaded, StatementsUnreadable).
-// Hidden counts those read but not shown: past the first statementsShown,
-// or refused by SafeStatement.
+// Hidden counts those read (the statementsRead with the most total time)
+// but not shown: past the top statementsShown that SafeStatement passes,
+// or refused by it.
 type StatementStats struct {
 	Available   bool        `json:"available"`
 	Unavailable string      `json:"unavailable,omitempty"`

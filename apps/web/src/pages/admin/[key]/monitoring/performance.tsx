@@ -381,8 +381,8 @@ function Statements({ view }: { view: View }) {
       ) : (
         <>
           <MonitoringTable head={["Statement", "Calls", "Total", "Mean"]}>
-            {stats.statements.map((s) => (
-              <TableRow key={s.query}>
+            {stats.statements.map((s, i) => (
+              <TableRow key={`${i}:${s.query}`}>
                 <TableCell className="max-w-xl whitespace-normal">
                   <code className="font-mono text-xs/5 break-words">
                     {s.query}
