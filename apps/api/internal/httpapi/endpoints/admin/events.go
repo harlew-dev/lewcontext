@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
@@ -15,9 +16,10 @@ import (
 	"time"
 )
 
-// Events are the admin dashboard's /api/admin/events routes:
-// the audit trail, filtered and paged by a cursor. Every read is recorded
-// (admin.event.listed, .viewed) with the filters used.
+// Events are the admin dashboard's /api/admin/events routes: the audit
+// trail, filtered and paged by a cursor, with the charts' summary on the
+// newest page when asked for. Every read is recorded (admin.event.listed,
+// .viewed) with the filters used, once per request, summary included.
 type Events struct{ *httpapi.Server }
 
 // Events list page sizes.
@@ -33,43 +35,50 @@ const (
 	minIPv6Prefix = 32
 )
 
-// catalogueNames are every event's name, in catalogue order.
-func catalogueNames() []string {
-	names := make([]string, len(events.Catalogue))
-	for i, e := range events.Catalogue {
-		names[i] = e.EventName()
-	}
-	return names
-}
+// The name filter's bounds: the catalogue has 60 names, so a canonical
+// list of tokens is far shorter than either.
+const (
+	maxNameTokens = 64
+	maxNameParam  = 4096
+)
 
-// adminReadNames are the events recording what an admin read
-// (admin.<resource>.listed and .viewed), hidden from the list unless asked
-// for, so the trail doesn't drown in its own reads.
-func adminReadNames() []string {
-	var names []string
-	for _, name := range catalogueNames() {
-		parts := strings.Split(name, ".")
-		if len(parts) == 3 && parts[0] == "admin" && (parts[2] == "listed" || parts[2] == "viewed") {
+// eventNames expands the name filter: comma-separated tokens, each a
+// catalogue name or a group ID (auth.*, auth.mfa.*, admin-reads), to the
+// union of their names in catalogue order. Anything else is refused (an
+// unknown, empty or repeated token, too many, too long), so the query is
+// always name IN (…) on known names, never LIKE.
+func eventNames(param string) (names, tokens []string, ok bool) {
+	if len(param) > maxNameParam {
+		return nil, nil, false
+	}
+	tokens = strings.Split(param, ",")
+	if len(tokens) > maxNameTokens {
+		return nil, nil, false
+	}
+	groups := events.GroupNames()
+	catalogue := events.Names()
+	picked := map[string]bool{}
+	for i, token := range tokens {
+		if token == "" || slices.Contains(tokens[:i], token) {
+			return nil, nil, false
+		}
+		switch {
+		case slices.Contains(catalogue, token):
+			picked[token] = true
+		case groups[token] != nil:
+			for _, name := range groups[token] {
+				picked[name] = true
+			}
+		default:
+			return nil, nil, false
+		}
+	}
+	for _, name := range catalogue {
+		if picked[name] {
 			names = append(names, name)
 		}
 	}
-	return names
-}
-
-// eventNames expands the name filter: a catalogue name, or a prefix ending
-// in "." to every catalogue name under it. Anything else is refused, so the
-// query is always name IN (…) on known names, never LIKE.
-func eventNames(filter string) ([]string, bool) {
-	if !strings.HasSuffix(filter, ".") {
-		return []string{filter}, slices.Contains(catalogueNames(), filter)
-	}
-	var names []string
-	for _, name := range catalogueNames() {
-		if strings.HasPrefix(name, filter) {
-			names = append(names, name)
-		}
-	}
-	return names, len(names) > 0
+	return names, tokens, true
 }
 
 // ipFilter reads an address or a CIDR range no wider than /16 (IPv4) or
@@ -97,34 +106,49 @@ func timeFilter(raw string) (*time.Time, bool) {
 	return &t, err == nil
 }
 
-// adminEventQuery parses the Events list's query string into the store's
-// filter, the page size and what to record of it.
-func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.EventFilters, bool) {
-	var f store.AdminEventFilter
-	params, ok := input.Query(r, "name", "account", "workspace", "email", "ip", "from", "to", "adminReads", "before", "perPage")
+// eventQuery is an Events request, parsed: the store's filter, the window,
+// the page size, whether the summary was asked for, and what to record.
+type eventQuery struct {
+	filter  store.AdminEventFilter
+	window  eventWindow
+	perPage int
+	summary bool
+	used    events.EventFilters
+}
+
+// adminEventQuery parses the Events list's query string at now. Anything
+// it doesn't accept is false (400).
+func adminEventQuery(r *http.Request, now time.Time) (eventQuery, bool) {
+	var q eventQuery
+	params, ok := input.Query(r, "name", "outcome", "account", "workspace", "email", "ip", "window", "from", "to", "summary", "before", "perPage")
 	if !ok {
-		return f, 0, events.EventFilters{}, false
+		return q, false
 	}
-	perPage, ok := input.Int(params["perPage"], defaultEventsPerPage, maxEventsPerPage)
+	q.perPage, ok = input.Int(params["perPage"], defaultEventsPerPage, maxEventsPerPage)
 	if !ok {
-		return f, 0, events.EventFilters{}, false
+		return q, false
 	}
+	f := &q.filter
 	used := events.EventFilters{
-		Name: params["name"], Account: params["account"], Workspace: params["workspace"],
-		Email: params["email"], IP: params["ip"], AdminReads: params["adminReads"] == "include", Before: params["before"],
+		Outcome: params["outcome"], Account: params["account"], Workspace: params["workspace"],
+		Email: params["email"], IP: params["ip"], Before: params["before"],
 	}
-	f.Account, f.Workspace, f.Before = used.Account, used.Workspace, used.Before
+	f.Account, f.Workspace, f.Before, f.Failed = used.Account, used.Workspace, used.Before, used.Outcome == outcomeFailed
+	q.summary = params["summary"] == summaryInclude
+	used.Summary = q.summary
 	valid := (used.Account == "" || input.PublicID("usr", used.Account)) &&
 		(used.Workspace == "" || input.PublicID("wsp", used.Workspace)) &&
 		(used.Before == "" || input.PublicID("evt", used.Before)) &&
-		(params["adminReads"] == "" || used.AdminReads)
-	if used.Name != "" {
-		f.Names, ok = eventNames(used.Name)
+		(used.Outcome == "" || f.Failed) &&
+		(params["summary"] == "" || q.summary) &&
+		// The summary comes with the newest page only.
+		!(q.summary && used.Before != "")
+	if params["name"] != "" {
+		f.Names, used.Names, ok = eventNames(params["name"])
 		valid = valid && ok
-	}
-	// Admin reads stay hidden unless asked for, or named exactly.
-	if !used.AdminReads && !(len(f.Names) == 1 && f.Names[0] == used.Name) {
-		f.Hide = adminReadNames()
+	} else {
+		// Nothing picked: every event but the admin reads.
+		f.Hide = events.AdminReadNames()
 	}
 	if used.Email != "" {
 		f.Email = used.Email
@@ -136,21 +160,51 @@ func adminEventQuery(r *http.Request) (store.AdminEventFilter, int, events.Event
 		valid = valid && ok
 		used.IP = f.IP
 	}
-	f.From, ok = timeFilter(params["from"])
+	q.window, ok = windowQuery(params, now)
 	valid = valid && ok
-	f.To, ok = timeFilter(params["to"])
-	valid = valid && ok
-	used.From, used.To = f.From, f.To
-	return f, perPage, used, valid
+	f.From, f.To = q.window.From, q.window.listTo()
+	used.Window, used.From, used.To = q.window.Name, q.window.From, q.window.To
+	q.used = used
+	return q, valid
+}
+
+// windowQuery reads window, or from and to (never both), resolving it at
+// now. No window is the last 24 hours.
+func windowQuery(params map[string]string, now time.Time) (eventWindow, bool) {
+	name, rawFrom, rawTo := params["window"], params["from"], params["to"]
+	if name != "" && (rawFrom != "" || rawTo != "") {
+		return eventWindow{}, false
+	}
+	if rawFrom == "" && rawTo == "" {
+		if name == "" {
+			name = defaultEventWindow
+		}
+		return resolveWindow(now, name)
+	}
+	from, okFrom := timeFilter(rawFrom)
+	to, okTo := timeFilter(rawTo)
+	if !okFrom || !okTo || from != nil && to != nil && !from.Before(*to) {
+		return eventWindow{}, false
+	}
+	return eventWindow{From: utc(from), To: utc(to)}, true
+}
+
+func utc(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.UTC()
+	return &u
 }
 
 func (h Events) Index(w http.ResponseWriter, r *http.Request) {
-	f, perPage, used, ok := adminEventQuery(r)
+	now := time.Now().UTC()
+	q, ok := adminEventQuery(r, now)
 	if !ok {
 		httpapi.Fail(w, 400, "Check the filters.")
 		return
 	}
-	page, err := h.Repo.IndexAdminEvents(r.Context(), f, perPage)
+	page, err := h.Repo.IndexAdminEvents(r.Context(), q.filter, q.perPage)
 	if errors.Is(err, store.ErrNoCursor) {
 		httpapi.Fail(w, 400, "That page is no longer available. Start from the newest events.")
 		return
@@ -159,12 +213,58 @@ func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 		httpapi.InternalError(w, err)
 		return
 	}
-	e := events.AdminEventListed{Admin: httpapi.Admin(r).User.PublicID, Filters: used}
+	out := adminEventIndex{AdminEventPage: page, Window: q.window.echo(now)}
+	if out.Refs, err = h.Repo.FindAdminEventRefs(r.Context(), q.filter.Account, q.filter.Workspace); err != nil {
+		httpapi.InternalError(w, err)
+		return
+	}
+	if q.summary {
+		summary, err := h.summarize(r.Context(), q, now)
+		if err != nil {
+			httpapi.InternalError(w, err)
+			return
+		}
+		out.Summary = &summary
+	}
+	// One read recorded for the list and its charts together.
+	e := events.AdminEventListed{Admin: httpapi.Admin(r).User.PublicID, Filters: q.used}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
 		httpapi.InternalError(w, err)
 		return
 	}
-	httpapi.JSON(w, 200, page)
+	httpapi.JSON(w, 200, out)
+}
+
+// adminEventIndex is an Events page: its rows and cursor, the window as
+// resolved (null for all time), the names behind the account and
+// workspace filters, and, when asked for, the summary.
+type adminEventIndex struct {
+	store.AdminEventPage
+	Window  *windowEcho          `json:"window"`
+	Refs    store.AdminEventRefs `json:"refs"`
+	Summary *store.AdminSummary  `json:"summary,omitempty"`
+}
+
+// summarize computes the summary after the list, within its bounds: 7 days
+// or less, a slot among the server's two, and a deadline. Past a bound it
+// says why (a status) rather than failing, so the list always answers.
+func (h Events) summarize(ctx context.Context, q eventQuery, now time.Time) (store.AdminSummary, error) {
+	window, ok := q.window.summaryWindow(now)
+	if !ok {
+		return store.AdminSummary{Status: store.SummaryTooWide}, nil
+	}
+	release, ok := h.Summaries.Acquire(ctx)
+	if !ok {
+		return store.AdminSummary{Status: store.SummaryBusy}, ctx.Err()
+	}
+	defer release()
+	bounded, cancel := context.WithTimeout(ctx, h.Summaries.Deadline)
+	defer cancel()
+	summary, err := h.Repo.SummarizeAdminEvents(bounded, q.filter, window)
+	if err != nil && ctx.Err() == nil && bounded.Err() != nil {
+		return store.AdminSummary{Status: store.SummaryTooSlow}, nil
+	}
+	return summary, err
 }
 
 func (h Events) Show(w http.ResponseWriter, r *http.Request) {
@@ -190,13 +290,14 @@ func (h Events) Show(w http.ResponseWriter, r *http.Request) {
 	httpapi.JSON(w, 200, event)
 }
 
-// adminCatalogue is what the filters offer: every event, rate limit and
-// listener name. It holds no user data, so reading it is the one admin read
+// adminCatalogue is what the filters offer: every event name and their
+// groups, and every rate limit and listener name. It holds no user data, so reading it is the one admin read
 // not recorded.
 type adminCatalogue struct {
-	Events    []string `json:"events"`
-	Limits    []string `json:"limits"`
-	Listeners []string `json:"listeners"`
+	Events      []string       `json:"events"`
+	EventGroups []events.Group `json:"eventGroups"`
+	Limits      []string       `json:"limits"`
+	Listeners   []string       `json:"listeners"`
 }
 
 func (h Events) Catalogue(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +306,7 @@ func (h Events) Catalogue(w http.ResponseWriter, r *http.Request) {
 		limits = append(limits, l.Name)
 	}
 	slices.Sort(limits)
-	httpapi.JSON(w, 200, adminCatalogue{Events: catalogueNames(), Limits: limits, Listeners: listeners(h.Server)})
+	httpapi.JSON(w, 200, adminCatalogue{Events: events.Names(), EventGroups: events.Groups(), Limits: limits, Listeners: listeners(h.Server)})
 }
 
 // listeners names every registered listener, sorted.
@@ -214,7 +315,7 @@ func listeners(s *httpapi.Server) []string {
 	if s.Repo.Listeners == nil {
 		return names
 	}
-	for _, event := range catalogueNames() {
+	for _, event := range events.Names() {
 		names = append(names, s.Repo.Listeners.ListenersFor(event)...)
 	}
 	slices.Sort(names)

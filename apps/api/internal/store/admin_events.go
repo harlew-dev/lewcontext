@@ -15,13 +15,14 @@ import (
 // session. Every filter has an index (migration 007), and nothing is
 // counted: a page is the rows older than its cursor.
 
-// AdminEventFilter narrows the Events list. httpapi validates and expands
-// it: Names holds catalogue names (a prefix already expanded), Hide the
-// admin reads to leave out when nothing asked for them. Zero values don't
-// filter.
+// AdminEventFilter narrows the Events list and its summary. httpapi
+// validates and expands it: Names holds catalogue names (groups already
+// expanded), Hide the admin reads to leave out when no name was picked.
+// Zero values don't filter.
 type AdminEventFilter struct {
 	Names     []string
 	Hide      []string
+	Failed    bool   // only events recording a failed check (adminEventFailures)
 	Account   string // usr_…: what the account did (actor) or is about (user)
 	Workspace string // wsp_…, matched in the payload, so it outlives the workspace
 	Email     string // lower-case, matched with the payload's email
@@ -44,12 +45,14 @@ type AdminRef struct {
 
 // AdminEvent is an event as the Events list shows it. Actor is who acted,
 // User the account it is about and Workspace the workspace, each read from
-// its column or, once that's empty, from the payload.
+// its column or, once that's empty, from the payload. Failed: it records a
+// failed check (adminEventFailures).
 type AdminEvent struct {
 	ID        int64           `json:"-"`
 	PublicID  string          `json:"id"`
 	Name      string          `json:"name"`
 	CreatedAt time.Time       `json:"createdAt"`
+	Failed    bool            `json:"failed"`
 	Actor     *AdminRef       `json:"actor"`
 	User      *AdminRef       `json:"user"`
 	Workspace *AdminRef       `json:"workspace"`
@@ -94,6 +97,7 @@ type adminEventRow struct {
 	PublicID    string          `bun:"public_id"`
 	Name        string          `bun:"name"`
 	CreatedAt   time.Time       `bun:"created_at"`
+	Failed      bool            `bun:"failed"`
 	ActorID     sql.NullInt64   `bun:"actor_id"`
 	UserID      sql.NullInt64   `bun:"user_id"`
 	WorkspaceID sql.NullInt64   `bun:"workspace_id"`
@@ -106,7 +110,8 @@ type adminEventRow struct {
 func adminEvents(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().Model((*eventRecord)(nil)).
 		ColumnExpr("e.id, e.public_id, e.name, e.created_at, e.actor_id, e.user_id, e.workspace_id").
-		ColumnExpr("host(e.ip) AS ip, e.payload, e.user_agent")
+		ColumnExpr("host(e.ip) AS ip, e.payload, e.user_agent").
+		ColumnExpr("? AS failed", failedCondition())
 }
 
 // newestFirst orders events newest first; the id breaks ties, so rows
@@ -148,6 +153,10 @@ func (s *Store) filterAdminEvents(ctx context.Context, q *bun.SelectQuery, f Adm
 	}
 	if len(f.Hide) > 0 {
 		q = q.Where("e.name NOT IN (?)", bun.In(f.Hide))
+	}
+	// The names first, so the planner can use the name index for them.
+	if f.Failed {
+		q = q.Where("e.name IN (?)", bun.In(FailureNames())).Where("?", failedCondition())
 	}
 	if f.Account != "" {
 		var id int64
@@ -281,7 +290,7 @@ func (s *Store) nameEventRefs(ctx context.Context, rows []adminEventRow) ([]Admi
 	out := make([]AdminEvent, len(rows))
 	for i, row := range rows {
 		out[i] = AdminEvent{
-			ID: row.ID, PublicID: row.PublicID, Name: row.Name, CreatedAt: row.CreatedAt, Payload: row.Payload,
+			ID: row.ID, PublicID: row.PublicID, Name: row.Name, CreatedAt: row.CreatedAt, Failed: row.Failed, Payload: row.Payload,
 			Actor:     users.ref(row.ActorID, refs[i].Admin),
 			User:      users.ref(row.UserID, refs[i].User),
 			Workspace: workspaces.ref(row.WorkspaceID, refs[i].Workspace),
@@ -370,4 +379,34 @@ func nonEmpty(values []string) []string {
 		}
 	}
 	return out
+}
+
+// AdminEventRefs name the Events list's account and workspace filters, so
+// the page reads "Account: Ada Lovelace" rather than an ID. Nil without the
+// filter; the ID alone once the record is deleted, or when it never
+// existed. They name only what was filtered on, which the rows name anyway.
+type AdminEventRefs struct {
+	Account   *AdminRef `json:"account"`
+	Workspace *AdminRef `json:"workspace"`
+}
+
+// FindAdminEventRefs names account (usr_…) and workspace (wsp_…); "" is no
+// filter.
+func (s *Store) FindAdminEventRefs(ctx context.Context, account, workspace string) (AdminEventRefs, error) {
+	var refs AdminEventRefs
+	if account != "" {
+		users, err := s.refsByID(ctx, (*User)(nil), "u", "u.public_id, u.name, u.email", nil, []string{account})
+		if err != nil {
+			return refs, err
+		}
+		refs.Account = users.ref(sql.NullInt64{}, account)
+	}
+	if workspace != "" {
+		workspaces, err := s.refsByID(ctx, (*Workspace)(nil), "w", "w.public_id, w.name", nil, []string{workspace})
+		if err != nil {
+			return refs, err
+		}
+		refs.Workspace = workspaces.ref(sql.NullInt64{}, workspace)
+	}
+	return refs, nil
 }

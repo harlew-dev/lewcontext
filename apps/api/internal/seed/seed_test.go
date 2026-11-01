@@ -6,9 +6,11 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/database/dbtest"
+	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
 	"strings"
 	"testing"
+	"time"
 )
 
 func migrated(t *testing.T) *bun.DB {
@@ -123,5 +125,44 @@ func TestUsersCreatesAccountsWithProjects(t *testing.T) {
 	owners, err := db.NewSelect().Model((*factory.WorkspaceUser)(nil)).Where("role = 'owner'").Count(ctx)
 	if err != nil || owners != 4 {
 		t.Fatalf("want a workspace per user, got %d owners (%v)", owners, err)
+	}
+}
+
+// The events seeder inserts what it says: catalogue names only, never in
+// the future, mostly in the last week, with failed sign-ins among them.
+func TestEventsInsertFakeHistory(t *testing.T) {
+	db := migrated(t)
+	ctx := context.Background()
+	if summary := run(t, db, "events", Options{Count: 1500}); !strings.Contains(summary, "1500 fake events") {
+		t.Fatalf("summary: %s", summary)
+	}
+	var rows []factory.Event
+	if err := db.NewSelect().Model(&rows).Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1500 {
+		t.Fatalf("%d events", len(rows))
+	}
+	names := map[string]bool{}
+	for _, name := range events.Names() {
+		names[name] = true
+	}
+	recent, failed := 0, 0
+	for _, e := range rows {
+		if !names[e.Name] || e.CreatedAt.After(time.Now()) || e.CreatedAt.Before(time.Now().AddDate(0, 0, -91)) {
+			t.Fatalf("event %s at %v", e.Name, e.CreatedAt)
+		}
+		if e.CreatedAt.After(time.Now().AddDate(0, 0, -7)) {
+			recent++
+		}
+		if e.Name == "auth.login_attempted" && e.Payload["result"] == events.LoginWrongPassword {
+			failed++
+		}
+	}
+	if recent < 1300 || failed < 50 {
+		t.Fatalf("%d in the last week, %d failed sign-ins", recent, failed)
+	}
+	if seeder, _ := Find("events"); seeder.MaxFor() != 2_000_000 {
+		t.Fatalf("events max: %d", seeder.MaxFor())
 	}
 }

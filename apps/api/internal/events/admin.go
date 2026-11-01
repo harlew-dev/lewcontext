@@ -184,18 +184,23 @@ type AdminEventListed struct {
 func (AdminEventListed) EventName() string { return "admin.event.listed" }
 
 // EventFilters are the Events list's filters as the admin sent them; empty
-// ones are left out. IP is the address or range searched for, not the
-// admin's own, which is in the events.ip column like any request's.
+// ones are left out. Names are the name tokens as sent (names and group
+// IDs); From and To the window as resolved (a relative Window's too).
+// IP is the address or range searched for, not the admin's own, which is
+// in the events.ip column like any request's. Summary: the charts were
+// asked for with the list.
 type EventFilters struct {
-	Name       string     `json:"name,omitempty"`
-	Account    string     `json:"account,omitempty"`
-	Workspace  string     `json:"workspace,omitempty"`
-	Email      string     `json:"email,omitempty"`
-	IP         string     `json:"ip,omitempty"`
-	From       *time.Time `json:"from,omitempty"`
-	To         *time.Time `json:"to,omitempty"`
-	AdminReads bool       `json:"adminReads,omitempty"`
-	Before     string     `json:"before,omitempty"`
+	Names     []string   `json:"names,omitempty"`
+	Outcome   string     `json:"outcome,omitempty"`
+	Account   string     `json:"account,omitempty"`
+	Workspace string     `json:"workspace,omitempty"`
+	Email     string     `json:"email,omitempty"`
+	IP        string     `json:"ip,omitempty"`
+	Window    string     `json:"window,omitempty"`
+	From      *time.Time `json:"from,omitempty"`
+	To        *time.Time `json:"to,omitempty"`
+	Before    string     `json:"before,omitempty"`
+	Summary   bool       `json:"summary,omitempty"`
 }
 
 // AdminEventViewed: an admin opened one event's detail.

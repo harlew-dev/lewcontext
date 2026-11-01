@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -97,39 +98,74 @@ func TestAdminEvents(t *testing.T) {
 
 	// Each filter alone, and combined.
 	for query, want := range map[string][]string{
-		"?name=auth.login_attempted":               {attempt.PublicID},
-		"?name=workspace.":                         {left.PublicID, removed.PublicID, created.PublicID},
-		"?name=workspace.member.":                  {left.PublicID, removed.PublicID},
-		"?account=" + ada.PublicID:                 {removed.PublicID, project.PublicID, created.PublicID, attempt.PublicID},
-		"?account=" + bob.PublicID:                 {removed.PublicID},
-		"?account=usr_2yEHYLwiwPVhLW":              {},
-		"?workspace=" + acme.PublicID:              {left.PublicID, removed.PublicID, project.PublicID, created.PublicID},
-		"?email=ADA%40example.test":                {attempt.PublicID},
-		"?ip=203.0.113.5":                          {attempt.PublicID},
-		"?ip=198.51.100.0%2F24":                    {created.PublicID},
-		"?ip=2001%3Adb8%3A1%3A%3A%2F48":            {limited.PublicID},
-		"?ip=10.0.0.0%2F16":                        {},
-		"?name=project.&account=" + bob.PublicID:   {},
-		"?name=workspace.&account=" + bob.PublicID: {removed.PublicID},
+		"?name=auth.login_attempted":                 {attempt.PublicID},
+		"?name=workspace.*":                          {left.PublicID, removed.PublicID, created.PublicID},
+		"?name=workspace.member.*":                   {left.PublicID, removed.PublicID},
+		"?name=workspace.member.*,project.created":   {left.PublicID, removed.PublicID, project.PublicID},
+		"?name=project.created,workspace.member.*":   {left.PublicID, removed.PublicID, project.PublicID},
+		"?name=workspace.member.removed,workspace.*": {left.PublicID, removed.PublicID, created.PublicID},
+		"?account=" + ada.PublicID:                   {removed.PublicID, project.PublicID, created.PublicID, attempt.PublicID},
+		"?account=" + bob.PublicID:                   {removed.PublicID},
+		"?account=usr_2yEHYLwiwPVhLW":                {},
+		"?workspace=" + acme.PublicID:                {left.PublicID, removed.PublicID, project.PublicID, created.PublicID},
+		"?email=ADA%40example.test":                  {attempt.PublicID},
+		"?ip=203.0.113.5":                            {attempt.PublicID},
+		"?ip=198.51.100.0%2F24":                      {created.PublicID},
+		"?ip=2001%3Adb8%3A1%3A%3A%2F48":              {limited.PublicID},
+		"?ip=10.0.0.0%2F16":                          {},
+		"?name=project.*&account=" + bob.PublicID:    {},
+		"?name=workspace.*&account=" + bob.PublicID:  {removed.PublicID},
+		"?outcome=failed":                            {attempt.PublicID},
+		"?outcome=failed&name=workspace.*":           {},
 		"?from=" + url.QueryEscape(now.Add(-150*time.Minute).Format(time.RFC3339)) + "&to=" + url.QueryEscape(now.Add(-45*time.Minute).Format(time.RFC3339)): {limited.PublicID, removed.PublicID},
-		"?name=admin.user.viewed": {viewed.PublicID},
+		"?from=" + url.QueryEscape(now.Add(-150*time.Minute).Format(time.RFC3339)):                                                                           {left.PublicID, tied[2].PublicID, tied[1].PublicID, tied[0].PublicID, limited.PublicID, removed.PublicID},
+		"?name=admin.user.viewed":         {viewed.PublicID},
+		"?name=admin.*":                   {},
+		"?name=admin.*,admin.user.viewed": {viewed.PublicID},
 	} {
 		if got := eventIDs(listEvents(t, h, cookie, query)); !slices.Equal(got, want) {
 			t.Errorf("%s: %v, want %v", query, got, want)
 		}
 	}
-	reads := listEvents(t, h, cookie, "?adminReads=include&name=admin.")
-	if len(reads.Data) < 2 || !slices.Contains(eventIDs(reads), viewed.PublicID) {
-		t.Fatalf("admin reads asked for: %v", eventIDs(reads))
-	}
 	for _, query := range []string{
-		"?name=auth.nope", "?name=auth", "?name=nope.", "?name=%25",
+		"?name=auth.nope", "?name=auth", "?name=auth.", "?name=nope.*", "?name=%25", "?name=auth.*,", "?name=auth.*,,project.*",
+		"?name=auth.*,auth.*", "?name=admin_reads", "?name=" + strings.Repeat("a", 4097),
+		"?name=" + strings.Join(events.Names(), ",") + ",auth.*,workspace.*,project.*,email.*,admin-reads",
 		"?account=wsp_2yEHYLwiwPVhLW", "?account=usr_x", "?workspace=usr_2yEHYLwiwPVhLW",
 		"?email=nope", "?ip=nope", "?ip=10.0.0.0%2F8", "?ip=0.0.0.0%2F0", "?ip=2001%3Adb8%3A%3A%2F16",
-		"?from=yesterday", "?to=2026-10-31", "?adminReads=yes", "?perPage=0", "?perPage=101",
-		"?before=evt_x", "?before=evt_2yEHYLwiwPVhLW", "?page=2", "?name=auth.&name=workspace.",
+		"?from=yesterday", "?to=2026-10-31", "?adminReads=include", "?adminReads=yes", "?perPage=0", "?perPage=101",
+		"?before=evt_x", "?before=evt_2yEHYLwiwPVhLW", "?page=2", "?name=auth.*&name=workspace.*",
+		"?outcome=ok", "?window=30d", "?window=all&from=2026-10-31T00%3A00%3A00Z", "?window=24h&to=2026-10-31T00%3A00%3A00Z",
+		"?from=2026-10-31T00%3A00%3A00Z&to=2026-10-31T00%3A00%3A00Z", "?from=2026-10-31T00%3A00%3A00Z&to=2026-10-30T00%3A00%3A00Z",
+		"?summary=yes", "?summary=include&before=" + attempt.PublicID,
 	} {
 		adminCall(t, h, "GET", "/api/admin/events"+query, "", "", 400, cookie)
+	}
+
+	// The last hour: the newest rows, not those from two hours ago.
+	if got := eventIDs(listEvents(t, h, cookie, "?window=1h")); !slices.Equal(got[:4], newestFirst[:4]) || slices.Contains(got, removed.PublicID) {
+		t.Errorf("the last hour: %v", got)
+	}
+	// Admin reads, the lists' own included, only when picked.
+	if reads := eventIDs(listEvents(t, h, cookie, "?name=admin-reads")); !slices.Contains(reads, viewed.PublicID) || len(reads) < 2 {
+		t.Errorf("admin reads: %v", reads)
+	}
+	for _, e := range listEvents(t, h, cookie, "?name=admin-reads").Data {
+		if !events.AdminRead(e.Name) {
+			t.Errorf("admin-reads listed %s", e.Name)
+		}
+	}
+
+	// The default window is the last 24 hours; window=all reaches back.
+	old := event("auth.logged_in", map[string]any{"user": ada.PublicID}, 30*time.Hour, func(e *factory.Event) { e.UserID = ada.ID })
+	if got := eventIDs(listEvents(t, h, cookie, "?name=auth.logged_in")); len(got) != 0 {
+		t.Fatalf("a day-old event in the last 24 hours: %v", got)
+	}
+	if got := eventIDs(listEvents(t, h, cookie, "?name=auth.logged_in&window=all")); !slices.Equal(got, []string{old.PublicID}) {
+		t.Fatalf("all time: %v", got)
+	}
+	if got := eventIDs(listEvents(t, h, cookie, "?name=auth.logged_in&window=7d")); !slices.Equal(got, []string{old.PublicID}) {
+		t.Fatalf("the last 7 days: %v", got)
 	}
 
 	// Rows name their references; payloads are shown as stored, project
@@ -138,8 +174,13 @@ func TestAdminEvents(t *testing.T) {
 	for _, e := range all.Data {
 		rows[e.PublicID] = e
 	}
-	if e := rows[attempt.PublicID]; e.IP == nil || *e.IP != "203.0.113.5" || e.User == nil || e.User.Email != "ada@example.test" || e.Actor != nil {
+	if e := rows[attempt.PublicID]; e.IP == nil || *e.IP != "203.0.113.5" || e.User == nil || e.User.Email != "ada@example.test" || e.Actor != nil || !e.Failed {
 		t.Fatalf("login attempt row: %+v", e)
+	}
+	for id, e := range rows {
+		if e.Failed != (id == attempt.PublicID) {
+			t.Errorf("%s (%s) failed: %v", id, e.Name, e.Failed)
+		}
 	}
 	p := rows[project.PublicID]
 	var payload map[string]any
@@ -171,6 +212,21 @@ func TestAdminEvents(t *testing.T) {
 		emailSearch.Payload["admin"] != admin.User.PublicID || emailSearch.IP != "127.0.0.1" {
 		t.Fatalf("the email search's record: %+v", emailSearch)
 	}
+	// The window is recorded as resolved, the names as sent.
+	if filters := emailSearch.Payload["filters"].(map[string]any); filters["window"] != "24h" || filters["from"] == nil || filters["to"] == nil || filters["names"] != nil {
+		t.Fatalf("the email search's filters: %v", filters)
+	}
+	var namesSearch map[string]any
+	for _, e := range listed {
+		if filters, _ := e.Payload["filters"].(map[string]any); filters["names"] != nil {
+			if names := filters["names"].([]any); len(names) == 2 && names[0] == "project.created" && names[1] == "workspace.member.*" {
+				namesSearch = filters
+			}
+		}
+	}
+	if namesSearch == nil {
+		t.Fatal("no record of the names searched for")
+	}
 	apitest.CheckPayloadIDs(t, db)
 }
 
@@ -192,7 +248,7 @@ func TestAdminEventDetail(t *testing.T) {
 	if requested.IP != "127.0.0.1" || sent.IP != "" {
 		t.Fatalf("events.ip: requested %q, sent by the listener %q", requested.IP, sent.IP)
 	}
-	page := listEvents(t, h, cookie, "?name=auth.password_reset.")
+	page := listEvents(t, h, cookie, "?name=auth.password_reset.*")
 	if len(page.Data) != 2 || page.Data[1].Name != "auth.password_reset.requested" || page.Data[0].IP != nil {
 		t.Fatalf("reset events: %+v", page.Data)
 	}
@@ -232,15 +288,20 @@ func TestAdminCatalogue(t *testing.T) {
 	_, session := adminSignedIn(t, db, factory.TestFaker(t))
 	before := apitest.Must(db.NewSelect().TableExpr("events").Count(context.Background()))(t)
 	type catalogue struct {
-		Events    []string `json:"events"`
-		Limits    []string `json:"limits"`
-		Listeners []string `json:"listeners"`
+		Events      []string       `json:"events"`
+		EventGroups []events.Group `json:"eventGroups"`
+		Limits      []string       `json:"limits"`
+		Listeners   []string       `json:"listeners"`
 	}
 	c := decodeAdmin[catalogue](t, adminCall(t, h, "GET", "/api/admin/catalogue", "", "", 200, session.Cookie()).Body.Bytes())
 	if !slices.Contains(c.Events, "auth.login_attempted") || !slices.Contains(c.Events, "admin.event.listed") ||
 		!slices.Contains(c.Limits, "auth:per-ip") || !slices.Contains(c.Limits, "account-exists:per-account") ||
 		!slices.Equal(c.Listeners, []string{"mail.password_reset", "mail.workspace_invitation"}) {
 		t.Fatalf("catalogue: %+v", c)
+	}
+	if len(c.EventGroups) != 7 || c.EventGroups[0].ID != "auth.*" || c.EventGroups[0].Label != "Accounts and sign-in" ||
+		c.EventGroups[6].ID != "admin-reads" || len(c.EventGroups[6].Names) != 11 || c.EventGroups[0].Groups[0].ID != "auth.password_reset.*" {
+		t.Fatalf("event groups: %+v", c.EventGroups)
 	}
 	if after := apitest.Must(db.NewSelect().TableExpr("events").Count(context.Background()))(t); after != before {
 		t.Fatalf("reading the catalogue recorded %d events", after-before)
