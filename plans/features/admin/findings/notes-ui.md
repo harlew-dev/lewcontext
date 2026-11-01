@@ -10,7 +10,7 @@ Built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`), one co
 | Back button under the logo | `2621a6e` | One shared `BackButton` in the auth layout. It replaces the "back" links at the bottom of each page (where each page's Back goes is listed below) | [sign up](notes-ui/1-sign-up-back.png), [phone](notes-ui/1-sign-up-back-phone.png), [MFA step](notes-ui/6-mfa-step.png) |
 | "Forgot password?" under the password input | `88621aa` | It's now the password field's description, 12px below the input | [login](notes-ui/2-login-forgot-password.png) |
 | Heading and description too far apart | `8583ed2` | New `HeadingGroup` (an `<hgroup>`, 8px gap), used on the 2FA step and the admin MFA setup, and for consistency on forgot password, reset, the code steps, verify-email, onboarding, the block-link pages and the status page. Settings sections, dialogs and page headings already sat close | [admin MFA setup](notes-ui/4-admin-mfa-setup.png) |
-| Admin sign-out not danger | _being fixed_ | See "Corrected after your notes were misread" below | [before](notes-ui/7-admin-account-menu.png) |
+| Admin sign-out not danger | `0557ff7` | Sign out is a plain menu item in the app's, onboarding's and the admin's account menus; the "red Sign out" rule is gone from the docs | [before](notes-ui/7-admin-account-menu.png) |
 | "Copied" as a 3-second tooltip, app-wide | `ac69513` | New `components/ui/copy-button.tsx`. After a copy, a tooltip says "Copied" for 3 s while the icon shows a check, and screen readers hear it. Used for the workspace ID, the MFA setup key, and recovery codes in settings and the admin sign-in. The three hand-written copies and their raw "Copied" text are gone | [setup key](notes-ui/5-copy-tooltip-setup-key.png), [recovery codes](notes-ui/5-copy-tooltip-recovery-codes.png) |
 | Remove Refresh buttons | `26cda58` | Only admin Events and Mail had them; both are gone. **Retry on a failed load stays** (AGENTS.md rule 8) | — |
 | (extra) project input validation | `1a4cec8` | Project names refuse control characters. Descriptions allow line breaks and tabs, but no other control or invisible formatting characters. Both now answer 422 on the field, where a NUL used to answer **500** (confirmed against the old code) | — |
@@ -45,7 +45,7 @@ Built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`), one co
 ## Corrected after your notes were misread
 
 - **"admin logout button not danger variant":** the builder read this as "check that it isn't" and found it *was* red on purpose: `forms-and-actions.md` makes Sign out red in every account menu. Since signing out isn't destructive, Sign out is being made plain in **both** the admin and app account menus, and the rule changed to match. **Tell me if you only wanted admin's changed.**
-- **The admin MFA setup text said "scan" twice.** This predates the notes; it's being fixed alongside.
+- **The admin MFA setup text said "scan" twice** (`150dc52`). This predated the notes; the description now reads "Admins need two-factor authentication to sign in."
 
 ## Open for you
 
@@ -80,4 +80,12 @@ The independent reviewer found **no security leaks**:
 | 6 | Low | Docs and plan drift: the email-blocks plan's decision 3 wording, and Back on pages opened from an email | Updated; the email-blocks plan notes the change |
 | 7–10 | Nits | Timers after unmount in `CopyButton`; "Copied" announced twice; the blocked text in an unnamed fieldset; `CodeStep`'s Back enabled for the first 200 ms of a verify | Fixed |
 
-_Fix results: filled in once the fixes pass the checks._
+**Fix results:**
+- **`e09bc0d`:** the shared `input.ValidText` rule, now used by sign-up names, with emoji accepted and dangerous characters refused.
+- **`3df9505`:** copying, with the failure staying visible.
+- **`a9f6b24`:** the Sign in link is back.
+- **`dcd915f`:** a `body` slot in `ConfirmationDialog`.
+- **`598d39d`:** `CodeStep`'s Back is disabled straight away.
+- **`225ba49`:** docs and plan drift.
+
+The full suite passed on the final code: `make check`, `make test` (341 Vitest tests), `make build`, and e2e 25 of 25.
