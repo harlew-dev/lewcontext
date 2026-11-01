@@ -4,12 +4,12 @@ import {
   NewPasswordFields,
   newPasswordProblems,
 } from "@/components/app/account/password-fields";
-import { AuthLayout } from "@/components/layout/auth-layout";
+import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
-import { Strong, Text, TextLink } from "@/components/ui/text";
+import { Text } from "@/components/ui/text";
 import { ApiError, errorMessage, useApi } from "@/lib/api";
 import { routes, type AuthPageState } from "@/lib/routes";
 import { useAction } from "@/lib/use-action";
@@ -42,6 +42,7 @@ export default function ResetPassword() {
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo href={routes.home} />
+        <BackButton href={routes.login} />
         {state.kind === "checking" &&
           (checking ? <Text role="status">Checking your link…</Text> : null)}
         {state.kind === "live" && (
@@ -172,12 +173,9 @@ function DeadLink() {
         Reset links work once, for 30 minutes, and only the newest one you asked
         for works.
       </Notice>
-      <Button href={routes.forgotPassword}>Request a new link</Button>
-      <Text>
-        <TextLink href={routes.login}>
-          <Strong>Back to sign in</Strong>
-        </TextLink>
-      </Text>
+      <Button href={routes.forgotPassword} className="w-full">
+        Request a new link
+      </Button>
     </>
   );
 }

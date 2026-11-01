@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { ArrowLeftIcon } from "@heroicons/react/16/solid";
+import { Button } from "@/components/ui/button";
 import { PageTransition } from "./page-transition";
 // AuthLayout: a centred card for sign-in and other standalone pages. Each
 // page renders its own, so its content fades in as the page opens.
@@ -11,5 +13,39 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         </PageTransition>
       </div>
     </main>
+  );
+}
+// The way back from a sign-in page, right under its logo: a plain button
+// with an arrow, its arrow in line with the logo. With `href` it opens the
+// page before (with navigation `state`, e.g. the typed email); with
+// `onClick` it goes back a step on the same page (the code step to the
+// password). It replaces the "back to …" links at the foot of the form.
+export function BackButton(
+  props:
+    | { href: string; state?: unknown }
+    | { onClick: () => void; disabled?: boolean },
+) {
+  const className = "-mt-4 -ml-3 justify-self-start sm:-ml-2.5";
+  const content = (
+    <>
+      <ArrowLeftIcon />
+      Back
+    </>
+  );
+  if ("href" in props)
+    return (
+      <Button plain href={props.href} state={props.state} className={className}>
+        {content}
+      </Button>
+    );
+  return (
+    <Button
+      plain
+      onClick={props.onClick}
+      disabled={props.disabled}
+      className={className}
+    >
+      {content}
+    </Button>
   );
 }

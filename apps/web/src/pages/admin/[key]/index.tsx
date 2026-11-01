@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { CodeStep } from "@/components/app/mfa/code-step";
 import { MfaScanStep, RecoveryCodeList } from "@/components/app/mfa/mfa-setup";
-import { AuthLayout } from "@/components/layout/auth-layout";
+import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
@@ -211,6 +211,10 @@ function AdminSetup({
   return (
     <form onSubmit={submit} className="grid w-full max-w-sm grid-cols-1 gap-8">
       <Logo href={routes.home} />
+      {/* Back to the password before MFA is on; after, Users is the way on. */}
+      {!codes && (
+        <BackButton onClick={() => onRestart("")} disabled={confirm.busy} />
+      )}
       <HeadingGroup>
         <Heading>
           {codes

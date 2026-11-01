@@ -18,6 +18,23 @@ The short version: **actions sit at the bottom right of what they act on**, the 
 | **Table row** | A ⋯ `Dropdown` in the last column, right-aligned (`TableCell className="w-0 text-right"`). Row actions live in the menu, never as loose buttons. | n/a | Change role, Remove from workspace, Edit project, Delete project |
 | **Sign-in pages** (`AuthLayout`: login, register, forgot password, the reset link, onboarding) | **One full-width primary button** (`className="w-full"`) as the form's last control. Links (Forgot password?, Sign up) are text links, not buttons; Forgot password? sits right under the password input as its `Description`. | the only button | Sign in, Create account, Send reset link, Set new password, Create workspace |
 
+### Back on the sign-in pages
+
+The way back is a **Back** button right under the logo, never a "Back to …" or "Remembered it?" link at the foot of the form: `BackButton` (`components/layout/auth-layout.tsx`), a `plain` button with a left arrow, in line with the logo. With `href` it opens the page before (carrying `?next=`, the invitation state and the typed email as the old links did); with `onClick` it goes back a step on the same page. Links to somewhere else (Sign up, Sign in from the code page, Forgot password?) stay text links.
+
+| Page | Back goes to |
+| --- | --- |
+| Login | the homepage |
+| Login's and the admin door's code step (`CodeStep`) | the password step, the email kept (it was "Sign in as someone else") |
+| Register | login, with `?next=` and the invitation |
+| A sign-up's code page | register, with the email filled in (it was "Use a different email") |
+| Forgot password | login, with the typed email |
+| Forgot password's "Check your email" | the form, the email kept, to try again (it was Try again and Back to sign in) |
+| The reset link page | login |
+| The admin door's MFA setup | the password step (until MFA is on; then the codes lead on to Users) |
+
+The pages that start a flow from an email or gate a session have no Back: the admin door's password step, the invitation and block links, onboarding, verify email (its way out is Sign out), and a sign-up that has ended (its one button is Back to sign up).
+
 Everything signed in and outside a dialog follows the settings rows: right-aligned, never left-aligned or full-width. The sign-in pages are the only exception, because their single action is the whole page.
 
 ## Order and style

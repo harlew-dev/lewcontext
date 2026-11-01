@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BackButton } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { Heading, HeadingGroup } from "@/components/ui/heading";
@@ -50,6 +51,8 @@ export function CodeStep({
       className="grid w-full max-w-sm grid-cols-1 gap-8"
     >
       <Logo href={routes.home} />
+      {/* Back to the password, as whoever is signing in. */}
+      <BackButton onClick={() => onRestart("")} disabled={loading} />
       <HeadingGroup>
         <Heading>Two-factor authentication</Heading>
         <Text>
@@ -73,22 +76,15 @@ export function CodeStep({
       <Button type="submit" className="w-full" loading={loading}>
         Verify
       </Button>
-      <div className="space-y-2">
-        <Text>
-          <TextButton onClick={switchMode} disabled={loading}>
-            <Strong>
-              {recovery
-                ? "Use your authenticator app instead"
-                : "Lost your device? Use a recovery code"}
-            </Strong>
-          </TextButton>
-        </Text>
-        <Text>
-          <TextButton onClick={() => onRestart("")} disabled={loading}>
-            Sign in as someone else
-          </TextButton>
-        </Text>
-      </div>
+      <Text>
+        <TextButton onClick={switchMode} disabled={loading}>
+          <Strong>
+            {recovery
+              ? "Use your authenticator app instead"
+              : "Lost your device? Use a recovery code"}
+          </Strong>
+        </TextButton>
+      </Text>
     </form>
   );
 }

@@ -84,8 +84,8 @@ describe("asking for a reset link", () => {
         csrf: null,
       },
     ]);
-    // Trying again keeps the email.
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    // Back returns to the form to try again, keeping the email.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
   });
   it("shows a refusal and stays on the form", async () => {

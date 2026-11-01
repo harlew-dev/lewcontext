@@ -95,4 +95,21 @@ describe("signing in with two-factor authentication", () => {
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
     expect(screen.getByLabelText("Password")).toHaveValue("");
   });
+  it("goes back to the password with Back, keeping the email", async () => {
+    stubApi({ "POST /api/auth/login": { body: { mfaRequired: true } } });
+    renderLogin();
+    signIn();
+    await screen.findByLabelText("Authentication code");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(
+      screen.getByRole("heading", { name: "Sign in to your account" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
+    expect(screen.getByLabelText("Password")).toHaveValue("");
+    // The password step's own Back leads to the homepage.
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+  });
 });
