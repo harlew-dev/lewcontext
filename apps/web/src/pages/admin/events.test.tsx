@@ -88,7 +88,11 @@ function Where() {
   return <output aria-label="Location">{pathname + search}</output>;
 }
 // The admin layout with the Events, event and Mail routes.
-function renderAdmin(path: string) {
+// dedupingInterval is how long SWR serves a key it already holds without
+// asking again. The tests turn it off so each one's reads are its own; a
+// test about the cache sets it, since with 0 a remounted page always
+// revalidates (and that request lands whenever the machine gets to it).
+function renderAdmin(path: string, dedupingInterval = 0) {
   const Stub = createRoutesStub([
     {
       path: "/",
@@ -112,7 +116,7 @@ function renderAdmin(path: string) {
     },
   ]);
   render(
-    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval }}>
       <Stub initialEntries={[path]} />
     </SWRConfig>,
   );
@@ -523,7 +527,7 @@ describe("the Events page", () => {
         ]),
       },
     });
-    renderAdmin(`/admin/${key}/events`);
+    renderAdmin(`/admin/${key}/events`, 60_000);
     await screen.findByText("wrong_password · ada@example.com");
     expect(screen.getByRole("button", { name: "Newer" })).toBeDisabled();
     fireEvent.click(screen.getByRole("link", { name: "Older" }));
