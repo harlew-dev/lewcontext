@@ -471,6 +471,68 @@ func TestAdminMonitoringTakeoverFlood(t *testing.T) {
 	}
 }
 
+// Accounts signing in from a new network every time (the review's
+// measurement: 6,720 sign-ins over a week, 960 a day each) and changing
+// their password often can't blind the takeover check: each sign-in is
+// compared with at most the account's last 50, so the week answers
+// within its section's budget; and the list keeps one row per account,
+// so they can't push a real takeover off it.
+func TestAdminMonitoringTakeoverNetworks(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	_, session := adminSignedIn(t, db, f)
+	m := eventMaker{t, db, f}
+	ctx := context.Background()
+	const perAccount = 3360
+	var hoppers []factory.User
+	for a := range 2 {
+		u := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+		hoppers = append(hoppers, u)
+		apitest.Must(factory.Events.Sequence(func(i int, e *factory.Event) {
+			e.Name, e.UserID, e.ActorID = "auth.logged_in", u.ID, u.ID
+			e.Payload = map[string]any{"user": u.PublicID}
+			e.IP = fmt.Sprintf("%d.%d.%d.1", 10+a, i/256, i%256)
+			e.CreatedAt = time.Now().Add(-time.Duration(perAccount-i) * 3 * time.Minute)
+		}).Create(ctx, db, f, perAccount))(t)
+		apitest.Must(factory.Events.Sequence(func(i int, e *factory.Event) {
+			e.Name, e.UserID, e.ActorID = "auth.password_changed", u.ID, u.ID
+			e.Payload = map[string]any{"user": u.PublicID}
+			e.CreatedAt = time.Now().Add(-time.Duration(i*30+1) * time.Minute)
+		}).Create(ctx, db, f, 30))(t)
+	}
+	victim := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	m.make("auth.logged_in", map[string]any{"user": victim.PublicID}, "192.0.2.7", 3*24*time.Hour, func(e *factory.Event) { e.UserID = victim.ID })
+	m.make("auth.logged_in", map[string]any{"user": victim.PublicID}, "203.0.113.70", 2*time.Hour, func(e *factory.Event) { e.UserID = victim.ID })
+	m.make("auth.password_changed", map[string]any{"user": victim.PublicID}, "", 100*time.Minute, func(e *factory.Event) { e.UserID = victim.ID })
+
+	var raw struct {
+		Unavailable []string `json:"unavailable"`
+	}
+	w := adminCall(t, h, "GET", "/api/admin/monitoring/security?window=7d", "", "", 200, session.Cookie())
+	apitest.Must(0, json.Unmarshal(w.Body.Bytes(), &raw))(t)
+	if len(raw.Unavailable) != 0 {
+		t.Fatalf("not read within the budget: %v", raw.Unavailable)
+	}
+	v := decodeAdmin[monitoringView](t, w.Body.Bytes())
+	if got := v.signal(t, "auth.possible_takeovers"); got.Unavailable || got.Value != 3 {
+		t.Fatalf("signal: %+v", got)
+	}
+	rows := sections[struct {
+		Rows []store.TakeoverRow `json:"takeovers"`
+	}](t, v).Rows
+	accounts := map[string]bool{}
+	for _, r := range rows {
+		if accounts[r.Account.ID] {
+			t.Fatalf("an account listed twice: %+v", rows)
+		}
+		accounts[r.Account.ID] = true
+	}
+	if len(rows) != 3 || !accounts[victim.PublicID] || !accounts[hoppers[0].PublicID] {
+		t.Fatalf("takeovers: %+v", rows)
+	}
+}
+
 // The Rate limits page: windows reached by limit, the shared limits
 // against their caps (critical when reached), subjects at a limit now,
 // who reached the most, budgets, refusals, quotas and routes.

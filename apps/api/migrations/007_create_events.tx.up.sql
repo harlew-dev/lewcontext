@@ -28,8 +28,10 @@ CREATE INDEX events_user_created_idx ON events(user_id, created_at DESC);
 CREATE INDEX events_workspace_created_idx ON events(workspace_id, created_at DESC);
 CREATE INDEX events_name_created_idx ON events(name, created_at DESC);
 CREATE INDEX events_created_idx ON events(created_at) INCLUDE (name);
--- Each user's last sign-in, for the admin dashboard's user list.
-CREATE INDEX events_logged_in_idx ON events(user_id, created_at DESC) WHERE name = 'auth.logged_in';
+-- Each user's last sign-in, for the admin dashboard's user list; with the
+-- address, so the Security page's takeover check compares a sign-in's
+-- network with the account's earlier ones from the index alone.
+CREATE INDEX events_logged_in_idx ON events(user_id, created_at DESC) INCLUDE (ip) WHERE name = 'auth.logged_in';
 -- Each admin's last admin sign-in (the admin is the actor), for the Admins
 -- page: events_actor_created_idx would walk every read the admin made.
 CREATE INDEX events_admin_logged_in_idx ON events(actor_id, created_at DESC) WHERE name = 'admin.logged_in';
