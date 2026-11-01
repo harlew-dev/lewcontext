@@ -195,7 +195,9 @@ const lifetimeLabels: Record<IPBlockLifetime, string> = {
 };
 // Blocking: an address (one /32 or /128) or a range written from its first
 // address, how long, and why. The API refuses ranges wider than a /16 (or
-// /32 for IPv6), your own address and trusted proxies, on the field.
+// /32 for IPv6), your own address and trusted proxies, on the field. An
+// IPv6 range wider than a /48 is allowed but warned about: it can be a
+// whole provider's customers, where one person usually has a /64.
 function BlockDialog({
   open,
   onClose,
@@ -222,6 +224,7 @@ function BlockDialog({
     }
     return false;
   }
+  const wide = wideIPv6Prefix(network);
   return (
     <AdminActionDialog
       open={open}
@@ -245,7 +248,9 @@ function BlockDialog({
         <Label>Address or range</Label>
         <Description>
           An address, or a range from its first address, such as 203.0.113.0/24
-          or 2001:db8:1:2::/64. At most a /16 (IPv4) or /32 (IPv6).
+          or 2001:db8:1:2::/64. At most a /16 (IPv4) or /32 (IPv6). One person
+          on IPv6 usually has a whole /64: block that rather than a single
+          address.
         </Description>
         <Input
           name="network"
@@ -256,6 +261,12 @@ function BlockDialog({
         />
         {errors.network && (
           <ErrorMessage role="alert">{errors.network}</ErrorMessage>
+        )}
+        {wide !== null && (
+          <Notice variant="warning" className="mt-3">
+            A /{wide} of IPv6 is wider than a /48: it can cover a whole
+            provider’s customers. For one person, block their /64.
+          </Notice>
         )}
       </Field>
       <Field>
@@ -276,6 +287,20 @@ function BlockDialog({
       </Field>
     </AdminActionDialog>
   );
+}
+// wideIPv6Prefix is the prefix length of network when it's an IPv6 range
+// wider than a /48 (a site's usual allocation), or null.
+function wideIPv6Prefix(network: string): number | null {
+  const [address, prefix] = network.trim().split("/");
+  if (
+    !address?.includes(":") ||
+    prefix === undefined ||
+    !/^\d+$/.test(prefix)
+  ) {
+    return null;
+  }
+  const bits = Number(prefix);
+  return bits < 48 ? bits : null;
 }
 // Lifting a block before it ends. A 404 means it ended meanwhile: the list
 // reloads behind the dialog.

@@ -382,6 +382,30 @@ describe("the IP blocks page", () => {
       }),
     );
   });
+  it("warns about an IPv6 range wider than a /48, and suggests a /64", async () => {
+    renderBlocks({ "GET /api/admin/ip-blocks": { body: { data: [] } } });
+    expect(await screen.findByText("No blocked addresses")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Block an address" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("usually has a whole /64");
+    const field = within(dialog).getByLabelText("Address or range");
+    const warning = () => within(dialog).queryByRole("note");
+    for (const [value, warned] of [
+      ["2001:db8::/32", "A /32 of IPv6"],
+      [" 2001:db8:1::/47 ", "A /47 of IPv6"],
+      ["2001:db8:1::/48", null],
+      ["2001:db8:1:2::/64", null],
+      ["2001:db8::1", null],
+      ["203.0.0.0/16", null],
+    ] as const) {
+      fireEvent.change(field, { target: { value } });
+      if (warned) {
+        expect(warning()).toHaveTextContent(warned);
+      } else {
+        expect(warning()).toBeNull();
+      }
+    }
+  });
   it("offers a viewer no Block or Unblock", async () => {
     renderBlocks(
       { "GET /api/admin/ip-blocks": { body: { data: [block] } } },
