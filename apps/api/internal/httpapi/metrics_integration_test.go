@@ -204,3 +204,21 @@ func TestEveryRefusalIsCounted(t *testing.T) {
 		t.Fatalf("refusals counted: %q", got)
 	}
 }
+
+// /metrics never answers on the public listener, with or without the
+// pages: only METRICS_ADDR's own listener serves it.
+func TestNoMetricsOnThePublicListener(t *testing.T) {
+	s, _ := server(t)
+	for _, pages := range []bool{false, true} {
+		if pages {
+			s.Pages = apitest.Pages(t)
+		}
+		h := router.New(s)
+		for _, path := range []string{"/metrics", "/api/metrics", "/metrics/"} {
+			w := apitest.Get(h, "GET", path, nil)
+			if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "http_requests_total") {
+				t.Errorf("pages %v, %s: %d %.80q", pages, path, w.Code, w.Body.String())
+			}
+		}
+	}
+}
