@@ -9,7 +9,6 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http"
 	"time"
-	"unicode/utf8"
 )
 
 // Sign-up with EMAIL_VERIFICATION on (plans/features/email-verification.md):
@@ -214,8 +213,14 @@ func (h Registrations) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := body.Credentials
-	if !httpapi.ValidCredentials(&in) || !httpapi.StrongPassword(in.Password) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
+	if !httpapi.ValidCredentials(&in) || !httpapi.StrongPassword(in.Password) {
 		httpapi.Fail(w, 422, "Use a name, a valid email, and a password of 12–128 characters.")
+		return
+	}
+	// The same rule as the profile's (NUL would otherwise be a 500, and
+	// bidi overrides would reach users.name and auth.registered).
+	if !validName(in.Name) {
+		httpapi.FailField(w, 422, "name", invalidProfile)
 		return
 	}
 	// Before any limit or lookup, like the checks above.

@@ -4,10 +4,10 @@ import (
 	"errors"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -52,25 +52,13 @@ type unblockInput struct {
 // validReason trims the reason and checks it is 10 to 500 characters
 // (counted as Unicode characters, as sign-up counts a password's), with no
 // character that could hide or rearrange what an audit record says: line
-// breaks and tabs are allowed, but no other control character (and no NUL,
-// which PostgreSQL's jsonb can't hold), no format character (bidi
-// overrides such as U+202E, zero-width characters, U+FEFF) and no Unicode
-// line or paragraph separator.
+// breaks and tabs are allowed, but nothing input.ValidText refuses (control
+// characters, NUL among them, bidi overrides, zero-width spaces, line
+// separators).
 func validReason(reason *string) bool {
 	*reason = strings.TrimSpace(*reason)
 	n := utf8.RuneCountInString(*reason)
-	return n >= minReason && n <= maxReason && !strings.ContainsFunc(*reason, hiddenInReason)
-}
-
-// hiddenInReason reports whether c may not appear in a reason.
-func hiddenInReason(c rune) bool {
-	switch {
-	case c == '\n' || c == '\r' || c == '\t':
-		return false
-	case c == '\u2028' || c == '\u2029':
-		return true
-	}
-	return unicode.IsControl(c) || unicode.Is(unicode.Cf, c)
+	return n >= minReason && n <= maxReason && input.ValidText(*reason, true)
 }
 
 // Destroy takes an address off the block list, behind the operator role, a

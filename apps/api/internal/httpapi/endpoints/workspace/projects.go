@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -17,46 +16,30 @@ var projectColors = []string{"violet", "blue", "amber", "emerald", "rose"}
 
 const (
 	invalidProject            = "Check the project name, description, status, and color."
-	invalidProjectName        = "Use a project name of 1–100 characters, without control characters."
-	invalidProjectDescription = "Use a description of up to 500 characters, without control characters other than line breaks and tabs."
+	invalidProjectName        = "Use a project name of 1–100 characters, without invisible formatting characters."
+	invalidProjectDescription = "Use a description of up to 500 characters, without invisible formatting characters."
 )
 
 // validProject trims the name and description and checks them, the status
 // and the colour. When something is wrong it returns the field to blame
 // ("name" or "description") with why, or no field for a status or colour
-// the API doesn't offer. A name is 1–100 characters with no control
-// character, as a workspace name; a description is up to 500, where line
-// breaks and tabs are fine but no other control character (NUL among them,
-// which PostgreSQL can't store), format character or line separator is
-// (hiddenInDescription).
+// the API doesn't offer. A name is 1–100 characters and a description up to
+// 500, neither with an invisible formatting character (input.ValidText;
+// NUL among them, which PostgreSQL can't store), though a description may
+// break lines.
 func validProject(in *store.ProjectInput) (field, message string, ok bool) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Description = strings.TrimSpace(in.Description)
 	n := utf8.RuneCountInString(in.Name)
 	switch {
-	case n < 1 || n > 100 || strings.ContainsFunc(in.Name, unicode.IsControl):
+	case n < 1 || n > 100 || !input.ValidText(in.Name, false):
 		return "name", invalidProjectName, false
-	case utf8.RuneCountInString(in.Description) > 500 || strings.ContainsFunc(in.Description, hiddenInDescription):
+	case utf8.RuneCountInString(in.Description) > 500 || !input.ValidText(in.Description, true):
 		return "description", invalidProjectDescription, false
 	case !slices.Contains(input.ProjectStatuses, in.Status) || !slices.Contains(projectColors, in.Color):
 		return "", invalidProject, false
 	}
 	return "", "", true
-}
-
-// hiddenInDescription reports whether c may not appear in a description:
-// any control character but a line break or tab, a format character (bidi
-// overrides such as U+202E, zero-width characters, U+FEFF), and the Unicode
-// line and paragraph separators. The admin dashboard's reasons follow the
-// same rule.
-func hiddenInDescription(c rune) bool {
-	switch {
-	case c == '\n' || c == '\r' || c == '\t':
-		return false
-	case c == '\u2028' || c == '\u2029':
-		return true
-	}
-	return unicode.IsControl(c) || unicode.Is(unicode.Cf, c)
 }
 
 // decodeProject reads a project from the body: 400 for a body that isn't
