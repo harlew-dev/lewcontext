@@ -200,4 +200,23 @@ The events branch (the Events page, convention checks, and A6's first commits) w
 
 ### Security review
 
-_Running on the committed range; fixes will go in as separate commits._
+The independent reviewer found no high-severity defects. It checked these and found them sound:
+- **Labels:** every source is a fixed set; the caps work; label escaping is unambiguous.
+- **`/metrics`:** its own listener, no `pprof` and not the default mux, a constant-time token, header limits.
+- **The config summary** holds no secrets, not even `DATABASE_URL`'s host or user.
+- **The server events** carry no hostname.
+- **SQL:** builder-only, and the advisory lock releases with its transaction.
+- **The slow-query hook** never logs SQL or values.
+- **Shutdown** stays within its budget.
+- **Link check:** skipping untracked markdown is reasonable.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **The minute tables could grow without bound.** A rollup that hit its 1-minute deadline rolled everything back and skipped the 7-day safety delete, so after a backlog every hourly run could time out the same way. Old servers' rows also stopped being cleaned | Each hour commits on its own; the safety delete and the server cleanup run even after a timeout |
+| 2 | Low | **`/metrics` could serve unauthenticated on public interfaces in production** if `METRICS_ADDR` used a zoned IPv6 address (`[::%lo]:9090`), which binds every interface but slipped past the check. Confirmed | Zones refused; without a token, production also requires a loopback or private address |
+| 3 | Low | One server with a clock hours ahead could make every other server's hourly data be skipped | The cutoff comes from the database's clock; far-off minutes are dropped |
+| 4 | Low | A fleet crash-looping faster than once a minute leaves `server_instances` rows that nothing cleans up | Silent servers are also deleted at startup |
+| 5 | Low | Docs: the Docker example for `METRICS_ADDR` can't work inside a container; the "about 90 rows a minute" figure is typical, not a ceiling (the real bound is about 1,200 a minute) | Corrected |
+| 6–8 | Nits | Label values not checked for valid UTF-8; the metrics listener and rollup not closed or awaited on a failed startup; the link check crashed on a deleted tracked file | Fixed |
+
+_These fixes are being made by the A4 builder as separate commits before it continues._
