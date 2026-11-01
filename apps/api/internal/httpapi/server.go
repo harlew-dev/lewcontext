@@ -14,6 +14,9 @@ import (
 )
 
 type Server struct {
+	// Repo is the database: every query and event the API runs is a method on
+	// it (internal/store), and controllers reach it as h.Repo. Named Repo, not
+	// Store, so it doesn't clash with a controller's Store action.
 	Repo   *store.Store
 	Config config.Config
 	// Pages serves the web app (internal/web); nil serves the API only.
