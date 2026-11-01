@@ -19,12 +19,13 @@ import (
 // (one small query), so the check costs a prefix comparison per block, and
 // none at all while nothing is blocked. The address is ClientAddress's
 // (ClientIP), never a header read here. Never blocked: the health checks,
-// and the admin door to a request holding the key (or the admin build's
-// assets pass), so a mistaken block can't lock admins out of undoing it;
-// without the key, an /admin URL is refused like any other, so a blocked
-// visitor can't tell the admin door from anything else. Blocks are for a
-// few abusive addresses: a flood is better stopped at the edge
-// (docs/deployment.md).
+// and the admin door to a request holding the current key (or the admin
+// build's assets pass) from an address ADMIN_ALLOWED_IPS allows, so a
+// mistaken block can't lock admins out of undoing it; anything else, a
+// right key from outside the allowlist or the previous key included, gets
+// the block's answer, so a blocked visitor can't tell the admin door, or a
+// key, from anything else. Blocks are for a few abusive addresses: a flood
+// is better stopped at the edge (docs/deployment.md).
 
 // IPBlocksReload is how often each server reloads the live IP blocks: a
 // new block applies on every server within it.
@@ -98,23 +99,36 @@ func (s *Server) addressBlocked(ip string) bool {
 }
 
 // ipBlockExempt reports whether r is never blocked: the health checks, and
-// the admin door to a request holding the key (current or previous; the
-// door's own checks, the allowlist included, run after) or a valid assets
-// pass.
+// the admin door to a request that would get through it: the current key
+// (never the previous one) or a valid assets pass, from an address
+// ADMIN_ALLOWED_IPS allows (adminAddressAllowed, which records a refusal as
+// the door does). Anything else, a right key from outside the allowlist
+// or the previous key included, gets the block's answer, exactly as a
+// wrong key does, so a blocked visitor learns nothing about the keys
+// (access-hardening's "looks exactly like a wrong key"). A session under
+// the previous key is blocked like any other until it moves to the current
+// key.
 func (s *Server) ipBlockExempt(r *http.Request) bool {
 	path := r.URL.Path
 	switch {
 	case path == "/api/health" || path == "/api/health/live":
 		return true
 	case strings.HasPrefix(path, "/api/admin/"):
-		return s.matchAdminKey(r.Header.Get("X-Admin-Key")) != auth.AdminKeyNone
+		return s.adminDoorOpens(r, r.Header.Get("X-Admin-Key"))
 	case strings.HasPrefix(path, "/admin-assets/"):
-		return s.adminAssetsPassValid(r)
+		return s.adminAssetsPassValid(r) && s.adminAddressAllowed(r)
 	case strings.HasPrefix(path, "/admin/"):
 		key, _, _ := strings.Cut(strings.TrimPrefix(path, "/admin/"), "/")
-		return s.matchAdminKey(key) != auth.AdminKeyNone
+		return s.adminDoorOpens(r, key)
 	}
 	return false
+}
+
+// adminDoorOpens reports whether key is the current admin key and r comes
+// from an address the admin door allows. The address is checked only once
+// the key matched, as at the door, so a wrong key records nothing.
+func (s *Server) adminDoorOpens(r *http.Request, key string) bool {
+	return s.matchAdminKey(key) == auth.AdminKeyCurrent && s.adminAddressAllowed(r)
 }
 
 // refuseBlockedAddress answers a request from a blocked address with 403,

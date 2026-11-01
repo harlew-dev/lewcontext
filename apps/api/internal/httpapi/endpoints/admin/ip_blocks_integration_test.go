@@ -122,8 +122,10 @@ func TestAdminIPBlocks(t *testing.T) {
 // A blocked address gets 403 on the API (JSON) and on pages (plain), and
 // so does an /admin URL without the key: a blocked visitor can't tell the
 // admin door from any other URL. The health checks, and the admin door
-// with the key (current or previous) or the assets pass, are never
-// blocked, so a mistaken block can't lock admins out of undoing it. The
+// with the current key or the assets pass from an address the allowlist
+// allows, are never blocked, so a mistaken block can't lock admins out of
+// undoing it; a right key from outside the allowlist, or the previous key,
+// gets exactly what a wrong key gets. The
 // block applies on the server that made it at once, on every other within
 // a reload, and ends at its expiry; an IPv6 range covers its addresses.
 func TestIPBlocksAreEnforced(t *testing.T) {
@@ -186,6 +188,48 @@ func TestIPBlocksAreEnforced(t *testing.T) {
 	if s.IPBlockRefusals() <= before {
 		t.Fatal("refusals weren't counted")
 	}
+
+	// Only what would open the door is exempt: the current key, or a pass,
+	// from inside ADMIN_ALLOWED_IPS. From a blocked address, the current
+	// key from outside the allowlist and the previous key without a
+	// session get exactly what a wrong key gets (the block's answer), on
+	// the API, pages and files alike; the refusal is still recorded.
+	current, previous := "rotated-"+factory.AdminRouteKey, factory.AdminRouteKey
+	guarded := serverWith(t, db, func(c *config.Config) {
+		c.AdminRouteKey, c.AdminRouteKeyPrevious = current, previous
+		c.AdminAllowedIPs = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}
+	})
+	apitest.Must(factory.IPBlocks.State(factory.BlockOf("203.0.113.0/24")).CreateOne(ctx, db, f))(t)
+	apitest.Must(0, guarded.ReloadIPBlocks(ctx))(t)
+	gh := router.New(guarded)
+	wrongAPI := from(gh, blocked, "GET", "/api/admin/me", "wrong-key")
+	sameAnswer(t, "the blocked API with a wrong key", wrongAPI, from(gh, blocked, "GET", "/api/nowhere", ""))
+	sameAnswer(t, "the current key from outside the allowlist", from(gh, blocked, "GET", "/api/admin/me", current), wrongAPI)
+	sameAnswer(t, "the previous key without a session", from(gh, blocked, "GET", "/api/admin/me", previous), wrongAPI)
+	wrongPage := from(gh, blocked, "GET", "/admin/wrong-key/users", "")
+	for name, target := range map[string]string{
+		"the sign-in page under the current key from outside the allowlist": "/admin/" + current,
+		"a page under the current key from outside the allowlist":           "/admin/" + current + "/users",
+		"the sign-in page under the previous key":                           "/admin/" + previous,
+		"a page under the previous key without a session":                   "/admin/" + previous + "/users",
+	} {
+		sameAnswer(t, name, from(gh, blocked, "GET", target, ""), wrongPage)
+	}
+	inside := "203.0.113.7"
+	guardedPass := passFrom(t, fromAddress(gh, inside), current)
+	sameAnswer(t, "a pass from outside the allowlist", from(gh, blocked, "GET", apitest.AdminAsset, "", guardedPass), from(gh, blocked, "GET", apitest.AdminAsset, ""))
+	if refused := eventually(t, db, "admin.access_refused", 1); len(refused) == 0 || refused[0].IP != blocked {
+		t.Fatalf("the refusal wasn't recorded: %+v", refused)
+	}
+	// From a blocked address inside the allowlist, the current key and the
+	// pass still open the door; the previous key without a session doesn't.
+	if w := from(gh, inside, "GET", "/api/admin/me", current); w.Code != 401 {
+		t.Fatalf("the current key from inside the allowlist: %d %s", w.Code, w.Body.String())
+	}
+	if w := from(gh, inside, "GET", apitest.AdminAsset, "", guardedPass); w.Code != 200 {
+		t.Fatalf("a pass from inside the allowlist: %d", w.Code)
+	}
+	sameAnswer(t, "the previous key inside the allowlist", from(gh, inside, "GET", "/api/admin/me", previous), from(gh, inside, "GET", "/api/admin/me", "wrong-key"))
 
 	// Another server sees it at its next reload (every 30 seconds; here 20
 	// milliseconds), and stops at its expiry.
