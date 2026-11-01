@@ -13,7 +13,8 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | Path | Page | Notes |
 | --- | --- | --- |
 | `/` | `pages/home.tsx` | Public homepage, **prerendered** for search engines |
-| `/auth/login`, `/auth/register` | `pages/auth/*` | Signed out. Login's `?notice=account-exists` shows a fixed notice, "You already have an account. Sign in here, or reset your password." (from the "You already have an account" email, or a sign-up's 409); any other `notice` shows nothing, and nothing from the URL is ever shown |
+| `/policy/terms-of-service`, `/policy/privacy-policy` | `pages/policy/*.tsx` (`TermsOfService`, `PrivacyPolicy`) | **Prerendered:** each page's `loader` runs at build time, reading `content/policy/<name>.md` (`lib/policies.server.ts`), so the page is HTML plus a `.data` file and no Markdown or parser reaches the browser. `PolicyPage`: the title, "Last updated …", a warning while the file is still the template, the document, and links to both. Go serves them only with `POLICIES=on`; off, they and their `.data` files are unknown URLs, and the page's `ErrorBoundary` shows `NotFound` ([../api/auth.md](../api/auth.md#terms-of-service-and-privacy-policy)) |
+| `/auth/login`, `/auth/register` | `pages/auth/*` | Signed out. Login's `?notice=account-exists` shows a fixed notice, "You already have an account. Sign in here, or reset your password." (from the "You already have an account" email, or a sign-up's 409); any other `notice` shows nothing, and nothing from the URL is ever shown. With the policies published, register has a required "I agree to the Terms of Service and have read the Privacy Policy." checkbox (links in a new tab), sends the versions it showed, and on a 422 `policies` shows the reason under it, unticked with the new versions when they changed |
 | `/auth/register/verify` | `pages/auth/register/verify.tsx` (`RegisterVerify`) | A sign-up's code step, with `EMAIL_VERIFICATION` on: register's 202 opens it, keeping `?next=` and the invitation state. Its loader (`registerVerifyLoader`) asks `register/check` for the email, so a reload (a phone switching to the mail app) resumes it; with no live sign-up it says so with Back to sign up. The code (`EmailCodeStep`); **Didn’t receive the email?**, a dialog with the same text for every address (check spam; if you ever used "Block this address" in one of our emails no code can reach it, and that link's page unblocks it), Cancel · Resend code; Back (to register, with the email filled in); Sign in. The right code goes to onboarding, or back to an invitation link; a 409 goes to login with the account-exists notice and the email in navigation state ([../api/auth.md](../api/auth.md#email-verification)) |
 | `/auth/forgot-password` | `pages/auth/forgot-password.tsx` | Signed out: asks for a reset link. Login passes the typed email in navigation state, not the URL (`authPageState`) |
 | `/auth/forgot-password/<token>` | `pages/auth/forgot-password/[token].tsx` | The reset link: checks it, then sets a new password and opens login with the email filled in. No `guestLoader`, so it works while signed in ([auth.md](../api/auth.md#password-reset-by-link)) |
@@ -68,7 +69,8 @@ Loaders run in the browser before a route renders. They only decide what a page 
 | `signedInLoader` | the app layout | Loads the session and page 1 of the member's workspaces, once (`shouldRevalidate` is false). 401 → `/auth/login?next=<this page>`; no workspace → `/app/onboarding`; API unreachable → `ServiceUnavailable` |
 | `workspaceHomeLoader` | `/app` | Redirects to the newest workspace's dashboard or onboarding |
 | `onboardingLoader` | `/app/onboarding` | Needs a session; accounts with a workspace go on to `/app` |
-| `guestLoader` | login, register | Signed-in visitors go on to `?next=` or `/app`; if the API is down the form still renders |
+| `guestLoader` | login | Signed-in visitors go on to `?next=` or `/app`; if the API is down the form still renders |
+| `registerLoader` | register | `guestLoader`, and `GET /api/policies` at the same time: `{policies}`, `{enabled: false}` if the API can't answer (the form then has no checkbox until the API's 422 brings it back) |
 | `registerVerifyLoader` | `/auth/register/verify` | `guestLoader`, then the browser's sign-up (`register/check`): `{pending}`, or `{ended}` with the API's reason |
 | `verifyEmailLoader` | `/app/verify-email` | Needs a session (401 → login); a verified account, or verification off, goes on to `?next=` or `/app` |
 
@@ -116,6 +118,8 @@ Signed-out visits to a signed-in page go to `/auth/login?next=<path and query>`,
 ## Public pages and prerendering
 
 `pages/home.tsx` is listed in `react-router.config.ts` under `prerender`, so `react-router build` writes `build/client/index.html` with its content, `<title>` and meta description (from `root.tsx`'s `meta`, or the page's own `meta` export). It is built without a session, so it shows "Log in" and switches to "Dashboard" once the browser finds a session (`GET /api/auth/me`).
+
+The policy pages are prerendered this way, and their loaders read their Markdown at build time. Home, login and register link to them below the card (`AuthLayout footer`, `PolicyLinks`) once `usePolicies()` hears they're published.
 
 To add a public page: register it in `routes.ts`, add its path to `prerender`, and keep it free of user data. A prerendered route may have a `loader`, which runs at build time.
 

@@ -68,6 +68,17 @@ Invitations go to addresses an inviter types, so each one carries a **block link
 - **Events:** `email.blocked` and `email.unblocked` (`by`: `link`, `cli` or `admin`), with the address, pruned after 90 days ([events.md](events.md#catalogue)).
 - **The operator** can list and unblock addresses (`admin blocks`, `admin unblock -email … [-confirm]`), never block one ([admin.md](admin.md#admins-admins)). So can the admin dashboard: every admin sees the list on Email blocks (each read recorded), and an `operator` can unblock one there behind a fresh code (step-up) and a written reason, recorded as `admin.email.unblocked` ([admin.md](admin.md#email-blocks)). Nothing in the dashboard blocks.
 
+## Terms of service and privacy policy
+
+With `POLICIES=on` ([plan](../../plans/features/implemented/policies.md)), Go publishes `/policy/terms-of-service` and `/policy/privacy-policy`, prerendered from `apps/web/content/policy/*.md` at build time, and every sign-up must agree to them:
+
+- **The register page asks** (`GET /api/policies` says they're on): a required checkbox, "I agree to the Terms of Service and have read the Privacy Policy.", whose links open in a new tab. It sends the versions it showed: `policies: {termsOfService, privacyPolicy}`, each document's `updated` date.
+- **The API enforces it**, not the checkbox: with `POLICIES=on`, `register` answers 422 `field: "policies"` when they're missing or aren't the current versions (a page opened before a deploy changed a document; it then shows the new versions, unticked). Login and the admin login decode `Credentials`, which still refuse a `policies` field.
+- **The same answer for every address.** The check reads only the body and the server's versions, never `users`, and runs with the body's own validation before any limit, hash or lookup; with verification on, every address's pending row holds the versions alike (`TestSignUpLooksTheSameForATakenEmail` sends them).
+- **Recorded on the account:** `pending_registrations` keeps the versions until the code is right, and `CompleteRegistration` copies them to `users` (`terms_of_service_version`, `privacy_policy_version`) with `policies_accepted_at` set to the sign-up's `created_at`, when it was submitted; with verification off `CreateUser` records them now. `auth.registered` carries `policies`, and the user JSON `policies` (or `null`). Deleting the account deletes the record.
+- **Off** (the default): the pages are unknown URLs, no checkbox, and a `policies` field is accepted and ignored. Accounts made while off, or before this, have no record and aren't asked; asking existing accounts, or asking again after a change, is a later plan.
+- **No template in production:** with `APP_ENV=production` the server refuses `POLICIES=on` while either file still says `boilerplate: true`, naming it.
+
 ## Two-factor authentication
 
 Code: `internal/auth/totp.go`, `encrypt.go`, `recovery.go` (primitives), `internal/httpapi/endpoints/account/mfa.go` and `recovery_codes.go` (the controllers), `internal/httpapi/second_factor.go` (checking codes and setting MFA up, shared with the admin door), `internal/store/mfa.go`. Plan: [plans/features/implemented/mfa.md](../../plans/features/implemented/mfa.md).

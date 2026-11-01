@@ -27,7 +27,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 
 | Factory | Model | Notes |
 | --- | --- | --- |
-| `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process); email verified (`Unverified` for one that never was) |
+| `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process); email verified (`Unverified` for one that never was); no policy agreement (`AgreedToPolicies(terms, privacy)` for one, accepted when created) |
 | `Sessions` | `Session` | Real random token, only the digest stored; `Cookie()`, `CSRFToken`. Needs `UserID`; use `SessionFor` |
 | `Workspaces` | `Workspace` | Fake company names (≤ 80 characters), created in the last year. Use `WorkspaceFor` to add an owner |
 | `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role (any of `auth.Roles`, viewers included). Needs `UserID` and `WorkspaceID`; use `MemberOf` |
@@ -37,7 +37,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `WorkspaceInvitations` | `WorkspaceInvitation` | A live invitation, not yet sent, to a unique `example.test` address as admin, member or viewer. Needs `WorkspaceID`; use `InvitationsTo(workspaceID)`. `Sent` gives it a link and keeps the raw `Token` |
 | `MFATOTPs` | `MFATOTP` | A confirmed authenticator (MFA on), its secret sealed with `factory.Keys`; `Plain` holds it and `Code()` makes the current code. Use `TOTPFor(userID)`, which sets the user and seals it; `PendingTOTP` leaves setup pending |
 | `RecoveryCodes` | `RecoveryCode` | An unused recovery code, stored as its keyed digest; `Code` keeps it as shown. Use `RecoveryCodesFor(userID)` |
-| `PendingRegistrations` | `PendingRegistration` | A live sign-up waiting for its code (15 minutes) with the code already sent: `Token` and `Cookie()` (the browser's), `Code` (stored as its HMAC under `factory.Keys`). `RegistrationFor(email)`, `ExpiredRegistration` |
+| `PendingRegistrations` | `PendingRegistration` | A live sign-up waiting for its code (15 minutes) with the code already sent: `Token` and `Cookie()` (the browser's), `Code` (stored as its HMAC under `factory.Keys`). `RegistrationFor(email)`, `ExpiredRegistration`; no policy versions unless `RegistrationAgreedTo(terms, privacy)` |
 | `EmailVerifications` | `EmailVerification` | A live code for an account verifying its email; `Code`. Use `VerificationFor(userID)` |
 | `MFAChallenges` | `MFAChallenge` | A live sign-in challenge (purpose `login`, 5 minutes); `Token` and `Cookie()`. Use `ChallengeFor(userID)`; `ExpiredChallenge` |
 | `Admins` | `Admin` | A viewer with no setup window (as when MFA is on). Use `AdminFor(userID)`; `AdminRole(auth.AdminOperator)` for an operator; `SetupWindow` opens the 24-hour window, `ClosedSetupWindow` one that ended. Seeders make no admins: only `admin grant` does |

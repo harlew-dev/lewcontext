@@ -31,7 +31,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 
 | Event | Payload | Recorded by |
 | --- | --- | --- |
-| `auth.registered` | `user`, `name`, `email`, `verifiedBy`: `code` (the sign-up's emailed code) / `none` (`EMAIL_VERIFICATION=off`) | `CompleteRegistration`, `CreateUser` |
+| `auth.registered` | `user`, `name`, `email`, `verifiedBy`: `code` (the sign-up's emailed code) / `none` (`EMAIL_VERIFICATION=off`); `policies` (`termsOfService`, `privacyPolicy`, the versions agreed to) with `POLICIES=on`, absent when off | `CompleteRegistration`, `CreateUser` |
 | `auth.registration.requested` | `email` (no `user`: the request doesn't look the account up) | `register` and `register/resend` with verification on, for every request past the limits, taken email or not |
 | `auth.registration.sent` | `email`, `request` (the requested event's `evt_` ID), `existingAccount`, `user` when it exists | the `mail.registration` listener, after sending a code, or "You already have an account" to an email with one (not when `account-exists:per-account` held it back) |
 | `auth.registration.checked` | `email`, `ok`, `attempt` (this sign-up's try, from 1) | `CompleteRegistration`, for every code that reached the check |

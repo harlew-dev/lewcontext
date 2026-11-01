@@ -61,6 +61,7 @@ ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
 | `GET /assets/*` | The hashed file, `Cache-Control: public, max-age=31536000, immutable` |
 | `GET /favicon.svg` (other built files) | The file, `no-cache` |
 | `GET /` (prerendered pages) | Their HTML, `no-cache` |
+| `GET /policy/terms-of-service`, `/policy/privacy-policy` and their `.data` files | With `POLICIES=on`, the prerendered page (`no-cache`, its own CSP) and its data file for in-app navigation; with `off`, the 404 below, exactly as an unknown URL |
 | `GET /app`, `/app/*` without a valid session | `302` to `/auth/login?next=<path and query>` (`RequirePageSession`) |
 | `GET /app/*`, `/auth/*` | `__spa-fallback.html`, `no-store`; the browser renders the page |
 | `GET /admin/<ADMIN_ROUTE_KEY>`, and `/admin/<key>/*` with an admin session (else `302` to `/admin/<key>`) | The admin build's `index.html` (never the app's fallback) with 200, `no-store`, `no-referrer`, `noindex` (`Pages.ServeAdmin`), and the assets pass cookie. A wrong key, admin off, or an address outside `ADMIN_ALLOWED_IPS` is the 404 below; under `ADMIN_ROUTE_KEY_PREVIOUS` only inner pages, with a session made under it ([admin.md](admin.md#pages)) |
@@ -68,9 +69,9 @@ ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
 | any other `GET` | `__spa-fallback.html` with status 404 (the app shows its not-found page) |
 | other methods outside `/api` | 405 |
 
-`internal/web` hashes each HTML file's inline scripts once, in `web.New`, and sends that file's CSP with it ([auth.md](auth.md#transport-and-headers)). Dot-files (`.vite/`) and `.html` paths aren't served directly. If the session check's database query fails, the page is served anyway and its own session check shows the outage page.
+`internal/web` reads the build's policy manifest (`.policies.json`, a dot-file never served) and hashes each HTML file's inline scripts once, in `web.New`, and sends that file's CSP with it ([auth.md](auth.md#transport-and-headers)). Dot-files (`.vite/`) and `.html` paths aren't served directly. If the session check's database query fails, the page is served anyway and its own session check shows the outage page.
 
-Without a web build, the server serves the API only in development (Vite serves the pages) and refuses to start with `APP_ENV=production`. With a web build but no admin build, and `ADMIN_ROUTE_KEY` set, it refuses to start everywhere (`web.ErrAdminNotBuilt`). `make dev` rebuilds `dist/` before starting, so the API on :8080 serves the pages as they were at startup. `make api` alone compiles whatever `dist/` holds from the last build. In development, browse :3000 either way.
+Without a web build, the server serves the API only in development (Vite serves the pages) and refuses to start with `APP_ENV=production`. With a web build but no admin build, and `ADMIN_ROUTE_KEY` set, it refuses to start everywhere (`web.ErrAdminNotBuilt`), and with `POLICIES=on` but no policies in the build (`web.ErrPoliciesNotBuilt`), or in production with a document still marked `boilerplate` (`Pages.ServePolicies`). `make dev` rebuilds `dist/` before starting, so the API on :8080 serves the pages as they were at startup. `make api` alone compiles whatever `dist/` holds from the last build. In development, browse :3000 either way.
 
 ## Environment
 
@@ -87,6 +88,7 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | (empty) | Both or neither; only over TLS. Never logged |
 | `EMAIL_VERIFICATION` | `on` | `on`: a sign-up enters a 6-digit code emailed to its address before the account exists, and unverified accounts can verify from Account settings. `off`: sign-up as before. Refused with `MAIL_DRIVER=off` (it sends codes) ([auth.md](auth.md#email-verification)) |
 | `EMAIL_VERIFICATION_EXISTING` | `optional` | `required`: an account that never verified its email (made while verification was off) must verify after signing in before anything else; the API refuses it every other route. Needs `EMAIL_VERIFICATION=on` |
+| `POLICIES` | `off` | `on`: Go serves the prerendered `/policy/terms-of-service` and `/policy/privacy-policy` (and their `.data` files), `GET /api/policies` says so with their versions, and sign-up must agree to them (422 `policies` otherwise). Needs a web build with the policies (`.policies.json`); production refuses it while either document is still marked `boilerplate` ([auth.md](auth.md#terms-of-service-and-privacy-policy), [deployment](../deployment.md#terms-of-service-and-privacy-policy)) |
 | `RATE_LIMITS` | `on` | `off` switches every rate limit off, for the end-to-end tests; quotas stay. Production refuses `off` ([rate-limits.md](rate-limits.md#switching-limits-off-for-tests-rate_limits)) |
 | `CLIENT_IP_HEADER` | (unset) | The header a proxy puts the client's address in: `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP`. Believed only on connections from `TRUSTED_PROXIES`; unset uses the connection's address ([deployment](../deployment.md#behind-a-proxy-or-load-balancer)) |
 | `TRUSTED_PROXIES` | (unset) | Comma-separated addresses or CIDR ranges the proxy connects from. Set with `CLIENT_IP_HEADER` or not at all; `0.0.0.0/0` and `::/0` are refused |

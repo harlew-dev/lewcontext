@@ -14,7 +14,7 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 | `update` | PATCH | `/things/{thing}` | change, 200 with the record | `Things.Update` |
 | `destroy` | DELETE | `/things/{thing}` | delete, 204 | `Things.Destroy` |
 
-- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes.
+- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes, and so does `GET /api/policies` (`account.Policies.Show`, a public singleton), rather than a `policy` area for one route.
 - **One controller per file, named after its resource:** `type Projects struct{ *httpapi.Server }` in `endpoints/workspace/projects.go`, `WorkspaceProjects` in `workspace_projects.go`. The file holds the controller, its input types and its validation. An area exports only its controllers.
 - **Its methods are the actions, exported**, each a `func(http.ResponseWriter, *http.Request)`. Helpers stay unexported:
 
@@ -84,7 +84,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 | --- | --- | --- |
 | API client (`lib/api/<resource>.ts`), calls and typed paths | the API's actions, plus named verbs | `api.projects(ws).index()`, `.show(id)`, `.store(input)`, `.update(id, input)`, `.destroy(id)`; `paths.projects(ws).store()`; `api.invitations().accept(token)` |
 | Page route constants (`lib/routes.ts`) | grouped by resource, with the page actions `index`, `show`, `create`, `edit` | `routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`, `routes.members.index(ws)` |
-| Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)` |
+| Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)`, `routes.termsOfService`, `routes.privacyPolicy` |
 | Resource pages' default exports | `<Resource><Action>` | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex`; the admin dashboard's add `Admin` (`AdminUserIndex`, `AdminWorkspaceShow`), its route constants are `adminRoutes` in `lib/admin-routes.ts` and take the key (`adminRoutes.users.show(key, usr)`), and its API paths are `adminPaths` in `lib/api/admin.ts` |
 | Other pages' default exports | what the page is | `Login`, `Onboarding`, `AccountSettings`, `Dashboard` |
 

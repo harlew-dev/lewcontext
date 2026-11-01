@@ -41,6 +41,7 @@ make build                                                     # or, without Doc
 | `MAIL_DRIVER` | `smtp` (the default), or `off` | `smtp` needs the settings below, or the server refuses to start. `off` runs without email: password reset and invitations answer 503, and it needs `EMAIL_VERIFICATION=off`. `log` (the development mailbox) is refused in production |
 | `EMAIL_VERIFICATION` | `on` (the default), or `off` | `on`: a new sign-up enters a 6-digit code emailed to it before its account exists, and sign-up no longer tells anyone whether an email has an account. `off`: sign-up as before. See [Turning on email verification](#turning-on-email-verification) |
 | `EMAIL_VERIFICATION_EXISTING` | `optional` (the default), or `required` | `required`: accounts that never verified (made while it was off) must verify at their next sign-in before anything else |
+| `POLICIES` | `off` (the default), or `on` once the documents are yours | `on` publishes `/policy/terms-of-service` and `/policy/privacy-policy` and makes every sign-up agree to them. **Production refuses `on` while either document is still the template** (`boilerplate: true`). See [Terms of Service and Privacy Policy](#terms-of-service-and-privacy-policy) |
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | `no-reply@example.com`, `Example` | The sender. The address must be bare, on a domain your provider has verified. The name defaults to `APP_NAME` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | `smtp.resend.com`, `587`, `starttls` | `starttls` (port 587 by default) or `tls` (465). **`none` is refused in production.** Certificates are always verified |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | your provider's | Both or neither. **A secret:** pass it through your platform's secret store, not the image |
@@ -178,6 +179,17 @@ These notes apply when the domain is proxied through Cloudflare.
 
 Someone whose old address no longer receives mail can't get past the verify page under `required`, and there's no way to change an email yet. Turning `required` off again lets them back in.
 
+## Terms of Service and Privacy Policy
+
+The app ships two documents as templates: `apps/web/content/policy/terms-of-service.md` and `privacy-policy.md`. They are a starting point for a small SaaS, **not legal advice**; you are responsible for what yours say.
+
+1. **Edit both files.** Replace every `[bracketed]` placeholder, check the privacy policy against what your deployment really does (providers, regions, retention), and have them reviewed. Markdown is limited to `##`–`####` headings, paragraphs, bold, italic, inline code, lists, tables, `---` and links to `https:`, `mailto:` or a path on the site; anything else (raw HTML, images, other links) fails the build, naming the file and line.
+2. **Set `updated`** in each file's front matter to the date it takes effect (`YYYY-MM-DD`). That date is the document's version: what the page shows as "Last updated", and what each new account is recorded as agreeing to. Change it whenever you change the text.
+3. **Delete the `boilerplate: true` line**, then rebuild the image (`make build` or `docker build`): the pages are prerendered from the files at build time.
+4. **Set `POLICIES=on`** and restart. The server checks the build holds both documents, and in production that neither is still a template. Home, login and sign-up then link both, sign-up needs the box ticked, and the API refuses a sign-up without agreement to the current versions.
+
+Accounts made before you turn it on, or while it's off, have no agreement on record and aren't asked; neither is anyone after you change a document. Asking them is a later plan. To try it out locally first, `POLICIES=on` works with the templates outside production, showing a "Template text" warning on each page.
+
 ## Email
 
 Password reset links and workspace invitations go out over SMTP (`MAIL_DRIVER=smtp`, [api/mail.md](api/mail.md)). Any provider that accepts SMTP works; changing provider changes only these settings:
@@ -208,6 +220,7 @@ Check each provider's own docs for current values.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
 - [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `ADMIN_ROUTE_KEY_PREVIOUS` unset outside a rotation; `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; `ADMIN_ALLOWED_IPS` set to your own addresses where possible (with `CLIENT_IP_HEADER` behind a proxy), or Cloudflare Access or a VPN in front of `/admin/`; admins granted only to people who need it, as viewers unless they must act (`admin list`, the Admins page), and reviewed quarterly.
 - [ ] `seed` never run (it refuses in production anyway).
+- [ ] With sign-up open to the public: both policy documents edited, reviewed, dated and without `boilerplate`, and `POLICIES=on`.
 - [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
 - [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off` deliberately.

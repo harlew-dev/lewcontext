@@ -32,7 +32,7 @@ All were fixed before committing, apart from the few listed as accepted in each 
   1. Logs, request IDs, panic recovery, health checks: _building_.
   2. Grouped errors (`app_errors`), errors from the browser.
   3. Metrics, server heartbeats, slow queries, `/metrics`.
-- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../events-page.md) (A10, `e1cd3b4`).
+- **Plans written and committed:** [policies](../../implemented/policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../events-page.md) (A10, `e1cd3b4`).
 
 ## The parallel plan (from 2026-11-01, about 05:00)
 
@@ -41,7 +41,7 @@ You asked for every open plan to be built, with their recommendations accepted f
 | Line | Where | Branch | Order |
 | --- | --- | --- | --- |
 | Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A6 actions → A7 compliance (each needs the one before) |
-| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (_7 commits done, under review_; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy) → [captcha challenges](../../captcha-challenges.md) |
+| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (_7 commits done, under review_; [findings](../findings/notes-ui.md)) → [policies](../../implemented/policies.md) (terms and privacy) → [captcha challenges](../../captcha-challenges.md) |
 | events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../events-page.md) (_building_) → [convention checks](../../convention-checks.md) |
 | Last, on main | after the merges | | [page-folders](../../page-folders.md): it moves every page file, so it would collide with everything else |
 

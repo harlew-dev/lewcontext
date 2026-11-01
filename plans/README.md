@@ -29,6 +29,7 @@ Build them in this order. Each one assumes the ones above it are done, and later
 | 19 | [admin/compliance](features/admin/compliance.md): retention per kind of data, pseudonymisation, erasure of traces, "Download my data", audit lines shipped off the host, the data map and incident runbook | 13, 15, 18 | decisions to confirm |
 | 20 | [email-verification](features/implemented/email-verification.md): `EMAIL_VERIFICATION` (on by default), a 6-digit code before a sign-up's account exists (`pending_registrations`, tied to the browser by a cookie), "You already have an account" instead of a code for a taken email (sign-up no longer reveals accounts), `email_verified_at`, verifying older accounts from settings or at sign-in (`EMAIL_VERIFICATION_EXISTING=required`) | 9, 11 | implemented 2026-10-31 |
 | 21 | [admin/email-blocks](features/implemented/admin/email-blocks.md): the Email blocks page (the block list) and Unblock, the dashboard's first action, with A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` built for it | 10, 13; 14 for the `operator` role | implemented 2026-11-01 |
+| 22 | [policies](features/implemented/policies.md): terms of service and privacy policy from Markdown in `apps/web/content/policy`, prerendered at build time (`marked`'s lexer, no HTML), `POLICIES` (off by default; production refuses the templates), a required agreement on sign-up recorded on `users`, `GET /api/policies` | 20 | implemented 2026-11-01 |
 
 ## Future plans
 

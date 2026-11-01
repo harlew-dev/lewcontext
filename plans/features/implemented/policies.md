@@ -1,6 +1,6 @@
 # Terms of Service and Privacy Policy
 
-Status: **draft 2026-11-01**, decisions to confirm. Builds on [the SPA](implemented/spa.md) (prerendered pages, CSP hashes computed by Go at startup), [email verification](implemented/email-verification.md) (pending registrations; sign-up answers the same for every address) and [the admin build](implemented/admin/separate-build.md) (a page that is always built but that Go serves only when a setting is on).
+Status: **implemented 2026-11-01**, every recommendation in the Decisions table confirmed and built as written; see [How the build differs](#how-the-build-differs) for the differences and the docs updated. Builds on [the SPA](spa.md) (prerendered pages, CSP hashes computed by Go at startup), [email verification](email-verification.md) (pending registrations; sign-up answers the same for every address) and [the admin build](admin/separate-build.md) (a page that is always built but that Go serves only when a setting is on).
 
 ## Why
 
@@ -272,6 +272,11 @@ No new event. Versions aren't sensitive, so `TestPayloadsHoldNothingSensitive` i
 
 Confirm on React Router 7.18 with `ssr: false` that (1) a prerendered route's `loader` runs at build time and writes `policy/terms-of-service.data` for in-app navigation, and the name Go must hide when off; and (2) the client assets contain neither `marked` nor `node:fs`. If (1) fails, fall back to a Vite virtual module holding the parsed blocks, which keeps everything else in this plan.
 
+**Results (2026-11-01, React Router 7.18.5, Vite 8.3.5, `marked` 18.1.1).** A throwaway route `/policy/spike`, prerendered, whose `loader` called a `.server.ts` module that read a file with `node:fs` and tokenized Markdown with `marked.lexer`:
+
+1. **Yes.** `react-router build` printed `Prerender (data): /policy/spike -> build/client/policy/spike.data` and `Prerender (html): … build/client/policy/spike/index.html`. The loader ran at build time (it read `package.json`; its token types were in both files), and the HTML carries the loader data as an inline `streamController.enqueue(…)` script, which Go hashes like any other. So Go hides `policy/<name>/index.html` (served at `/policy/<name>`) and the sibling `policy/<name>.data`: everything under `policy/`. The fallback wasn't needed.
+2. **Yes.** The route's client chunk was only the component (`spike-*.js`, a `p` of the loader's data); a grep of `build/client/assets/*.js` for `marked`, `Lexer`, `readFileSync`, `node:fs`, `spike.server`, and two strings from `marked`'s own code (`pedantic`, `blockquote`, which `node_modules/marked/lib/marked.esm.js` holds) found nothing. Rerun on the real build (both policy pages): the same grep, plus `policies.server` and the reader's "isn't allowed", finds nothing in `build/client/assets`.
+
 ## Tests
 
 - **Go unit (`internal/web`, `fstest.MapFS`):** with policies on, both pages are prerendered with their own CSP hashes and the `.data` files are served; with off, both answer as `/nowhere` (404 fallback, same headers); `.policies.json` is never served; a malformed manifest fails `New`; `Policies()` returns its versions.
@@ -327,10 +332,28 @@ Confirm on React Router 7.18 with `ssr: false` that (1) a prerendered route's `l
 | 18 | e2e | The main server keeps the default (off); `policies.spec.ts` runs a second server with `POLICIES=on` |
 | 19 | Checkbox component | A new `components/ui/checkbox.tsx` (`Checkbox`, `CheckboxField`) on BaseUI's `Checkbox`, styled with `slot()` |
 
+## How the build differs
+
+Built 2026-11-01 on `admin-run/ui`. Where the build differs from the plan above:
+
+- **Where the startup checks live.** `internal/config/policies.go` only parses `POLICIES`. The manifest is read by `web.New` (a malformed one fails it), and `Pages.ServePolicies()` publishes the pages and returns the versions, refusing a build without the policies (`web.ErrPoliciesNotBuilt`) and, in production, a document still marked `boilerplate` (naming its file). `cmd/server` calls it with `POLICIES=on` and sets `httpapi.Server.Policies`, a `store.PolicyVersions`. The production refusal is tested in `internal/web` (`TestProductionRefusesTemplatePolicies`), not through `cmd/server`.
+- **Off, the browser shows NotFound through the page's own `ErrorBoundary`.** The plan expected the root `ErrorBoundary`'s `NotFound`, but a `.data` file answered with the 404 page isn't a route 404 to React Router, so the root showed "A brief pause.". Each policy page exports an `ErrorBoundary` rendering `NotFound` (its `meta` copes with no loader data).
+- **The template warning shows whenever the document is marked `boilerplate`,** not "in development": the pages are prerendered by a production build, and production never publishes a template anyway.
+- **The reader** reads `content/policy` from the working directory (`apps/web`, where every build and test runs; the manifest plugin passes the directory explicitly). `description` is optional in the front matter. Character references (`&amp;`) are decoded to text. A link must also have no whitespace or backslash; `#anchor` alone isn't allowed (as planned: `/…#anchor` is).
+- **The manifest plugin** (`policyManifest`) runs only in the app build's client environment (`applyToEnvironment`) and emits `.policies.json` as an asset.
+- **The user JSON** gets `policies` from `store.User.MarshalJSON`; the queries that load the account's own user (the session, MFA sign-in, email verification) select the new columns through one `userColumns` list. The admin views keep their own columns.
+- **Account settings' dates** use `formatDate(…, "long")`, so "November 1, 2026" (en-US, as elsewhere), not "1 November 2026".
+- **`Checkbox`** needed `slot()` to map `$checked` to `data-checked`; the row is the `<label>`, so a link inside opens without ticking it. `CheckboxField` puts the error under the label as the input's description.
+- **e2e:** the second-server helper moved into `tests/e2e/settings-server.ts`, shared with `email-verification-settings.spec.ts`. The admin login's refusal of a `policies` field is covered by login's (they share `Credentials`).
+- **Register keeps "Already have an account? Sign in"** beside Back (a review fix that landed alongside).
+- **Also in this run (not in the plan):** sign-up names now follow the profile's name rule (`input.ValidText`), so the agreement check isn't the only body validation before limits.
+
+**Docs updated:** [api/README.md](../../../docs/api/README.md) (`POLICIES`, the `/policy/*` row, the manifest), [api/endpoints.md](../../../docs/api/endpoints.md), [api/auth.md](../../../docs/api/auth.md#terms-of-service-and-privacy-policy), [api/database.md](../../../docs/api/database.md), [api/events.md](../../../docs/api/events.md), [api/rate-limits.md](../../../docs/api/rate-limits.md), [api/seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [naming.md](../../../docs/naming.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/README.md](../../../docs/ui/README.md) (with `marked` under Dependencies), [ui/design.md](../../../docs/ui/design.md), [ui/base-ui.md](../../../docs/ui/base-ui.md), [ui/forms-and-actions.md](../../../docs/ui/forms-and-actions.md), [ui/api.md](../../../docs/ui/api.md), [ui/testing.md](../../../docs/ui/testing.md), [deployment.md](../../../docs/deployment.md#terms-of-service-and-privacy-policy), [testing.md](../../../docs/testing.md), `.env.example`, AGENTS.md (rule 4).
+
 ## Not included
 
 - **Asking existing accounts to agree, or anyone to re-agree** after a change (decision 14), and emailing users about changes.
-- **A history of agreements**, or keeping proof of agreement after an account is deleted. Both are decisions for the re-acceptance plan and [compliance](admin/compliance.md).
+- **A history of agreements**, or keeping proof of agreement after an account is deleted. Both are decisions for the re-acceptance plan and [compliance](../admin/compliance.md).
 - **Showing agreement on the admin dashboard** (decision 17).
 - **More documents** (cookie policy, acceptable use, a DPA). The reader is generic, so another is a Markdown file, a page file and a `prerender` entry.
 - **A cookie banner.** The app sets only the cookies it needs to work (session, CSRF, sign-up, MFA, admin) and loads no tracking.

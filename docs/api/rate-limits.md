@@ -68,7 +68,7 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 
 **Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `RequireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows.
 
-**Not limited:** a wrong admin key (no query is made, and guessing 122 bits or more is hopeless), `GET /api/health` (orchestrator probes; put it behind an edge limiter if it's ever public) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
+**Not limited:** a wrong admin key (no query is made, and guessing 122 bits or more is hopeless), `GET /api/health` (orchestrator probes; put it behind an edge limiter if it's ever public), `GET /api/policies` (answered from memory) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
 
 ## Quotas
 
