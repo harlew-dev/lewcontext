@@ -24,6 +24,7 @@ Built on the events worktree (branch `admin-run/events`), after merging main (A3
   - **The export held operator notes:** `auth.suspended` and `auth.unsuspended` from the command line carry the operator's reason. The export now leaves `reason` out of those two (keeping `by`); the rows are unchanged.
   - **The `LOG_LEVEL` warning was itself hidden at `LOG_LEVEL=error`** (it was a warning). It's logged at `error` now.
   - **The export's scope against erasure's** is written down in [compliance.md](../../../../docs/compliance.md#download-my-data): the export is by account ID (`user_id`, `actor_id`), erasure by address, so reset and sign-up requests, invitations from others and admins' searches for the address are erased but not exported, each with its reason. The export wasn't widened.
+  - **A retry could race pseudonymisation:** `RequeueDelivery` locked only the delivery, so a run could minimise the event between the retry's check and its commit, and the listener would then send to a pseudonym. Both retries now lock the event's row (`FOR UPDATE`, the event before the delivery), which a run skips (`SKIP LOCKED`) or the retry waits for.
 - **Also done here (A6's merge-time tasks):** `ip_block_refused_total` and the `ip_blocks_loaded_timestamp_seconds` gauge on `/metrics` (no labels), and `admin.access_refused` keeping the browser when recorded by a page or an IP block's check.
 
 **For the user to confirm:**

@@ -161,3 +161,82 @@ func TestLeasesRetriesAndOutcomes(t *testing.T) {
 		t.Fatalf("last_error: %q", lastError)
 	}
 }
+
+// A retry can't race pseudonymise: RequeueDelivery locks the event's row
+// before it checks minimised_at, so while a run holds the row (minimising
+// it) the retry waits, then refuses (ErrDeliveryMinimised); and the bulk
+// retry, waiting the same way, leaves it out.
+func TestRetryWaitsForAMinimisingEvent(t *testing.T) {
+	s, ctx := queueStore(t, nil)
+	f := factory.TestFaker(t)
+	admin, err := factory.Users.CreateOne(ctx, s.DB, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := AdminAction{Admin: User{ID: admin.ID, PublicID: admin.PublicID}, Reason: "Retrying after the SMTP outage."}
+	event, err := factory.Events.State(func(e *factory.Event) {
+		e.Name, e.Payload = "auth.password_reset.requested", map[string]any{"email": "ada@example.test"}
+	}).CreateOne(ctx, s.DB, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := factory.DeliveryOf(event.ID, "mail.password_reset").State(func(d *factory.EventDelivery) {
+		d.FailedAt, d.Attempts, d.LastError = time.Now(), 6, "smtp: timeout"
+	}).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	var publicID string
+	if err := s.DB.NewSelect().Model((*eventRecord)(nil)).Column("e.public_id").Where("e.id = ?", event.ID).Scan(ctx, &publicID); err != nil {
+		t.Fatal(err)
+	}
+	retries := []struct {
+		name  string
+		retry func() error
+		want  error
+	}{
+		{"one", func() error { return s.RequeueDelivery(ctx, publicID, "mail.password_reset", action) }, ErrDeliveryMinimised},
+		{"bulk", func() error {
+			_, err := s.RequeueFailedDeliveries(ctx, "mail.password_reset", time.Now().Add(-time.Hour), action)
+			return err
+		}, ErrNothingToRetry},
+	}
+	for _, c := range retries {
+		// A pseudonymise run, mid-way: the row locked and minimised, not
+		// yet committed.
+		tx, err := s.DB.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// On a failure, the row is let go before the schema is dropped.
+		t.Cleanup(func() { _ = tx.Rollback() })
+		if _, err := tx.NewSelect().Model((*eventRecord)(nil)).Column("e.id").Where("e.id = ?", event.ID).For("UPDATE OF e SKIP LOCKED").Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.NewUpdate().Model((*eventRecord)(nil)).Set("minimised_at = now()").Where("e.id = ?", event.ID).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() { done <- c.retry() }()
+		select {
+		case err := <-done:
+			t.Fatalf("%s: the retry didn't wait for the run: %v", c.name, err)
+		case <-time.After(300 * time.Millisecond):
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; !errors.Is(err, c.want) {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if _, err := s.DB.NewUpdate().Model((*eventRecord)(nil)).Set("minimised_at = NULL").Where("e.id = ?", event.ID).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// With no run holding it, an unminimised event's delivery is retried.
+	if err := s.RequeueDelivery(ctx, publicID, "mail.password_reset", action); err != nil {
+		t.Fatal(err)
+	}
+	if pending(t, s) != 1 {
+		t.Fatal("not queued again")
+	}
+}

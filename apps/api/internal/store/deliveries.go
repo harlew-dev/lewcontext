@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
@@ -146,14 +147,32 @@ func requeue(q *bun.UpdateQuery) *bun.UpdateQuery {
 
 // RequeueDelivery queues the failed delivery of the event publicID to
 // listener again, recording admin.delivery.retried. sql.ErrNoRows when
-// there's no such delivery, ErrDeliveryNotFailed when it hasn't failed.
+// there's no such delivery, ErrDeliveryNotFailed when it hasn't failed,
+// ErrDeliveryMinimised when its event has been minimised.
+//
+// The event's row is locked first (then the delivery's, the order a
+// cascade from the event takes): pseudonymise locks the rows it minimises
+// and skips locked ones, so it can't minimise the event between the check
+// and the commit, and an event it is minimising now is waited for and
+// refused.
 func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, a AdminAction) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var event struct {
+			ID          int64
+			MinimisedAt sql.NullTime
+		}
+		err := tx.NewSelect().Model((*eventRecord)(nil)).
+			Column("e.id", "e.minimised_at").
+			Where("e.public_id = ?", publicID).
+			For("UPDATE").
+			Scan(ctx, &event.ID, &event.MinimisedAt)
+		if err != nil {
+			return err
+		}
 		var d deliveryRecord
-		err := tx.NewSelect().Model(&d).
-			Join("JOIN events AS e ON e.id = d.event_id").
-			Where("e.public_id = ? AND d.listener = ?", publicID, listener).
-			For("UPDATE OF d").
+		err = tx.NewSelect().Model(&d).
+			Where("d.event_id = ? AND d.listener = ?", event.ID, listener).
+			For("UPDATE").
 			Scan(ctx)
 		if err != nil {
 			return err
@@ -161,9 +180,7 @@ func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, 
 		if d.FailedAt.IsZero() {
 			return ErrDeliveryNotFailed
 		}
-		if minimised, err := tx.NewSelect().Model((*eventRecord)(nil)).Where("e.id = ? AND e.minimised_at IS NOT NULL", d.EventID).Exists(ctx); err != nil {
-			return err
-		} else if minimised {
+		if event.MinimisedAt.Valid {
 			return ErrDeliveryMinimised
 		}
 		if _, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).Where("event_id = ? AND listener = ?", d.EventID, listener).Exec(ctx); err != nil {
@@ -177,17 +194,21 @@ func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, 
 // RequeueFailedDeliveries queues again every delivery to listener that
 // failed at or after since, the most recent MaxDeliveriesRetried of them,
 // recording admin.delivery.retried with how many. ErrNothingToRetry when
-// none did (nothing is recorded).
+// none did (nothing is recorded). Events already minimised are left out,
+// their rows locked with the deliveries' as RequeueDelivery locks one, so
+// pseudonymise can't minimise one meanwhile (one it is minimising now is
+// waited for, then left out).
 func (s *Store) RequeueFailedDeliveries(ctx context.Context, listener string, since time.Time, a AdminAction) (int, error) {
 	var count int
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		failed := tx.NewSelect().Model((*deliveryRecord)(nil)).
-			Column("event_id").
-			Where("listener = ? AND failed_at IS NOT NULL AND failed_at >= ?", listener, since).
-			Where("NOT EXISTS (?)", tx.NewSelect().Model((*eventRecord)(nil)).ColumnExpr("1").Where("e.id = d.event_id AND e.minimised_at IS NOT NULL")).
-			OrderExpr("failed_at DESC, event_id DESC").
+			Column("d.event_id").
+			Join("JOIN events AS e ON e.id = d.event_id").
+			Where("d.listener = ? AND d.failed_at IS NOT NULL AND d.failed_at >= ?", listener, since).
+			Where("e.minimised_at IS NULL").
+			OrderExpr("d.failed_at DESC, d.event_id DESC").
 			Limit(MaxDeliveriesRetried).
-			For("UPDATE")
+			For("UPDATE OF e, d")
 		res, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).
 			Where("listener = ? AND event_id IN (?)", listener, failed).
 			Exec(ctx)
