@@ -166,7 +166,7 @@ These notes apply when the domain is proxied through Cloudflare.
 - **Turnstile** (`CAPTCHA_PROVIDER=turnstile`; it works without proxying the domain through Cloudflare too):
   - **Keys:** create a widget in the Cloudflare dashboard for `APP_ORIGIN`'s hostname, then set `CAPTCHA_PROVIDER=turnstile`, `CAPTCHA_SITE_KEY` and `CAPTCHA_SECRET_KEY`.
   - **When it loads:** the Turnstile script loads only when a request is challenged (a rate limit in challenge mode), and only from `https://challenges.cloudflare.com`, which the app pages' CSP allows in `script-src` and `frame-src` only while the provider is set. The admin pages never load it.
-  - **What it can read:** while loaded, it runs in our login and register pages, as any CAPTCHA does. The reset and invitation link pages never load it.
+  - **What it can read:** while loaded, it runs in our login and register pages, as any CAPTCHA does. No token page (the reset and invitation links) triggers loading it; once loaded on another page, it stays until a full reload.
   - **If Cloudflare is unreachable** while a limit is in challenge mode, those requests get 503 (the check fails closed). Normal traffic never calls Cloudflare.
 - **Edge protection from rate-limit events (Planned, future use case):** a listener on `rate_limit.reached` could enable a pre-made, disabled Cloudflare rule for the route under attack, and disable it when the window ends. It needs an API token with only "Zone WAF: Edit" on one zone. See [captcha-challenges](../plans/features/implemented/captcha-challenges.md#future-use-case-turning-on-cloudflare-edge-protection-not-built).
 
