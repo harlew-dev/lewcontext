@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"lewcontext/api/internal/captcha"
+	"lewcontext/api/internal/httpapi/ratelimit"
+	"log/slog"
 	"net/http"
 )
 
@@ -55,8 +57,44 @@ func (s *Server) ChallengeableFunc(action string, next http.HandlerFunc) http.Ha
 // reached (fail closed, only in challenge mode). It runs before any side
 // effect, so a refused request changed nothing and can be sent again.
 func (s *Server) passChallenge(w http.ResponseWriter, r *http.Request) bool {
+	c := challengeOf(r)
+	if c == nil || s.Captcha == nil {
+		return true
+	}
+	return s.solve(w, r, c)
+}
+
+// challengeOf is the request's challenge context (Challengeable), or nil
+// on a route that names no action.
+func challengeOf(r *http.Request) *challenge {
 	c, _ := r.Context().Value(challengeKey{}).(*challenge)
-	if c == nil || s.Captcha == nil || c.passed {
+	return c
+}
+
+// challengeableFor refuses a request that counts a shared limit with a
+// challenge level (register:global) on a route that isn't Challengeable.
+// Such a route could never be asked for a token, so its requests would
+// pass the challenge for free and push the limit to its block level for
+// everyone (admit). It's a mistake in router/routes.go, so it fails closed
+// and loudly, on every request, whatever RATE_LIMITS says: 503 and an
+// error in the log. Per-IP limits (auth:per-ip) may be counted anywhere:
+// on a route without an action their challenge level is skipped.
+func (s *Server) challengeableFor(w http.ResponseWriter, r *http.Request, l ratelimit.Limit) bool {
+	if !l.Shared() || !l.Challenge.Set() || challengeOf(r) != nil {
+		return true
+	}
+	slog.Error("a route counts a shared limit with a challenge level but isn't Challengeable (router/routes.go)", "limit", l.Name, "method", r.Method, "path", r.URL.Path)
+	Fail(w, 503, verificationUnavailable)
+	return false
+}
+
+// verificationUnavailable is the 503 while a token can't be checked.
+const verificationUnavailable = "Verification is unavailable. Try again shortly."
+
+// solve requires c's token: through once it's verified (once per request,
+// c.passed), else 428 or 503. c is non-nil and there is a provider.
+func (s *Server) solve(w http.ResponseWriter, r *http.Request, c *challenge) bool {
+	if c.passed {
 		return true
 	}
 	token := r.Header.Get(ChallengeTokenHeader)
@@ -72,7 +110,7 @@ func (s *Server) passChallenge(w http.ResponseWriter, r *http.Request) bool {
 	case errors.Is(err, captcha.ErrRejected):
 		s.challengeRequired(w, c.action, "The check failed. Try again.")
 	default:
-		Fail(w, 503, "Verification is unavailable. Try again shortly.")
+		Fail(w, 503, verificationUnavailable)
 	}
 	return false
 }

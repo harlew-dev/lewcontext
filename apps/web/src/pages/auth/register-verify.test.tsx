@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRoutesStub, useLocation } from "react-router";
 import { SWRConfig } from "swr";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ChallengeProvider } from "@/lib/challenge/challenge";
+import * as providers from "@/lib/challenge/providers";
 import { registerVerifyLoader } from "@/lib/loaders";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
@@ -41,12 +43,19 @@ function renderAt(entry: string) {
     },
   ]);
   const [pathname, search = ""] = entry.split("?");
+  // ChallengeProvider, as root.tsx mounts it, for a challenged request.
   render(
     <SWRConfig value={{ provider: () => new Map() }}>
-      <Stub initialEntries={[{ pathname, search: search && `?${search}` }]} />
+      <ChallengeProvider>
+        <Stub initialEntries={[{ pathname, search: search && `?${search}` }]} />
+      </ChallengeProvider>
     </SWRConfig>,
   );
 }
+afterEach(() => {
+  vi.restoreAllMocks();
+  delete window.turnstile;
+});
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
@@ -151,6 +160,68 @@ describe("signing up with an emailed code", () => {
     ).toBeInTheDocument();
     expect(api.sent("POST").map((r) => r.url)).toContain(
       "/api/auth/register/resend",
+    );
+  });
+  it("answers a challenge on a new code, waiting until it's solved", async () => {
+    // A stub Turnstile widget: the test gives its token.
+    let widget: Record<string, (token: string) => void> | undefined;
+    window.turnstile = {
+      render: (_el: HTMLElement, options: Record<string, unknown>) => {
+        widget = options as typeof widget;
+        return "w1";
+      },
+      remove: () => {},
+    };
+    vi.spyOn(providers, "loadScript").mockResolvedValue();
+    const api = stubApi({
+      "GET /api/auth/me": signedOut,
+      "POST /api/auth/register/check": { body: pending },
+      "POST /api/auth/register/resend": [
+        {
+          status: 428,
+          body: {
+            error: "Complete the check to continue.",
+            challenge: {
+              provider: "turnstile",
+              siteKey: "site",
+              action: "register",
+            },
+          },
+        },
+        { status: 202, body: waiting },
+      ],
+    });
+    renderAt("/auth/register/verify");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Didn’t receive the email?" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Didn’t receive the email?",
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Resend code" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "Quick security check" }),
+    ).toBeInTheDocument();
+    // The resend stays pending under the check (loading shows after
+    // useAction's 200 ms): no second send, no Cancel.
+    await vi.waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "Cancel", hidden: true }),
+      ).toBeDisabled(),
+    );
+    await vi.waitFor(() => expect(widget).toBeDefined());
+    act(() => widget!.callback("tok"));
+    expect(
+      await screen.findByText("We sent a new code to ada@example.com."),
+    ).toBeInTheDocument();
+    const resends = api.fetch.mock.calls.filter(
+      ([url]) => url === "/api/auth/register/resend",
+    );
+    expect(resends).toHaveLength(2);
+    expect(new Headers(resends[1][1]?.headers).get("X-Challenge-Token")).toBe(
+      "tok",
     );
   });
   it("starts again when the sign-up has ended", async () => {

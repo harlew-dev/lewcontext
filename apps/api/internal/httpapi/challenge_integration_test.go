@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/captcha"
+	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/apitest"
@@ -403,5 +404,95 @@ func TestUnsolvedRequestsCountPerIP(t *testing.T) {
 	var hits int
 	if err := s.Repo.DB.NewSelect().TableExpr("rate_limits").Column("hits").Where("key = ?", "auth:per-ip:"+auth.Digest("203.0.113.80")).Scan(context.Background(), &hits); err != nil || hits != 61 {
 		t.Fatalf("auth:per-ip counted %d (%v)", hits, err)
+	}
+}
+
+// resendFrom asks for a sign-up's new code from ip, with its cookie and a
+// challenge token when given.
+func resendFrom(h http.Handler, ip string, cookie *http.Cookie, token string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "/api/auth/register/resend", strings.NewReader("{}"))
+	r.Header.Set("Origin", apitest.Origin)
+	r.Header.Set("Content-Type", "application/json")
+	r.RemoteAddr = ip + ":1234"
+	r.AddCookie(cookie)
+	if token != "" {
+		r.Header.Set(httpapi.ChallengeTokenHeader, token)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+// passedHits is a shared limit's count of requests that got through.
+func passedHits(t *testing.T, s *httpapi.Server, name string) int {
+	t.Helper()
+	var hits int
+	if err := s.Repo.DB.NewSelect().TableExpr("rate_limits").Column("hits").Where("key = ?", name+":passed").Scan(context.Background(), &hits); err != nil {
+		t.Fatal(err)
+	}
+	return hits
+}
+
+// A new sign-up code counts against register:global, so it's challenged
+// like a sign-up: resends nobody solves never count as passed, and can't
+// push sign-up to its block level for everyone.
+func TestResendIsChallengedLikeASignUp(t *testing.T) {
+	s, fake := challengeServer(t)
+	s.Config.EmailVerification = config.EmailVerification{Verify: true}
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	spend(t, s, "register:global", "", 300)
+	spend(t, s, "register:global:passed", "", 795)
+	var cookies []*http.Cookie
+	for range 5 {
+		cookies = append(cookies, apitest.Must(factory.PendingRegistrations.CreateOne(ctx, s.Repo.DB, f))(t).Cookie())
+	}
+	for i, cookie := range cookies {
+		for range 2 {
+			challenged(t, resendFrom(h, fmt.Sprintf("198.51.103.%d", i+1), cookie, ""), "register", "Complete the check to continue.")
+		}
+	}
+	if passedHits(t, s, "register:global") != 795 || fake.calls() != 0 {
+		t.Fatalf("unsolved resends counted as passed: %d, %d checks", passedHits(t, s, "register:global"), fake.calls())
+	}
+	// A solved resend is counted, and a solved sign-up still gets in.
+	if w := resendFrom(h, "198.51.103.1", cookies[0], "good"); w.Code != 202 || fake.actions[0] != "register" {
+		t.Fatalf("a solved resend: %d %s", w.Code, w.Body)
+	}
+	if w := sendFrom(h, "203.0.113.50", "POST", "/api/auth/register", `{"name":"Ada","email":"ada@example.com","password":"correct horse battery staple"}`, "good"); w.Code != 202 {
+		t.Fatalf("a solved sign-up after the resends: %d %s", w.Code, w.Body)
+	}
+	if got := passedHits(t, s, "register:global"); got != 797 {
+		t.Fatalf("passed %d, want 797", got)
+	}
+}
+
+// A route that counts a shared limit with a challenge level must be
+// Challengeable, or nothing could ask it for a token: it's refused, loudly,
+// even with limits off. Per-IP limits may be counted anywhere.
+func TestSharedChallengeLimitsNeedAChallengeableRoute(t *testing.T) {
+	s, _ := server(t)
+	for _, limitsOff := range []bool{false, true} {
+		if limitsOff {
+			s.Config.RateLimits = config.RateLimitsOff
+		}
+		for _, l := range httpapi.RateLimits {
+			if !l.Shared() || !l.Challenge.Set() {
+				continue
+			}
+			w := httptest.NewRecorder()
+			if s.Allow(w, httptest.NewRequest("POST", "/api/somewhere", nil), l, l.Everyone()) || w.Code != 503 {
+				t.Fatalf("%s counted on a route that isn't Challengeable (limits off %v): %d", l.Name, limitsOff, w.Code)
+			}
+		}
+	}
+	if n := apitest.CountRateLimits(t, s.Repo.DB, "%:global%"); n != 0 {
+		t.Fatalf("%d counters written", n)
+	}
+	s.Config.RateLimits = config.RateLimitsOn
+	w := httptest.NewRecorder()
+	if !s.Allow(w, httptest.NewRequest("POST", "/api/somewhere", nil), httpapi.AuthPerIP, httpapi.AuthPerIP.IPKey("203.0.113.90")) {
+		t.Fatalf("auth:per-ip refused on a route without an action: %d", w.Code)
 	}
 }

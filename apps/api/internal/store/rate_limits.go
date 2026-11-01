@@ -35,18 +35,19 @@ func (s *Store) CountHit(ctx context.Context, key string, window time.Duration) 
 
 // CountHitUntil adds a hit to key's counter in the window that ends at
 // resetsAt, another counter's (CountHit's), so the two windows end
-// together, and returns its hits so far. A counter left from an earlier
-// window starts again at 1; a late hit from an earlier window counts in
-// the later one.
-func (s *Store) CountHitUntil(ctx context.Context, key string, resetsAt time.Time) (hits int, err error) {
+// together, and returns its hits so far and when the window it was counted
+// in ends. A counter left from an earlier window starts again at 1; a late
+// hit from an earlier window counts in the later one, and gets that
+// window's end.
+func (s *Store) CountHitUntil(ctx context.Context, key string, resetsAt time.Time) (hits int, counted time.Time, err error) {
 	hit := rateLimitRecord{Key: key, Hits: 1, ResetsAt: resetsAt}
 	err = s.DB.NewInsert().Model(&hit).
 		On("CONFLICT (key) DO UPDATE").
 		Set("hits = CASE WHEN l.resets_at < EXCLUDED.resets_at THEN 1 ELSE l.hits + 1 END").
 		Set("resets_at = GREATEST(l.resets_at, EXCLUDED.resets_at)").
-		Returning("hits").
+		Returning("hits, resets_at").
 		Scan(ctx)
-	return hit.Hits, err
+	return hit.Hits, hit.ResetsAt, err
 }
 
 // PeekHits is key's hits in the window that ends at resetsAt (or a later

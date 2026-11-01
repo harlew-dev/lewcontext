@@ -75,20 +75,35 @@ func TestMemoryLimiterConcurrentUse(t *testing.T) {
 }
 
 // A passed counter keeps another key's window: it starts again when that
-// window is new, and a late hit from an earlier one counts in the later.
+// window is new, and a late hit from an earlier one counts in the later,
+// with the later window's end.
 func TestMemoryCountUntil(t *testing.T) {
 	c := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
 	m := NewMemory()
 	m.now = c.Now
 	first := c.now.Add(time.Hour)
-	if m.Peek("k", first) != 0 || m.CountUntil("k", first) != 1 || m.CountUntil("k", first) != 2 || m.Peek("k", first) != 2 {
-		t.Fatal("counting in one window")
+	count := func(resetsAt time.Time, hits int, ends time.Time) {
+		t.Helper()
+		if got, gotEnds := m.CountUntil("k", resetsAt); got != hits || !gotEnds.Equal(ends) {
+			t.Fatalf("CountUntil = %d, %s; want %d, %s", got, gotEnds, hits, ends)
+		}
+	}
+	if m.Peek("k", first) != 0 {
+		t.Fatal("an empty counter")
+	}
+	count(first, 1, first)
+	count(first, 2, first)
+	if m.Peek("k", first) != 2 {
+		t.Fatal("Peek in one window")
 	}
 	second := first.Add(time.Hour)
-	if m.Peek("k", second) != 0 || m.CountUntil("k", second) != 1 {
-		t.Fatal("a new window didn't start again")
+	if m.Peek("k", second) != 0 {
+		t.Fatal("Peek in a new window")
 	}
-	if m.CountUntil("k", first) != 2 || m.Peek("k", first) != 2 {
-		t.Fatal("a late hit from the earlier window")
+	count(second, 1, second)
+	// A late hit from the earlier window counts in the later one.
+	count(first, 2, second)
+	if m.Peek("k", first) != 2 {
+		t.Fatal("Peek from the earlier window")
 	}
 }

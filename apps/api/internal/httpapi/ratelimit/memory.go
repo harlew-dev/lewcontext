@@ -44,10 +44,10 @@ func (m *Memory) Count(key string, window time.Duration) (hits int, resetsAt tim
 }
 
 // CountUntil adds a hit to key's window that ends at resetsAt (another
-// key's, as Store.CountHitUntil), and returns its hits so far. A window
-// that ended earlier starts again; a late hit from an earlier window
-// counts in the later one.
-func (m *Memory) CountUntil(key string, resetsAt time.Time) int {
+// key's, as Store.CountHitUntil), and returns its hits so far and when the
+// window it was counted in ends. A window that ended earlier starts again;
+// a late hit from an earlier window counts in the later one.
+func (m *Memory) CountUntil(key string, resetsAt time.Time) (int, time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sweep(m.now())
@@ -57,7 +57,7 @@ func (m *Memory) CountUntil(key string, resetsAt time.Time) int {
 	}
 	w.hits++
 	m.windows[key] = w
-	return w.hits
+	return w.hits, w.resetsAt
 }
 
 // Peek is key's hits in the window that ends at resetsAt (or a later one),

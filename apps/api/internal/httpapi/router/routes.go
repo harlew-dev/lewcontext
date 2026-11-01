@@ -107,7 +107,9 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	registrations := account.Registrations{Server: s}
 	mux.HandleFunc("POST /api/auth/register/check", registrations.Check)
-	mux.HandleFunc("POST /api/auth/register/resend", registrations.Resend)
+	// A new code is counted like a sign-up (register:global), so it can be
+	// challenged like one; its page holds a cookie, not a token in the URL.
+	mux.Handle("POST /api/auth/register/resend", s.Challengeable(httpapi.ChallengeRegister, http.HandlerFunc(registrations.Resend)))
 	mux.HandleFunc("POST /api/auth/register/verify", registrations.Verify)
 	verification := account.EmailVerification{Server: s}
 	mux.Handle("POST /api/auth/email-verification", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(verification.Store))))

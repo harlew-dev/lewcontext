@@ -152,6 +152,9 @@ var RateLimits = []ratelimit.Limit{
 // allows everything and counts nothing; with PER_IP_LIMITS=off every level
 // of a per-IP limit is never.
 func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit, key string) bool {
+	if !s.challengeableFor(w, r, l) {
+		return false
+	}
 	if s.Config.RateLimits == config.RateLimitsOff {
 		return true
 	}
@@ -191,10 +194,12 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 // challenge (solved, or on a route without an action), in a counter beside
 // the limit's that ends with its window (ratelimit.PassedKey). Requests
 // nobody solved, from any number of addresses, are counted only by the
-// limit itself, so they can't push it to its block level. Per-subject
-// limits don't need this: their unsolved requests only hurt the requester.
-// With no provider every request passes, both counts are the same, and
-// Allow keeps the first.
+// limit itself, so they can't push it to its block level. A request counts
+// as passed only once its token is verified: every route counting a shared
+// limit with a challenge level is Challengeable (challengeableFor), so none
+// gets through without one. Per-subject limits don't need this: their
+// unsolved requests only hurt the requester. With no provider every request
+// passes, both counts are the same, and Allow keeps the first.
 func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit, key string, resetsAt time.Time) bool {
 	passedKey := ratelimit.PassedKey(key)
 	// Already refused: say so without asking for a CAPTCHA first.
@@ -207,10 +212,11 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 		refuse(w, l, resetsAt)
 		return false
 	}
-	if !s.passChallenge(w, r) {
+	if !s.solve(w, r, challengeOf(r)) {
 		return false
 	}
-	passed, err = s.countPassed(r, l, passedKey, resetsAt)
+	// A late request counted in the next window takes that window's end.
+	passed, resetsAt, err = s.countPassed(r, l, passedKey, resetsAt)
 	through := l.Challenge.At() + passed
 	if err == nil && l.Block.Crossed(through) {
 		err = s.recordLimitReached(r, l, "block", resetsAt)
@@ -249,10 +255,12 @@ func (s *Server) count(r *http.Request, l ratelimit.Limit, key string) (hits int
 }
 
 // countPassed adds a hit to a shared limit's passed counter, in the
-// limit's window (ending at resetsAt), and returns its hits so far.
-func (s *Server) countPassed(r *http.Request, l ratelimit.Limit, passedKey string, resetsAt time.Time) (int, error) {
+// limit's window (ending at resetsAt), and returns its hits so far and when
+// the window it was counted in ends.
+func (s *Server) countPassed(r *http.Request, l ratelimit.Limit, passedKey string, resetsAt time.Time) (int, time.Time, error) {
 	if l.InMemory {
-		return s.memoryLimits.CountUntil(passedKey, resetsAt), nil
+		hits, counted := s.memoryLimits.CountUntil(passedKey, resetsAt)
+		return hits, counted, nil
 	}
 	return s.Repo.CountHitUntil(r.Context(), passedKey, resetsAt)
 }
