@@ -24,6 +24,10 @@ CREATE TABLE alerts (
  notified text NOT NULL DEFAULT 'quiet' CHECK (notified IN ('mail', 'held', 'digest', 'quiet')),
  -- The last email about it (opening, escalation, a 4-hourly reminder).
  last_notified_at timestamptz,
+ -- When each email about it went (an array of RFC 3339 times): what the
+ -- burst limit and each signal's hourly cap count, so an escalation or a
+ -- resolution can't email past them.
+ mail_times jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(mail_times) = 'array'),
  -- Who acknowledged it (stopping its reminders) and silenced it (no
  -- email or webhook until silenced_until); null once that account is
  -- deleted, as ip_blocks.created_by: the events still name them.

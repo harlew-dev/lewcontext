@@ -22,9 +22,15 @@ import (
 // How alerts are told about.
 const (
 	// AlertCooldown: an opening whose signal opened another alert within
-	// it is quiet (a flapping signal, or someone raising it on purpose
+	// it is quiet: no email or webhook for it, nor for its escalation or
+	// resolution (a flapping signal, or someone raising a level on purpose
 	// again and again, is told about once an hour at most).
 	AlertCooldown = time.Hour
+	// MaxSignalMails is the most emails one signal's alerts send within
+	// AlertCooldown, of every kind (opening, escalation, resolution,
+	// reminder): past it the email is left out (the dashboard and the
+	// webhook still say).
+	MaxSignalMails = 3
 	// AlertBurst openings within AlertBurstWindow are emailed one by one;
 	// those past it wait for a digest, sent at most once a window.
 	AlertBurst       = 5
@@ -73,6 +79,8 @@ type alertRecord struct {
 	Details        json.RawMessage `bun:"type:jsonb,notnull"`
 	Notified       string          `bun:",notnull"`
 	LastNotifiedAt *time.Time
+	// MailTimes is read back with the row but written only by recordMail.
+	MailTimes      json.RawMessage `bun:"mail_times,type:jsonb,scanonly"`
 	AcknowledgedAt *time.Time
 	AcknowledgedBy *int64
 	SilencedUntil  *time.Time
@@ -182,6 +190,11 @@ func (s *Store) OpenAlert(ctx context.Context, n NewAlert) (Alert, error) {
 		if _, err := tx.NewInsert().Model(&row).Returning("id, public_id").Exec(ctx); err != nil {
 			return err
 		}
+		if row.Notified == NotifiedMail {
+			if err := recordMail(ctx, tx, row.ID, n.At); err != nil {
+				return err
+			}
+		}
 		out = alertOf(row)
 		e := events.AlertOpened{Alert: row.PublicID, Signal: row.Signal, Level: row.Level, Value: n.Value,
 			Mail: row.Notified == NotifiedMail, Webhook: row.Notified == NotifiedMail || row.Notified == NotifiedHeld}
@@ -213,8 +226,7 @@ func openingNotice(ctx context.Context, tx bun.Tx, signal string, at time.Time, 
 	if err != nil || recent {
 		return NotifiedQuiet, err
 	}
-	burst, err := tx.NewSelect().Model((*alertRecord)(nil)).
-		Where("opened_at > ? AND notified <> ?", at.Add(-AlertBurstWindow), NotifiedQuiet).Count(ctx)
+	burst, err := mailsSince(ctx, tx, "", at.Add(-AlertBurstWindow))
 	if err != nil {
 		return "", err
 	}
@@ -222,6 +234,42 @@ func openingNotice(ctx context.Context, tx bun.Tx, signal string, at time.Time, 
 		return NotifiedHeld, nil
 	}
 	return NotifiedMail, nil
+}
+
+// mailsSince counts the emails sent since from about signal's alerts (all
+// signals' when signal is empty), from each alert's mail_times.
+func mailsSince(ctx context.Context, tx bun.Tx, signal string, from time.Time) (int, error) {
+	q := tx.NewSelect().TableExpr("alerts AS alt, jsonb_array_elements_text(alt.mail_times) AS m(at)").
+		ColumnExpr("count(*)").Where("m.at::timestamptz > ?", from)
+	if signal != "" {
+		q = q.Where("alt.signal = ?", signal)
+	}
+	var n int
+	err := q.Scan(ctx, &n)
+	return n, err
+}
+
+// mailAllowed reports whether an email about signal's alert may go at at
+// (an escalation, a resolution or a reminder; an opening has its own
+// rules): its signal has sent fewer than MaxSignalMails within
+// AlertCooldown, and fewer than AlertBurst emails went anywhere within
+// AlertBurstWindow.
+func mailAllowed(ctx context.Context, tx bun.Tx, signal string, at time.Time) (bool, error) {
+	perSignal, err := mailsSince(ctx, tx, signal, at.Add(-AlertCooldown))
+	if err != nil || perSignal >= MaxSignalMails {
+		return false, err
+	}
+	burst, err := mailsSince(ctx, tx, "", at.Add(-AlertBurstWindow))
+	return burst < AlertBurst, err
+}
+
+// recordMail notes that an email about alert id went at at.
+func recordMail(ctx context.Context, tx bun.Tx, id int64, at time.Time) error {
+	_, err := tx.NewUpdate().Model((*alertRecord)(nil)).
+		Set("mail_times = mail_times || jsonb_build_array(?::text)", at.UTC().Format(time.RFC3339Nano)).
+		Set("last_notified_at = ?", at).
+		Where("id = ?", id).Exec(ctx)
+	return err
 }
 
 // UpdateAlertValue keeps an open alert's value and its peak (the highest
@@ -237,8 +285,8 @@ func (s *Store) UpdateAlertValue(ctx context.Context, id int64, value float64) e
 
 // EscalateAlert raises an open warn alert to critical at at, recording
 // alert.escalated: emailed and posted unless silenced (an alert that was
-// quiet or held is emailed now: it became critical). False when it isn't
-// open at warn any more.
+// quiet by the cooldown isn't told of at all; one held for a digest is
+// emailed now, within the caps). False when it isn't open at warn any more.
 func (s *Store) EscalateAlert(ctx context.Context, id int64, value float64, at time.Time) (bool, error) {
 	escalated := false
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -250,10 +298,8 @@ func (s *Store) EscalateAlert(ctx context.Context, id int64, value float64, at t
 			Set("level = ?", events.AlertCritical).
 			Set("last_value = ?", value).
 			Set("peak_value = GREATEST(peak_value, ?)", value).
-			Set("notified = CASE WHEN silenced_until > ? THEN notified ELSE ? END", at, NotifiedMail).
-			Set("last_notified_at = CASE WHEN silenced_until > ? THEN last_notified_at ELSE ? END", at, at).
 			Where("id = ? AND level = ? AND resolved_at IS NULL", id, events.AlertWarn).
-			Returning("public_id, signal, silenced_until").
+			Returning("id, public_id, signal, notified, silenced_until").
 			Scan(ctx)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -262,9 +308,22 @@ func (s *Store) EscalateAlert(ctx context.Context, id int64, value float64, at t
 			return err
 		}
 		escalated = true
-		told := !alertOf(row).Silenced(at)
+		// Told only when the opening was (not silenced, not quiet by the
+		// cooldown), and within the email caps.
+		told := !alertOf(row).Silenced(at) && row.Notified != NotifiedQuiet
+		mail := false
+		if told {
+			if mail, err = mailAllowed(ctx, tx, row.Signal, at); err != nil {
+				return err
+			}
+		}
+		if mail {
+			if err := recordMail(ctx, tx, row.ID, at); err != nil {
+				return err
+			}
+		}
 		e := events.AlertEscalated{Alert: row.PublicID, Signal: row.Signal, From: events.AlertWarn, To: events.AlertCritical,
-			Value: value, Mail: told, Webhook: told}
+			Value: value, Mail: mail, Webhook: told}
 		return s.record(ctx, tx, e, EventScope{})
 	})
 	return escalated, err
@@ -283,7 +342,7 @@ func (s *Store) ResolveAlert(ctx context.Context, id int64, at time.Time) (bool,
 		err := tx.NewUpdate().Model(&row).
 			Set("resolved_at = GREATEST(opened_at, ?)", at).
 			Where("id = ? AND resolved_at IS NULL", id).
-			Returning("public_id, signal, level, opened_at, notified, silenced_until, resolved_at").
+			Returning("id, public_id, signal, level, opened_at, notified, silenced_until, resolved_at").
 			Scan(ctx)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -293,9 +352,21 @@ func (s *Store) ResolveAlert(ctx context.Context, id int64, at time.Time) (bool,
 		}
 		resolved = true
 		silenced := alertOf(row).Silenced(at)
+		// Emailed again only if its opening was emailed, within the caps.
+		mail := false
+		if !silenced && row.Notified == NotifiedMail {
+			if mail, err = mailAllowed(ctx, tx, row.Signal, at); err != nil {
+				return err
+			}
+		}
+		if mail {
+			if err := recordMail(ctx, tx, row.ID, at); err != nil {
+				return err
+			}
+		}
 		e := events.AlertResolved{Alert: row.PublicID, Signal: row.Signal, Level: row.Level,
 			OpenFor: int(row.ResolvedAt.Sub(row.OpenedAt).Seconds()),
-			Mail:    !silenced && row.Notified == NotifiedMail,
+			Mail:    mail,
 			Webhook: !silenced && row.Notified != NotifiedQuiet}
 		return s.record(ctx, tx, e, EventScope{})
 	})
@@ -303,8 +374,9 @@ func (s *Store) ResolveAlert(ctx context.Context, id int64, at time.Time) (bool,
 }
 
 // RemindAlerts emails again, at at, every critical alert still open,
-// neither acknowledged nor silenced, last emailed (or opened, if it never
-// was) AlertRemindEvery ago or more, recording alert.reminded for each.
+// neither acknowledged nor silenced, that was told of (not quiet), last
+// emailed (or opened, if it never was) AlertRemindEvery ago or more and
+// within the email caps (mailAllowed), recording alert.reminded for each.
 // It says how many.
 func (s *Store) RemindAlerts(ctx context.Context, at time.Time) (int, error) {
 	reminded := 0
@@ -313,23 +385,33 @@ func (s *Store) RemindAlerts(ctx context.Context, at time.Time) (int, error) {
 			return err
 		}
 		var rows []alertRecord
-		err := tx.NewUpdate().Model(&rows).
-			Set("last_notified_at = ?", at).
+		err := tx.NewSelect().Model(&rows).
 			Where("resolved_at IS NULL AND level = ? AND acknowledged_at IS NULL", events.AlertCritical).
 			Where("(silenced_until IS NULL OR silenced_until <= ?)", at).
 			Where("coalesce(last_notified_at, opened_at) <= ?", at.Add(-AlertRemindEvery)).
-			Returning("public_id, signal, level, last_value").
+			Where("notified <> ?", NotifiedQuiet).
+			OrderExpr("id").
 			Scan(ctx)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		for _, row := range rows {
+			ok, err := mailAllowed(ctx, tx, row.Signal, at)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+			if err := recordMail(ctx, tx, row.ID, at); err != nil {
+				return err
+			}
 			e := events.AlertReminded{Alert: row.PublicID, Signal: row.Signal, Level: row.Level, Value: row.LastValue}
 			if err := s.record(ctx, tx, e, EventScope{}); err != nil {
 				return err
 			}
+			reminded++
 		}
-		reminded = len(rows)
 		return nil
 	})
 	return reminded, err

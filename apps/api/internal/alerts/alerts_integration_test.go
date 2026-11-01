@@ -530,3 +530,53 @@ func TestAlertContentHoldsNoSecretsOrPersonalData(t *testing.T) {
 	_ = io.Discard
 	_ = database.LockAlertWrites
 }
+
+// A signal driven warn, critical, ok, warn, critical, ok again and again
+// within the hour can't email past its cap: the second alert opened within
+// the cooldown is quiet, and so are its escalation and resolution. Across
+// signals, escalations and resolutions count in the burst window too.
+func TestAlertEscalationAndResolutionAreBounded(t *testing.T) {
+	s, e, f := setup(t, monitor.AlertRule{Signal: "test.flap"})
+	mails := func() int {
+		n := 0
+		for _, name := range []string{"alert.opened", "alert.escalated", "alert.resolved", "alert.reminded"} {
+			for _, ev := range apitest.EventsNamed(t, s.DB, name) {
+				if m, ok := ev.Payload["mail"]; !ok || m == true {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	minute := 0
+	step := func(v float64, minutes int) {
+		f.set("test.flap", v)
+		for range minutes {
+			evaluate(t, e, start.Add(time.Duration(minute)*time.Minute))
+			minute++
+		}
+	}
+	for range 4 {
+		step(2, 1)  // warn: opens
+		step(20, 1) // critical: escalates
+		step(0, 11) // ok: resolves after 10 minutes
+	}
+	if got := mails(); got > store.MaxSignalMails {
+		t.Fatalf("%d emails for one signal in %d minutes, cap %d", got, minute, store.MaxSignalMails)
+	}
+	if got := mails(); got != 3 {
+		t.Fatalf("emails: %d, want opening, escalation and resolution of the first alert only", got)
+	}
+	// The later alerts exist, quiet, with no webhook either.
+	opened := apitest.EventsNamed(t, s.DB, "alert.opened")
+	if len(opened) != 4 || opened[1].Payload["mail"] != false || opened[1].Payload["webhook"] != false {
+		t.Fatalf("openings: %+v", opened)
+	}
+	for _, name := range []string{"alert.escalated", "alert.resolved"} {
+		for i, ev := range apitest.EventsNamed(t, s.DB, name) {
+			if i > 0 && (ev.Payload["mail"] != false || ev.Payload["webhook"] != false) {
+				t.Errorf("%s #%d of a quiet alert is told: %+v", name, i, ev.Payload)
+			}
+		}
+	}
+}
