@@ -162,7 +162,7 @@ A workspace's rows have no time window of their own, so the page counts them onl
 | Invitations | the 10 workspaces sending the most invitations over the 7 days before the window's end: sent, accepted, revoked (their events, by the workspace's ID, so a deleted one keeps its row), and expired unanswered (`workspace_invitations_expires_at_idx`); under 10% of 20+ accepted is a warning |
 | Made and deleted | workspaces made and deleted per bucket, and PostgreSQL's running count of all of them (`pg_stat_user_tables`, close, not exact: no count of the table) |
 
-**The workspace-tables registry** (decision 9): `store.WorkspaceTables` lists every table with a `workspace_id` column. `TestEveryWorkspaceTableIsMonitored` reads the columns from `information_schema` and fails when a table has one and isn't listed (or is listed and hasn't), and when a listed table has no index leading with `workspace_id`; so a future table (tasks, files) is counted once it's added, without anyone remembering.
+**The workspace-tables registry** (decision 9): `store.WorkspaceTables` lists every table with a `workspace_id` column. `TestEveryWorkspaceTableIsMonitored` reads the columns from `information_schema` and fails when a table has one and isn't listed (or is listed and hasn't), and when a listed table has no index leading with `workspace_id` that isn't partial (`pg_index.indpred` null: a partial index serves only the rows it keeps); so a future table (tasks, files) is counted once it's added, without anyone remembering.
 
 ## Usage
 
