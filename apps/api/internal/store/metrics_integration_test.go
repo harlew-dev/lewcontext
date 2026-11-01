@@ -79,13 +79,27 @@ func TestRecordMetrics(t *testing.T) {
 	}
 	// Bad rows are left out; the good one and the heartbeat go in.
 	bad := observe.Minute{Minute: minute.Add(time.Minute), Routes: []observe.RouteTotals{
-		{Route: "GET /good", Requests: 1}, {Route: "", Requests: 1}, {Route: "GET /none", Requests: 0},
-	}, Series: []observe.SeriesMinute{{Metric: "Bad Name", Count: 1}, {Metric: "ok_total", Count: 0}}}
+		{Route: "GET /good", Requests: 1}, {Route: "", Requests: 1}, {Route: "GET /none", Requests: 0}, {Route: "GET /\xff", Requests: 1},
+	}, Series: []observe.SeriesMinute{{Metric: "Bad Name", Count: 1}, {Metric: "ok_total", Count: 0}, {Metric: "ok_total", Labels: "limit=\"\xfe\"", Count: 1}}}
 	if err := s.RecordMetrics(ctx, server, bad); err != nil {
 		t.Fatal(err)
 	}
 	if n := countRows(t, s, (*requestMinute)(nil), "minute = ?", bad.Minute); n != 1 {
 		t.Fatalf("bad rows: %d stored", n)
+	}
+	if n := countRows(t, s, (*metricMinute)(nil), "minute = ?", bad.Minute); n != 0 {
+		t.Fatalf("bad series: %d stored", n)
+	}
+	// A minute far from the database's clock (a server whose clock is
+	// wrong) is dropped, ahead or behind; its heartbeat still goes in.
+	for _, skew := range []time.Duration{10 * time.Minute, -15 * time.Minute, 24 * time.Hour} {
+		far := observe.Minute{Minute: minute.Add(skew), Routes: []observe.RouteTotals{{Route: "GET /far", Requests: 1}}}
+		if err := s.RecordMetrics(ctx, server, far); err != nil {
+			t.Fatal(err)
+		}
+		if n := countRows(t, s, (*requestMinute)(nil), "route = 'GET /far'"); n != 0 {
+			t.Fatalf("a minute %v away was stored", skew)
+		}
 	}
 	// Only the heartbeat, as with METRICS_STORE=off.
 	if err := s.RecordMetrics(ctx, testServer(observe.NewServerID()), observe.Minute{Minute: minute}); err != nil {
@@ -146,14 +160,14 @@ func TestSummarizeMetrics(t *testing.T) {
 	if locked, err := database.TryLockMetricsRollup(ctx, holder); err != nil || !locked {
 		t.Fatal(locked, err)
 	}
-	if r, err := s.SummarizeMetrics(ctx, now); err != nil || r.Locked || countRows(t, s, (*requestHour)(nil), "") != 0 {
+	if r, err := s.SummarizeMetrics(ctx); err != nil || r.Locked || countRows(t, s, (*requestHour)(nil), "") != 0 {
 		t.Fatalf("while locked: %+v %v", r, err)
 	}
 	if err := holder.Rollback(); err != nil {
 		t.Fatal(err)
 	}
 
-	r, err := s.SummarizeMetrics(ctx, now)
+	r, err := s.SummarizeMetrics(ctx)
 	if err != nil || !r.Locked || r.MinutesDeleted != minuteDeleteBatch+500 {
 		t.Fatalf("rollup: %+v %v", r, err)
 	}
@@ -176,7 +190,7 @@ func TestSummarizeMetrics(t *testing.T) {
 		t.Fatalf("%d minutes left, want the 5 under 48 hours", n)
 	}
 	// Again: nothing new to sum.
-	if r, err := s.SummarizeMetrics(ctx, now); err != nil || r.Hours != 0 || r.RequestRows != 0 || countRows(t, s, (*requestHour)(nil), "") != 2 {
+	if r, err := s.SummarizeMetrics(ctx); err != nil || r.Hours != 0 || r.RequestRows != 0 || countRows(t, s, (*requestHour)(nil), "") != 2 {
 		t.Fatalf("second run: %+v %v", r, err)
 	}
 }
@@ -241,8 +255,89 @@ func TestMinutesPastTheCeilingGo(t *testing.T) {
 	}).CreateOne(ctx, s.DB, f); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.deleteMinutesPastCeiling(ctx, now)
+	n, err := s.deleteMinutesPastCeiling(ctx)
 	if err != nil || n != 2 || countRows(t, s, (*requestMinute)(nil), "") != 1 || countRows(t, s, (*metricMinute)(nil), "") != 0 {
 		t.Fatalf("deleted %d (%v)", n, err)
+	}
+}
+
+// A run that runs out of time keeps the hours it finished, and the next
+// run carries on from there; the minutes past the ceiling go even when the
+// run's own context has ended.
+func TestRollupProgressesAcrossTimeouts(t *testing.T) {
+	s, ctx := queueStore(t, nil)
+	f := factory.TestFaker(t)
+	now := time.Now().UTC()
+	first := now.Truncate(time.Hour).Add(-6 * time.Hour)
+	// A backlog: one minute in each of five finished hours.
+	if _, err := factory.RequestMinutes.Sequence(func(i int, m *factory.RequestMinute) {
+		m.Minute, m.Route = first.Add(time.Duration(i)*time.Hour), "GET /api/auth/me"
+	}).Create(ctx, s.DB, f, 5); err != nil {
+		t.Fatal(err)
+	}
+	// End the run after its second hour commits.
+	run, cancel := context.WithCancel(ctx)
+	hours := 0
+	afterRollupHour = func() {
+		if hours++; hours == 2 {
+			cancel()
+		}
+	}
+	t.Cleanup(func() { afterRollupHour = nil })
+	if _, err := s.SummarizeMetrics(run); err == nil {
+		t.Fatal("a canceled run reported no error")
+	}
+	if n := countRows(t, s, (*requestHour)(nil), ""); n != 2 {
+		t.Fatalf("%d hours kept from the run that stopped, want 2", n)
+	}
+	afterRollupHour = nil
+	if r, err := s.SummarizeMetrics(ctx); err != nil || r.Hours != 3 || countRows(t, s, (*requestHour)(nil), "") != 5 {
+		t.Fatalf("the next run: %+v %v", r, err)
+	}
+
+	// A run whose deadline has passed sums nothing, but still deletes the
+	// minutes past the ceiling, on a context of its own.
+	if _, err := factory.RequestMinutes.State(func(m *factory.RequestMinute) {
+		m.Minute = now.Add(-MinuteCeiling - time.Hour).Truncate(time.Minute)
+	}).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	expired, cancelExpired := context.WithDeadline(ctx, now.Add(-time.Second))
+	defer cancelExpired()
+	r, err := s.SummarizeMetrics(expired)
+	if err == nil || r.MinutesDeleted != 1 || countRows(t, s, (*requestMinute)(nil), "minute < ?", now.Add(-MinuteCeiling)) != 0 {
+		t.Fatalf("timed out: %+v %v", r, err)
+	}
+	// A run canceled because the server is stopping deletes nothing more.
+	if _, err := factory.RequestMinutes.State(func(m *factory.RequestMinute) {
+		m.Minute = now.Add(-MinuteCeiling - 2*time.Hour).Truncate(time.Minute)
+	}).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	stopping, stop := context.WithCancel(ctx)
+	stop()
+	if r, _ := s.SummarizeMetrics(stopping); r.MinutesDeleted != 0 {
+		t.Fatalf("stopping: %+v", r)
+	}
+}
+
+// Minutes dated after the database's clock (a server running ahead) are
+// never summed into an hour.
+func TestRollupIgnoresMinutesFromTheFuture(t *testing.T) {
+	s, ctx := queueStore(t, nil)
+	f := factory.TestFaker(t)
+	future := time.Now().UTC().Add(48 * time.Hour).Truncate(time.Hour)
+	if _, err := factory.RequestMinutes.State(func(m *factory.RequestMinute) { m.Minute = future }).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)
+	if _, err := factory.RequestMinutes.State(func(m *factory.RequestMinute) { m.Minute = past }).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := s.SummarizeMetrics(ctx); err != nil || r.Hours != 1 {
+		t.Fatalf("rollup: %+v %v", r, err)
+	}
+	if n := countRows(t, s, (*requestHour)(nil), "hour >= now()"); n != 0 {
+		t.Fatal("an hour from the future was summed")
 	}
 }

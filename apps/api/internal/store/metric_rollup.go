@@ -48,59 +48,116 @@ type MetricsRollup struct {
 	MinutesDeleted int
 }
 
-// SummarizeMetrics runs the rollup, if no other server is running it: in
-// one transaction holding the rollup lock (database.TryLockMetricsRollup),
-// it sums each finished hour not summed yet, from the earliest minute after
-// the last hour summed, up to RollupDelay ago (at most maxRollupHours a
-// run), then deletes minutes older than MinuteRetention, but never a minute
-// it hasn't summed. An hour is written once: a second run finds it summed,
-// and the tables' unique keys refuse it anyway. A minute that arrives after
+// ceilingTimeout bounds the fallback delete of minutes past MinuteCeiling,
+// which runs on a context of its own once a run's summing failed (its own
+// context may be the one that ran out).
+const ceilingTimeout = 30 * time.Second
+
+// afterRollupHour runs after each hour's transaction commits; tests use it
+// to end a run part way.
+var afterRollupHour func()
+
+// SummarizeMetrics runs the rollup, if no other server is running it. Each
+// finished hour not summed yet (from the earliest minute after the last
+// hour summed, up to RollupDelay before the database's clock) is summed in
+// a short transaction of its own, which takes the rollup lock
+// (database.TryLockMetricsRollup) again, so a run that runs out of time
+// keeps the hours it finished and the next run carries on; at most
+// maxRollupHours a run. Then, in one more transaction under the lock,
+// minutes older than MinuteRetention are deleted, but never a minute not
+// summed yet. An hour is written once: a second run finds it summed, and
+// the tables' unique keys refuse it anyway. A minute that arrives after
 // its hour was summed (later than RollupDelay) is left out of the hour.
+// Times come from the database's clock, never this server's, so a server
+// whose clock runs ahead can't sum hours that haven't happened.
 //
-// If summing fails, the run is rolled back and, in a transaction of its
-// own under the same lock, minutes older than MinuteCeiling are deleted
-// anyway; the error is still returned.
-func (s *Store) SummarizeMetrics(ctx context.Context, now time.Time) (MetricsRollup, error) {
-	out, err := s.summarizeMetrics(ctx, now)
-	if err == nil || ctx.Err() != nil {
+// If summing or deleting fails, including on the run's own deadline,
+// minutes older than MinuteCeiling are deleted anyway, summed or not, on a
+// context of its own (ceilingTimeout) and under the same lock; the error
+// is still returned. Not when ctx was canceled: the server is stopping.
+func (s *Store) SummarizeMetrics(ctx context.Context) (MetricsRollup, error) {
+	out, err := s.summarizeHours(ctx)
+	if err == nil && out.Locked {
+		err = s.deleteSummedMinutes(ctx, &out)
+	}
+	if err == nil || errors.Is(ctx.Err(), context.Canceled) {
 		return out, err
 	}
-	deleted, ceilingErr := s.deleteMinutesPastCeiling(ctx, now)
-	out.MinutesDeleted = deleted
+	ceiling, cancel := context.WithTimeout(context.WithoutCancel(ctx), ceilingTimeout)
+	defer cancel()
+	deleted, ceilingErr := s.deleteMinutesPastCeiling(ceiling)
+	out.MinutesDeleted += deleted
 	return out, errors.Join(err, ceilingErr)
 }
 
-func (s *Store) summarizeMetrics(ctx context.Context, now time.Time) (MetricsRollup, error) {
+// summarizeHours sums pending hours, each in a transaction of its own
+// holding the lock, until none is left, the lock is another server's, or
+// maxRollupHours are done.
+func (s *Store) summarizeHours(ctx context.Context) (MetricsRollup, error) {
 	var out MetricsRollup
-	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	for range maxRollupHours {
+		more := false
+		err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			locked, err := database.TryLockMetricsRollup(ctx, tx)
+			if err != nil || !locked {
+				return err
+			}
+			out.Locked = true
+			now, err := databaseNow(ctx, tx)
+			if err != nil {
+				return err
+			}
+			cutoff := now.Add(-RollupDelay).Truncate(time.Hour)
+			requests, err := summarizeRequestHour(ctx, tx, cutoff, &out)
+			if err != nil {
+				return err
+			}
+			metrics, err := summarizeSeriesHour(ctx, tx, cutoff, &out)
+			more = requests || metrics
+			return err
+		})
+		if err != nil {
+			return out, err
+		}
+		if !more || !out.Locked {
+			return out, nil
+		}
+		if afterRollupHour != nil {
+			afterRollupHour()
+		}
+	}
+	return out, nil
+}
+
+// deleteSummedMinutes deletes minutes older than MinuteRetention from both
+// tables, but never one not summed yet, holding the lock.
+func (s *Store) deleteSummedMinutes(ctx context.Context, out *MetricsRollup) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		locked, err := database.TryLockMetricsRollup(ctx, tx)
 		if err != nil || !locked {
 			return err
 		}
-		out = MetricsRollup{Locked: true}
-		cutoff := now.UTC().Add(-RollupDelay).Truncate(time.Hour)
-		requests, err := summarizeRequests(ctx, tx, cutoff, &out)
+		now, err := databaseNow(ctx, tx)
 		if err != nil {
 			return err
 		}
-		metrics, err := summarizeSeries(ctx, tx, cutoff, &out)
-		if err != nil {
-			return err
-		}
-		retention := now.Add(-MinuteRetention)
+		cutoff := now.Add(-RollupDelay).Truncate(time.Hour)
 		for _, table := range []struct {
-			model    any
-			summed   time.Time
-			keyNames string
+			minutes, hours any
+			keyNames       string
 		}{
-			{(*requestMinute)(nil), requests, requestMinuteKey},
-			{(*metricMinute)(nil), metrics, metricMinuteKey},
+			{(*requestMinute)(nil), (*requestHour)(nil), requestMinuteKey},
+			{(*metricMinute)(nil), (*metricHour)(nil), metricMinuteKey},
 		} {
-			before := retention
-			if table.summed.Before(before) {
-				before = table.summed
+			before := now.Add(-MinuteRetention)
+			next, pending, err := nextHour(ctx, tx, table.minutes, table.hours, cutoff)
+			if err != nil {
+				return err
 			}
-			n, err := deleteMinutes(ctx, tx, table.model, table.keyNames, before)
+			if pending && next.Before(before) {
+				before = next
+			}
+			n, err := deleteMinutes(ctx, tx, table.minutes, table.keyNames, before)
 			out.MinutesDeleted += n
 			if err != nil {
 				return err
@@ -108,17 +165,20 @@ func (s *Store) summarizeMetrics(ctx context.Context, now time.Time) (MetricsRol
 		}
 		return nil
 	})
-	return out, err
 }
 
-// deleteMinutesPastCeiling deletes minutes older than MinuteCeiling from
-// both tables, summed or not, holding the rollup's lock: the fallback when
-// a run can't sum.
-func (s *Store) deleteMinutesPastCeiling(ctx context.Context, now time.Time) (int, error) {
+// deleteMinutesPastCeiling deletes minutes older than MinuteCeiling (by
+// the database's clock) from both tables, summed or not, holding the
+// rollup's lock: the fallback when a run can't sum.
+func (s *Store) deleteMinutesPastCeiling(ctx context.Context) (int, error) {
 	total := 0
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		locked, err := database.TryLockMetricsRollup(ctx, tx)
 		if err != nil || !locked {
+			return err
+		}
+		now, err := databaseNow(ctx, tx)
+		if err != nil {
 			return err
 		}
 		before := now.Add(-MinuteCeiling)
@@ -140,60 +200,60 @@ func (s *Store) deleteMinutesPastCeiling(ctx context.Context, now time.Time) (in
 	return total, err
 }
 
+// databaseNow is the database's clock, which every server shares.
+func databaseNow(ctx context.Context, db bun.IDB) (time.Time, error) {
+	var now time.Time
+	err := db.NewSelect().ColumnExpr("now()").Scan(ctx, &now)
+	return now.UTC(), err
+}
+
 // The minute tables' primary keys, for deleting rows in batches.
 const (
 	requestMinuteKey = "minute, route, server"
 	metricMinuteKey  = "minute, metric, labels, server"
 )
 
-// pendingHours are the hours to sum in a minute table: from the hour of
-// its earliest minute after the last hour summed, to cutoff, at most
-// maxRollupHours. summed is how far the table is summed once they are.
-func pendingHours(ctx context.Context, tx bun.Tx, minutes, hours any, cutoff time.Time) (pending []time.Time, summed time.Time, err error) {
+// nextHour is the next hour to sum in a minute table: the hour of its
+// earliest minute after the last hour summed, if that's before cutoff.
+// Minutes dated after cutoff (a server whose clock runs ahead) are never
+// summed into an hour.
+func nextHour(ctx context.Context, tx bun.Tx, minutes, hours any, cutoff time.Time) (hour time.Time, ok bool, err error) {
 	var last, first sql.NullTime
 	if err := tx.NewSelect().Model(hours).ColumnExpr("max(hour)").Scan(ctx, &last); err != nil {
-		return nil, cutoff, err
+		return hour, false, err
 	}
 	q := tx.NewSelect().Model(minutes).ColumnExpr("min(minute)").Where("minute < ?", cutoff)
 	if last.Valid {
 		q = q.Where("minute >= ?", last.Time.Add(time.Hour))
 	}
 	if err := q.Scan(ctx, &first); err != nil || !first.Valid {
-		return nil, cutoff, err
+		return hour, false, err
 	}
-	for h := first.Time.UTC().Truncate(time.Hour); h.Before(cutoff); h = h.Add(time.Hour) {
-		if len(pending) == maxRollupHours {
-			return pending, h, nil
-		}
-		pending = append(pending, h)
-	}
-	return pending, cutoff, nil
+	return first.Time.UTC().Truncate(time.Hour), true, nil
 }
 
-// summarizeRequests sums request_minutes into request_hours, an hour at a
-// time, and returns how far it's summed.
-func summarizeRequests(ctx context.Context, tx bun.Tx, cutoff time.Time, out *MetricsRollup) (time.Time, error) {
-	pending, summed, err := pendingHours(ctx, tx, (*requestMinute)(nil), (*requestHour)(nil), cutoff)
-	if err != nil {
-		return time.Time{}, err
+// summarizeRequestHour sums request_minutes' next hour into request_hours,
+// reporting whether there was one.
+func summarizeRequestHour(ctx context.Context, tx bun.Tx, cutoff time.Time, out *MetricsRollup) (bool, error) {
+	hour, ok, err := nextHour(ctx, tx, (*requestMinute)(nil), (*requestHour)(nil), cutoff)
+	if err != nil || !ok {
+		return false, err
 	}
-	for _, hour := range pending {
-		var minutes []requestMinute
-		if err := tx.NewSelect().Model(&minutes).
-			Where("minute >= ? AND minute < ?", hour, hour.Add(time.Hour)).
-			Scan(ctx); err != nil {
-			return time.Time{}, err
-		}
-		rows := sumRequestMinutes(hour, minutes)
-		if len(rows) > 0 {
-			if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (hour, route) DO NOTHING").Exec(ctx); err != nil {
-				return time.Time{}, err
-			}
-		}
-		out.Hours++
-		out.RequestRows += len(rows)
+	var minutes []requestMinute
+	if err := tx.NewSelect().Model(&minutes).
+		Where("minute >= ? AND minute < ?", hour, hour.Add(time.Hour)).
+		Scan(ctx); err != nil {
+		return false, err
 	}
-	return summed, nil
+	rows := sumRequestMinutes(hour, minutes)
+	if len(rows) > 0 {
+		if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (hour, route) DO NOTHING").Exec(ctx); err != nil {
+			return false, err
+		}
+	}
+	out.Hours++
+	out.RequestRows += len(rows)
+	return true, nil
 }
 
 // sumRequestMinutes sums an hour's minutes, every server's, per route.
@@ -220,29 +280,27 @@ func sumRequestMinutes(hour time.Time, minutes []requestMinute) []requestHour {
 	return rows
 }
 
-// summarizeSeries sums metric_minutes into metric_hours, an hour at a
-// time, and returns how far it's summed.
-func summarizeSeries(ctx context.Context, tx bun.Tx, cutoff time.Time, out *MetricsRollup) (time.Time, error) {
-	pending, summed, err := pendingHours(ctx, tx, (*metricMinute)(nil), (*metricHour)(nil), cutoff)
-	if err != nil {
-		return time.Time{}, err
+// summarizeSeriesHour sums metric_minutes' next hour into metric_hours,
+// reporting whether there was one.
+func summarizeSeriesHour(ctx context.Context, tx bun.Tx, cutoff time.Time, out *MetricsRollup) (bool, error) {
+	hour, ok, err := nextHour(ctx, tx, (*metricMinute)(nil), (*metricHour)(nil), cutoff)
+	if err != nil || !ok {
+		return false, err
 	}
-	for _, hour := range pending {
-		var minutes []metricMinute
-		if err := tx.NewSelect().Model(&minutes).
-			Where("minute >= ? AND minute < ?", hour, hour.Add(time.Hour)).
-			Scan(ctx); err != nil {
-			return time.Time{}, err
-		}
-		rows := sumMetricMinutes(hour, minutes)
-		if len(rows) > 0 {
-			if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (hour, metric, labels) DO NOTHING").Exec(ctx); err != nil {
-				return time.Time{}, err
-			}
-		}
-		out.MetricRows += len(rows)
+	var minutes []metricMinute
+	if err := tx.NewSelect().Model(&minutes).
+		Where("minute >= ? AND minute < ?", hour, hour.Add(time.Hour)).
+		Scan(ctx); err != nil {
+		return false, err
 	}
-	return summed, nil
+	rows := sumMetricMinutes(hour, minutes)
+	if len(rows) > 0 {
+		if _, err := tx.NewInsert().Model(&rows).On("CONFLICT (hour, metric, labels) DO NOTHING").Exec(ctx); err != nil {
+			return false, err
+		}
+	}
+	out.MetricRows += len(rows)
+	return true, nil
 }
 
 // sumMetricMinutes sums an hour's minutes, every server's, per series: a

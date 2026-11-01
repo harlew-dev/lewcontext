@@ -8,9 +8,11 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // The final phase fits its budget: server.stopped and the last minute
@@ -44,5 +46,20 @@ func TestStopServerInAnOutage(t *testing.T) {
 	}
 	if writes.Load() != 1 {
 		t.Fatalf("%d writes of the last minute", writes.Load())
+	}
+}
+
+// The stored hostname fits its column, cut on a character boundary.
+func TestServerHostname(t *testing.T) {
+	long := strings.Repeat("a", maxHostname-1) + "é"
+	for in, want := range map[string]string{
+		"web-1":                  "web-1",
+		strings.Repeat("a", 300): strings.Repeat("a", maxHostname),
+		long:                     strings.Repeat("a", maxHostname-1),
+		"bad\xff":                "invalid",
+	} {
+		if got := cutHostname(in); got != want || len(got) > maxHostname || !utf8.ValidString(got) {
+			t.Errorf("cutHostname(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

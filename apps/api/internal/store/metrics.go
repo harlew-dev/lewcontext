@@ -90,19 +90,46 @@ type metricHour struct {
 // Insert only for the minutes: a minute already written is left as it was
 // (the flush never writes one twice). A row that breaks the tables' rules
 // is left out rather than failing the minute. Nothing here retries.
+//
+// Times are the database's: the heartbeat is its now(), and a minute more
+// than maxMinuteSkew from its clock (a server whose clock is wrong) is
+// dropped, heartbeat kept, so it can't land in an hour long summed or one
+// that hasn't happened. Checking costs one more query, only for a minute
+// with rows.
 func (s *Store) RecordMetrics(ctx context.Context, server ServerInstance, m observe.Minute) error {
-	server.LastSeenAt = time.Now()
 	q := s.DB.NewInsert().Model(&server).
+		Value("last_seen_at", "now()").
 		On("CONFLICT (id) DO UPDATE").
 		Set("last_seen_at = EXCLUDED.last_seen_at")
-	if rows := requestMinuteRows(server.ID, m); len(rows) > 0 {
-		q = q.With("request_rows", s.DB.NewInsert().Model(&rows).On("CONFLICT DO NOTHING"))
+	requests, series := requestMinuteRows(server.ID, m), metricMinuteRows(server.ID, m)
+	if len(requests) > 0 || len(series) > 0 {
+		now, err := databaseNow(ctx, s.DB)
+		if err != nil {
+			return err
+		}
+		if !minuteInTime(m.Minute, now) {
+			requests, series = nil, nil
+		}
 	}
-	if rows := metricMinuteRows(server.ID, m); len(rows) > 0 {
-		q = q.With("metric_rows", s.DB.NewInsert().Model(&rows).On("CONFLICT DO NOTHING"))
+	if len(requests) > 0 {
+		q = q.With("request_rows", s.DB.NewInsert().Model(&requests).On("CONFLICT DO NOTHING"))
+	}
+	if len(series) > 0 {
+		q = q.With("metric_rows", s.DB.NewInsert().Model(&series).On("CONFLICT DO NOTHING"))
 	}
 	_, err := q.Exec(ctx)
 	return err
+}
+
+// maxMinuteSkew is how far a minute's start may be from the database's
+// clock, beyond the minute itself: a flush writes the minute just ended
+// (or, stopping, the one in progress) within seconds.
+const maxMinuteSkew = 5 * time.Minute
+
+// minuteInTime reports whether a minute starting at minute is close
+// enough to the database's now to be stored.
+func minuteInTime(minute, now time.Time) bool {
+	return !minute.Before(now.Add(-maxMinuteSkew-time.Minute)) && !minute.After(now.Add(maxMinuteSkew))
 }
 
 // Bounds of the minute tables' columns (021, 023), checked before a row is
@@ -118,7 +145,7 @@ func requestMinuteRows(server string, m observe.Minute) []requestMinute {
 	rows := make([]requestMinute, 0, len(m.Routes))
 	for _, r := range m.Routes {
 		n := utf8.RuneCountInString(r.Route)
-		if r.Requests <= 0 || n == 0 || n > maxMetricRoute {
+		if r.Requests <= 0 || n == 0 || n > maxMetricRoute || !utf8.ValidString(r.Route) {
 			continue
 		}
 		rows = append(rows, requestMinute{
@@ -135,7 +162,7 @@ func requestMinuteRows(server string, m observe.Minute) []requestMinute {
 func metricMinuteRows(server string, m observe.Minute) []metricMinute {
 	rows := make([]metricMinute, 0, len(m.Series))
 	for _, x := range m.Series {
-		if x.Count <= 0 || !metricName.MatchString(x.Metric) || utf8.RuneCountInString(x.Labels) > maxMetricLabels {
+		if x.Count <= 0 || !metricName.MatchString(x.Metric) || utf8.RuneCountInString(x.Labels) > maxMetricLabels || !utf8.ValidString(x.Labels) {
 			continue
 		}
 		rows = append(rows, metricMinute{
@@ -150,8 +177,7 @@ func metricMinuteRows(server string, m observe.Minute) []metricMinute {
 // together.
 func (s *Store) RecordServerStart(ctx context.Context, server ServerInstance) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		server.LastSeenAt = time.Now()
-		if _, err := tx.NewInsert().Model(&server).On("CONFLICT (id) DO UPDATE").Set("last_seen_at = EXCLUDED.last_seen_at").Exec(ctx); err != nil {
+		if _, err := tx.NewInsert().Model(&server).Value("last_seen_at", "now()").On("CONFLICT (id) DO UPDATE").Set("last_seen_at = EXCLUDED.last_seen_at").Exec(ctx); err != nil {
 			return err
 		}
 		return s.record(ctx, tx, events.ServerStarted{Server: server.ID, Version: server.Version}, EventScope{})
@@ -162,7 +188,7 @@ func (s *Store) RecordServerStart(ctx context.Context, server ServerInstance) er
 // server's last_seen_at to now.
 func (s *Store) RecordServerStop(ctx context.Context, server ServerInstance, reason string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if _, err := tx.NewUpdate().Model((*ServerInstance)(nil)).Set("last_seen_at = ?", time.Now()).Where("id = ?", server.ID).Exec(ctx); err != nil {
+		if _, err := tx.NewUpdate().Model((*ServerInstance)(nil)).Set("last_seen_at = now()").Where("id = ?", server.ID).Exec(ctx); err != nil {
 			return err
 		}
 		return s.record(ctx, tx, events.ServerStopped{Server: server.ID, Reason: reason}, EventScope{})

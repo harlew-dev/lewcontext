@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"unicode/utf8"
 )
 
 // Metrics, server instances and /metrics (docs/api/observability.md): what
@@ -52,15 +53,38 @@ func newServerInstance(ctx context.Context, db bun.IDB, c config.Config) (store.
 	if err != nil {
 		return store.ServerInstance{}, err
 	}
-	hostname, _ := os.Hostname()
-	if len(hostname) > 255 {
-		hostname = hostname[:255]
-	}
+	hostname := serverHostname()
 	now := time.Now()
 	return store.ServerInstance{
 		ID: observe.NewServerID(), Hostname: hostname, Version: observe.Version(),
 		StartedAt: now, LastSeenAt: now, Config: summary,
 	}, nil
+}
+
+// maxHostname is server_instances.hostname's limit, in bytes.
+const maxHostname = 255
+
+// serverHostname is the host's name, cut to maxHostname bytes on a
+// character boundary, or "invalid" when it isn't UTF-8 (or can't be read).
+func serverHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "invalid"
+	}
+	return cutHostname(hostname)
+}
+
+// cutHostname is hostname cut to maxHostname bytes on a character
+// boundary, or "invalid" when it isn't UTF-8.
+func cutHostname(hostname string) string {
+	if !utf8.ValidString(hostname) {
+		return "invalid"
+	}
+	for len(hostname) > maxHostname {
+		_, size := utf8.DecodeLastRuneInString(hostname)
+		hostname = hostname[:len(hostname)-size]
+	}
+	return hostname
 }
 
 // minuteFlush writes each minute's metrics with the server's heartbeat
@@ -112,19 +136,49 @@ func summarizeMetrics(ctx context.Context, repository *store.Store) {
 		}
 		wait = rollupInterval
 		run, cancel := context.WithTimeout(ctx, rollupTimeout)
-		rollup, err := repository.SummarizeMetrics(run, time.Now())
-		if err == nil {
-			var gone int
-			gone, err = repository.DeleteSilentServerInstances(run, time.Now().Add(-silentServer))
-			if rollup.Locked || gone > 0 {
-				slog.Debug("metrics rolled up", "locked", rollup.Locked, "hours", rollup.Hours, "minutesDeleted", rollup.MinutesDeleted, "serversDeleted", gone)
-			}
-		}
+		rollup, err := repository.SummarizeMetrics(run)
 		cancel()
+		if ctx.Err() != nil {
+			return
+		}
+		// Whatever the rollup did, servers silent for a day go.
+		gone, goneErr := deleteSilentServers(ctx, repository)
+		err = errors.Join(err, goneErr)
+		if rollup.Locked || gone > 0 {
+			slog.Debug("metrics rolled up", "locked", rollup.Locked, "hours", rollup.Hours, "minutesDeleted", rollup.MinutesDeleted, "serversDeleted", gone)
+		}
 		if err != nil && ctx.Err() == nil {
 			slog.Warn("rolling up metrics failed; trying again in an hour", observe.ErrorAttr(err))
 			observe.Report(ctx, observe.Problem{Source: observe.SourceBackground, Route: "metrics rollup", Err: err})
 		}
+	}
+}
+
+// silentServersTimeout bounds deleting the rows of servers silent for a
+// day.
+const silentServersTimeout = 10 * time.Second
+
+// deleteSilentServers deletes the server_instances rows of servers silent
+// for a day: after each rollup, whatever it did, and at startup, so a
+// crash loop's rows go even when no server lives long enough to roll up.
+func deleteSilentServers(ctx context.Context, repository *store.Store) (int, error) {
+	run, cancel := context.WithTimeout(ctx, silentServersTimeout)
+	defer cancel()
+	return repository.DeleteSilentServerInstances(run, time.Now().Add(-silentServer))
+}
+
+// rollUp runs summarizeMetrics until stopRollup is called, which waits for
+// it to finish (a run in progress is rolled back).
+func rollUp(ctx context.Context, repository *store.Store) (stopRollup func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		summarizeMetrics(ctx, repository)
+	}()
+	return func() {
+		cancel()
+		<-done
 	}
 }
 

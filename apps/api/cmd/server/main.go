@@ -80,6 +80,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// A crash loop's rows go even if no server lives long enough to roll up.
+	if _, err := deleteSilentServers(startup, repository); err != nil {
+		slog.Warn("deleting silent servers failed", observe.ErrorAttr(err))
+	}
 	if err := repository.RecordServerStart(startup, instance); err != nil {
 		slog.Warn("recording server.started failed; the heartbeat will add the server", observe.ErrorAttr(err))
 	}
@@ -92,10 +96,17 @@ func run() error {
 		stopMinutes()
 		stopServer(repository, instance, stopReason, minutes)
 	}()
-	go summarizeMetrics(ctx, repository)
+	// The rollup stops, and is waited for, before the last minute is written.
+	stopRollup := rollUp(ctx, repository)
+	defer stopRollup()
 	metricsServer, err := serveMetrics(c)
 	if err != nil {
 		return err
+	}
+	// If startup fails from here on, the /metrics listener closes too (after
+	// a graceful shutdown it already has, and this does nothing).
+	if metricsServer != nil {
+		defer func() { _ = metricsServer.Close() }()
 	}
 	api, err := httpapi.New(repository, c)
 	if err != nil {
