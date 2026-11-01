@@ -152,13 +152,17 @@ func (s *Store) IndexAdmins(ctx context.Context) ([]Admin, error) {
 // and, without MFA, opens a new 24-hour setup window at the door. Granting
 // an existing admin another role only changes the role, recording
 // admin.updated; from is then the role it had ("" otherwise).
-// sql.ErrNoRows for an unknown email.
+// sql.ErrNoRows for an unknown email, ErrSuspended for a suspended account.
 func (s *Store) GrantAdmin(ctx context.Context, email string, role auth.AdminRole) (a Admin, from auth.AdminRole, err error) {
 	err = s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var u User
 		err := tx.NewSelect().Model(&u).ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at").ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(tx)).
 			Where("u.email = ?", email).For("UPDATE OF u").Scan(ctx)
 		if err != nil {
+			return err
+		}
+		// A suspended account is never an admin: unsuspend it first.
+		if err := checkNotSuspended(ctx, tx, u.ID); err != nil {
 			return err
 		}
 		var existing adminRecord
@@ -273,7 +277,8 @@ func (s *Store) DeleteMFAChallenge(ctx context.Context, hash string) error {
 
 // CreateAdminSession starts the admin session n, keeping at most
 // MaxAdminSessions per admin (the oldest go), and records e with the admin
-// as actor. ErrNotAdmin if they stopped being one.
+// as actor. ErrNotAdmin if they stopped being one, ErrSuspended for a
+// suspended account (never an admin; the backstop).
 func (s *Store) CreateAdminSession(ctx context.Context, n NewAdminSession, e events.Event) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// The admin row's lock serialises sign-ins, so the cap holds.
@@ -285,8 +290,11 @@ func (s *Store) CreateAdminSession(ctx context.Context, n NewAdminSession, e eve
 		if err != nil {
 			return err
 		}
+		if err := checkNotSuspended(ctx, tx, n.UserID); err != nil {
+			return err
+		}
 		if _, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).
-			Where("user_id = ? AND (expires_at <= now() OR last_seen_at <= now() - make_interval(secs => ?))", n.UserID, adminIdleSeconds).
+			Where("user_id = ? AND (expires <= now() OR last_seen_at <= now() - make_interval(secs => ?))", n.UserID, adminIdleSeconds).
 			Exec(ctx); err != nil {
 			return err
 		}
@@ -312,12 +320,13 @@ var adminIdleSeconds = int(auth.AdminSessionIdle.Seconds())
 // under the key whose digest is keyHash (the one the request came with),
 // and returns it with its admin and that digest. sql.ErrNoRows when it's
 // unknown, expired, idle, made under another key, or its user is no longer
-// an admin. A session made under another key is never touched, so a
+// an admin (or is suspended: never an admin, but this is the backstop). A session made under another key is never touched, so a
 // request with the wrong key can't keep it from idling out.
 func (s *Store) FindAdminSession(ctx context.Context, hash, keyHash string) (AdminSession, error) {
 	active := s.DB.NewUpdate().Model((*adminSessionRecord)(nil)).
 		Set("last_seen_at = now()").
 		Where("token_hash = ? AND key_hash = ? AND expires_at > now() AND last_seen_at > now() - make_interval(secs => ?)", hash, keyHash, adminIdleSeconds).
+		Where("NOT EXISTS (?)", suspendedUser(s.DB, "adms.user_id")).
 		Returning("user_id, csrf_token, key_hash, host(ip) AS ip, moved_at IS NOT NULL AS moved, coalesce(stepped_up_until > now(), false) AS stepped_up, created_at, expires_at")
 	var session AdminSession
 	err := s.DB.NewSelect().

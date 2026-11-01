@@ -41,6 +41,13 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	valid := auth.CheckPassword(in.Password, hash)
 	needsCode := valid && known && user.MFAEnabledAt != nil
+	// A suspended account hears why only once its password is right, and
+	// with MFA on only after its code too (StartSession refuses it then):
+	// anyone else gets the usual 401, so a suspension can't be probed.
+	if valid && known && user.Suspended && !needsCode {
+		h.Suspended(w, r, user)
+		return
+	}
 	if err := h.recordLoginAttempt(r, in.Email, user, known, valid, needsCode); err != nil {
 		httpapi.InternalError(w, r, err)
 		return

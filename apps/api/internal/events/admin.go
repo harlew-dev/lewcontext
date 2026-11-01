@@ -273,3 +273,125 @@ type AdminEmailUnblocked struct {
 }
 
 func (AdminEmailUnblocked) EventName() string { return "admin.email.unblocked" }
+
+// The dashboard's account-and-access actions (plans/features/admin/actions.md):
+// each recorded once, with the admin, what they acted on and the reason
+// they gave (10 to 500 characters), in the same transaction as the change,
+// beside the store's own events for it (auth.mfa.disabled,
+// workspace.invitation.revoked, …), which carry the admin as actor too.
+
+// AdminUserSignedOut: an admin signed every session of an account out
+// (Sign out everywhere).
+type AdminUserSignedOut struct {
+	Admin           string `json:"admin"`
+	User            string `json:"user"`
+	Reason          string `json:"reason"`
+	SessionsRevoked int    `json:"sessionsRevoked"`
+}
+
+func (AdminUserSignedOut) EventName() string { return "admin.user.signed_out" }
+
+// AdminUserMFAReset: an admin turned an account's two-factor
+// authentication off for someone who lost it, having confirmed who was
+// asking outside the app; auth.mfa.disabled (reason reset) is recorded
+// with it.
+type AdminUserMFAReset struct {
+	Admin           string `json:"admin"`
+	User            string `json:"user"`
+	Reason          string `json:"reason"`
+	SessionsRevoked int    `json:"sessionsRevoked"`
+}
+
+func (AdminUserMFAReset) EventName() string { return "admin.user.mfa_reset" }
+
+// AdminUserSuspended: an admin suspended an account; auth.suspended (by
+// admin) is recorded with it.
+type AdminUserSuspended struct {
+	Admin              string `json:"admin"`
+	User               string `json:"user"`
+	Reason             string `json:"reason"`
+	SessionsRevoked    int    `json:"sessionsRevoked"`
+	InvitationsRevoked int    `json:"invitationsRevoked"`
+}
+
+func (AdminUserSuspended) EventName() string { return "admin.user.suspended" }
+
+// AdminUserUnsuspended: an admin lifted an account's suspension;
+// auth.unsuspended (by admin) is recorded with it.
+type AdminUserUnsuspended struct {
+	Admin  string `json:"admin"`
+	User   string `json:"user"`
+	Reason string `json:"reason"`
+}
+
+func (AdminUserUnsuspended) EventName() string { return "admin.user.unsuspended" }
+
+// AdminWorkspaceInvitationsRevoked: an admin revoked every live invitation
+// of a workspace (Count of them), to stop an invitation-spam run;
+// workspace.invitation.revoked is recorded for each.
+type AdminWorkspaceInvitationsRevoked struct {
+	Admin     string `json:"admin"`
+	Workspace string `json:"workspace"`
+	Reason    string `json:"reason"`
+	Count     int    `json:"count"`
+}
+
+func (AdminWorkspaceInvitationsRevoked) EventName() string {
+	return "admin.workspace.invitations_revoked"
+}
+
+// AdminDeliveryRetried: an admin queued failed deliveries again: one
+// (Event and Listener), or every failed delivery of Listener since
+// FailedSince (at most 1,000), Count of them.
+type AdminDeliveryRetried struct {
+	Admin       string     `json:"admin"`
+	Reason      string     `json:"reason"`
+	Listener    string     `json:"listener"`
+	Event       string     `json:"event,omitempty"`
+	FailedSince *time.Time `json:"failedSince,omitempty"`
+	Count       int        `json:"count"`
+}
+
+func (AdminDeliveryRetried) EventName() string { return "admin.delivery.retried" }
+
+// AdminIPBlocked: an admin blocked a client address or range (Network, as
+// CIDR) until ExpiresAt; Block is its ipb_ ID.
+type AdminIPBlocked struct {
+	Admin     string    `json:"admin"`
+	Block     string    `json:"block"`
+	Network   string    `json:"network"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Reason    string    `json:"reason"`
+}
+
+func (AdminIPBlocked) EventName() string { return "admin.ip.blocked" }
+
+// AdminIPUnblocked: an admin lifted a block before it expired.
+type AdminIPUnblocked struct {
+	Admin   string `json:"admin"`
+	Block   string `json:"block"`
+	Network string `json:"network"`
+	Reason  string `json:"reason"`
+}
+
+func (AdminIPUnblocked) EventName() string { return "admin.ip.unblocked" }
+
+// AdminIPBlockListed: an admin loaded the IP blocks page.
+type AdminIPBlockListed struct {
+	Admin string `json:"admin"`
+}
+
+func (AdminIPBlockListed) EventName() string { return "admin.ip_block.listed" }
+
+// AdminAdminSignedOut: an admin signed another admin out, every admin and
+// app session of theirs (a lost laptop, a session that moved). The one
+// action on another admin: anything else stays on the command line.
+type AdminAdminSignedOut struct {
+	Admin                string `json:"admin"`
+	User                 string `json:"user"`
+	Reason               string `json:"reason"`
+	AdminSessionsRevoked int    `json:"adminSessionsRevoked"`
+	SessionsRevoked      int    `json:"sessionsRevoked"`
+}
+
+func (AdminAdminSignedOut) EventName() string { return "admin.admin.signed_out" }

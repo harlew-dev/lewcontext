@@ -279,7 +279,9 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 		UserID: user.ID, TokenHash: auth.Digest(token), KeyHash: h.AdminKeyHash(), CSRF: csrf, ExpiresAt: expires,
 		IP: httpapi.ClientIP(r), UserAgent: events.UserAgent(r.Context()),
 	}, e)
-	if errors.Is(err, store.ErrNotAdmin) {
+	// A suspended account is never an admin (suspending refuses one,
+	// granting refuses it); answered as one who stopped being an admin.
+	if errors.Is(err, store.ErrNotAdmin) || errors.Is(err, store.ErrSuspended) {
 		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return
 	}

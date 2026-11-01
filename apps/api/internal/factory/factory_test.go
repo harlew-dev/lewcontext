@@ -137,6 +137,13 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := EmailBlocks.Create(ctx, db, f, 2); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := UserSuspensions.State(SuspensionOf(other.ID)).State(SuspendedBy(user.ID)).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	block, err := IPBlocks.State(BlockedBy(user.ID)).CreateOne(ctx, db, f)
+	if err != nil || block.PublicID == "" {
+		t.Fatalf("IP block: %+v (%v)", block, err)
+	}
 	event, err := Events.State(func(e *Event) { e.UserID = user.ID }).CreateOne(ctx, db, f)
 	if err != nil || event.PublicID == "" {
 		t.Fatalf("event: %+v (%v)", event, err)

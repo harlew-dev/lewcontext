@@ -32,6 +32,10 @@ type User struct {
 	// while it's off. Read only where a query selects it (mfaEnabledAt);
 	// only ever sent in the user's own session responses.
 	MFAEnabledAt *time.Time `bun:"mfa_enabled_at,scanonly" json:"mfaEnabledAt"`
+	// Suspended says an admin suspended the account
+	// (docs/api/admin.md#suspending-an-account). Read only by FindUser, for
+	// sign-in's honest refusal after the password; never in a response.
+	Suspended bool `bun:"suspended,scanonly" json:"-"`
 }
 
 // account carries the password hash so it never travels inside a User response.

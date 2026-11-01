@@ -92,7 +92,7 @@ func (h EmailBlocks) Destroy(w http.ResponseWriter, r *http.Request) {
 		httpapi.FailField(w, 422, "reason", "Give a reason of 10 to 500 characters.")
 		return
 	}
-	err := h.Repo.UnblockEmailAddress(r.Context(), in.Email, &store.AdminUnblock{Admin: httpapi.Admin(r).User, Reason: in.Reason})
+	err := h.Repo.UnblockEmailAddress(r.Context(), in.Email, &store.AdminAction{Admin: httpapi.Admin(r).User, Reason: in.Reason})
 	if errors.Is(err, store.ErrEmailNotBlocked) {
 		httpapi.Fail(w, 404, "This address isn't blocked.")
 		return

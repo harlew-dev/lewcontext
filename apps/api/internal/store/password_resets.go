@@ -25,10 +25,11 @@ var ErrResetInvalid = errors.New("password reset link is invalid")
 
 // IssuePasswordReset makes hash the live reset link of the account using
 // email until expires, replacing any earlier link. It returns sql.ErrNoRows
-// when no account uses the email.
+// when no account uses the email, or the account is suspended: a reset
+// wouldn't let it in, and a suspended account's requests send no email.
 func (s *Store) IssuePasswordReset(ctx context.Context, email, hash string, expires time.Time) (User, error) {
 	var u User
-	if err := s.DB.NewSelect().Model(&u).Where("email = ?", email).Scan(ctx); err != nil {
+	if err := s.DB.NewSelect().Model(&u).Where("email = ?", email).Where("NOT EXISTS (?)", suspendedUser(s.DB, "u.id")).Scan(ctx); err != nil {
 		return u, err
 	}
 	reset := passwordReset{UserID: u.ID, TokenHash: hash, ExpiresAt: expires}
@@ -53,7 +54,7 @@ func (s *Store) CheckPasswordReset(ctx context.Context, hash string) (bool, erro
 // (admin sessions too), and
 // records auth.password_reset.completed, in one transaction. An unverified
 // email becomes verified (auth.email_verified). It returns
-// ErrResetInvalid unless hash is a live link.
+// ErrResetInvalid unless hash is a live link of an account not suspended.
 func (s *Store) ResetPassword(ctx context.Context, hash, passwordHash string) (User, error) {
 	var u User
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -72,6 +73,12 @@ func (s *Store) ResetPassword(ctx context.Context, hash, passwordHash string) (U
 		// request with the same token waits for the account, then finds the
 		// link gone, so each link works once.
 		if err := tx.NewSelect().Model(&u).Where("id = ?", userID).For("UPDATE").Scan(ctx); err != nil {
+			return err
+		}
+		// Suspending deletes the link; this is the backstop.
+		if err := checkNotSuspended(ctx, tx, userID); errors.Is(err, ErrSuspended) {
+			return ErrResetInvalid
+		} else if err != nil {
 			return err
 		}
 		err = tx.NewSelect().Model((*passwordReset)(nil)).Column("user_id").

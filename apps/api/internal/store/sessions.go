@@ -19,10 +19,16 @@ type sessionRecord struct {
 
 // CreateSession starts a session for the user, replacing the one oldHash
 // identifies, and records e (such as auth.logged_in) with it when e isn't nil.
+// ErrSuspended for a suspended account, checked under the user's lock,
+// which SuspendUser takes too: whatever the path to a session, a suspended
+// account never gets one.
 func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, oldHash string, expiry time.Time, e events.Event) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Serialize session creation per account so the cap survives concurrent logins.
 		if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", userID).For("UPDATE").Exec(ctx); err != nil {
+			return err
+		}
+		if err := checkNotSuspended(ctx, tx, userID); err != nil {
 			return err
 		}
 		if _, err := tx.NewDelete().Model((*sessionRecord)(nil)).
@@ -46,11 +52,14 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, old
 	})
 }
 
-// FindSession refreshes idle time and returns sql.ErrNoRows for unknown, expired, or idle sessions.
+// FindSession refreshes idle time and returns sql.ErrNoRows for unknown,
+// expired, or idle sessions, and for a suspended account's: suspending
+// deletes them, and this is the backstop.
 func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 	active := s.DB.NewUpdate().Model((*sessionRecord)(nil)).
 		Set("last_seen_at = now()").
 		Where("token_hash = ? AND expires_at > now() AND last_seen_at > now() - interval '30 minutes'", hash).
+		Where("NOT EXISTS (?)", suspendedUser(s.DB, "s.user_id")).
 		Returning("user_id, csrf_token, created_at, expires_at")
 	var session Session
 	err := s.DB.NewSelect().
@@ -96,7 +105,7 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 }
 
 // Cleanup deletes used-up rate-limit windows, ended sessions (admin ones
-// too), expired reset and block links, sign-in challenges, sign-ups and
+// too), expired reset and block links, expired IP blocks, sign-in challenges, sign-ups and
 // email codes, MFA setups left unconfirmed, and invitations that expired over 30 days ago (until then they're listed as expired, so
 // whoever sent one can see why it wasn't used).
 func (s *Store) Cleanup(ctx context.Context) error {
@@ -133,6 +142,45 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	if _, err := s.DB.NewDelete().Model((*emailBlockLink)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
 		return err
 	}
+	if _, err := s.DB.NewDelete().Model((*ipBlockRecord)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
+		return err
+	}
 	_, err := s.DB.NewDelete().Model((*invitationRecord)(nil)).Where("expires_at <= now() - interval '30 days'").Exec(ctx)
 	return err
+}
+
+// RevokeAllSessions signs every account out, app and admin sessions alike,
+// and records auth.sessions_revoked_all with how many, with no actor (the
+// operator's command line, admin sessions revoke-all): for a suspected leak
+// of the session tables. Everyone signs in again with their password (and
+// code).
+func (s *Store) RevokeAllSessions(ctx context.Context) (events.SessionsRevokedAll, error) {
+	var e events.SessionsRevokedAll
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var err error
+		if e.Sessions, err = deleteSessions(ctx, tx, "TRUE"); err != nil {
+			return err
+		}
+		result, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("TRUE").Exec(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		e.AdminSessions = int(n)
+		return s.record(ctx, tx, e, EventScope{})
+	})
+	return e, err
+}
+
+// CountSessions counts the live app and admin sessions, for revoke-all's
+// preview.
+func (s *Store) CountSessions(ctx context.Context) (sessions, adminSessions int64, err error) {
+	if sessions, err = s.DB.NewSelect().Model((*sessionRecord)(nil)).Count(ctx); err != nil {
+		return 0, 0, err
+	}
+	adminSessions, err = s.DB.NewSelect().Model((*adminSessionRecord)(nil)).Count(ctx)
+	return sessions, adminSessions, err
 }

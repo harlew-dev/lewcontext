@@ -26,7 +26,7 @@ type Event interface {
 var Catalogue = []Event{
 	Registered{}, LoginAttempted{}, LoggedIn{}, LoggedOut{},
 	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
-	AccountDeleted{},
+	AccountDeleted{}, Suspended{}, Unsuspended{}, SessionsRevokedAll{},
 	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
 	RegistrationRequested{}, RegistrationSent{}, RegistrationChecked{},
 	EmailVerificationRequested{}, EmailVerificationSent{}, EmailVerified{},
@@ -42,6 +42,9 @@ var Catalogue = []Event{
 	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
 	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
 	AdminEmailBlockListed{}, AdminEmailUnblocked{},
+	AdminUserSignedOut{}, AdminUserMFAReset{}, AdminUserSuspended{}, AdminUserUnsuspended{},
+	AdminWorkspaceInvitationsRevoked{}, AdminDeliveryRetried{},
+	AdminIPBlocked{}, AdminIPUnblocked{}, AdminIPBlockListed{}, AdminAdminSignedOut{},
 }
 
 // Change is a field's value before and after an update.

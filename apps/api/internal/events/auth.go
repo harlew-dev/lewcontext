@@ -5,6 +5,10 @@ const (
 	LoginSucceeded      = "succeeded"
 	LoginWrongPassword  = "wrong_password"
 	LoginUnknownAccount = "unknown_account"
+	// LoginSuspended: the right password (and code) of a suspended account,
+	// refused with an honest 403. A wrong password is wrong_password, as
+	// for any account, so a suspension can't be probed.
+	LoginSuspended = "suspended"
 )
 
 // Steps that check the current password: the two of a password change,
@@ -194,3 +198,47 @@ type EmailVerified struct {
 }
 
 func (EmailVerified) EventName() string { return "auth.email_verified" }
+
+// Who suspended or unsuspended an account (Suspended.By, Unsuspended.By):
+// an admin from the dashboard, or the operator's command line.
+const (
+	SuspendedByAdmin = "admin"
+	SuspendedByCLI   = "cli"
+)
+
+// Suspended: an account was suspended (docs/api/admin.md#suspending-an-account):
+// every session of it signed out (SessionsRevoked) and, when asked, every
+// live invitation it sent revoked (InvitationsRevoked; each is also
+// workspace.invitation.revoked). From the dashboard, admin.user.suspended
+// is recorded with it, holding the reason; from the command line (By cli)
+// the reason is here.
+type Suspended struct {
+	User               string `json:"user"`
+	By                 string `json:"by"`
+	SessionsRevoked    int    `json:"sessionsRevoked"`
+	InvitationsRevoked int    `json:"invitationsRevoked"`
+	Reason             string `json:"reason,omitempty"`
+}
+
+func (Suspended) EventName() string { return "auth.suspended" }
+
+// Unsuspended: a suspended account may sign in again. From the dashboard,
+// admin.user.unsuspended is recorded with it, holding the reason; from the
+// command line the reason is here.
+type Unsuspended struct {
+	User   string `json:"user"`
+	By     string `json:"by"`
+	Reason string `json:"reason,omitempty"`
+}
+
+func (Unsuspended) EventName() string { return "auth.unsuspended" }
+
+// SessionsRevokedAll: the operator signed every account out from the
+// command line (admin sessions revoke-all), for a suspected leak of the
+// session tables: Sessions app sessions and AdminSessions admin sessions.
+type SessionsRevokedAll struct {
+	Sessions      int `json:"sessions"`
+	AdminSessions int `json:"adminSessions"`
+}
+
+func (SessionsRevokedAll) EventName() string { return "auth.sessions_revoked_all" }

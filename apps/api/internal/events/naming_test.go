@@ -23,6 +23,11 @@ var storedResources = map[string]string{
 	"auth.recovery_codes":     "the account's recovery codes (mfa_recovery_codes)",
 	"admin.session":           "one admin session (admin_sessions)",
 	"admin.email":             "an admin's action names what it acted on: an email address on the block list",
+	"admin.user":              "an admin's action names what it acted on: an account (signed out, its MFA reset, suspended)",
+	"admin.workspace":         "an admin's action names what it acted on: a workspace (its invitations revoked)",
+	"admin.delivery":          "an admin's action names what it acted on: a delivery (event_deliveries) queued again",
+	"admin.ip":                "an admin's action names what it acted on: a client address or range (ip_blocks)",
+	"admin.admin":             "an admin's action names what it acted on: another admin (signed out)",
 }
 
 // permissionResources are the resources the permissions name: a permission
@@ -85,7 +90,7 @@ func TestBadEventResource(t *testing.T) {
 			t.Errorf("refused: %s", problem)
 		}
 	}
-	for _, name := range []string{"workspace.membership.removed", "workspace.members.removed", "project.task.created", "admin.user.deleted"} {
+	for _, name := range []string{"workspace.membership.removed", "workspace.members.removed", "project.task.created", "admin.widget.deleted"} {
 		if problem := badEventResource(name, resources); !strings.Contains(problem, "docs/naming.md#events-internalevents") {
 			t.Errorf("%s accepted", name)
 		}

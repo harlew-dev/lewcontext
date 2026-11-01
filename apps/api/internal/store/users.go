@@ -45,10 +45,12 @@ func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User,
 }
 
 // FindUser returns sql.ErrNoRows when no account uses the email. The user's
-// MFAEnabledAt says whether signing in needs a second factor.
+// MFAEnabledAt says whether signing in needs a second factor, and
+// Suspended whether it may sign in at all.
 func (s *Store) FindUser(ctx context.Context, email string) (User, string, error) {
 	var a account
 	err := s.DB.NewSelect().Model(&a).ColumnExpr("u.*").ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(s.DB)).
+		ColumnExpr("EXISTS (?) AS suspended", suspendedUser(s.DB, "u.id")).
 		Where("email = ?", email).Scan(ctx)
 	return a.User, a.PasswordHash, err
 }

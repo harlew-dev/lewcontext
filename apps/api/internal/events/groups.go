@@ -42,6 +42,8 @@ var groupLabels = map[string]string{
 	"email.*":                   "Email addresses",
 	"admin.*":                   "Admin",
 	"admin.session.*":           "Admin sessions",
+	"admin.user.*":              "Actions on accounts",
+	"admin.ip.*":                "IP blocks",
 	AdminReadsGroup:             "Admin reads",
 }
 

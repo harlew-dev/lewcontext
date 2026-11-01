@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
 	"strings"
@@ -116,4 +117,81 @@ func errorText(err error) string {
 		text = string([]rune(text)[:maxLastError])
 	}
 	return text
+}
+
+// MaxDeliveriesRetried is how many failed deliveries one bulk retry queues
+// again, at most: for after an SMTP outage.
+const MaxDeliveriesRetried = 1000
+
+var (
+	// ErrDeliveryNotFailed: a retry of a delivery that hasn't failed (it's
+	// pending or delivered).
+	ErrDeliveryNotFailed = errors.New("the delivery hasn't failed")
+	// ErrNothingToRetry: no failed delivery matches a bulk retry.
+	ErrNothingToRetry = errors.New("no failed delivery to retry")
+)
+
+// requeue is what queuing a failed delivery again sets: not failed, no
+// attempts yet, due now. Its listener runs as for a new event; reset,
+// invitation and sign-up listeners make a fresh link or code when they
+// run, so an old one is never sent again.
+func requeue(q *bun.UpdateQuery) *bun.UpdateQuery {
+	return q.Set("failed_at = NULL").Set("attempts = 0").Set("next_attempt_at = now()")
+}
+
+// RequeueDelivery queues the failed delivery of the event publicID to
+// listener again, recording admin.delivery.retried. sql.ErrNoRows when
+// there's no such delivery, ErrDeliveryNotFailed when it hasn't failed.
+func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, a AdminAction) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var d deliveryRecord
+		err := tx.NewSelect().Model(&d).
+			Join("JOIN events AS e ON e.id = d.event_id").
+			Where("e.public_id = ? AND d.listener = ?", publicID, listener).
+			For("UPDATE OF d").
+			Scan(ctx)
+		if err != nil {
+			return err
+		}
+		if d.FailedAt.IsZero() {
+			return ErrDeliveryNotFailed
+		}
+		if _, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).Where("event_id = ? AND listener = ?", d.EventID, listener).Exec(ctx); err != nil {
+			return err
+		}
+		e := events.AdminDeliveryRetried{Admin: a.Admin.PublicID, Reason: a.Reason, Listener: listener, Event: publicID, Count: 1}
+		return s.record(ctx, tx, e, EventScope{ActorID: a.Admin.ID})
+	})
+}
+
+// RequeueFailedDeliveries queues again every delivery to listener that
+// failed at or after since, the most recent MaxDeliveriesRetried of them,
+// recording admin.delivery.retried with how many. ErrNothingToRetry when
+// none did (nothing is recorded).
+func (s *Store) RequeueFailedDeliveries(ctx context.Context, listener string, since time.Time, a AdminAction) (int, error) {
+	var count int
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		failed := tx.NewSelect().Model((*deliveryRecord)(nil)).
+			Column("event_id").
+			Where("listener = ? AND failed_at IS NOT NULL AND failed_at >= ?", listener, since).
+			OrderExpr("failed_at DESC, event_id DESC").
+			Limit(MaxDeliveriesRetried).
+			For("UPDATE")
+		res, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).
+			Where("listener = ? AND event_id IN (?)", listener, failed).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count = int(n); count == 0 {
+			return ErrNothingToRetry
+		}
+		e := events.AdminDeliveryRetried{Admin: a.Admin.PublicID, Reason: a.Reason, Listener: listener, FailedSince: &since, Count: count}
+		return s.record(ctx, tx, e, EventScope{ActorID: a.Admin.ID})
+	})
+	return count, err
 }
