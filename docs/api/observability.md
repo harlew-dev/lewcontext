@@ -11,7 +11,7 @@ Every command installs one handler (`observe.NewLogger`) with `slog.SetDefault` 
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `LOG_FORMAT` | `json` in production, `text` otherwise | `json`: one object per line (`time`, `level`, `msg`, then the attributes), for any log collector. `text`: slog's `key=value` lines |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`: the least severe level written. Above `info`, the [audit lines](#audit-lines) aren't written, and the server warns at startup |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`: the least severe level written. Above `info`, the [audit lines](#audit-lines) aren't written, and the server says so at startup, at `error` so no level hides it (`TestAuditLinesHiddenWarning`) |
 | `ACCESS_LOG` | `all` | `all`: a line per request; `errors`: only 4xx and 5xx answers, requests over a second and requests aborted before any answer; `off`: none. Anything else refuses to start |
 
 - **Where:** the server writes to stdout, and sends `net/http`'s own complaints (a broken connection) through the same handler as warnings. The commands run by hand (`migrate`, `seed`, `prune`, `admin`) log through it to stderr, but keep their own output (previews, results, the reason they stopped) as plain lines (`observe.UseForCommand`), so `LOG_LEVEL=warn` can't hide why a command failed.

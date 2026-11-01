@@ -22,6 +22,7 @@ Built on the events worktree (branch `admin-run/events`), after merging main (A3
   - **Audit lines held the full IP** while the docs said to keep logs 30 days, though the lines are the evidence for audit events kept a year. The line's `ip` is now cut to its /24 or /48 (`minimiseIP`), and the docs give audit lines their own retention, a year, the rest of the log 30 days.
   - **Erasure read every admin read** in the deletion's transaction to find a search for the address, with no index on `q` or `filters.email`: a long admin trail could have pushed self-deletion past its timeout. Two partial expression indexes (`events_search_email_idx`, `events_search_q_idx`, in `007_create_events`) and the matching `?` predicates make each update an index lookup; `TestErasureUsesItsIndexes` checks the plans with a new `dbtest.Explain`.
   - **The export held operator notes:** `auth.suspended` and `auth.unsuspended` from the command line carry the operator's reason. The export now leaves `reason` out of those two (keeping `by`); the rows are unchanged.
+  - **The `LOG_LEVEL` warning was itself hidden at `LOG_LEVEL=error`** (it was a warning). It's logged at `error` now.
 - **Also done here (A6's merge-time tasks):** `ip_block_refused_total` and the `ip_blocks_loaded_timestamp_seconds` gauge on `/metrics` (no labels), and `admin.access_refused` keeping the browser when recorded by a page or an IP block's check.
 
 **For the user to confirm:**
