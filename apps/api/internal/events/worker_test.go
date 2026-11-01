@@ -134,6 +134,24 @@ func TestFailuresRetryWithBackoffThenFail(t *testing.T) {
 	if cause := q.failed["test.last"]; cause == nil || cause.Error() != "smtp down" {
 		t.Fatalf("last attempt not failed: %v", q.failed)
 	}
+	// Each outcome is counted by listener, and a first attempt's lag.
+	var metrics bytes.Buffer
+	if err := observe.Metrics.WritePrometheus(&metrics); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		`deliveries_total{listener="test.first",outcome="retried"}`,
+		`deliveries_total{listener="test.last",outcome="failed"}`,
+		`deliveries_total{listener="test.ok",outcome="delivered"}`,
+		`delivery_lag_ms_count{listener="test.ok"}`,
+	} {
+		if !strings.Contains(metrics.String(), line) {
+			t.Errorf("no %s", line)
+		}
+	}
+	if strings.Contains(metrics.String(), `delivery_lag_ms_count{listener="test.last"}`) {
+		t.Error("a retry's lag counted")
+	}
 }
 
 func TestPanicsTimeoutsAndUnknownListeners(t *testing.T) {
@@ -155,6 +173,14 @@ func TestPanicsTimeoutsAndUnknownListeners(t *testing.T) {
 	}
 	if cause := q.failed["test.renamed"]; cause == nil || !strings.Contains(cause.Error(), "no listener") {
 		t.Errorf("a delivery for an unregistered listener: %v", cause)
+	}
+	// A name nobody registered never becomes a label.
+	var metrics bytes.Buffer
+	if err := observe.Metrics.WritePrometheus(&metrics); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(metrics.String(), "test.renamed") {
+		t.Error("an unregistered listener's name is a label")
 	}
 }
 
@@ -226,5 +252,50 @@ func TestListenerPanicValuesAreRedacted(t *testing.T) {
 	cause := q.failed["test.panics"]
 	if cause == nil || !strings.Contains(cause.Error(), observe.Redacted) || strings.Contains(cause.Error(), "s3cr3t") || strings.Contains(out.String(), "s3cr3t") {
 		t.Fatalf("stored %v, logged %s", cause, out.String())
+	}
+}
+
+// A listener's error is logged scrubbed (an SMTP refusal names the
+// recipient), and reported only once it has failed for good: a retry isn't
+// a failure yet. A panic, reported as it happens, isn't reported twice on
+// the last attempt; a listener nobody registered is reported too.
+func TestFinalListenerFailuresAreReported(t *testing.T) {
+	refusal := errors.New("gomail: could not send email 1: 550 5.1.1 <ada@example.com>: Recipient address rejected")
+	bus := NewBus()
+	Listen(bus, "test.fails", func(context.Context, ProjectCreated, Delivered) error { return refusal })
+	Listen(bus, "test.panics", func(context.Context, ProjectCreated, Delivered) error { panic("boom") })
+	var reported []observe.Problem
+	var mu sync.Mutex
+	observe.SetReporter(problems(func(p observe.Problem) { mu.Lock(); reported = append(reported, p); mu.Unlock() }))
+	defer observe.SetReporter(nil)
+	var out bytes.Buffer
+	run := func(deliveries ...Delivery) {
+		t.Helper()
+		w := worker(bus, queueOf(deliveries...))
+		w.Log = slog.New(slog.NewJSONHandler(&out, nil))
+		if _, err := w.RunOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(delivery("test.fails", 1))
+	if len(reported) != 0 {
+		t.Fatalf("a retry was reported: %+v", reported)
+	}
+	run(delivery("test.fails", len(Backoff)+1))
+	if len(reported) != 1 || reported[0].Source != observe.SourceWorker || reported[0].Route != "test.fails" || !errors.Is(reported[0].Err, refusal) {
+		t.Fatalf("the final failure: %+v", reported)
+	}
+	if strings.Contains(out.String(), "ada@example.com") || !strings.Contains(out.String(), "<email>: Recipient address rejected") {
+		t.Fatalf("the log isn't scrubbed: %s", out.String())
+	}
+	reported = nil
+	run(delivery("test.panics", len(Backoff)+1))
+	if len(reported) != 1 || len(reported[0].Stack) == 0 {
+		t.Fatalf("a final panic: %+v", reported)
+	}
+	reported = nil
+	run(delivery("test.nobody", 1))
+	if len(reported) != 1 || reported[0].Route != "test.nobody" {
+		t.Fatalf("an unregistered listener: %+v", reported)
 	}
 }

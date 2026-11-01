@@ -104,7 +104,7 @@ Startup refuses `smtp` without `SMTP_HOST` or `MAIL_FROM_ADDRESS`, and any rule 
 
 - **Certificates are always verified** against the system's roots, TLS 1.2 at least.
 - **Headers:** From (`MAIL_FROM_NAME <MAIL_FROM_ADDRESS>`), To, the fixed Subject, Date, a random Message-ID on the sender's domain, `Auto-Submitted: auto-generated` (RFC 3834, so out-of-office replies don't answer), and for a blockable email `List-Unsubscribe: <block link>` (RFC 2369, so mail clients offer "Unsubscribe", which opens the block page). No `User-Agent`. The body holds the plain text, then the HTML, then the logo (`image/png`, `Content-ID: <logo>`).
-- **A failure** (an unreachable server, a refused login, a 4xx or 5xx reply) returns an error, so the event worker retries: 1 s, 10 s, 1 min, 10 min, 1 h, then failed ([events.md](events.md#delivery-eventsworker)). A permanent refusal is retried too. The error goes into `event_deliveries.last_error`; an SMTP reply may name the recipient, never the password.
+- **A failure** (an unreachable server, a refused login, a 4xx or 5xx reply) returns an error, so the event worker retries: 1 s, 10 s, 1 min, 10 min, 1 h, then failed ([events.md](events.md#delivery-eventsworker)). A permanent refusal is retried too. The error goes into `event_deliveries.last_error` scrubbed, so an SMTP reply's recipient is `<email>` there and in the log ([observability.md](observability.md#scrubbing)); never the password.
 - **A duplicate is harmless:** if the server accepted a message and the process stopped before the delivery was marked done, the listener runs again and sends a new link, which replaces the first.
 - **On success** the log says `mail sent` with the template and Message-ID: never the recipient or the body.
 

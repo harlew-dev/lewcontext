@@ -6,6 +6,7 @@ import (
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/input"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -185,6 +186,6 @@ func (h IPBlocks) Destroy(w http.ResponseWriter, r *http.Request) {
 // httpapi.IPBlocksReload. A failure is only logged: the change is saved.
 func (h IPBlocks) reload(r *http.Request) {
 	if err := h.ReloadIPBlocks(r.Context()); err != nil {
-		slog.ErrorContext(r.Context(), "reloading IP blocks after a change failed", "error", err)
+		slog.ErrorContext(r.Context(), "reloading IP blocks after a change failed", observe.ErrorAttr(err))
 	}
 }

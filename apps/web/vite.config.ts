@@ -93,8 +93,11 @@ export default defineConfig({
   base: build === "admin" ? adminAssetsBase : "/",
   // APP_NAME from the root .env (exported by make and scripts/dev.sh) is baked
   // into the build, including the prerendered pages; src/lib/app.ts reads it.
+  // RELEASE, when the build is given one, names it in the errors the app
+  // reports (src/lib/client-errors.ts); empty otherwise.
   define: {
     "import.meta.env.APP_NAME": JSON.stringify(process.env.APP_NAME ?? ""),
+    "import.meta.env.RELEASE": JSON.stringify(process.env.RELEASE ?? ""),
   },
   server: build === "admin" ? adminServer : appServer,
 });

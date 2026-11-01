@@ -4,6 +4,7 @@ import (
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/ratelimit"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -114,6 +115,20 @@ var (
 		Busy:   "Invitations are busy. Try again later.",
 	}
 
+	// ClientErrorPerUser: errors one user's browsers report (POST /api/client-errors).
+	// Each is grouped in memory, never stored per report; this caps how much
+	// one account can add. The route skips the write budget, so a page stuck
+	// in an error loop can't use it up: this is its only per-user limit.
+	ClientErrorPerUser = ratelimit.Limit{Name: "client-error:per-user", Max: 30, Window: time.Hour}
+	// ClientErrorGlobal: errors every browser reports.
+	// Caps what many accounts together can add to app_errors in an hour.
+	ClientErrorGlobal = ratelimit.Limit{
+		Name:   "client-error:global",
+		Max:    500,
+		Window: time.Hour,
+		Busy:   "Error reports are busy. Try again later.",
+	}
+
 	// AdminActionPerUser: the admin dashboard's account-and-access actions taken by one admin.
 	// Unblocking an address, and A6's actions to come. Every attempt past the
 	// step-up counts, refused or not (an address that isn't blocked too), so a
@@ -130,6 +145,7 @@ var RateLimits = []ratelimit.Limit{
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
+	ClientErrorPerUser, ClientErrorGlobal,
 	AdminActionPerUser,
 }
 
@@ -153,6 +169,8 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 	if allowed {
 		return true
 	}
+	// Every refusal is counted; only the first in a window is an event.
+	observe.RateLimitRefused.Inc(l.Name + ":block")
 	left := time.Until(resetsAt)
 	w.Header().Set("Retry-After", ratelimit.RetryAfter(left))
 	if l.Busy != "" {

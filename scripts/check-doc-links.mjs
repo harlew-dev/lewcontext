@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Checks the relative links in the repository's markdown (docs/checks.md):
-// every linked file exists, and every #anchor matches a heading in its
-// target (GitHub's heading ids). A tracked file linking to an untracked one
+// Checks the relative links in the repository's markdown, the files git
+// tracks or has staged (docs/checks.md): every linked file exists, and every
+// #anchor matches a heading in its target (GitHub's heading ids). A tracked file linking to an untracked one
 // is a warning: stage the new file, or the link is dead in the repository.
 // It only reads files and runs `git ls-files`: no network, no eval.
 //
@@ -113,10 +113,9 @@ function git(...args) {
 function checkRepository() {
   const skip = /(^|\/)(node_modules|build|dist|test-results|playwright-report)\//;
   const trackedFiles = new Set(git("ls-files"));
-  const markdown = [
-    ...git("ls-files", "*.md"),
-    ...git("ls-files", "--others", "--exclude-standard", "*.md"),
-  ].filter((file) => !skip.test(file));
+  // Only files git tracks or has staged: an untracked file may be someone
+  // else's work in progress in a shared checkout. Stage a new doc to check it.
+  const markdown = git("ls-files", "*.md").filter((file) => !skip.test(file));
   // Directories count as tracked when git tracks a file inside them.
   const tracked = (path) =>
     trackedFiles.has(path) ||
@@ -138,7 +137,10 @@ function checkRepository() {
   let errors = 0;
   let warnings = 0;
   for (const file of markdown) {
-    const result = checkFile(file, read(file), { read, exists, tracked });
+    // A tracked file deleted in the working tree has nothing to check.
+    const text = read(file);
+    if (text === null) continue;
+    const result = checkFile(file, text, { read, exists, tracked });
     for (const e of result.errors) console.error(e);
     for (const w of result.warnings) console.warn(`warning: ${w}`);
     errors += result.errors.length;

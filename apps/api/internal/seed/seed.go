@@ -37,6 +37,7 @@ var Seeders = []Seeder{
 	{Name: "demo", Description: "the test@example.com demo account, its Acme workspace and projects (skipped if it exists)", NeedsPassword: true, run: seedDemo},
 	{Name: "volume", Description: "fake projects in one account's newest workspace (-count, default 120; -email, default the demo account)", run: seedVolume},
 	{Name: "users", Description: "fake accounts, each with a workspace and projects (-count users, default 10; -projects most each, default 60)", NeedsPassword: true, run: seedUsers},
+	{Name: "monitoring", Description: "fake attacks for the admin Monitoring pages: credential stuffing, a guessed password, a reset flood, a shared limit reached, the admin door, a takeover (-count is ignored)", run: seedMonitoring},
 	{Name: "events", Description: "fake audit trail events, most in the last 7 days, to check the admin Events page at volume (-count, default 10,000, at most 2,000,000)", Max: maxEvents, run: seedEvents},
 }
 

@@ -17,6 +17,10 @@ type sessionRecord struct {
 	ExpiresAt     time.Time `bun:",notnull"`
 }
 
+// seenEvery is how stale users.last_seen_at may get before a session check
+// moves it: active accounts are counted by the day, so to the hour is enough.
+const seenEvery = time.Hour
+
 // CreateSession starts a session for the user, replacing the one oldHash
 // identifies, and records e (such as auth.logged_in) with it when e isn't nil.
 // ErrSuspended for a suspended account, checked under the user's lock,
@@ -54,16 +58,24 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, old
 
 // FindSession refreshes idle time and returns sql.ErrNoRows for unknown,
 // expired, or idle sessions, and for a suspended account's: suspending
-// deletes them, and this is the backstop.
+// deletes them, and this is the backstop. In the same statement it moves
+// the account's users.last_seen_at, only when that's over an hour old
+// (seenEvery), so an active account costs one row write an hour, and no
+// event (docs/api/monitoring.md).
 func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 	active := s.DB.NewUpdate().Model((*sessionRecord)(nil)).
 		Set("last_seen_at = now()").
 		Where("token_hash = ? AND expires_at > now() AND last_seen_at > now() - interval '30 minutes'", hash).
 		Where("NOT EXISTS (?)", suspendedUser(s.DB, "s.user_id")).
 		Returning("user_id, csrf_token, created_at, expires_at")
+	seen := s.DB.NewUpdate().Model((*User)(nil)).
+		Set("last_seen_at = now()").
+		Where("u.id IN (SELECT a.user_id FROM active AS a)").
+		Where("u.last_seen_at IS NULL OR u.last_seen_at < now() - make_interval(secs => ?)", int(seenEvery.Seconds()))
 	var session Session
 	err := s.DB.NewSelect().
 		With("active", active).
+		With("seen", seen).
 		TableExpr("active AS a").
 		Join("JOIN users AS u ON u.id = a.user_id").
 		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at, a.csrf_token, a.created_at, a.expires_at").
@@ -184,9 +196,9 @@ func deleteAll(ctx context.Context, tx bun.Tx, model any) (int, error) {
 	return int(n), err
 }
 
-// CountSessions counts what revoke-all would end, for its preview: the app
+// CountAllSessions counts what revoke-all would end, for its preview: the app
 // and admin sessions, and the sign-ins waiting for a code.
-func (s *Store) CountSessions(ctx context.Context) (events.SessionsRevokedAll, error) {
+func (s *Store) CountAllSessions(ctx context.Context) (events.SessionsRevokedAll, error) {
 	var counts events.SessionsRevokedAll
 	for _, count := range []struct {
 		model any

@@ -9,6 +9,7 @@ make seed                                   # demo account test@example.com, its
 make seed only=volume count=500             # projects in the demo account's newest workspace
 make seed only=volume email=you@example.com # …or another existing account's (it needs a workspace)
 make seed only=users count=25 projects=20   # 25 fake accounts, each owning a workspace with 0–20 projects
+make seed only=monitoring                   # fake attacks for the admin Monitoring pages (stuffing, a takeover, the admin door, …)
 make seed only=events count=1000000         # fake audit trail events, to check the admin Events page at volume
 ```
 
@@ -17,6 +18,7 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 | `demo` | The "Acme" workspace, 6 named projects, and 4 fake members (admin, two members, viewer) who can't sign in | Yes |
 | `volume` | 120 projects | No (insert-only; refuses unknown accounts and accounts without a workspace) |
 | `users` | 10 users, each owning a workspace with up to 60 projects; every third never verified its email (as if made while `EMAIL_VERIFICATION` was off), to try the Not verified badge and `EMAIL_VERIFICATION_EXISTING=required` | No (insert-only) |
+| `monitoring` | A few hundred fake events planting what the Security and Rate limits pages look for: a day of ordinary sign-ins, then in the last hour credential stuffing from `203.0.113.66`, a password guessed from six addresses, a sign-in after six wrong passwords, failed codes, a reset flood, `register:global` reached, the admin door, and one fake account (an unusable password) taken over ([monitoring.md](monitoring.md#demo-data-make-seed-onlymonitoring)). Documentation-range addresses, `@example.test` emails, every payload `"seeded": true`; never `rate_limits`, metrics or errors. `count` is ignored | No (insert-only) |
 | `events` | 10,000 fake events (at most 2,000,000): most in the last 7 days, a thin tail back 90, sign-ins weighted heaviest, and bursts of failed sign-ins from three addresses. Payloads look like the store's but name accounts and workspaces that don't exist, and every one holds `"seeded": true`, so fake events can be told apart (`payload->>'seeded'`). For `EXPLAIN` at volume ([testing.md](../testing.md#volume-check-for-the-events-page)), not for demos | No (insert-only) |
 
 - Accounts created by `demo` and `users` sign in with `DEMO_PASSWORD` from `.env` (`password` in `.env.example`). It may be 1–128 bytes: sign-up's 12-character minimum doesn't apply to seeded development accounts.
@@ -29,7 +31,7 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 
 | Factory | Model | Notes |
 | --- | --- | --- |
-| `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process); email verified (`Unverified` for one that never was) |
+| `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process); email verified (`Unverified` for one that never was); never seen (`LastSeenAt` nil) unless a test sets it |
 | `Sessions` | `Session` | Real random token, only the digest stored; `Cookie()`, `CSRFToken`. Needs `UserID`; use `SessionFor` |
 | `Workspaces` | `Workspace` | Fake company names (≤ 80 characters), created in the last year. Use `WorkspaceFor` to add an owner |
 | `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role (any of `auth.Roles`, viewers included). Needs `UserID` and `WorkspaceID`; use `MemberOf` |
@@ -47,6 +49,10 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 | `EmailBlockLinks` | `EmailBlockLink` | A live block link (a year) to a unique `example.test` address; `Token` keeps the raw token. `BlockLinkFor(email)`, `ExpiredBlockLink` |
 | `EmailBlocks` | `EmailBlock` | A blocked `example.test` address. `Blocked(email)` for a given one. Seeders block nothing |
 | `EventDeliveries` | `EventDelivery` | A pending delivery, due now. Needs `EventID`; use `DeliveryOf(eventID, listener)` |
+| `AppErrors` | `AppError` | An open, already-scrubbed `request` error group with a fingerprint of its own, first seen in the last 30 days and counted 1–500 times. `LastSeen(at)` sets when it last happened, `Resolved` marks it resolved. Seeders make none: fake failures would be misleading |
+| `RequestMinutes`, `MetricMinutes` | `RequestMinute`, `MetricMinute` | A server's minute in the last hour (`ServerID(f)`, a real route; a `rate_limit_refused_total` counter). Give several for one server their own minute or route (`Sequence`). Seeders make none: made-up traffic would be misleading |
+| `RequestHours`, `MetricHours` | `RequestHour`, `MetricHour` | An hour's sums in the last 90 days, each with a route or labels of its own |
+| `ServerInstances` | `ServerInstance` | A server started in the last day and seen in the last minute; `LastSeenAt(at)` |
 | `UserSuspensions` | `UserSuspension` | A suspension with a fake reason and no admin named (the command line's). Use `SuspensionOf(userID)`; `SuspendedBy(adminID)`. Seeders suspend nobody |
 | `IPBlocks` | `IPBlock` | A day's block of one address in `198.51.100.0/24` (documentation addresses), no admin named. `BlockOf(cidr)`, `BlockedBy(adminID)`, `ExpiredBlock`. Seeders block nothing |
 
@@ -64,7 +70,7 @@ factory.ProjectsIn(workspace.ID).
 ```
 
 - **Methods:** `Make` (build only), `Create`, `CreateOne`, `State`, `Sequence`. Factories are immutable, so each state returns a copy.
-- **Named states:** `Expired` and `Idle` (sessions), `ForAccount`, `ForIP`, `ForLimit(name, subject)` and `Exhausted(limit)` (rate limits), `WithPasswordHash` and `Unverified` (users; every factory user is verified otherwise), `RegistrationFor`, `ExpiredRegistration` and a registration's `Cookie()` (pending sign-ups, with their `Code`), `VerificationFor` (an account's emailed code), `Named` (workspaces), `Sent`, `ExpiredInvitation` and `InvitedAs(email, role)` (invitations), `TOTPFor`, `PendingTOTP`, `RecoveryCodesFor`, `ChallengeFor`, `ExpiredChallenge` and `Purpose` (two-factor authentication; `AdminCookie()` is a challenge's admin door cookie), `AdminFor`, `AdminRole`, `SetupWindow`, `ClosedSetupWindow`, `AdminSessionFor`, `AdminIdle`, `AdminExpired`, `UnderKey` and `SignedInFrom` (admins), `BlockLinkFor`, `ExpiredBlockLink` and `Blocked` (the block list).
+- **Named states:** `Expired` and `Idle` (sessions), `ForAccount`, `ForIP`, `ForLimit(name, subject)` and `Exhausted(limit)` (rate limits), `WithPasswordHash` and `Unverified` (users; every factory user is verified otherwise), `RegistrationFor`, `ExpiredRegistration` and a registration's `Cookie()` (pending sign-ups, with their `Code`), `VerificationFor` (an account's emailed code), `Named` (workspaces), `Sent`, `ExpiredInvitation` and `InvitedAs(email, role)` (invitations), `TOTPFor`, `PendingTOTP`, `RecoveryCodesFor`, `ChallengeFor`, `ExpiredChallenge` and `Purpose` (two-factor authentication; `AdminCookie()` is a challenge's admin door cookie), `AdminFor`, `AdminRole`, `SetupWindow`, `ClosedSetupWindow`, `AdminSessionFor`, `AdminIdle`, `AdminExpired`, `UnderKey` and `SignedInFrom` (admins), `BlockLinkFor`, `ExpiredBlockLink` and `Blocked` (the block list), `LastSeen` and `Resolved` (grouped errors).
 - **Encryption key:** MFA factories seal and digest with `factory.AppKey`, random per process. A server reads them only when given that key (`config.Config{AppKey: factory.AppKey}`, as `integrationServer` does). Seeders create no MFA rows.
 - **Public IDs** are left empty and filled by PostgreSQL's default; `Create` reads them back (`workspace.PublicID`).
 - **Randomness:** fresh every run. When a test fails it logs `fake data seed N`, and `FAKER_SEED=N` replays it. Seeders print the seed too.

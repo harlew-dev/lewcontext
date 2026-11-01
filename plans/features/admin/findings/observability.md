@@ -1,11 +1,11 @@
 # Findings: A3, observability
 
-Plan: [observability](../observability.md), built in three phases. Each phase is built by a sub-agent, checked by the orchestrator, reviewed by a second agent that sees only the diff and the plan, then committed.
+Plan: [observability](../../implemented/admin/observability.md), built in three phases. Each phase is built by a sub-agent, checked by the orchestrator, reviewed by a second agent that sees only the diff and the plan, then committed.
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Structured logs, request IDs, panic recovery, the health split | **committed** (see below) |
-| 2 | Grouped errors (`app_errors`), errors from the browser | next |
+| 2 | Grouped errors (`app_errors`), errors from the browser | **committed** (see below) |
 | 3 | Metrics, `request_minutes`/`metric_minutes`, server heartbeats, slow queries, `/metrics` | after phase 2 |
 
 ## Phase 1
@@ -141,4 +141,82 @@ The reviewer probed the scrubber with adversarial inputs in throwaway tests.
 | 8 | Low | A page stuck in an error loop could use up the user's whole write budget (`api:per-user`) | Reports metered only by their own limit; the web app stops reporting after a 429 |
 | 9–10 | Nits | The shutdown budget equalled Docker's stop timeout; a flush that commits but errors is counted twice | The final flush gets its share; the double count documented |
 
-_Fix results: filled in once the fixes pass the checks._
+**Fix results (phase 2).** All ten are fixed. Rerunning the reviewer's probes:
+- **Secrets:** none survive. That covers 200,000 session and reset tokens, 10,000 base32 TOTP secrets, 100,000 recovery codes and 100,000 `APP_KEY`-like keys.
+- **The poison report** is stored safely next to a real error, with nothing left pending.
+- **Chrome's JSON message** comes out as `"…" is not valid JSON`.
+
+**New things to know from the fixes:**
+- **`client-error:global`**: 500 browser error reports an hour across everyone, then 503.
+- **Error reports skip the general write budget** (`api:per-user`) and count only against their own limits, so a broken page can't lock a user out of saving. This is a documented exception to "budgets in `RequireSession`" (AGENTS.md and `rate-limits.md` updated).
+- **Docker's stop timeout** should be `SHUTDOWN_DELAY` + 20 s (`--stop-timeout 25` by default).
+- **Long CamelCase names** (32+ characters, e.g. long test names in stacks) now show as `<token>`.
+
+**Gaps accepted and documented:** emails written as `ada @ example.com` or `ada(at)example.com`; ordinary words that happen to be someone's data, such as names; and a recovery code typed without its dash that has no digit, about 2.4% of codes.
+
+All checks passed:
+- `make check`;
+- `make test`: 21 Go packages, 310 Vitest tests;
+- `make build`;
+- e2e: 23 of 23, with no ERROR lines and an empty `app_errors`;
+- benchmark: still 4.2 µs and 8 allocations.
+
+## Phase 3, and the events merge
+
+### The merge (`0cf723a`)
+
+The events branch (the Events page, convention checks, and A6's first commits) was merged into main before phase 3.
+- **Conflicts:** they were in AGENTS.md, `database.md` and the reading folder. Both sides were kept.
+- **Convention checks on main's newer code:** `store.ReportErrors` was renamed `RecordErrors`. No exceptions were added.
+- **One behaviour change for you to confirm:** the doc link check now reads only markdown that git tracks or has staged. Untracked files that other sessions keep in this checkout (`page-folders.md`, `plans/future/framework.md`) have dead links and would otherwise fail `make check` forever. A new doc is checked once it's `git add`-ed.
+- **The dev database was rebuilt** with the merged 007 and the new 021–025.
+
+### What phase 3 shipped
+
+| Commit | What |
+| --- | --- |
+| `063d6d2` | The metric registry, request metrics and `/metrics` |
+| `251ee7e` | Metrics in the database, server instances and slow queries |
+| `b8e5866` | Test: the Events catalogue has a Servers group |
+| `04411a0` | Docs; the plan implemented and moved to `plans/features/implemented/admin/observability.md` |
+| `ec5ed7d` | Test: `/metrics` never answers on the public listener |
+
+- **Metrics:** request counts, statuses, latency, timeouts, rate-limit and quota refusals, database query time, pool use, event deliveries and Go runtime figures. The labels come only from fixed sets, so a client can't create new series: 2,400 requests with random paths, invented methods and tokens produced at most 12 route labels.
+- **Stored per minute** (`request_minutes`, `metric_minutes`): one statement per server per minute, insert only. They're summed hourly into `request_hours` and `metric_hours` by one server under an advisory lock, and minute rows are deleted after 48 hours. **10,000 requests to one route write one row.**
+- **`METRICS_STORE=off`** stops the metric writes.
+- **`/metrics`** for Prometheus: off by default. `METRICS_ADDR` runs it on its own listener, never the public port. `METRICS_TOKEN` must be at least 32 characters, and production refuses a public bind without it.
+- **`server_instances`:** a heartbeat every minute with a non-secret configuration summary. A test confirms no 8-character run of any secret appears in it. Plus `server.started` and `server.stopped` events.
+- **Slow queries** (over `SLOW_QUERY_MS`, 500 ms) log the operation, table and store method, **never the SQL or its values**.
+- **Benchmark:** still 8 allocations per request; counting a request costs about 70–90 ns.
+
+### Where the build differs from the plan (recorded in the plan)
+
+- **One create migration per table** (AGENTS.md's rule), so 021–025 are five tables, not two pairs. The hour tables drop the `server` column.
+- **The heartbeat goes in the same statement as the minute rows.**
+- **Clients that hang up count as `aborted`,** never as a status class.
+- **`password_hash_wait_ms` became `password_hash_busy_total`,** because sign-in never waits for a hashing slot: it answers 503.
+- **If summing fails, minute rows older than 7 days are deleted anyway,** so the table can't grow without bound.
+- **A new `server` event area.**
+
+### Security review
+
+The independent reviewer found no high-severity defects. It checked these and found them sound:
+- **Labels:** every source is a fixed set; the caps work; label escaping is unambiguous.
+- **`/metrics`:** its own listener, no `pprof` and not the default mux, a constant-time token, header limits.
+- **The config summary** holds no secrets, not even `DATABASE_URL`'s host or user.
+- **The server events** carry no hostname.
+- **SQL:** builder-only, and the advisory lock releases with its transaction.
+- **The slow-query hook** never logs SQL or values.
+- **Shutdown** stays within its budget.
+- **Link check:** skipping untracked markdown is reasonable.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **The minute tables could grow without bound.** A rollup that hit its 1-minute deadline rolled everything back and skipped the 7-day safety delete, so after a backlog every hourly run could time out the same way. Old servers' rows also stopped being cleaned | Each hour commits on its own; the safety delete and the server cleanup run even after a timeout |
+| 2 | Low | **`/metrics` could serve unauthenticated on public interfaces in production** if `METRICS_ADDR` used a zoned IPv6 address (`[::%lo]:9090`), which binds every interface but slipped past the check. Confirmed | Zones refused; without a token, production also requires a loopback or private address |
+| 3 | Low | One server with a clock hours ahead could make every other server's hourly data be skipped | The cutoff comes from the database's clock; far-off minutes are dropped |
+| 4 | Low | A fleet crash-looping faster than once a minute leaves `server_instances` rows that nothing cleans up | Silent servers are also deleted at startup |
+| 5 | Low | Docs: the Docker example for `METRICS_ADDR` can't work inside a container; the "about 90 rows a minute" figure is typical, not a ceiling (the real bound is about 1,200 a minute) | Corrected |
+| 6–8 | Nits | Label values not checked for valid UTF-8; the metrics listener and rollup not closed or awaited on a failed startup; the link check crashed on a deleted tracked file | Fixed |
+
+_These fixes are being made by the A4 builder as separate commits before it continues._

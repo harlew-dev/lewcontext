@@ -35,15 +35,18 @@ All were fixed before committing, apart from the few listed as accepted in each 
   3. Metrics, server heartbeats, slow queries, `/metrics`.
 - **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
 
+
+> **Pause:** at about 10:00 every agent stopped on the account's 5-hour usage limit. They were resumed at 12:51, each from where it stopped. No work was lost.
+
 ## The parallel plan (from 2026-11-01, about 05:00)
 
 You asked for every open plan to be built, with their recommendations accepted for you to review in the morning, and for unrelated work to run in parallel git worktrees, merged in once each is finished.
 
 | Line | Where | Branch | Order |
 | --- | --- | --- | --- |
-| Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A6 actions → A7 compliance (each needs the one before) |
-| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (**done**, reviewed and fixed; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy: **built**, under review; [findings](../findings/policies.md)) → [captcha challenges](../../captcha-challenges.md) (_building_) |
-| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (_building_) → [convention checks](../../implemented/convention-checks.md) |
+| Main | this checkout | `nimble-quartz-1f9` | A3 (**done**: phases 1–3, `10797fd`, `9ae4822`, `063d6d2`…`ec5ed7d`) → A4 monitoring (_part 1 of 3 building_: Overview, Security, Rate limits) → A5 alerts → A7 compliance |
+| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (**done**, reviewed and fixed; [findings](../findings/notes-ui.md)) → policies (terms and privacy: **done**, reviewed and fixed; [findings](../findings/policies.md)) → captcha challenges (**done**: reviewed twice and fixed; [findings](../findings/captcha.md)) → _merging main into the ui branch, then into main_ |
+| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (**done**, reviewed and fixed; [findings](../findings/events-page.md)) → convention checks (**done**; [findings](../findings/convention-checks.md)) → **A6 admin actions** (**done**, reviewed and fixed; [findings](../findings/actions.md); the housekeeping actions wait for A4 and A5) → **A7 compliance** (_building_; merges main first) |
 | Last, on main | after the merges | | page-folders (`plans/features/page-folders.md`, another session's untracked file): it moves every page file, so it would collide with everything else |
 
 **Keeping parallel lines apart:**

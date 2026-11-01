@@ -19,9 +19,16 @@ function sql(statement: string): string {
     { encoding: "utf8" },
   ).trim();
 }
+// A credential stuffing burst, seeded for the Security page: one address
+// trying a list of emails.
+const stuffingIP = `203.0.113.${(stamp % 200) + 20}`;
+const listEmail = (i: number) => `e2e-${stamp}-list${i}@lewcontext.test`;
 test.afterAll(() => {
   sql(`DELETE FROM users WHERE email IN ('${adminEmail}', '${otherEmail}')`);
   sql(`DELETE FROM events WHERE payload->>'email' = '${brokenEmail}'`);
+  sql(
+    `DELETE FROM events WHERE payload->>'email' LIKE 'e2e-${stamp}-list%@lewcontext.test'`,
+  );
 });
 // Creates an account through the API, then forgets its session.
 async function register(page: Page, email: string, name: string) {
@@ -387,6 +394,50 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
       ),
     ),
   ).toBe(1);
+  expect(errors).toEqual([]);
+
+  // Monitoring: an address trying twelve emails shows on Security, from
+  // the Overview's Failed sign-ins tile, and links to its events.
+  const values = Array.from(
+    { length: 12 },
+    (_, i) =>
+      `('auth.login_attempted', '{"email": "${listEmail(i)}", "result": "unknown_account"}', '${stuffingIP}', now() - interval '5 minutes')`,
+  ).join(", ");
+  sql(`INSERT INTO events (name, payload, ip, created_at) VALUES ${values}`);
+  await page.getByRole("link", { name: "Overview" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Overview", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Its page comes later.").first()).toBeVisible();
+  await page.getByRole("link", { name: "Failed sign-ins" }).click();
+  await expect(page).toHaveURL(`/admin/${key}/monitoring/security`);
+  await expect(
+    page.getByRole("heading", { name: "Credential stuffing" }),
+  ).toBeVisible();
+  const stuffing = page.getByRole("row").filter({ hasText: stuffingIP });
+  await expect(stuffing).toContainText("12");
+  await expect(
+    page.getByRole("link", { name: "Addresses trying many emails" }),
+  ).toBeVisible();
+  // The window is in the URL, and the read is recorded once per load.
+  await page.getByRole("combobox", { name: /Time range/ }).click();
+  await page.getByRole("option", { name: "Last hour" }).click();
+  await expect(page).toHaveURL(`/admin/${key}/monitoring/security?window=1h`);
+  await expect(stuffing).toContainText("12");
+  await stuffing.getByRole("link", { name: stuffingIP }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/${key}/events\\?`));
+  await expect(
+    page.getByRole("row").filter({ hasText: listEmail(3) }),
+  ).toHaveCount(1);
+  expect(
+    sql(
+      `SELECT string_agg(payload->>'page' || ':' || (payload->>'window'), ',' ORDER BY id) FROM events WHERE name = 'admin.monitoring.viewed' AND payload->>'admin' = (SELECT public_id FROM users WHERE email = '${adminEmail}')`,
+    ),
+  ).toBe("overview:24h,security:24h,security:1h");
+  await page.getByRole("link", { name: "Rate limits" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Shared limits" }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 
   // Back to app is another build: it loads as a new page, which Go answers

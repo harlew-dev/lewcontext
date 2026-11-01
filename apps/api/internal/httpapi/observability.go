@@ -5,6 +5,7 @@ package httpapi
 // server shuts down. ClientAddress (client_ip.go) runs the first two.
 
 import (
+	"context"
 	"errors"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/httpapi/clientip"
@@ -41,8 +42,9 @@ const slowRequest = time.Second
 // finishRequest runs when ClientAddress is done with a request: a panic
 // that got past RecoverPanics (in ClientAddress itself, Security or the
 // dispatch to the API or the pages) is logged and answered as RecoverPanics
-// would, or the connection cut once the answer has started; then the access
-// line is written, a panic of its own caught too. Deferred, so it runs
+// would, or the connection cut once the answer has started; then the
+// request is counted and its access line written, a panic of either caught
+// too. Deferred, so it runs
 // however the request ended.
 func (s *Server) finishRequest(w http.ResponseWriter, r *http.Request, request *observe.Request, start time.Time) {
 	if p := recover(); p != nil {
@@ -59,7 +61,7 @@ func (s *Server) finishRequest(w http.ResponseWriter, r *http.Request, request *
 	s.safeLogRequest(r, request, start)
 }
 
-// safeLogRequest is logRequest, a panic in it logged and dropped: the
+// safeLogRequest is endRequest, a panic in it logged and dropped: the
 // answer has been written by then.
 func (s *Server) safeLogRequest(r *http.Request, request *observe.Request, start time.Time) {
 	defer func() {
@@ -67,7 +69,22 @@ func (s *Server) safeLogRequest(r *http.Request, request *observe.Request, start
 			logPanic(r, p)
 		}
 	}()
-	s.logRequest(r, request, start)
+	s.endRequest(r, request, start)
+}
+
+// endRequest counts the request in the metrics (Server.Metrics: its route,
+// status class, duration, and whether it timed out or was aborted), then
+// logs its access line (logRequest). Counted whatever ACCESS_LOG says.
+func (s *Server) endRequest(r *http.Request, request *observe.Request, start time.Time) {
+	elapsed := time.Since(start)
+	status := request.Status
+	if status == 0 && !request.Aborted {
+		status = http.StatusOK // the handler wrote nothing: net/http sends 200
+	}
+	if s.Metrics != nil {
+		s.Metrics.Requests.Observe(request.Route, status, elapsed, request.TimedOut, request.Aborted)
+	}
+	s.logRequest(r, request, status, elapsed)
 }
 
 // logRequest writes the request's access line (msg "request"): its ID, the
@@ -78,14 +95,9 @@ func (s *Server) safeLogRequest(r *http.Request, request *observe.Request, start
 // (proxyRequestId) and aborted, when there are. Health checks log at debug,
 // so probes don't fill the log; what ACCESS_LOG says is left out (never an
 // aborted request). Status 0 is a request aborted before any answer.
-func (s *Server) logRequest(r *http.Request, request *observe.Request, start time.Time) {
+func (s *Server) logRequest(r *http.Request, request *observe.Request, status int, elapsed time.Duration) {
 	if s.Config.AccessLog == config.AccessLogOff {
 		return
-	}
-	elapsed := time.Since(start)
-	status := request.Status
-	if status == 0 && !request.Aborted {
-		status = http.StatusOK // the handler wrote nothing: net/http sends 200
 	}
 	if s.Config.AccessLog == config.AccessLogErrors && !request.Aborted && status < 400 && elapsed < slowRequest {
 		return
@@ -176,14 +188,47 @@ func answerPanic(w http.ResponseWriter, r *http.Request, request *observe.Reques
 
 // logPanic logs a panic at error with its stack and reports it. Its value
 // is logged only as observe.PanicValue allows (a request, headers or a URL
-// redacted; a message cut to 512 bytes; anything else by its type).
+// redacted; a message cut to 512 bytes; anything else by its type), then
+// scrubbed (observe.Scrub); the stack only as function names and lines
+// (observe.ScrubStack).
 func logPanic(r *http.Request, p any) {
 	ctx := r.Context()
 	stack := debug.Stack()
 	value := observe.PanicValue(p)
 	route := observe.Route(ctx)
-	slog.ErrorContext(ctx, "request panicked", "route", route, "panic", value, "stack", string(stack))
+	slog.ErrorContext(ctx, "request panicked", "route", route, "panic", observe.Scrub(value), "stack", observe.ScrubStack(string(stack)))
 	observe.Report(ctx, observe.Problem{Source: observe.SourcePanic, Route: route, RequestID: observe.RequestID(ctx), Err: errors.New(value), Stack: stack})
+}
+
+// reportFailure logs err at error as msg, scrubbed (observe.ErrorAttr), with
+// the request's ID and route, and hands it to observe.Report as the
+// request's problem. InternalError answers it with a 500; the page gates
+// serve the page anyway.
+func reportFailure(r *http.Request, msg string, err error) {
+	ctx := r.Context()
+	route := observe.Route(ctx)
+	slog.ErrorContext(ctx, msg, "route", route, observe.ErrorAttr(err))
+	observe.Report(ctx, observe.Problem{Source: observe.SourceRequest, Route: route, RequestID: observe.RequestID(ctx), Err: err})
+}
+
+// ClientGone reports whether err is only the request's context ending
+// because the client went away (closed the tab, navigated, timed out on its
+// side): context.Canceled, with the request's own context canceled. Nothing
+// failed on our side, and nobody is there to answer, so it's no 500 and no
+// grouped error. A deadline (the 10 s request timeout) isn't this: that is
+// a failure.
+func ClientGone(r *http.Request, err error) bool {
+	return errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled)
+}
+
+// abortedByClient records a request ClientGone ended: logged at debug, and
+// its access line says aborted (status 0 when nothing was written).
+func abortedByClient(r *http.Request, err error) {
+	ctx := r.Context()
+	if request := observe.FromContext(ctx); request != nil {
+		request.Aborted = true
+	}
+	slog.DebugContext(ctx, "request aborted by the client", "route", observe.Route(ctx), observe.ErrorAttr(err))
 }
 
 // somethingWentWrong is every 500's message: what failed is in the log, under

@@ -148,7 +148,8 @@ func (s *Server) recordAdminRefusal(refusal adminRefusal) {
 	ctx = events.WithUserAgent(events.WithRequest(ctx, refusal.ip, refusal.requestID), refusal.userAgent)
 	e := events.AdminAccessRefused{Reason: events.AdminRefusedIP}
 	if err := s.Repo.Record(ctx, e, store.EventScope{}); err != nil {
-		slog.Error("recording admin.access_refused failed", "error", err, observe.RequestIDKey, refusal.requestID)
+		slog.Error("recording admin.access_refused failed", observe.ErrorAttr(err), observe.RequestIDKey, refusal.requestID)
+		observe.Report(ctx, observe.Problem{Source: observe.SourceBackground, Route: "admin.access_refused", RequestID: refusal.requestID, Err: err})
 	}
 }
 

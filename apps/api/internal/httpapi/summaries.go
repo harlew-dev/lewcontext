@@ -7,9 +7,9 @@ import (
 )
 
 // Summaries bound the admin dashboard's aggregate queries (the Events
-// page's charts) on this server: one at a time for each admin, at most two
-// at once, so a burst of wide charts can't take the database pool from the
-// app, each with a deadline.
+// page's charts and the Monitoring pages) on this server: one at a time for
+// each admin, at most two at once, so a burst of wide charts can't take the
+// database pool from the app, each with a deadline.
 // Neither is a rate limit: admin-read:per-user still counts the request.
 type Summaries struct {
 	slots chan struct{}

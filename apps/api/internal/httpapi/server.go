@@ -9,6 +9,7 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/httpapi/ratelimit"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"sync/atomic"
@@ -40,6 +41,10 @@ type Server struct {
 	// draining is set once shutdown has begun (Drain): readiness then
 	// answers 503.
 	draining atomic.Bool
+	// Metrics counts every request by route (observe.Requests): the
+	// process's registry (observe.Metrics) unless a test sets its own; nil
+	// counts nothing.
+	Metrics *observe.Registry
 }
 
 // WebPages serves the built web app (web.Pages): its pages and files, and
@@ -60,7 +65,7 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory(), adminRefusals: newAdminRefusals(), Summaries: newSummaries()}
+	server := &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory(), adminRefusals: newAdminRefusals(), Summaries: newSummaries(), Metrics: observe.Metrics}
 	go server.runAdminRefusals()
 	return server, nil
 }

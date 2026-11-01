@@ -91,6 +91,14 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux.HandleFunc("POST /api/email-blocks/check", emailBlocks.Check)
 	mux.HandleFunc("POST /api/email-blocks", emailBlocks.Store)
 	mux.HandleFunc("DELETE /api/email-blocks", emailBlocks.Destroy)
+	// The web app's own errors, signed in only (client_errors.go): grouped
+	// with the server's, never stored per report. Outside the write budget,
+	// so a page stuck in an error loop can't use it up and leave its user
+	// unable to save anything: client-error:per-user (counted after the
+	// CSRF check, so no other site can spend it) and client-error:global
+	// (in the handler) bound it instead.
+	clientErrors := account.ClientErrors{Server: s}
+	mux.Handle("POST /api/client-errors", s.RequireSessionUnmetered(s.Limit(httpapi.ClientErrorPerUser, clientErrors.Store)))
 	workspaces := workspace.Workspaces{Server: s}
 	mux.Handle("GET /api/workspaces", s.RequireSession(http.HandlerFunc(workspaces.Index)))
 	mux.Handle("POST /api/workspaces", s.RequireSession(s.Limit(httpapi.WorkspacePerUser, workspaces.Store)))
@@ -136,6 +144,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	workspaceProjects := admin.WorkspaceProjects{Server: s}
 	adminEvents := admin.Events{Server: s}
 	mail := admin.Mail{Server: s}
+	monitoring := admin.Monitoring{Server: s}
 	deliveries := admin.Deliveries{Server: s}
 	admins := admin.Admins{Server: s}
 	emailBlocks := admin.EmailBlocks{Server: s}
@@ -174,6 +183,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/catalogue", adminEvents.Catalogue)
 	signedIn.HandleFunc("GET", "/mail", mail.Show)
 	signedIn.HandleFunc("GET", "/deliveries", deliveries.Index)
+	// A Monitoring page, read whole and recorded once; bounded like the
+	// Events charts (httpapi.Summaries).
+	signedIn.HandleFunc("GET", "/monitoring/{page}", monitoring.Show)
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
 	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
 	signedIn.HandleFunc("GET", "/ip-blocks", ipBlocks.Index)

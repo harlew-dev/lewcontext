@@ -35,3 +35,23 @@ func LockIPBlocks(ctx context.Context, tx bun.Tx) error {
 		ColumnExpr("pg_advisory_xact_lock(hashtextextended(? || current_schema(), 0))::text", ipBlocksLock).
 		Scan(ctx, &locked)
 }
+
+// metricsRollupLock names the lock the hourly metrics rollup takes. The key
+// is a hash of this and the current schema: every server of one deployment
+// shares a schema, so they share the lock, while integration tests, each in
+// a schema of their own, don't wait on each other.
+const metricsRollupLock = "lewcontext:metrics-rollup:"
+
+// TryLockMetricsRollup tries to take the metrics rollup's advisory lock for
+// tx, held until it commits or rolls back (or its connection drops, if the
+// server dies). It never waits: false means another server is rolling up,
+// so this one skips its turn. PostgreSQL's advisory locks are exclusive
+// across every connection to the database, so only one server at a time
+// sums the hours and deletes old minutes.
+func TryLockMetricsRollup(ctx context.Context, tx bun.Tx) (bool, error) {
+	var locked bool
+	err := tx.NewSelect().
+		ColumnExpr("pg_try_advisory_xact_lock(hashtextextended(? || current_schema(), 0))", metricsRollupLock).
+		Scan(ctx, &locked)
+	return locked, err
+}

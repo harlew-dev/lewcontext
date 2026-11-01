@@ -42,6 +42,11 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"LOG_LEVEL":        "",
 		"ACCESS_LOG":       "",
 		"SHUTDOWN_DELAY":   "",
+		"METRICS_STORE":    "",
+		"METRICS_ADDR":     "",
+		"METRICS_TOKEN":    "",
+		"SLOW_QUERY_MS":    "",
+		"API_ADDR":         "",
 	}
 	for k, v := range vars {
 		base[k] = v

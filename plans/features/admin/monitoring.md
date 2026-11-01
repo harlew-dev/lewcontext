@@ -1,6 +1,6 @@
 # Admin: Monitoring pages
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A4 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md) (`events.ip`, the Events page to drill into) and [observability](observability.md) (metrics, errors, servers). Docs it will change: [admin.md](../../../docs/api/admin.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md); a new `docs/api/monitoring.md` (every signal, its query and thresholds).
+Status: **part 1 of 3: Overview, Security, Rate limits implemented 2026-11-01**, with every recommendation in the Decisions table confirmed as written (the user's go-ahead of 2026-11-01); see [How the build differs](#how-the-build-differs). Parts 2 and 3 build the other nine pages. Plan A4 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md) (`events.ip`, the Events page to drill into) and [observability](../implemented/admin/observability.md) (metrics, errors, servers). Docs it will change: [admin.md](../../../docs/api/admin.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md); a new `docs/api/monitoring.md` (every signal, its query and thresholds).
 
 ## Why
 
@@ -35,7 +35,7 @@ These pages turn each of those into a **signal** with a threshold, a chart, and 
   ```
 
   Each page response carries its signals with `value`, `level` (`ok`, `warn`, `critical`) and `drill`, then the page's charts and tables. Thresholds are in code, changed by a reviewed commit, and listed in `docs/api/monitoring.md`.
-- **Computed when read** (decision 3), every query bounded by the window (7 days at most) and an index, under a 5 s deadline per page. A signal too slow at real volume moves to the hourly rollup job ([observability](observability.md)), not to a slower page.
+- **Computed when read** (decision 3), every query bounded by the window (7 days at most) and an index, under a 5 s deadline per page. A signal too slow at real volume moves to the hourly rollup job ([observability](../implemented/admin/observability.md)), not to a slower page.
 - **Everything drills down:** every number and bar links to the Events page filtered to its rows, or to a User, Workspace, IP or error page.
 - **Viewers can read every page** ([access hardening](../implemented/admin/access-hardening.md) roles); nothing here changes data.
 - Queries live in `internal/store/monitor_<page>.go`, written with Bun's builder like every other query, including those on PostgreSQL's statistics views (`TableExpr("pg_stat_user_tables")`).
@@ -105,7 +105,7 @@ From `auth.login_attempted`, `auth.mfa.checked`, `auth.password_checked`, `auth.
 | Section | Shows | From |
 | --- | --- | --- |
 | Windows reached | per limit, per hour | `rate_limit.reached` (one per limit per window) |
-| Requests refused | per limit, per hour: every 429 and 503, not just the first | `rate_limit_refused_total` ([observability](observability.md)) |
+| Requests refused | per limit, per hour: every 429 and 503, not just the first | `rate_limit_refused_total` ([observability](../implemented/admin/observability.md)) |
 | **Shared limits** | `register:global`, `password-reset:global`, `invitation:global`: this window's count against the cap, and every time one was reached. A shared limit reached is a feature switched off for everyone | `rate_limits` (their keys are the bare name), events. **Critical** when reached |
 | Blocked right now | per limit, how many subjects are at or over it this window. Keys are digests, so this shows how many, never who; the events show who | `rate_limits`, keys split on their name prefix, compared with the limits in Go |
 | Top subjects | accounts and IPs with the most windows reached in the window | events' `user` and `ip` |
@@ -180,7 +180,7 @@ CREATE TABLE table_stats_daily (
 );
 ```
 
-Written once a day by the hourly job ([observability](observability.md)), kept 400 days (a prune target). `cmd/prune` starts recording `prune.completed` (`target`, `deleted`, `kept`, `cutoff`) after a confirmed run (decision 10). Disk space on the database server isn't visible from SQL: the provider's own monitoring covers it, and the docs say so.
+Written once a day by the hourly job ([observability](../implemented/admin/observability.md)), kept 400 days (a prune target). `cmd/prune` starts recording `prune.completed` (`target`, `deleted`, `kept`, `cutoff`) after a confirmed run (decision 10). Disk space on the database server isn't visible from SQL: the provider's own monitoring covers it, and the docs say so.
 
 ### 9. Integrity
 
@@ -305,6 +305,24 @@ Each new table gets a factory (`TestEveryTableHasAFactory`).
 | 10 | Prune evidence | `cmd/prune` records `prune.completed` after a confirmed run |
 | 11 | Demo data | A `monitoring` seeder with fake attack patterns |
 | 12 | Locations | No GeoIP, ASN or reverse DNS in v1 (a licensed database or outbound lookups, for little gain at this size) |
+
+## How the build differs
+
+### Part 1 (2026-11-01): the groundwork, Overview, Security, Rate limits
+
+Docs: [monitoring.md](../../../docs/api/monitoring.md) (new), [admin.md](../../../docs/api/admin.md), [auth.md](../../../docs/api/auth.md) (last seen), [database.md](../../../docs/api/database.md), [endpoints.md](../../../docs/api/endpoints.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/README.md](../../../docs/ui/README.md), [ui/testing.md](../../../docs/ui/testing.md), `docs/README.md` and AGENTS.md (the new doc's rows).
+
+- **Signals:** `Measure` takes an `Env` (the store, the rate limits as declared, the time; passed in so `internal/monitor` doesn't import the HTTP layer) and a `Span`, and returns a `Reading` (a value and the sample it came from). A signal may have a **minimum sample** (`MinSample`): below it, its level is `ok` (the unknown-account share from 50 attempts, the 5xx share from 100 requests, p95 from 20). `Drill` is a fixed Events filter; the window of the signal's length is added. Levels are **at or over** a threshold, so the unknown-account share warns at 50%, not over it.
+- **Signals keep their own windows** (an hour, a day, or now), apart from the page's window, which the charts and review lists follow: a signal says how things stand now, as alerts will read it. A signal's span is floored as the Events page floors the same window, so its drill-down lists the rows it counted (tested for failed sign-ins and the admin door).
+- **The endpoint** is `admin.Monitoring.Show` (the naming convention; the plan's `adminMonitoringHandlers.show`), pages `overview`, `security`, `limits`. A page is read whole within the Events charts' bound, `httpapi.Summaries` (one per admin, two per server, a 1 s wait, the 5 s deadline); past it the answer is `503` (busy, with `Retry-After`, or too slow), and **nothing is recorded** for a page not served. The windows (`monitor.ResolveWindow`) are the Events page's, checked by a test.
+- **Overview:** tiles for Servers, Requests, Server errors, Latency, Mail, Errors, Failed sign-ins, Shared limits, Admin door and Sign-ups (with active accounts), each showing its numbers now, since the data is there. Tiles whose page isn't built (Performance, Errors, Usage, Configuration) say "Its page comes later." and link to their Events rows where they have any; Mail links to the Mail page. **No Integrity, Alerts or Database tile** yet: their checks, rules and pool signals come with their pages. **Servers** has no "silent for 2 minutes" warning (a stopped server's row stays a day, so every release would warn for a day); instead the live count, and a warning when more than one version is live.
+- **Security:** the sign-up signal reads `register:global`'s live counter as a share of its cap (50% warning, reached critical), rather than counting sign-ups an hour; resets and sign-ups show asked-for against done per bucket, the addresses asking most and their shared limit's meter. "2 or fewer recovery codes left" counts accounts whose last recovery-code use in the window left that many (the payload's `recoveryCodesLeft`). A possible takeover also needs the account to have signed in at all in the 30 days (no baseline, no new network); the lookback reads one account's sign-ins through `events_logged_in_idx`, the one query reaching past 7 days. The admin door's window is a day; a moved session is listed, with no level. The door's counts are a list of outcomes, not a map (a key like `wrong_password` reads as a secret's field to `decodeAdmin`).
+- **Rate limits:** "By route" shows 429s with the route's requests and 5xx: `request_minutes` doesn't keep 503 apart. "Blocked right now" lists a limit counted in each server's memory as not visible (`null`).
+- **`users.last_seen_at`** is moved by the session lookup itself (`FindSession`, a data-modifying CTE in its one statement), so the `/app/*` page gate moves it too, and no request pays another round trip; a partial index serves counting active accounts.
+- **Seeder:** `make seed only=monitoring` plants part 1's patterns (stuffing with a success, distributed guessing, success after failures, failed codes, a reset flood, `register:global` reached, the admin door, a takeover of a fake account). The invitation spammer, the workspace near its quota, the stuck delivery and the error group come with the pages that show them. It never writes `rate_limits` (a counter there would really refuse requests).
+- **Web:** `Stat` gained `level`, `href` and `chart` rather than a new tile component; `LevelBadge` lives in `badge.tsx` and takes `level` (the signal's value, not a style); `Sparkline` and `Meter` joined `chart.tsx`; `BarChart tableToggle` is the "Show as table". The sidebar's Monitoring heading lists only the pages built.
+- **Names:** the store's monitoring methods use `Count`, `Summarize`, `Index` and `Find` (the reasons of `Count` and `Summarize` in `TestStoreMethodNames` widened); `admin.monitoring.viewed` makes the admin reads 12.
+- **Not done in part 1:** the volume check at a million events (manual, `docs/testing.md`); the alerts' reuse of `monitor.ReadAll`; `prune.completed` and the workspace-tables registry (part 2).
 
 ## Not included
 

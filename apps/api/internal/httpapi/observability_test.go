@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/observe"
@@ -349,7 +350,7 @@ func TestPanicValuesAreRedacted(t *testing.T) {
 		"its URL":     func(r *http.Request) any { return r.URL },
 		"a cookie":    func(r *http.Request) any { return &http.Cookie{Name: "x", Value: secret} },
 		"a struct":    func(r *http.Request) any { return holder{Token: secret} },
-		"a long text": func(r *http.Request) any { return strings.Repeat("x", 600) + secret },
+		"a long text": func(r *http.Request) any { return strings.Repeat("x ", 300) + secret },
 	}
 	want := map[string]string{"the request": observe.Redacted, "its headers": observe.Redacted, "its URL": observe.Redacted, "a cookie": observe.Redacted, "a struct": "httpapi.holder"}
 	for name, value := range cases {
@@ -462,6 +463,109 @@ func TestInternalError(t *testing.T) {
 	}
 }
 
+// reports collects what observe.Report is handed until the test ends.
+func reports(t testing.TB) *reported {
+	t.Helper()
+	got := &reported{}
+	observe.SetReporter(got)
+	t.Cleanup(func() { observe.SetReporter(nil) })
+	return got
+}
+
+type reported struct {
+	mu       sync.Mutex
+	problems []observe.Problem
+}
+
+func (r *reported) Report(_ context.Context, p observe.Problem) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.problems = append(r.problems, p)
+}
+
+func (r *reported) all() []observe.Problem {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]observe.Problem(nil), r.problems...)
+}
+
+// An error's text is scrubbed before it's logged: the log keeps the
+// request's ID, which leads to everything else. The report gets the error
+// itself, which the collector scrubs.
+func TestInternalErrorLogsScrubbedText(t *testing.T) {
+	out := captureLogs(t, slog.LevelInfo)
+	got := reports(t)
+	s := &Server{}
+	failure := errors.New(`ERROR: invalid input syntax for type uuid: "ada@example.com" from 203.0.113.9 for usr_2yEHYLwiwPVhLW (SQLSTATE 22P02)`)
+	h := s.ClientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observe.SetRoute(r.Context(), "GET /api/thing")
+		InternalError(w, r, failure)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/thing", nil))
+	line := logLines(t, out)[0]
+	if line["error"] != `ERROR: invalid input syntax for type uuid: "…" from <ip> for <id> (SQLSTATE 22P02)` {
+		t.Fatalf("logged %q", line["error"])
+	}
+	for _, value := range []string{"ada@example.com", "203.0.113.9 for", "usr_2yEHYLwiwPVhLW"} {
+		if strings.Contains(out.String(), value) {
+			t.Errorf("the log holds %q", value)
+		}
+	}
+	if p := got.all(); len(p) != 1 || p[0].Source != observe.SourceRequest || p[0].Route != "GET /api/thing" || !errors.Is(p[0].Err, failure) {
+		t.Fatalf("reported %+v", p)
+	}
+}
+
+// A client that went away (its request's context canceled) is no failure:
+// no 500, no report, no error line; the access line says aborted, and a
+// debug line why. A timeout (the request's deadline) still is one.
+func TestClientGoneIsNoError(t *testing.T) {
+	out := captureLogs(t, slog.LevelDebug)
+	got := reports(t)
+	s := &Server{}
+	var cause error
+	h := s.ClientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observe.SetRoute(r.Context(), "GET /api/thing")
+		InternalError(w, r, fmt.Errorf("select projects: %w", cause))
+	}))
+
+	cause = context.Canceled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/thing", nil).WithContext(ctx))
+	if w.Body.Len() != 0 || len(got.all()) != 0 {
+		t.Fatalf("answered %d %q, reported %+v", w.Code, w.Body.String(), got.all())
+	}
+	lines := logLines(t, out)
+	if len(lines) != 2 || lines[0]["msg"] != "request aborted by the client" || lines[0]["level"] != "DEBUG" ||
+		lines[1]["msg"] != "request" || lines[1]["aborted"] != true || lines[1]["status"] != float64(0) {
+		t.Fatalf("lines: %v", lines)
+	}
+
+	// The request's own deadline is a failure, and so is a canceled error
+	// while the client is still there.
+	for _, c := range []struct {
+		cause error
+		ctx   func() (context.Context, context.CancelFunc)
+	}{
+		{context.DeadlineExceeded, func() (context.Context, context.CancelFunc) { return context.WithTimeout(context.Background(), 0) }},
+		{context.Canceled, func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) }},
+	} {
+		cause = c.cause
+		ctx, cancel := c.ctx()
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/api/thing", nil).WithContext(ctx))
+		cancel()
+		if w.Code != 500 {
+			t.Errorf("%v: %d", c.cause, w.Code)
+		}
+	}
+	if len(got.all()) != 2 {
+		t.Fatalf("reported %+v", got.all())
+	}
+}
+
 // BenchmarkRequestOverhead is what ClientAddress costs each request: the
 // client address, the request's ID, the record and its context, and the
 // access line, written as JSON to a discarding writer. The budget is 20 µs
@@ -472,7 +576,7 @@ func BenchmarkRequestOverhead(b *testing.B) {
 	previous := slog.Default()
 	slog.SetDefault(observe.NewLogger(io.Discard, observe.FormatJSON, slog.LevelInfo))
 	defer slog.SetDefault(previous)
-	s := &Server{}
+	s := &Server{Metrics: observe.NewRegistry()}
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		observe.SetRoute(r.Context(), "GET /api/workspaces/{workspace}/projects")
 		w.WriteHeader(http.StatusOK)

@@ -68,6 +68,15 @@ const adminRoutes = [
     route("admin/:key/email-blocks", "pages/admin/[key]/email-blocks.tsx"),
     route("admin/:key/ip-blocks", "pages/admin/[key]/ip-blocks.tsx"),
     route("admin/:key/admins", "pages/admin/[key]/admins.tsx"),
+    route("admin/:key/monitoring", "pages/admin/[key]/monitoring/index.tsx"),
+    route(
+      "admin/:key/monitoring/security",
+      "pages/admin/[key]/monitoring/security.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/limits",
+      "pages/admin/[key]/monitoring/limits.tsx",
+    ),
   ]),
 ] satisfies RouteConfig;
 

@@ -29,6 +29,8 @@ type User struct {
 	// EmailVerifiedAt is set: accounts made with EMAIL_VERIFICATION on are
 	// always verified. Unverified clears it.
 	EmailVerifiedAt *time.Time
+	// LastSeenAt is nil (never signed in) unless a test sets it.
+	LastSeenAt *time.Time
 }
 
 // Users builds accounts with unique, valid, lowercase emails.

@@ -221,6 +221,17 @@ type AdminMailViewed struct {
 
 func (AdminMailViewed) EventName() string { return "admin.mail.viewed" }
 
+// AdminMonitoringViewed: an admin loaded a Monitoring page (overview,
+// security, limits) for Window (1h, 24h or 7d): its signals, charts and
+// review lists together, one read.
+type AdminMonitoringViewed struct {
+	Admin  string `json:"admin"`
+	Page   string `json:"page"`
+	Window string `json:"window"`
+}
+
+func (AdminMonitoringViewed) EventName() string { return "admin.monitoring.viewed" }
+
 // AdminDeliveryListed: an admin loaded a page of the deliveries list, with
 // the filters used.
 type AdminDeliveryListed struct {

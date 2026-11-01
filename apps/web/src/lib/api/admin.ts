@@ -33,6 +33,10 @@ import {
   type IPBlockLifetime,
   type AdminIPBlock,
   type MailWindow,
+  type MonitoringPage,
+  type MonitoringView,
+  type MonitoringWindow,
+  defaultMonitoringWindow,
 } from "@/types/admin";
 // The admin dashboard's API, under /api/admin. It lives only here, never in
 // lib/api/index.ts, which every app page loads: the admin build alone may
@@ -181,6 +185,16 @@ export const adminPaths = {
     index: (query: AdminDeliveryIndexQuery = {}) =>
       path<CursorPage<AdminDeliveryRow>>(url(`${base}/deliveries`, query)),
   },
+  // A Monitoring page, read whole (one recorded read); 24h is the default,
+  // so it's left out. S is the page's sections.
+  monitoring: {
+    show: <S>(page: MonitoringPage, window?: MonitoringWindow) =>
+      path<MonitoringView<S>>(
+        url(`${base}/monitoring/${page}`, {
+          window: window === defaultMonitoringWindow ? undefined : window,
+        }),
+      ),
+  },
   // The Admins page: every admin, one list (no paging).
   admins: {
     index: () => path<{ data: AdminAccount[] }>(`${base}/admins`),
@@ -269,6 +283,10 @@ export function adminClient(http: Http) {
     }),
     catalogue: () => http.get(adminPaths.catalogue()),
     mail: (window?: MailWindow) => http.get(adminPaths.mail(window)),
+    monitoring: () => ({
+      show: <S>(page: MonitoringPage, window?: MonitoringWindow) =>
+        http.get(adminPaths.monitoring.show<S>(page, window)),
+    }),
     admins: () => ({ index: () => http.get(adminPaths.admins.index()) }),
     // Signs out every other admin session of yours, keeping this one.
     sessions: () => ({

@@ -1,7 +1,7 @@
 // Package events defines what the API records as having happened: sign-ins,
 // password changes, workspaces, their members and projects created, changed
-// or deleted, invitations sent and accepted, accounts deleted, and rate
-// limits reached.
+// or deleted, invitations sent and accepted, accounts deleted, rate limits
+// reached, and servers started and stopped.
 //
 // Each event is a struct whose JSON is the stored payload. Payloads identify
 // records by public ID only (usr_, wsp_, prj_) and never hold passwords,
@@ -36,11 +36,12 @@ var Catalogue = []Event{
 	WorkspaceInvitationCreated{}, WorkspaceInvitationSent{}, WorkspaceInvitationRevoked{}, WorkspaceInvitationAccepted{},
 	ProjectCreated{}, ProjectUpdated{}, ProjectDeleted{},
 	RateLimitReached{},
+	ServerStarted{}, ServerStopped{},
 	EmailBlocked{}, EmailUnblocked{},
 	AdminGranted{}, AdminUpdated{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
 	AdminAccessRefused{}, AdminSessionMoved{}, AdminSessionEnded{}, AdminSessionsRevoked{}, AdminAdminListed{},
 	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
-	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
+	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminMonitoringViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
 	AdminEmailBlockListed{}, AdminEmailUnblocked{},
 	AdminUserSignedOut{}, AdminUserMFAReset{}, AdminUserSuspended{}, AdminUserUnsuspended{},
 	AdminWorkspaceInvitationsRevoked{}, AdminDeliveryRetried{},

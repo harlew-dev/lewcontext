@@ -42,7 +42,7 @@ func sessions(args []string) {
 // records auth.sessions_revoked_all.
 func revokeAllSessions(ctx context.Context, repository *store.Store, confirm bool, out io.Writer) error {
 	if !confirm {
-		counts, err := repository.CountSessions(ctx)
+		counts, err := repository.CountAllSessions(ctx)
 		if err != nil {
 			return err
 		}

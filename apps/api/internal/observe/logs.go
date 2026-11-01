@@ -179,19 +179,20 @@ const maxPanicValue = 512
 
 // PanicValue is what may be logged of a panic's value p: Redacted for a
 // request, its headers, cookies or a URL (revealing); the message of a
-// string or an error, cut to 512 bytes; for anything else only its type,
-// since its printed form could hold anything. The handler's redaction can't
-// see inside a value already formatted, so every panic goes through this
-// first.
+// string or an error, scrubbed (Scrub) and then cut to 512 bytes, so a
+// token cut in half can't slip past the scrubber; for anything else only
+// its type, since its printed form could hold anything. The handler's
+// redaction can't see inside a value already formatted, so every panic
+// goes through this first.
 func PanicValue(p any) string {
 	if revealing(p) {
 		return Redacted
 	}
 	switch v := p.(type) {
 	case string:
-		return truncate(v, maxPanicValue)
+		return truncate(Scrub(v), maxPanicValue)
 	case error:
-		return truncate(v.Error(), maxPanicValue)
+		return truncate(ScrubError(v), maxPanicValue)
 	}
 	return fmt.Sprintf("%T", p)
 }

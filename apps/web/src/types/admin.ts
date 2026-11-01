@@ -319,3 +319,152 @@ export type AdminMail = {
   lastDeliveredAt: string | null;
   lastFailure: { listener: string; failedAt: string; error: string } | null;
 };
+// The Monitoring pages built so far (docs/api/monitoring.md), and their
+// windows: what the charts and review lists cover. Signals keep their own.
+export const monitoringPages = ["overview", "security", "limits"] as const;
+export type MonitoringPage = (typeof monitoringPages)[number];
+export const monitoringWindows = ["1h", "24h", "7d"] as const;
+export type MonitoringWindow = (typeof monitoringWindows)[number];
+export const defaultMonitoringWindow: MonitoringWindow = "24h";
+// How a signal stands: fine, worth a look, a problem now.
+export type Level = "ok" | "warn" | "critical";
+// A signal as read: its value (in its unit), its level and thresholds (0 or
+// missing: none), what it's counted over, and the Events filter behind it.
+export type Signal = {
+  name: string;
+  label: string;
+  unit: "count" | "percent" | "ms" | "minutes" | "per_minute";
+  value: number;
+  sample: number;
+  level: Level;
+  warn?: number;
+  critical?: number;
+  minSample?: number;
+  windowSeconds: number;
+  drill?: Record<string, string>;
+};
+// A Monitoring page's answer: its window as resolved, its signals, and its
+// own sections.
+export type MonitoringView<S> = {
+  page: MonitoringPage;
+  window: {
+    name: MonitoringWindow;
+    from: string;
+    to: string;
+    bucketSeconds: number;
+  };
+  signals: Signal[];
+  sections: S;
+};
+// A chart's numbers: a column per bucket, counts lining up with series.
+export type MonitorSeries = { series: string[]; buckets: SummaryBucket[] };
+// An account named in a review list: ID and name, never its email.
+export type AccountRef = { id: string; name?: string };
+export type AddressCount = { ip: string; count: number };
+export type SharedLimit = {
+  name: string;
+  max: number;
+  windowSeconds: number;
+  hits: number;
+  resetsAt: string | null;
+  reached: number;
+  lastReached: string | null;
+};
+// The Overview's tiles: their signals (by name), their page, a sparkline.
+export type MonitoringTile = {
+  id: string;
+  label: string;
+  page: string;
+  signals: string[];
+  series: {
+    label: string;
+    unit: Signal["unit"];
+    points: { start: string; value: number }[];
+  } | null;
+};
+export type OverviewSections = { tiles: MonitoringTile[] };
+export type FailedChecksRow = {
+  period: string;
+  account: AccountRef;
+  failures: number;
+};
+// A request that sends mail or makes an account: asked for and done per
+// bucket, the addresses asking most, and the shared limit on it.
+export type MonitoringFlow = {
+  series: MonitorSeries;
+  topAddresses: AddressCount[];
+  limit: SharedLimit | null;
+};
+export type DoorOutcome =
+  | "wrong_password"
+  | "unknown_account"
+  | "not_admin"
+  | "mfa_off"
+  | "access_refused"
+  | "session_moved";
+export type SecuritySections = {
+  signIns: MonitorSeries;
+  stuffing: {
+    period: string;
+    ip: string;
+    emails: number;
+    attempts: number;
+    successes: number;
+  }[];
+  guessing: {
+    period: string;
+    email: string;
+    addresses: number;
+    failures: number;
+  }[];
+  unknown: { attempts: number; unknown: number };
+  successAfterFailures: {
+    period: string;
+    account: AccountRef;
+    failures: number;
+    signedInAt: string;
+  }[];
+  takeovers: {
+    changedAt: string;
+    change: string;
+    event: string;
+    account: AccountRef;
+    signedInAt: string;
+    network: string;
+  }[];
+  secondFactor: {
+    failures: FailedChecksRow[];
+    backupCodes: { used: number; lowAccounts: number };
+  };
+  reauthentication: FailedChecksRow[];
+  resets: MonitoringFlow;
+  signUps: MonitoringFlow;
+  adminDoor: {
+    counts: { outcome: DoorOutcome; count: number }[];
+    series: MonitorSeries;
+    recent: {
+      at: string;
+      outcome: DoorOutcome;
+      ip: string | null;
+      event: string;
+    }[];
+  };
+  sessions: { series: MonitorSeries; live: number; accountsAtCap: number };
+};
+export type LimitsSections = {
+  reached: MonitorSeries;
+  byLimit: { limit: string; windows: number; lastReached: string }[];
+  refused: { label: string; count: number }[];
+  shared: SharedLimit[];
+  blocked: { name: string; max: number; subjects: number | null }[];
+  topAccounts: { account: AccountRef; windows: number }[];
+  topAddresses: AddressCount[];
+  budgets: { account: AccountRef; limit: string; windows: number }[];
+  quotas: { label: string; count: number }[];
+  routes: {
+    route: string;
+    refused: number;
+    requests: number;
+    serverErrors: number;
+  }[];
+};

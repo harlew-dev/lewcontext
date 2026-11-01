@@ -47,6 +47,9 @@ type Config struct {
 	// Logging is the log's format and level, and which requests get an
 	// access line (logging.go).
 	Logging
+	// Metrics is what the server counts, where it keeps it and who may
+	// read it (metrics.go).
+	Metrics
 	// ShutdownDelay (SHUTDOWN_DELAY) is how long the server keeps answering,
 	// with readiness already 503, before it stops taking connections: time
 	// for a load balancer polling GET /api/health to take it out.
@@ -88,6 +91,9 @@ func Load() (Config, error) {
 	}
 	c.Logging = logging
 	if c.ShutdownDelay, err = loadShutdownDelay(c.Production); err != nil {
+		return c, err
+	}
+	if err := c.loadMetrics(); err != nil {
 		return c, err
 	}
 	if c.DatabaseURL == "" {

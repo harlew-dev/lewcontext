@@ -5,12 +5,12 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
-	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -47,16 +47,34 @@ func (s *Server) Security(next http.Handler) http.Handler {
 				}
 			}
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 		defer cancel()
-		ctx = events.WithUserAgent(ctx, r.UserAgent())
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(events.WithUserAgent(ctx, r.UserAgent())))
+		markTimedOut(ctx)
 	})
 }
 
 // SessionExpired is the answer to a session that has ended: expired,
 // signed out, or its account suspended since it was checked.
 const SessionExpired = "Your session has expired. Please sign in again."
+
+// RequestTimeout is how long an API request may run: its context ends
+// then, and the queries it is waiting on with it.
+const RequestTimeout = 10 * time.Second
+
+// markTimedOut flags the request as ended by its deadline when the
+// deadline had passed by the time its handler returned (and not because
+// the client went away, which cancels instead), for http_timeouts_total
+// and request_minutes.timeouts: on a write, the change may have committed
+// though the client saw an error.
+func markTimedOut(ctx context.Context) {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return
+	}
+	if request := observe.FromContext(ctx); request != nil {
+		request.TimedOut = true
+	}
+}
 
 // RequireSession lets through requests with a live session, and a valid CSRF
 // token on mutations, then counts each against its user's budget (meter).
@@ -68,6 +86,8 @@ func (s *Server) RequireSession(next http.Handler) http.Handler {
 // recovery routes: signing out, revoking other sessions and changing the
 // password. Someone holding a stolen session then can't use up the owner's
 // budget to stop them. They only delete rows, or keep sign-in's limits.
+// The one other is POST /api/client-errors, which a page stuck in an error
+// loop would otherwise spend the budget on; it has limits of its own.
 func (s *Server) RequireSessionUnmetered(next http.Handler) http.Handler {
 	return s.signedIn(next, false)
 }
@@ -140,7 +160,11 @@ func (s *Server) RequirePageSession(next http.Handler) http.Handler {
 			return
 		}
 		if err != nil {
-			slog.ErrorContext(r.Context(), "page session check failed", "error", err)
+			if ClientGone(r, err) {
+				abortedByClient(r, err)
+				return
+			}
+			reportFailure(r, "page session check failed", fmt.Errorf("page session check: %w", err))
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -189,6 +213,7 @@ func (s *Server) LimitAuth(next http.Handler) http.Handler {
 		case s.authSlots <- struct{}{}:
 			defer func() { <-s.authSlots }()
 		default:
+			observe.PasswordHashBusy.Inc()
 			Fail(w, 503, "Sign-in is busy. Please try again shortly.")
 			return
 		}

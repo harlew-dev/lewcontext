@@ -83,7 +83,7 @@ func parseLiveBlocks(rows []store.LiveIPBlock) []liveBlock {
 	for _, row := range rows {
 		network, err := netip.ParsePrefix(row.Network)
 		if err != nil {
-			slog.Error("an IP block's network doesn't parse; it is skipped", "network", row.Network, "error", err)
+			slog.Error("an IP block's network doesn't parse; it is skipped", "network", row.Network, observe.ErrorAttr(err))
 			continue
 		}
 		live = append(live, liveBlock{network: network, expiresAt: row.ExpiresAt})
@@ -124,9 +124,9 @@ func (s *Server) reloadIPBlocksLogged(ctx context.Context) error {
 	err := s.ReloadIPBlocks(reload)
 	if err != nil {
 		if loaded := s.IPBlocksLoadedAt(); loaded.IsZero() {
-			slog.Error("loading IP blocks failed; nothing is blocked on this server until it succeeds", "error", err)
+			slog.ErrorContext(ctx, "loading IP blocks failed; nothing is blocked on this server until it succeeds", observe.ErrorAttr(err))
 		} else {
-			slog.Error("reloading IP blocks failed; the previous list still applies", "error", err, "lastLoaded", loaded.UTC().Format(time.RFC3339))
+			slog.ErrorContext(ctx, "reloading IP blocks failed; the previous list still applies", observe.ErrorAttr(err), "lastLoaded", loaded.UTC().Format(time.RFC3339))
 		}
 	}
 	return err

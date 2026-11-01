@@ -5,12 +5,16 @@ import {
   NoSymbolIcon,
   QueueListIcon,
   ShieldExclamationIcon,
+  Squares2X2Icon,
   UsersIcon,
+  ClockIcon,
 } from "@heroicons/react/20/solid";
 import {
   defaultEventWindow,
+  defaultMonitoringWindow,
   type DeliveryPageQuery,
   type EventFilters,
+  type MonitoringWindow,
 } from "@/types/admin";
 import { url } from "./pagination";
 // The admin dashboard's page URLs, at its secret key (ADMIN_ROUTE_KEY, from
@@ -57,8 +61,45 @@ export const adminRoutes = {
   admins: {
     index: (key: string) => `/admin/${key}/admins`,
   },
+  // The Monitoring pages, each with its window (24h is the default).
+  monitoring: {
+    index: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring`, window),
+    security: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/security`, window),
+    limits: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/limits`, window),
+  },
 } as const;
-// Sidebar items for the admin dashboard (Monitoring comes with its plan).
+// A Monitoring page's URL, the default window left out.
+function monitoringUrl(path: string, window?: MonitoringWindow): string {
+  return url(path, {
+    window: window === defaultMonitoringWindow ? undefined : window,
+  });
+}
+// The Monitoring heading's items in the sidebar: the pages built so far
+// (plans/features/admin/monitoring.md ships them one by one).
+export function adminMonitoringNavigation(key: string) {
+  return [
+    {
+      label: "Overview",
+      href: adminRoutes.monitoring.index(key),
+      icon: Squares2X2Icon,
+    },
+    {
+      label: "Security",
+      href: adminRoutes.monitoring.security(key),
+      icon: ShieldExclamationIcon,
+    },
+    {
+      label: "Rate limits",
+      href: adminRoutes.monitoring.limits(key),
+      icon: ClockIcon,
+    },
+  ];
+}
+// Sidebar items for the admin dashboard; Monitoring's are under their own
+// heading (adminMonitoringNavigation).
 export function adminNavigation(key: string) {
   return [
     { label: "Users", href: adminRoutes.users.index(key), icon: UsersIcon },

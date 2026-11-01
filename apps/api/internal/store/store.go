@@ -36,6 +36,10 @@ type User struct {
 	// (docs/api/admin.md#suspending-an-account). Read only by FindUser, for
 	// sign-in's honest refusal after the password; never in a response.
 	Suspended bool `bun:"suspended,scanonly" json:"-"`
+	// LastSeenAt is when the account last used a session, to the hour
+	// (FindSession), or nil before its first signed-in request. Read by the
+	// monitoring pages; never in an app response.
+	LastSeenAt *time.Time `bun:"last_seen_at" json:"-"`
 }
 
 // account carries the password hash so it never travels inside a User response.

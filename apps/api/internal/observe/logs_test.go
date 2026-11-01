@@ -120,6 +120,9 @@ func TestSensitiveKeys(t *testing.T) {
 		"stack": false, "event": false, "id": false, "attempt": false, "limit": false, "window": false,
 		"dropped": false, "address": false, "pages": false, "trustedProxies": false, "ranges": false,
 		"host": false, "port": false, "tls": false, "from": false, "file": false, "clientIP": false, "delay": false,
+		"occurrences": false, "groups": false,
+		"operation": false, "table": false, "server": false, "version": false, "metricsStore": false, "auth": false,
+		"locked": false, "hours": false, "minutesDeleted": false, "serversDeleted": false,
 	} {
 		if got := sensitive(key) && !safeKeys[key]; got != want {
 			t.Errorf("%q: redacted %v, want %v", key, got, want)
@@ -187,6 +190,10 @@ func TestPanicValue(t *testing.T) {
 		if got := PanicValue(c.value); got != c.want {
 			t.Errorf("PanicValue(%T) = %q, want %q", c.value, got, c.want)
 		}
+	}
+	// Scrubbed before it's cut, so a token at the cut doesn't leave a piece.
+	if cut := PanicValue(strings.Repeat("a ", 250) + "Zx9_aB3-qL0vT7mK2pR5sW8yE1nH4jD6fG9cV0bX3zA"); strings.Contains(cut, "Zx9") || !strings.HasSuffix(cut, "<token>") {
+		t.Errorf("a token at the cut: %q", cut)
 	}
 	long := PanicValue(strings.Repeat("é", 400))
 	if len(long) > maxPanicValue+len("…") || !strings.HasSuffix(long, "…") || !utf8.ValidString(long) {

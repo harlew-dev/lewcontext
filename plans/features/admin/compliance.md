@@ -1,6 +1,6 @@
 # Compliance: retention, erasure, export, audit evidence
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A7 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md), [observability](observability.md) and [actions](../implemented/admin/actions.md). Docs it will change: [database.md](../../../docs/api/database.md) (pruning), [events.md](../../../docs/api/events.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [deployment.md](../../../docs/deployment.md), [admin.md](../../../docs/api/admin.md); new `docs/compliance.md` (the data map and control mapping) and `docs/incident-response.md` (the runbook).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A7 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md), [observability](../implemented/admin/observability.md) and [actions](../implemented/admin/actions.md). Docs it will change: [database.md](../../../docs/api/database.md) (pruning), [events.md](../../../docs/api/events.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [deployment.md](../../../docs/deployment.md), [admin.md](../../../docs/api/admin.md); new `docs/compliance.md` (the data map and control mapping) and `docs/incident-response.md` (the runbook).
 
 ## Why, and what this can't do
 
@@ -27,7 +27,7 @@ One table per database table: each personal-data field, why it's kept (purpose a
 | Other events (workspaces, projects, invitations, limits) | 90 days (as today) | `events`, which now keeps audit names for `audit-events` |
 | **IPs in events** | full for 30 days, then cut to the IPv4 /24 or IPv6 /48 | a daily prune target, `pseudonymise` |
 | **Emails in events** (login attempts, reset requests, invitations, admin door) | readable for 30 days, then replaced by a keyed hash (`HMAC-SHA256` with a key derived from `APP_KEY`) | `pseudonymise` |
-| `app_errors` | 30 days after last seen | [observability](observability.md) |
+| `app_errors` | 30 days after last seen | [observability](../implemented/admin/observability.md) |
 | `request_minutes`, `metric_minutes` / their hourly sums | 48 hours / 90 days | observability |
 | `alerts` | 1 year | [alerts](alerts.md) |
 | `table_stats_daily` | 400 days | [monitoring](monitoring.md) |
