@@ -1,11 +1,9 @@
 import { useNavigate, useSearchParams } from "react-router";
-import { ArrowPathIcon } from "@heroicons/react/16/solid";
 import {
   DeliveryStatusBadge,
   DeliveryTime,
 } from "@/components/app/admin/admin-list";
 import { CursorNav } from "@/components/app/admin/cursor-nav";
-import { Button } from "@/components/ui/button";
 import {
   BarChart,
   type ChartRow,
@@ -51,7 +49,8 @@ import {
 // went out per hour, requests against emails sent, addresses asked for
 // often, how mail leaves, and every delivery by status. Opening it records
 // two reads: the summary (admin.mail.viewed) and the deliveries
-// (admin.delivery.listed). Nothing reloads on its own: Refresh does.
+// (admin.delivery.listed). Nothing reloads on its own: reloading the page
+// does.
 export default function AdminDeliveryIndex() {
   const key = useAdminKey();
   const navigate = useNavigate();
@@ -65,32 +64,21 @@ export default function AdminDeliveryIndex() {
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Heading>Mail</Heading>
-        <div className="flex items-center gap-2">
-          <Listbox
-            aria-label="Window"
-            value={period}
-            onChange={(w) =>
-              void navigate(
-                pathFor({ ...query, window: w, before: undefined }),
-                { preventScrollReset: true },
-              )
-            }
-          >
-            {mailWindows.map((w) => (
-              <ListboxOption key={w} value={w}>
-                <ListboxLabel>{windowLabels[w]}</ListboxLabel>
-              </ListboxOption>
-            ))}
-          </Listbox>
-          <Button
-            outline
-            onClick={summary.refresh}
-            loading={summary.refreshing && !summary.loading}
-          >
-            <ArrowPathIcon />
-            Refresh
-          </Button>
-        </div>
+        <Listbox
+          aria-label="Window"
+          value={period}
+          onChange={(w) =>
+            void navigate(pathFor({ ...query, window: w, before: undefined }), {
+              preventScrollReset: true,
+            })
+          }
+        >
+          {mailWindows.map((w) => (
+            <ListboxOption key={w} value={w}>
+              <ListboxLabel>{windowLabels[w]}</ListboxLabel>
+            </ListboxOption>
+          ))}
+        </Listbox>
       </div>
       {summary.error && (
         <Notice variant="error" className="mt-6" onRetry={summary.refresh}>

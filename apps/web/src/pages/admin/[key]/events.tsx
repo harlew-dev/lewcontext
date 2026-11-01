@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { ArrowPathIcon } from "@heroicons/react/16/solid";
 import { CursorNav } from "@/components/app/admin/cursor-nav";
 import { EventTable } from "@/components/app/admin/events";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ import type { EventFilters } from "@/types/admin";
 // workspace, email, IP and time. Filters live in the URL, so a link from a
 // user, a workspace or an IP opens the rows behind it. Every load is a
 // recorded read (admin.event.listed, with its filters), so nothing reloads
-// on its own: Refresh does.
+// on its own: reloading the page does.
 export default function AdminEventIndex() {
   const key = useAdminKey();
   const navigate = useNavigate();
@@ -34,17 +33,7 @@ export default function AdminEventIndex() {
   );
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <Heading>Events</Heading>
-        <Button
-          outline
-          onClick={list.refresh}
-          loading={list.refreshing && !list.loading}
-        >
-          <ArrowPathIcon />
-          Refresh
-        </Button>
-      </div>
+      <Heading>Events</Heading>
       <FilterForm
         key={search.toString()}
         filters={filters}

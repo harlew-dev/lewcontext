@@ -71,13 +71,14 @@ list.loading     // nothing loaded for this path yet → <ListSkeleton />
 list.error       // message → <Notice variant="error"> with Retry
 list.missing     // the API answered 404 → render "not found"
 list.refreshing  // revalidating in the background
-list.refresh()   // Retry, refresh, or after a mutation
+list.refresh()   // Retry, or after a mutation
 ```
 
 - **SWR key** is `[path, userId]`, with the user ID from the session context, so one user never sees another's cached data.
 - **Pages fetch their own data**: there is no server rendering, so a page renders at once with skeletons. `useResource(path, fallback)` shows `fallback` (e.g. a record from an already loaded list) until the fetch returns; a `null` path fetches nothing.
 - **Polling:** `useResource(path, fallback, { refreshInterval: (data) => ms })` refreshes again after `ms`, or stops at 0: the pending invitations poll every 3 s only while one is "Sending…".
 - **Changing path** keeps the previous data in `data` while `loading` is true, and keeps it if the new request fails. Show it, dimmed, with an error `Notice` that offers Retry.
+- **No Refresh buttons.** Lists refresh on their own (focus, after a mutation, polling) and the admin pages on opening or a page reload ([../api/admin.md](../api/admin.md#web-app)); a page reload does the rest. The only reload button is Retry, on a failed load's error `Notice`.
 - **`loading`** is true only when there is no data yet for this path. `refreshing` is true while revalidating.
 - **401** redirects to `/auth/login?next=<this page>` ([pages.md](pages.md#returning-after-sign-in-next)); a 403 with `verificationRequired` to `/app/verify-email?next=<this page>`.
 - **Retries:** a failed read is retried twice (`swrConfig`, `lib/swr.ts`, set in `root.tsx`), except a 4xx: a 403 or 404 won't change, and retrying a 429 would spend more of the rate limit ([../api/rate-limits.md](../api/rate-limits.md)). The API's message ("Too many requests. Try again in 12 minutes.") shows in the error `Notice`, and Retry asks again.
