@@ -234,10 +234,11 @@ function Found({
     </MonitoringSection>
   );
 }
-const createLabels: Record<string, string> = {
-  "workspace.created": "workspaces",
-  "project.created": "projects",
-  "workspace.invitation.created": "invitations",
+// A create's kind, singular and plural.
+const createLabels: Record<string, [string, string]> = {
+  "workspace.created": ["workspace", "workspaces"],
+  "project.created": ["project", "projects"],
+  "workspace.invitation.created": ["invitation", "invitations"],
 };
 function Duplicates({ view }: { view: View }) {
   const d = view.sections.duplicates;
@@ -250,7 +251,10 @@ function Duplicates({ view }: { view: View }) {
     >
       <Text className="mt-1">
         {d.byName
-          .map((n) => `${count(n.count)} ${createLabels[n.name] ?? n.name}`)
+          .map((n) => {
+            const [one, many] = createLabels[n.name] ?? [n.name, n.name];
+            return `${count(n.count)} ${n.count === 1 ? one : many}`;
+          })
           .join(", ")}
         .
       </Text>

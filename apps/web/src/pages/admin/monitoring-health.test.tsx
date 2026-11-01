@@ -201,7 +201,7 @@ describe("the Integrity page", () => {
     expect(within(overdue).getAllByText("Not loaded")).not.toHaveLength(0);
     expect(within(overdue).queryByText("OK")).toBeNull();
     // Duplicates: the count and the second create, linked to its event.
-    expect(screen.getByText("1 projects.")).toBeVisible();
+    expect(screen.getByText("1 project.")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "evt_00000000000004" }),
     ).toHaveAttribute("href", `/admin/${key}/events/evt_00000000000004`);
