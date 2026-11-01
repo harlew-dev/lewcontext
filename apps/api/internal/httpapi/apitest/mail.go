@@ -29,7 +29,7 @@ func Mail(t *testing.T, repo *store.Store, origin string) (box *Mailbox, deliver
 	t.Helper()
 	box = &Mailbox{}
 	bus := events.NewBus()
-	mailer := Must(mail.New(box, "lewcontext"))(t)
+	mailer := Must(mail.New(mail.Options{Driver: box, App: "lewcontext", Origin: origin, Blocks: repo}))(t)
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repo, mailer, origin))
 	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(repo, mailer, origin))
 	repo.Listeners = bus

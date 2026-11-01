@@ -41,6 +41,7 @@ Code: `internal/httpapi/endpoints/account/registrations.go` (sign-up), `endpoint
 - **Sign-up doesn't say whether an email has an account.** Register, check, resend and a wrong verify answer the same and run the same queries for a taken email as for a new one: none of them reads `users` (only the listener does, after the response), and a taken email's row holds a real-looking HMAC, so every code fails it exactly as a wrong one fails a new email's. Limits count every address alike. `TestSignUpLooksTheSameForATakenEmail` compares the answers, headers and the tables each request touches. Only the inbox can tell the two apart.
 - **A code works only in the browser that started the sign-up.** Rows are found by the cookie, never by email, and one email can have several. Otherwise, if an owner and a stranger signed up the same new email at once, the owner could type the code from the stranger's sign-up and create the account with the stranger's password (`TestSignUpCodeBelongsToItsBrowser`).
 - **Codes:** 6 digits from `crypto/rand`, 15 minutes, 5 tries, then `email-code:per-email` (10 checks a day per email, from anywhere), so guessing one is about 1 in 100,000 a day. Stored as HMAC-SHA256 under a key derived from `APP_KEY` (a plain hash of a million codes reverses instantly). Never in an event, log or URL; the email shows it spaced and never as a link, so it works on whichever device reads the mail.
+- **A blocked address** signs up like any other and is sent no code; verify refuses it if it was blocked after its code went out ([Blocking an email address](#blocking-an-email-address)).
 - **Invitation links don't verify an address.** The token proves someone has the link, not that they own the inbox, and links get forwarded ("just use my invitation link"). Invited people enter the code too, then return to the link and join.
 
 **Existing accounts** (made while it was off, or before it existed) have `email_verified_at` null:
@@ -49,6 +50,23 @@ Code: `internal/httpapi/endpoints/account/registrations.go` (sign-up), `endpoint
 - **`EMAIL_VERIFICATION_EXISTING=required`**: such an account signs in as usual (password, then MFA), but `RequireSession` refuses it every route with 403 `{verificationRequired: true}` except reading the session, signing out, signing out other sessions and the two verification routes, which `AllowUnverified` marks in `router/routes.go` (`TestOnlyFiveRoutesAllowUnverified`). The web app sends it to `/app/verify-email`. Codes go out only when it presses Send code.
 - **A completed password reset verifies the email** (`auth.email_verified {via: "password_reset"}`): the link went only to that inbox, and whoever uses it controls the account anyway.
 - **Admins' door isn't gated**; their app sessions are.
+
+## Blocking an email address
+
+Code: `internal/httpapi/endpoints/account/email_blocks.go`, `internal/store/email_blocks.go`, `internal/database/lock.go` (the email lock), `internal/mail` (the link and the check), `cmd/admin/blocks.go`. Plan: [plans/features/email-blocks.md](../../plans/features/email-blocks.md).
+
+Invitations go to addresses an inviter types, so each one carries a **block link** (`/auth/email-blocks/<token>`, [mail.md](mail.md#blocked-addresses)). Its page checks the link (`POST /api/email-blocks/check`), then blocks (`POST /api/email-blocks {token}`) or unblocks (`DELETE`) the address it went to. A blocked address gets no email at all and can't become an account.
+
+- **Only an address without an account can be blocked** (409 otherwise, and the page says to delete the account first): blocking a working account's address would cut it off from password reset. Only the inbox has the link (256 bits, stored as a digest, a year), and the same link unblocks it.
+- **Nothing anyone types reveals a block.** "Blocked" would tell a prober that the inbox is read by a person without an account, and a harasser that their invitation was seen. So:
+  - **Invitations** to a blocked address answer 201 and are listed with `sentAt` like any other; `Send` refuses the email and the listener records no `.sent`.
+  - **Sign-up with verification on** answers 202 and opens the code page as for any address; no code is sent. The code page tells everyone "If you blocked this address, no code can reach it: unblock it from the link in our email first."
+  - **Verify** checks again: a right code for an address blocked after it was sent ends the sign-up (401, "This address has been blocked…", its pending rows deleted). Only someone holding a code from the inbox gets there.
+  - **Sign-up with verification off** answers a blocked address with the taken email's 409, which that mode already gives.
+  - Only holders of a link or code from the inbox ever see the word.
+- **Racing:** blocking needs "no account uses it" and creating an account "it isn't blocked", so both take a transaction-scoped advisory lock keyed by the email (`database.LockEmail`) before checking: `BlockEmail`, `CompleteRegistration` and `CreateUser` (`TestBlockRacingSignUp` fails without it).
+- **Events:** `email.blocked` and `email.unblocked` (`by`: `link` or `cli`), with the address, pruned after 90 days ([events.md](events.md#catalogue)).
+- **The operator** can list and unblock addresses (`admin blocks`, `admin unblock -email … [-confirm]`), never block one ([admin.md](admin.md#admins-admins)).
 
 ## Two-factor authentication
 

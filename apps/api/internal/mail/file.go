@@ -37,8 +37,12 @@ func (d *FileDriver) Deliver(ctx context.Context, m Message) error {
 		f.Close()
 		return err
 	}
-	_, err = fmt.Fprintf(f, "==== %s\nTo: %s\nSubject: %s\nTemplate: %s\n\n%s\n---- HTML\n%s\n\n",
-		time.Now().UTC().Format(time.RFC3339), m.To, m.Subject, m.Template, m.Text, m.HTML)
+	unsubscribe := ""
+	if m.Unsubscribe != "" {
+		unsubscribe = "List-Unsubscribe: <" + m.Unsubscribe + ">\n"
+	}
+	_, err = fmt.Fprintf(f, "==== %s\nTo: %s\nSubject: %s\nTemplate: %s\n%s\n%s\n---- HTML\n%s\n\n",
+		time.Now().UTC().Format(time.RFC3339), m.To, m.Subject, m.Template, unsubscribe, m.Text, m.HTML)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}

@@ -49,7 +49,7 @@ func SendInvitation(s InvitationStore, m *Mailer, origin string) func(context.Co
 			Home:         origin + "/",
 		}
 		if err := m.Send(ctx, inv.Email, WorkspaceInvitation, data); err != nil {
-			return err
+			return done(err)
 		}
 		sent := events.WorkspaceInvitationSent{Invitation: inv.Invitation, Workspace: inv.Workspace, Request: d.EventID}
 		return s.Record(ctx, sent, store.EventScope{WorkspaceID: inv.WorkspaceID})

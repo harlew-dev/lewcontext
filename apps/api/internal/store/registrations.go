@@ -50,10 +50,11 @@ type PendingRegistration struct {
 
 // RegistrationResult is a code checked against a sign-up. OK: the code was
 // right, and User the new account, unless Exists (an account took the email
-// since the code was sent). Ended: the fifth wrong code deleted the sign-up.
+// since the code was sent) or Blocked (the address was blocked since; its
+// sign-ups are deleted). Ended: the fifth wrong code deleted the sign-up.
 type RegistrationResult struct {
-	OK, Ended, Exists bool
-	User              User
+	OK, Ended, Exists, Blocked bool
+	User                       User
 }
 
 // CreatePendingRegistration saves a sign-up waiting for its code, for
@@ -158,7 +159,9 @@ func (s *Store) IssueRegistrationCode(ctx context.Context, request, codeHash str
 // counts a try, and the fifth deletes the sign-up (Ended). The right one
 // creates the account, verified, deletes every sign-up for the email and
 // records auth.registered; if an account took the email meanwhile, it
-// creates nothing (Exists). ErrNoRegistration without a live sign-up.
+// creates nothing (Exists), nor for an address blocked since its code was
+// sent (Blocked), checked under the email's lock as BlockEmail checks for an
+// account. ErrNoRegistration without a live sign-up.
 func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest string) (RegistrationResult, error) {
 	var result RegistrationResult
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -180,6 +183,14 @@ func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest stri
 			return err
 		}
 		if _, err := tx.NewDelete().Model((*pendingRegistration)(nil)).Where("email = ?", row.Email).Exec(ctx); err != nil {
+			return err
+		}
+		err = refuseBlockedEmail(ctx, tx, row.Email)
+		if errors.Is(err, ErrEmailBlocked) {
+			result.Blocked = true
+			return nil
+		}
+		if err != nil {
 			return err
 		}
 		verified := time.Now()

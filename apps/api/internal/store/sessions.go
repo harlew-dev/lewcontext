@@ -96,8 +96,8 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 }
 
 // Cleanup deletes used-up rate-limit windows, ended sessions (admin ones
-// too), expired reset links, sign-in challenges, sign-ups and email codes,
-// MFA setups left unconfirmed, and invitations that expired over 30 days ago (until then they're listed as expired, so
+// too), expired reset and block links, sign-in challenges, sign-ups and
+// email codes, MFA setups left unconfirmed, and invitations that expired over 30 days ago (until then they're listed as expired, so
 // whoever sent one can see why it wasn't used).
 func (s *Store) Cleanup(ctx context.Context) error {
 	if _, err := s.DB.NewDelete().Model((*mfaChallenge)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
@@ -128,6 +128,9 @@ func (s *Store) Cleanup(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.DB.NewDelete().Model((*emailVerification)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := s.DB.NewDelete().Model((*emailBlockLink)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
 		return err
 	}
 	_, err := s.DB.NewDelete().Model((*invitationRecord)(nil)).Where("expires_at <= now() - interval '30 days'").Exec(ctx)

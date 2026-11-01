@@ -47,7 +47,7 @@ var namedActions = map[string]string{
 	"RevokeOthers":  "DELETE /api/auth/sessions: signing out other sessions",
 	"Verify":        "/api/auth/password/verify and /register/verify",
 	"Resend":        "/api/auth/register/resend",
-	"Check":         "the checks of a link or sign-up: /invitations/check, /password-reset/check, /register/check",
+	"Check":         "the checks of a link or sign-up: /invitations/check, /password-reset/check, /register/check, /email-blocks/check",
 	"Request":       "POST /api/auth/password-reset: asking for a link",
 	"Reset":         "PATCH /api/auth/password-reset: setting the password with a link",
 	"Setup":         "/api/auth/mfa/setup: a new secret before MFA is on",

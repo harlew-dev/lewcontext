@@ -32,7 +32,7 @@ func verificationServer(t *testing.T, required bool) (*httpapi.Server, *bun.DB, 
 	s.Config.EmailVerification = config.EmailVerification{Verify: true, RequireExisting: required}
 	s.Config.MailDriver = config.MailSMTP
 	box := &inbox{}
-	box.mailer = apitest.Must(mail.New(box, "lewcontext"))(t)
+	box.mailer = apitest.Must(mail.New(mail.Options{Driver: box, App: "lewcontext", Origin: s.Config.Origin, Blocks: s.Repo}))(t)
 	return s, db, box
 }
 

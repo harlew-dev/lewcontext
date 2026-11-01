@@ -48,6 +48,12 @@ export const routes = {
   invitations: {
     show: (token: string) => `/auth/invitations/${token}`,
   },
+  // A blockable email's block link (an invitation's footer). Its token is in
+  // the path, like the reset link's, but it is never a ?next=: nothing
+  // signs in on the way to it.
+  emailBlocks: {
+    show: (token: string) => `/auth/email-blocks/${token}`,
+  },
   // The admin dashboard, at its secret key (ADMIN_ROUTE_KEY, from the URL;
   // lib/admin.tsx). Never a ?next=: signing in always lands on Users.
   admin: {

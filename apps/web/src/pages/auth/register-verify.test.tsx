@@ -155,6 +155,35 @@ describe("signing up with an emailed code", () => {
       screen.getByRole("link", { name: "Back to sign up" }),
     ).toHaveAttribute("href", "/auth/register");
   });
+  it("says, to everyone, that a blocked address gets no code", async () => {
+    const blocked =
+      "This address has been blocked. To use it, unblock it from the link in an email we sent, then sign up again.";
+    stubApi({
+      "GET /api/auth/me": signedOut,
+      "POST /api/auth/register/check": [
+        { body: pending },
+        { status: 401, body: { error: blocked } },
+      ],
+      // A code sent before the address was blocked.
+      "POST /api/auth/register/verify": {
+        status: 401,
+        body: { error: blocked },
+      },
+    });
+    renderAt("/auth/register/verify");
+    expect(
+      await screen.findByText(
+        "If you blocked this address, no code can reach it: unblock it from the link in our email first.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Verification code"), {
+      target: { value: "482913" },
+    });
+    expect(await screen.findByText(blocked)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Back to sign up" }),
+    ).toHaveAttribute("href", "/auth/register");
+  });
   it("starts again when there's no sign-up to resume", async () => {
     stubApi({
       "GET /api/auth/me": signedOut,

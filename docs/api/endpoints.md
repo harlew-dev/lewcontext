@@ -5,10 +5,10 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
 | GET | `/api/health` | Public | `{"status":"ok"}`, or 503 if the database is down |
-| POST | `/api/auth/register` | Origin, JSON, rate limits | With `EMAIL_VERIFICATION=on` (the default): 202 `{verificationRequired: true, email}` and the registration cookie, the same for every valid email, taken or not; no account yet ([auth.md](auth.md#email-verification)). With it off: 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a new session cookie, or 409 for a taken email |
+| POST | `/api/auth/register` | Origin, JSON, rate limits | With `EMAIL_VERIFICATION=on` (the default): 202 `{verificationRequired: true, email}` and the registration cookie, the same for every valid email, taken or not; no account yet ([auth.md](auth.md#email-verification)). With it off: 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a new session cookie, or 409 for a taken email or a blocked one (the same answer) |
 | POST | `/api/auth/register/check` | Origin, JSON, the registration cookie, `auth:per-ip` | 200 `{email, expiresAt}` of this browser's sign-up; 401 (and the cookie cleared) when it has ended. Only with verification on |
 | POST | `/api/auth/register/resend` | Origin, JSON, the registration cookie, `auth:per-ip`, `register:per-email`, `register:global` | 202 `{verificationRequired: true, email}`: a new code (or "you already have an account") for this browser's sign-up, 15 more minutes, its tries back to 5; 401 when it has ended |
-| POST | `/api/auth/register/verify` | Origin, JSON, the registration cookie, `auth:per-ip`, `email-code:per-email` | 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a session cookie for the right `{code}` (6 digits, spaces allowed): the account, verified. 422 with `field: "code"` for a wrong one; 401 when the sign-up has ended (expired, or the 5th wrong code); 409 when an account took the email since the code was sent |
+| POST | `/api/auth/register/verify` | Origin, JSON, the registration cookie, `auth:per-ip`, `email-code:per-email` | 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a session cookie for the right `{code}` (6 digits, spaces allowed): the account, verified. 422 with `field: "code"` for a wrong one; 401 when the sign-up has ended (expired, the 5th wrong code, or the address blocked since the code was sent); 409 when an account took the email since the code was sent |
 | POST | `/api/auth/email-verification` | Session (unverified allowed), CSRF, Origin, `email-verification:*` limits | 202: a code is emailed to the account's address a moment later. 409 when it's already verified. Only with verification on |
 | PATCH | `/api/auth/email-verification` | Session (unverified allowed), CSRF, Origin, `email-code:per-email` | 200 `{user}`, its email verified, for the right `{code}`. 422 with `field: "code"`; 410 when no code is live (none sent, expired, or the 5th wrong one); 409 when already verified |
 | POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie; with two-factor authentication on, 200 `{mfaRequired: true}` and the challenge cookie instead, with no session ([auth.md](auth.md#two-factor-authentication)) |
@@ -40,6 +40,9 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 | POST | `/api/workspaces/{workspace}/invitations` | `workspace.invitation.store`, CSRF, Origin, `invitation:*` limits | 201 with the invitation; the email goes out a moment later. Body `{email, role}`. 403 when the role isn't in your `assignableRoles`; 422 with `field` (`email`: malformed, already a member or already invited; `role`: owner or unknown); 422 for the 51st live invitation or the member quota; 503 with `MAIL_DRIVER=off` or when `invitation:global` is reached |
 | DELETE | `/api/workspaces/{workspace}/invitations/{invitation}` | `workspace.invitation.destroy`, CSRF, Origin | 204; its link stops working. 403 for an invitation to a role you can't give, 404 |
 | POST | `/api/invitations/check` | Origin, JSON, `auth:per-ip` | 200 `{workspace: {name}, invitedBy: {name, email}, email, role, expiresAt}` for a live `{token}`; 422 with `field: "token"` otherwise. Works signed out |
+| POST | `/api/email-blocks/check` | Origin, JSON, `auth:per-ip` | 200 `{email, registered, blocked}` for a live block link's `{token}`; 422 with `field: "token"` otherwise. Works signed out ([below](#email-blocks)) |
+| POST | `/api/email-blocks` | Origin, JSON, `auth:per-ip` | 204: the link's address is blocked (already blocked too). Body `{token}`. 409 "This address has an account. Delete your account first."; 422 with `field: "token"` for a dead link |
+| DELETE | `/api/email-blocks` | Origin, JSON, `auth:per-ip` | 204: the link's address is unblocked (not blocked too). Body `{token}`. 422 with `field: "token"` for a dead link |
 | POST | `/api/invitations/accept` | Session, CSRF, Origin | 200 with the workspace (your `role`, `permissions`). Body `{token}`. 403 when you're signed in as another email; 422 with `field: "token"` for a dead link, or without it when the workspace is full |
 | GET | `/api/workspaces/{workspace}/projects` | Member | One page of the workspace's projects ([pagination.md](pagination.md)) |
 | POST | `/api/workspaces/{workspace}/projects` | `project.store`, CSRF, Origin, `project:per-user` | 201 with the created project; 403 for viewers; 422 when the workspace has 1,000 |
@@ -107,6 +110,17 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
 - **`sentAt`** is null until the listener has emailed the link; **`invitedBy`** is null once that account is gone (the invitation stays valid).
 - **The list** takes `page` and `perPage`. A workspace has at most 50 live invitations; expired ones are listed until they're 30 days past expiry.
 - **`check` and `accept`** are named actions on the link: the record is found by the token in the body, never in the URL ([auth.md](auth.md#invitations)).
+- **An invitation to a blocked address** is created, listed and gets its `sentAt` like any other; only its email isn't sent ([below](#email-blocks)).
+
+## Email blocks
+
+```json
+{ "email": "bob@example.com", "registered": false, "blocked": true }
+```
+
+- **Reached only through a block link** (the token in a blockable email, in the body, never the URL): the page's `check`, then `store` to block the address it went to, `destroy` to unblock it. The controller is `account.EmailBlocks`, in the `account` area like the other signed-out links ([naming.md](../naming.md#controllers-internalhttpapi)).
+- **`registered`** addresses can't be blocked (409). Neither route says anything an address's owner doesn't already know: only the inbox has the link.
+- **No other route says an address is blocked** ([auth.md](auth.md#blocking-an-email-address)).
 
 ## Deleting
 
@@ -138,7 +152,7 @@ Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` r
 | 403 | Bad Origin or CSRF token, a role without the permission, or accepting an invitation sent to another email |
 | 404 | Not found, not yours, or a malformed ID |
 | 409 | The change would leave a workspace without an owner (for deleting an account, with the `workspaces`) |
-| 409 | Email already registered (generic message) |
+| 409 | Email already registered, or blocked, with verification off (generic message); blocking an address an account uses |
 | 415 | Mutation without JSON content type (a DELETE needs one only when it has a body) |
 | 422 | Body failed validation. Errors about one field add `"field"`, e.g. `{"error": "Current password is incorrect.", "field": "currentPassword"}`. A quota reached ("A workspace can have up to 1,000 projects.") has no `field` |
 | 429 | Rate limited; `Retry-After` is the seconds left in the window ([rate-limits.md](rate-limits.md)) |

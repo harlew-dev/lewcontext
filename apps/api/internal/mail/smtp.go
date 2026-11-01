@@ -71,9 +71,10 @@ func (d *SMTPDriver) Deliver(ctx context.Context, m Message) error {
 }
 
 // message builds the email: From, To, Subject, Date, Message-ID and
-// Auto-Submitted headers, the plain-text part and its HTML alternative, and
-// the HTML's inline images (the logo). Nothing in a header comes from user
-// data.
+// Auto-Submitted headers, List-Unsubscribe for a blockable email, the
+// plain-text part and its HTML alternative, and the HTML's inline images
+// (the logo). Nothing in a header comes from user data: List-Unsubscribe is
+// APP_ORIGIN and a base64url token.
 func (d *SMTPDriver) message(m Message) (*gomail.Msg, error) {
 	msg := gomail.NewMsg(gomail.WithNoDefaultUserAgent())
 	if err := msg.FromFormat(d.config.FromName, d.config.FromAddress); err != nil {
@@ -91,6 +92,14 @@ func (d *SMTPDriver) message(m Message) (*gomail.Msg, error) {
 	msg.SetMessageIDWithValue(hex.EncodeToString(id) + "@" + d.domain)
 	// RFC 3834: tells out-of-office and other auto-replies not to answer.
 	msg.SetGenHeader(gomail.Header("Auto-Submitted"), "auto-generated")
+	if m.Unsubscribe != "" {
+		if strings.ContainsAny(m.Unsubscribe, "\r\n<>") {
+			return nil, errors.New("smtp: List-Unsubscribe: invalid link")
+		}
+		// RFC 2369's URL form only: the link opens a page that asks first.
+		// No List-Unsubscribe-Post, whose one click would block at once.
+		msg.SetGenHeader(gomail.HeaderListUnsubscribe, "<"+m.Unsubscribe+">")
+	}
 	msg.SetBodyString(gomail.TypeTextPlain, m.Text)
 	msg.AddAlternativeString(gomail.TypeTextHTML, m.HTML)
 	for _, image := range m.Inline {

@@ -31,7 +31,8 @@ type RegistrationStore interface {
 // It gives the sign-up a code and, for an email without an account, sends
 // it; for an email with one, it sends "You already have an account" (within
 // AccountExistsPerAccount) and the code, which nobody is sent, can never be
-// entered. Either way the sign-up looks the same to whoever started it.
+// entered. A blocked address gets no code (the code page's hint says why to
+// its owner). Either way the sign-up looks the same to whoever started it.
 // limits is false with RATE_LIMITS=off.
 //
 // Like the reset link, the code is made here and only its HMAC is stored. A
@@ -55,7 +56,7 @@ func Registration(s RegistrationStore, m *Mailer, keys *auth.Keys, origin string
 		}
 		if existing == nil {
 			if err := m.Send(ctx, email, VerifyEmail, VerifyEmailData{Code: auth.FormatEmailCode(code)}); err != nil {
-				return err
+				return done(err)
 			}
 			return s.Record(ctx, events.RegistrationSent{Email: email, Request: d.EventID}, store.EventScope{})
 		}
@@ -72,7 +73,7 @@ func sendAccountExists(ctx context.Context, s RegistrationStore, m *Mailer, u st
 	}
 	data := AccountExistsData{Name: u.Name, LoginURL: origin + "/auth/login?notice=account-exists", ResetURL: origin + "/auth/forgot-password"}
 	if err := m.Send(ctx, u.Email, AccountExists, data); err != nil {
-		return err
+		return done(err)
 	}
 	sent := events.RegistrationSent{Email: u.Email, Request: d.EventID, ExistingAccount: true, User: u.PublicID}
 	return s.Record(ctx, sent, store.EventScope{UserID: u.ID})
@@ -123,7 +124,7 @@ func EmailVerification(s EmailVerificationStore, m *Mailer, keys *auth.Keys) fun
 			return err
 		}
 		if err := m.Send(ctx, user.Email, VerifyEmail, VerifyEmailData{Code: auth.FormatEmailCode(code)}); err != nil {
-			return err
+			return done(err)
 		}
 		return s.Record(ctx, events.EmailVerificationSent{User: user.PublicID, Request: d.EventID}, store.EventScope{UserID: user.ID})
 	}

@@ -77,7 +77,8 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 10. Hide the sidebar with the button beside the workspace menu; it slides out and the toggle glides into the top bar. Reload: it stays hidden, with no flash of the sidebar. Show it again.
 11. At a 390px viewport, navigation, search, paging (Previous/Next) and editing remain usable; the slide-over sidebar closes from the button beside the workspace menu.
 
-12. The admin dashboard: `make admin cmd=grant email=test@example.com CONFIRM=1`, then open `http://localhost:3000/admin/<ADMIN_ROUTE_KEY from .env>`. Sign in with the demo account's password; without two-factor authentication it asks you to set it up (the QR code hidden until revealed), then shows Users and Workspaces. `/admin/<anything else>` is the ordinary 404. Sign out from the account menu ([api/admin.md](api/admin.md)).
+12. Blocking an address: invite a new address from Members, open the invitation in Mailpit and follow "Block this address" at its foot. Block it, then invite it again from another workspace: the invitation shows Sent, but nothing reaches Mailpit; signing up with it shows the code page but no code arrives. `make admin cmd=blocks` lists it; Unblock from the same link (or `make admin cmd=unblock email=… CONFIRM=1`) and the next invitation arrives ([api/auth.md](api/auth.md#blocking-an-email-address)).
+13. The admin dashboard: `make admin cmd=grant email=test@example.com CONFIRM=1`, then open `http://localhost:3000/admin/<ADMIN_ROUTE_KEY from .env>`. Sign in with the demo account's password; without two-factor authentication it asks you to set it up (the QR code hidden until revealed), then shows Users and Workspaces. `/admin/<anything else>` is the ordinary 404. Sign out from the account menu ([api/admin.md](api/admin.md)).
 
 ## Failure checks
 

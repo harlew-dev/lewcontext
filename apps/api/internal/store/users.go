@@ -27,10 +27,14 @@ func (e LastOwnerError) Error() string        { return ErrLastOwner.Error() }
 func (e LastOwnerError) Is(target error) bool { return target == ErrLastOwner }
 
 // CreateUser creates an account with its email unverified, for sign-up with
-// EMAIL_VERIFICATION off, and records auth.registered.
+// EMAIL_VERIFICATION off, and records auth.registered. ErrEmailBlocked for
+// an address on the block list, checked under the email's lock.
 func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User, error) {
 	a := account{User: User{Name: name, Email: email}, PasswordHash: hash}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := refuseBlockedEmail(ctx, tx, email); err != nil {
+			return err
+		}
 		if _, err := tx.NewInsert().Model(&a).Returning("*").Exec(ctx); err != nil {
 			return err
 		}

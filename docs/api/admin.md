@@ -69,6 +69,8 @@ make admin cmd=grant email=ada@example.com CONFIRM=1    # an existing account; M
 make admin cmd=revoke email=ada@example.com CONFIRM=1   # deletes the row and their admin sessions
 make admin cmd=list                                     # email, name, ID, MFA, admin since
 make admin cmd="route-key generate"                     # a new ADMIN_ROUTE_KEY
+make admin cmd=blocks                                   # every blocked email address, oldest first
+make admin cmd=unblock email=bob@example.com CONFIRM=1  # take one off the block list
 docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.com -confirm
 ```
 
@@ -76,6 +78,7 @@ docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.co
 - **The setup window:** an admin without MFA may set it up at the door only until `mfa_setup_until`, which `grant` (again, to reopen) and `reset-mfa` on an admin set to 24 hours ahead, and turning MFA on clears. Outside it they get the door's ordinary 401, a server log warning and `result: "mfa_off"` in the event. Without the window, anyone with only an admin's password could set up their own authenticator at the door.
 - **Losing admin sessions:** revoking, deleting the account, a password change, a password reset and an MFA reset each delete every admin session of the user's, in the same transaction.
 - An admin can't turn MFA off (409); revoke admin first.
+- **The block list** ([auth.md](auth.md#blocking-an-email-address)): `blocks` lists it, and `unblock` previews ("Would unblock … (blocked …)") unless `-confirm`, then records `email.unblocked` with `by: "cli"` and no actor; an address that isn't blocked says so and changes nothing. There is no `block`: only the inbox's own link blocks. The dashboard doesn't show blocks yet.
 
 ## Sign-in
 
@@ -152,7 +155,7 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 | --- | --- | --- |
 | `queue` | Per listener (every registered one, plus any renamed one still holding deliveries): `due` now, `retrying` (waiting, failed at least once), `oldestPendingAt` (the oldest waiting delivery's event: the worker's lag), and `failed` / `delivered` among the window's events | `event_deliveries` (the pending index), and the window's events |
 | `volume` | Emails sent per hour and kind: `password_reset`, `invitation`, `registration_code`, `account_exists`, `email_verification` | the listeners' `.sent` events |
-| `requests` | Asked for vs sent, for `password_reset`, `registration` and `email_verification`. Resets for an address with no account send nothing (a wide gap is someone trying addresses); sign-ups and verification always send | the `.requested` and `.sent` events |
+| `requests` | Asked for vs sent, for `password_reset`, `registration` and `email_verification`. Resets for an address with no account send nothing (a wide gap is someone trying addresses); sign-ups and verification send, except to a blocked address. An invitation to a blocked address is counted as asked for and never sent | the `.requested` and `.sent` events |
 | `topRecipients` | Addresses asked for 3 or more times in the window (at most 20), with `resets`, `invitations` and `registrations`: enough to spot an inbox being flooded, not a log of who got mail | `email` on `auth.password_reset.requested`, `workspace.invitation.created`, `auth.registration.requested` |
 | `driver`, `lastDeliveredAt`, `lastFailure` | `MAIL_DRIVER`, SMTP host, port and TLS mode, the sender (never the credentials); the newest delivery done and the newest failure's listener, time and error, in the window | config, `event_deliveries` |
 

@@ -17,7 +17,7 @@ type textTemplate struct{ t *template.Template }
 
 func parseText(files fs.FS, name Template, app string) (textTemplate, error) {
 	file := "templates/" + string(name) + ".txt"
-	funcs := template.FuncMap{"app": func() string { return app }}
+	funcs := template.FuncMap{"app": func() string { return app }, "blockURL": noBlockURL}
 	t, err := template.New("layout.txt").Funcs(funcs).ParseFS(files, "templates/layout.txt", file)
 	if err != nil {
 		return textTemplate{}, fmt.Errorf("mail template %s is missing or broken: %w", file, err)
@@ -25,9 +25,16 @@ func parseText(files fs.FS, name Template, app string) (textTemplate, error) {
 	return textTemplate{t.Option("missingkey=error")}, nil
 }
 
-func (tt textTemplate) render(data any) (string, error) {
+// render renders the part with link as {{ blockURL }}, on a clone, so
+// concurrent sends don't share it.
+func (tt textTemplate) render(data any, link string) (string, error) {
+	clone, err := tt.t.Clone()
+	if err != nil {
+		return "", err
+	}
+	clone.Funcs(template.FuncMap{"blockURL": func() string { return link }})
 	var body bytes.Buffer
-	if err := tt.t.ExecuteTemplate(&body, "layout.txt", data); err != nil {
+	if err := clone.ExecuteTemplate(&body, "layout.txt", data); err != nil {
 		return "", err
 	}
 	return body.String(), nil

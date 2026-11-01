@@ -244,6 +244,26 @@ describe("invitations", () => {
     expect(stub.sent().every((s) => !s.url.includes(token))).toBe(true);
   });
 });
+describe("the email blocks client", () => {
+  it("checks, blocks and unblocks with the link's token only in bodies", async () => {
+    const stub = stubFetch();
+    const token = "t".repeat(43);
+    await api().emailBlocks().check(token);
+    await api().emailBlocks().store(token);
+    await api().emailBlocks().destroy(token);
+    expect(requests(stub)).toEqual([
+      "POST /api/email-blocks/check",
+      "POST /api/email-blocks",
+      "DELETE /api/email-blocks",
+    ]);
+    expect(stub.sent().map((s) => s.body)).toEqual([
+      { token },
+      { token },
+      { token },
+    ]);
+    expect(paths.emailBlocks().check()).toBe("/api/email-blocks/check");
+  });
+});
 describe("the admin client", () => {
   const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
   it("builds list paths without defaults, and never puts the key in one", () => {

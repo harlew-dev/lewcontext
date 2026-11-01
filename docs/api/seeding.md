@@ -42,6 +42,8 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `MFAChallenges` | `MFAChallenge` | A live sign-in challenge (purpose `login`, 5 minutes); `Token` and `Cookie()`. Use `ChallengeFor(userID)`; `ExpiredChallenge` |
 | `Admins` | `Admin` | An admin with no setup window (as when MFA is on). Use `AdminFor(userID)`; `SetupWindow` opens the 24-hour window, `ClosedSetupWindow` one that ended. Seeders make no admins: only `admin grant` does |
 | `AdminSessions` | `AdminSession` | A live admin session under `factory.AdminRouteKey` (random per process, the integration server's key); `Cookie()`, `CSRFToken`. Use `AdminSessionFor(userID)` for an admin; `AdminIdle`, `AdminExpired`, `UnderKey(key)` |
+| `EmailBlockLinks` | `EmailBlockLink` | A live block link (a year) to a unique `example.test` address; `Token` keeps the raw token. `BlockLinkFor(email)`, `ExpiredBlockLink` |
+| `EmailBlocks` | `EmailBlock` | A blocked `example.test` address. `Blocked(email)` for a given one. Seeders block nothing |
 | `EventDeliveries` | `EventDelivery` | A pending delivery, due now. Needs `EventID`; use `DeliveryOf(eventID, listener)` |
 
 ```go
@@ -58,7 +60,7 @@ factory.ProjectsIn(workspace.ID).
 ```
 
 - **Methods:** `Make` (build only), `Create`, `CreateOne`, `State`, `Sequence`. Factories are immutable, so each state returns a copy.
-- **Named states:** `Expired` and `Idle` (sessions), `ForAccount`, `ForIP`, `ForLimit(name, subject)` and `Exhausted(limit)` (rate limits), `WithPasswordHash` and `Unverified` (users; every factory user is verified otherwise), `RegistrationFor`, `ExpiredRegistration` and a registration's `Cookie()` (pending sign-ups, with their `Code`), `VerificationFor` (an account's emailed code), `Named` (workspaces), `Sent`, `ExpiredInvitation` and `InvitedAs(email, role)` (invitations), `TOTPFor`, `PendingTOTP`, `RecoveryCodesFor`, `ChallengeFor`, `ExpiredChallenge` and `Purpose` (two-factor authentication; `AdminCookie()` is a challenge's admin door cookie), `AdminFor`, `SetupWindow`, `ClosedSetupWindow`, `AdminSessionFor`, `AdminIdle`, `AdminExpired` and `UnderKey` (admins).
+- **Named states:** `Expired` and `Idle` (sessions), `ForAccount`, `ForIP`, `ForLimit(name, subject)` and `Exhausted(limit)` (rate limits), `WithPasswordHash` and `Unverified` (users; every factory user is verified otherwise), `RegistrationFor`, `ExpiredRegistration` and a registration's `Cookie()` (pending sign-ups, with their `Code`), `VerificationFor` (an account's emailed code), `Named` (workspaces), `Sent`, `ExpiredInvitation` and `InvitedAs(email, role)` (invitations), `TOTPFor`, `PendingTOTP`, `RecoveryCodesFor`, `ChallengeFor`, `ExpiredChallenge` and `Purpose` (two-factor authentication; `AdminCookie()` is a challenge's admin door cookie), `AdminFor`, `SetupWindow`, `ClosedSetupWindow`, `AdminSessionFor`, `AdminIdle`, `AdminExpired` and `UnderKey` (admins), `BlockLinkFor`, `ExpiredBlockLink` and `Blocked` (the block list).
 - **Encryption key:** MFA factories seal and digest with `factory.AppKey`, random per process. A server reads them only when given that key (`config.Config{AppKey: factory.AppKey}`, as `integrationServer` does). Seeders create no MFA rows.
 - **Public IDs** are left empty and filled by PostgreSQL's default; `Create` reads them back (`workspace.PublicID`).
 - **Randomness:** fresh every run. When a test fails it logs `fake data seed N`, and `FAKER_SEED=N` replays it. Seeders print the seed too.

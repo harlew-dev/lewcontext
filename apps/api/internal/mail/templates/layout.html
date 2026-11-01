@@ -17,5 +17,10 @@
       </table>
       {{ template "content" . }}
     </div>
+    {{- with blockURL }}
+    <p style="max-width: 480px; margin: 16px auto 0; font-size: 12px; line-height: 18px; text-align: center; color: #71717a">
+      Don’t want email from {{ app }}? <a href="{{ . }}" style="color: #52525b">Block this address</a>.
+    </p>
+    {{- end }}
   </body>
 </html>

@@ -69,6 +69,12 @@ function CodeStep({
             return true;
           }}
         >
+          {/* The same for every address, so it says nothing about which are
+              blocked: only that inbox's owner knows if it means them. */}
+          <Text>
+            If you blocked this address, no code can reach it: unblock it from
+            the link in our email first.
+          </Text>
           <Text>
             <TextLink
               href={authPath(routes.register, next)}

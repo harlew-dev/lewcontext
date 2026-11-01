@@ -34,6 +34,10 @@ func main() {
 		revoke(os.Args[2:])
 	case "list":
 		list(os.Args[2:])
+	case "blocks":
+		blocks(os.Args[2:])
+	case "unblock":
+		unblock(os.Args[2:])
 	case "app-key":
 		appKey(os.Args[2:])
 	case "route-key":
@@ -109,6 +113,8 @@ func usage() {
 	fmt.Fprintln(out, "                                          at their first admin sign-in, within 24 hours")
 	fmt.Fprintln(out, "  revoke -email <address> [-confirm]      take admin away and sign out their admin sessions")
 	fmt.Fprintln(out, "  list                                    every admin, with their MFA")
+	fmt.Fprintln(out, "  blocks                                  every blocked email address, oldest first")
+	fmt.Fprintln(out, "  unblock -email <address> [-confirm]     take an address off the block list; previews without -confirm")
 	fmt.Fprintln(out, "  app-key generate [-env path]            print a new APP_KEY, or write it into an .env file that has none")
 	fmt.Fprintln(out, "  route-key generate                      print a new ADMIN_ROUTE_KEY")
 }

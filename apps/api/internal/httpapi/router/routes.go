@@ -77,6 +77,12 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	invitations := workspace.Invitations{Server: s}
 	mux.HandleFunc("POST /api/invitations/check", invitations.Check)
 	mux.Handle("POST /api/invitations/accept", s.RequireSession(http.HandlerFunc(invitations.Accept)))
+	// A block link's page checks it, then blocks or unblocks its address,
+	// signed in or out (email_blocks.go). None hash: the IP quota only.
+	emailBlocks := account.EmailBlocks{Server: s}
+	mux.HandleFunc("POST /api/email-blocks/check", emailBlocks.Check)
+	mux.HandleFunc("POST /api/email-blocks", emailBlocks.Store)
+	mux.HandleFunc("DELETE /api/email-blocks", emailBlocks.Destroy)
 	workspaces := workspace.Workspaces{Server: s}
 	mux.Handle("GET /api/workspaces", s.RequireSession(http.HandlerFunc(workspaces.Index)))
 	mux.Handle("POST /api/workspaces", s.RequireSession(s.Limit(httpapi.WorkspacePerUser, workspaces.Store)))

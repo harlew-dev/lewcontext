@@ -25,6 +25,10 @@ const (
 	registrationCodes  = "Too many wrong codes. Start again."
 	wrongEmailCode     = "That code isn’t right. Check the email we sent and try again."
 	registrationExists = "You already have an account. Sign in instead."
+	// registrationBlocked reaches only someone with a code from the inbox:
+	// the address was blocked after its code was sent.
+	registrationBlocked = "This address has been blocked. To use it, unblock it from the link in an email we sent, then sign up again."
+	registrationRefused = "Unable to create this account. Try signing in or use a different email."
 )
 
 type Registrations struct{ *httpapi.Server }
@@ -119,6 +123,8 @@ func (h Registrations) Verify(w http.ResponseWriter, r *http.Request) {
 	case result.Exists:
 		h.clearRegistrationCookie(w)
 		httpapi.Fail(w, 409, registrationExists)
+	case result.Blocked:
+		h.endRegistration(w, registrationBlocked)
 	default:
 		h.clearRegistrationCookie(w)
 		h.StartSession(w, r, result.User, 201, nil)
@@ -191,10 +197,12 @@ func (h Registrations) Register(w http.ResponseWriter, r *http.Request) {
 		h.beginRegistration(w, r, in, hash)
 		return
 	}
+	// With verification off a taken email is refused, and a blocked one
+	// looks taken: that says no more than this mode already does.
 	user, err := h.Repo.CreateUser(r.Context(), in.Name, in.Email, hash)
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		httpapi.Fail(w, 409, "Unable to create this account. Try signing in or use a different email.")
+	if errors.Is(err, store.ErrEmailBlocked) || errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		httpapi.Fail(w, 409, registrationRefused)
 		return
 	}
 	if err != nil {

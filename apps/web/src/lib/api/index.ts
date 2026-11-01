@@ -5,6 +5,7 @@ import { adminClient, adminRoutes, type AdminApiClient } from "./admin";
 import { adminHttp, browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
 import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
+import { emailBlockRoutes, emailBlocks } from "./email-blocks";
 import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
 import { projectRoutes, projects } from "./projects";
@@ -55,6 +56,7 @@ export const paths = {
   invitations: invitationRoutes,
   auth: authRoutes,
   sessions: sessionRoutes,
+  emailBlocks: () => emailBlockRoutes,
   admin: adminRoutes,
 };
 // The API for components. Mutations send the current session's CSRF token.
@@ -103,6 +105,8 @@ export function client(http: Http) {
     invitations: invitations(http),
     auth: () => auth(http),
     sessions: () => sessions(http),
+    // A block link's check, block and unblock, by the token in the body.
+    emailBlocks: () => emailBlocks(http),
   };
 }
 export type ApiClient = ReturnType<typeof client>;

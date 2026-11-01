@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 // Mailpit, where the e2e server's email lands (MAILPIT_URL, from .env.testing).
 const mailpit = process.env.MAILPIT_URL!;
-export type Mail = { Subject: string; HTML: string; Text: string };
+export type Mail = { ID: string; Subject: string; HTML: string; Text: string };
 // The newest email Mailpit holds for `to`: its subject, HTML and plain-text
 // parts, or nothing yet. Every run's recipients are unique, so other runs'
 // mail never matches.
@@ -11,6 +11,18 @@ export async function newestMailTo(to: string): Promise<Mail | undefined> {
   const id = found.messages?.[0]?.ID;
   if (!id) return undefined;
   return (await fetch(`${mailpit}/api/v1/message/${id}`)).json();
+}
+// How many emails Mailpit holds for `to`.
+export async function mailCountTo(to: string): Promise<number> {
+  const query = new URLSearchParams({ query: `to:"${to}"` });
+  const found = await (await fetch(`${mailpit}/api/v1/search?${query}`)).json();
+  return found.messages_count ?? 0;
+}
+// An email's headers, each a list of values.
+export async function mailHeaders(
+  mail: Mail,
+): Promise<Record<string, string[]>> {
+  return (await fetch(`${mailpit}/api/v1/message/${mail.ID}/headers`)).json();
 }
 // The newest email to `to` with `subject`, once the server's worker has sent
 // it (it polls every second). `other` skips one already read (a code sent

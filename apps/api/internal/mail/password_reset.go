@@ -45,7 +45,7 @@ func PasswordReset(s ResetStore, m *Mailer, origin string) func(context.Context,
 		}
 		link := origin + "/auth/forgot-password/" + token
 		if err := m.Send(ctx, user.Email, ForgotPassword, ForgotPasswordData{Name: user.Name, URL: link}); err != nil {
-			return err
+			return done(err)
 		}
 		sent := events.PasswordResetSent{User: user.PublicID, Email: user.Email, Request: d.EventID}
 		return s.Record(ctx, sent, store.EventScope{UserID: user.ID})

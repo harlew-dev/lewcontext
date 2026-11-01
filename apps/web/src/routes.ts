@@ -18,6 +18,7 @@ export default [
     "pages/auth/forgot-password/[token].tsx",
   ),
   route("auth/invitations/:token", "pages/auth/invitations/[token].tsx"),
+  route("auth/email-blocks/:token", "pages/auth/email-blocks/[token].tsx"),
   route("app", "pages/app/index.tsx"),
   route("app/onboarding", "pages/app/onboarding.tsx"),
   route("app/verify-email", "pages/app/verify-email.tsx"),

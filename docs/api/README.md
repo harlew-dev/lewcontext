@@ -10,11 +10,11 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
-| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant`, `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
+| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant`, `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
 | `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin key and gate (`admin.go`) |
-| `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
+| `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`, `/api/email-blocks/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
 | `internal/httpapi/router` | `routes.go`, the one registry of API routes and pages, with their middleware and limits (`router.New`) |
 | `internal/httpapi/{clientip,input,ratelimit}` | Leaves the core imports: resolving the client's address; query parameters, paging, public IDs, search terms and link tokens; what a rate limit is and the in-memory counter |
 | `internal/httpapi/apitest` | Helpers the integration tests share ([testing.md](testing.md)); only tests import it |

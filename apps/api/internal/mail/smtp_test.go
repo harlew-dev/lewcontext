@@ -216,7 +216,7 @@ func smtpMailer(t *testing.T, s *fakeSMTP, mode string, trust bool, username, pa
 		d.rootCAs = x509.NewCertPool()
 		d.rootCAs.AddCert(leaf)
 	}
-	m, err := New(d, "Acme")
+	m, err := New(testOptions(d, &blockList{}, "Acme"))
 	if err != nil {
 		t.Fatal(err)
 	}

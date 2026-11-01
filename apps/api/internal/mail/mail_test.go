@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -26,12 +27,61 @@ func (o *outbox) Deliver(_ context.Context, m Message) error {
 
 func newMailer(t *testing.T) (*Mailer, *outbox) {
 	t.Helper()
-	box := &outbox{}
-	m, err := New(box, "lewcontext")
+	m, box, _ := blockingMailer(t)
+	return m, box
+}
+
+// blockingMailer is newMailer with its block list, to block addresses and
+// read the links issued.
+func blockingMailer(t *testing.T) (*Mailer, *outbox, *blockList) {
+	t.Helper()
+	box, blocks := &outbox{}, &blockList{}
+	m, err := New(testOptions(box, blocks, "lewcontext"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return m, box
+	return m, box, blocks
+}
+
+func testOptions(d Driver, blocks Blocks, app string) Options {
+	return Options{Driver: d, App: app, Origin: "http://localhost:3000", Blocks: blocks}
+}
+
+// blockList is a Blocks in memory: the blocked addresses, and each block
+// link's address by its digest. err fails every call.
+type blockList struct {
+	mu      sync.Mutex
+	blocked map[string]bool
+	links   map[string]string
+	err     error
+}
+
+func (b *blockList) CheckEmailBlocked(_ context.Context, email string) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.blocked[email], b.err
+}
+
+func (b *blockList) IssueEmailBlockLink(_ context.Context, email, hash string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.err != nil {
+		return b.err
+	}
+	if b.links == nil {
+		b.links = map[string]string{}
+	}
+	b.links[hash] = email
+	return nil
+}
+
+func (b *blockList) block(email string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.blocked == nil {
+		b.blocked = map[string]bool{}
+	}
+	b.blocked[email] = true
 }
 
 // Example data for every template, so each one is rendered at least once.
@@ -99,7 +149,7 @@ func TestEveryTemplateRenders(t *testing.T) {
 // content, escaped like any value, and the plain text's first line.
 func TestAppNameOpensEveryEmail(t *testing.T) {
 	box := &outbox{}
-	m, err := New(box, "Acme & <Co>")
+	m, err := New(testOptions(box, &blockList{}, "Acme & <Co>"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +162,14 @@ func TestAppNameOpensEveryEmail(t *testing.T) {
 		if wordmark < 0 || wordmark > strings.Index(msg.HTML, shows(name)) || strings.Contains(msg.HTML, "<Co>") {
 			t.Errorf("%s HTML doesn't open with the escaped name:\n%s", name, msg.HTML)
 		}
-		if !strings.HasPrefix(msg.Text, "Acme & <Co>\n\n") || strings.HasPrefix(msg.Text[len("Acme & <Co>\n\n"):], "\n") || !strings.HasSuffix(msg.Text, ".\n") || strings.HasSuffix(msg.Text, "\n\n") {
+		// A blockable email's last line is its block link; the content
+		// ends a sentence before it.
+		text := msg.Text
+		if blockable[name] {
+			text, _, _ = strings.Cut(text, "\n\nDon’t want email from Acme & <Co>? Block this address: http")
+			text += "\n"
+		}
+		if !strings.HasPrefix(text, "Acme & <Co>\n\n") || strings.HasPrefix(text[len("Acme & <Co>\n\n"):], "\n") || !strings.HasSuffix(text, ".\n") || strings.HasSuffix(text, "\n\n") || !strings.HasSuffix(msg.Text, "\n") || strings.HasSuffix(msg.Text, "\n\n") {
 			t.Errorf("%s plain text:\n%q", name, msg.Text)
 		}
 	}
@@ -217,7 +274,7 @@ func TestNoTextTemplate(t *testing.T) {
 
 func TestFileDriverIsPrivateAndAppends(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mail", "mail.log")
-	m, err := New(&FileDriver{Path: path}, "lewcontext")
+	m, err := New(testOptions(&FileDriver{Path: path}, &blockList{}, "lewcontext"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +373,7 @@ func TestPasswordResetListener(t *testing.T) {
 func TestMissingTemplateStopsStartup(t *testing.T) {
 	subjects["not-a-file"] = "Missing"
 	defer delete(subjects, "not-a-file")
-	if _, err := New(&outbox{}, "lewcontext"); err == nil || !strings.Contains(err.Error(), "not-a-file.html") {
+	if _, err := New(testOptions(&outbox{}, &blockList{}, "lewcontext")); err == nil || !strings.Contains(err.Error(), "not-a-file.html") {
 		t.Fatalf("New: %v", err)
 	}
 }

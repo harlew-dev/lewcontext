@@ -12,7 +12,7 @@ One image (the root `Dockerfile`) holding four binaries:
 | `migrate` | Applies database migrations, inside a transaction each, under an advisory lock | once per release, **before** starting the new `api` |
 | `prune` | Deletes old rows from log tables (`events`) | from cron |
 | `seed` | Demo data | never: it refuses to run with `APP_ENV=production` |
-| `admin` | The operator's commands, previewing without `-confirm`: `admin grant`, `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
+| `admin` | The operator's commands, previewing without `-confirm`: `admin grant`, `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
 
 There is one process and one origin: the same server sends pages and API responses, so there is no CORS and no separate frontend host. The server does **not** migrate on startup.
 
@@ -175,6 +175,7 @@ Check each provider's own docs for current values.
 - **Abuse:** each email someone can trigger has a per-recipient limit on the request (`password-reset:per-email`, 3 an hour; `invitation:per-email`, 5 an hour; `register:per-email`, 3 an hour) besides the per-IP, per-user and global ones ([api/rate-limits.md](api/rate-limits.md)), so the server can't be used to flood an inbox. "You already have an account" is also capped at 5 a day per account, silently.
 - **Without a provider,** set `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off`: password reset answers 503 ("Password reset isn't available.") and the Invite dialog says "Invitations aren’t available on this server." Don't advertise either feature then. Sign-up is then unverified, and says when an email is taken.
 - **Email verification** (on by default) sends a code to every sign-up, so sign-up needs mail to work at all ([api/auth.md](api/auth.md#email-verification)).
+- **Blocked addresses:** every invitation carries a "Block this address" link and a `List-Unsubscribe` header; an address its owner blocks gets no more email and can't sign up ([api/auth.md](api/auth.md#blocking-an-email-address)). Someone who writes in after their link has expired (a year) can be unblocked with `docker run --rm --env-file prod.env lewcontext admin unblock -email … -confirm`; `admin blocks` lists them. The block list (`email_blocks`) is a suppression list: keep it with the database's backups.
 
 ## Security checklist
 
