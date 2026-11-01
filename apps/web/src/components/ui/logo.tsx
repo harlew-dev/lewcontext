@@ -6,9 +6,13 @@ import { Link } from "./link";
 export function Logo({
   className,
   href,
+  reloadDocument,
 }: {
   className?: string;
   href?: string;
+  // A real page load, not the router's: the link leaves the build it's
+  // rendered in (the admin sign-in to the app).
+  reloadDocument?: boolean;
 }) {
   const classes = cx(
     className,
@@ -41,7 +45,11 @@ export function Logo({
   if (href === undefined) return <span className={classes}>{mark}</span>;
   // w-fit: in a grid or flex column, only the wordmark itself is clickable.
   return (
-    <Link href={href} className={cx(classes, "w-fit rounded-md")}>
+    <Link
+      href={href}
+      className={cx(classes, "w-fit rounded-md")}
+      reloadDocument={reloadDocument}
+    >
       {mark}
     </Link>
   );

@@ -111,7 +111,9 @@ function PasswordStep({
   }
   return (
     <form onSubmit={submit} className="grid w-full max-w-sm grid-cols-1 gap-8">
-      <Logo href={routes.home} />
+      {/* Home is the app build's page: a real page load, not the router's
+          (the admin build has no route for it). */}
+      <Logo href={routes.home} reloadDocument />
       <Heading>Admin sign-in</Heading>
       {restarted && !signIn.error.message && (
         <Notice variant="error">{restarted}</Notice>
@@ -211,7 +213,8 @@ function AdminSetup({
   }
   return (
     <form onSubmit={submit} className="grid w-full max-w-sm grid-cols-1 gap-8">
-      <Logo href={routes.home} />
+      {/* Real page load for the same reason as above: the app build's page. */}
+      <Logo href={routes.home} reloadDocument />
       {/* Back to the password before MFA is on; after, Users is the way on. */}
       {!codes && (
         <BackButton onClick={() => onRestart("")} disabled={confirm.busy} />
