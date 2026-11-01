@@ -87,7 +87,11 @@ export function ChallengeDialog({
       </DialogDescription>
       <DialogBody className="space-y-4">
         {/* The provider's widget, when it shows one. */}
-        <div ref={slot} className="flex justify-center empty:hidden" />
+        <div
+          ref={slot}
+          data-challenge-widget=""
+          className="flex justify-center empty:hidden"
+        />
         <Text role="status">{status}</Text>
         {shown.kind === "failed" && (
           <Notice
