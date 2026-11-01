@@ -18,6 +18,15 @@ Last updated 2026-11-01, during the overnight run.
 | 6 | **Terms of service and privacy policy:** decisions to confirm. This is a plan only, nothing will be built | — | [legal pages plan](../../legal-pages.md) _(being written)_ |
 | 7 | **Events page redesign:** decisions to confirm. Your notes already settle the multi-select with groups, the date dropdown, the Filters dialog with badges, and graphs. The rest are my recommendations, and I'll build with them tonight unless you say otherwise | Build with recommendations | [events-page plan](../events-page.md) _(being written)_ |
 
+## Every open plan: recommendations taken as accepted
+
+On 2026-11-01 you asked for every open plan to be built while you sleep, to review in the morning. So each plan's Decisions table is being taken **as recommended**:
+- A4 monitoring, A5 alerts, A6 actions, A7 compliance;
+- captcha-challenges, convention-checks, page-folders;
+- the two new plans: legal pages and the Events page.
+
+Any decision I'd change, or that a builder had to change, is listed in that plan's findings file under `../findings/`. It will also be summarised here as each plan ships.
+
 ## Fixed or decided without you (tell me if you disagree)
 
 - **The assets pass is always signed with the current admin key** (A8), so sessions under the previous key (A2) keep working. See [separate-build findings](../findings/separate-build.md#decisions-made-while-building-worth-your-review).
