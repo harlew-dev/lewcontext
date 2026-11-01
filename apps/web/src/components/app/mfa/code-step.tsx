@@ -27,16 +27,20 @@ export function CodeStep({
   const [recovery, setRecovery] = useState(false);
   const [code, setCode] = useState("");
   const [fieldError, setFieldError] = useState<string>();
-  const { loading, error, submit } = useAuthSubmit(verify, destination, (e) => {
-    if (e instanceof ApiError && e.status === 401) {
-      onRestart(errorMessage(e));
-      return true;
-    }
-    if (e instanceof ApiError && e.field === "code") {
-      setFieldError(errorMessage(e));
-      return true;
-    }
-  });
+  const { busy, loading, error, submit } = useAuthSubmit(
+    verify,
+    destination,
+    (e) => {
+      if (e instanceof ApiError && e.status === 401) {
+        onRestart(errorMessage(e));
+        return true;
+      }
+      if (e instanceof ApiError && e.field === "code") {
+        setFieldError(errorMessage(e));
+        return true;
+      }
+    },
+  );
   function switchMode() {
     setRecovery(!recovery);
     setCode("");
@@ -51,8 +55,9 @@ export function CodeStep({
       className="grid w-full max-w-sm grid-cols-1 gap-8"
     >
       <Logo href={routes.home} />
-      {/* Back to the password, as whoever is signing in. */}
-      <BackButton onClick={() => onRestart("")} disabled={loading} />
+      {/* Back to the password, as whoever is signing in: off from the
+          moment a code is sent, not only once loading shows. */}
+      <BackButton onClick={() => onRestart("")} disabled={busy} />
       <HeadingGroup>
         <Heading>Two-factor authentication</Heading>
         <Text>
