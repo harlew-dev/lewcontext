@@ -73,13 +73,15 @@ export function MonitoringHeader({
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Heading>{title}</Heading>
-        <Listbox aria-label="Time range" value={window} onChange={onWindow}>
-          {monitoringWindows.map((w) => (
-            <ListboxOption key={w} value={w}>
-              <ListboxLabel>{monitoringWindowLabels[w]}</ListboxLabel>
-            </ListboxOption>
-          ))}
-        </Listbox>
+        <div>
+          <Listbox aria-label="Time range" value={window} onChange={onWindow}>
+            {monitoringWindows.map((w) => (
+              <ListboxOption key={w} value={w}>
+                <ListboxLabel>{monitoringWindowLabels[w]}</ListboxLabel>
+              </ListboxOption>
+            ))}
+          </Listbox>
+        </div>
       </div>
       <Text className="mt-2">
         {view
@@ -135,8 +137,12 @@ export function MonitoringBody<S>({
 }
 const counts = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 // A signal's value in its unit: "1,204", "52.3%", "1.8 s", "12 min".
-export function formatSignal(signal: Pick<Signal, "unit" | "value">): string {
+export function formatSignal(
+  signal: Pick<Signal, "unit" | "value"> & { sample?: number },
+): string {
   const v = signal.value;
+  // An age of nothing: there's nothing waiting.
+  if (signal.unit === "minutes" && signal.sample === 0) return "None waiting";
   switch (signal.unit) {
     case "percent":
       return `${counts.format(v)}%`;

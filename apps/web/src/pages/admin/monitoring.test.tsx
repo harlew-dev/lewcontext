@@ -181,7 +181,13 @@ const security: MonitoringView<SecuritySections> = {
     },
     adminDoor: {
       counts: [{ outcome: "not_admin", count: 1 }],
-      series: emptySeries,
+      series: {
+        series: ["failed", "refused", "moved"],
+        buckets: buckets([
+          [0, 0, 0],
+          [2, 1, 0],
+        ]),
+      },
       recent: [],
     },
     sessions: { series: emptySeries, live: 12, accountsAtCap: 0 },
@@ -347,6 +353,9 @@ describe("the Security page", () => {
       expect.stringContaining("1,000 of 1,000"),
     );
     expect(screen.getAllByText("Critical").length).toBeGreaterThanOrEqual(2);
+    // The admin door's chart: three series, named.
+    const door = screen.getByRole("table", { name: "Admin door" });
+    expect(within(door).getByText("Refusals")).toBeInTheDocument();
   });
   it("shows a chart's numbers as a table on request", async () => {
     stubApi({

@@ -425,6 +425,12 @@ const doorLabels: Record<DoorOutcome, string> = {
   access_refused: "Address not allowed",
   session_moved: "Session moved network",
 };
+// The chart's three series: failed guesses, refusals, moved sessions.
+const doorSeriesLabels: Record<string, string> = {
+  failed: "Failed sign-ins",
+  refused: "Refusals",
+  moved: "Sessions moved",
+};
 function AdminDoor({ view }: { view: View }) {
   const key = useAdminKey();
   const { counts, series, recent } = view.sections.adminDoor;
@@ -447,7 +453,7 @@ function AdminDoor({ view }: { view: View }) {
         <SeriesChart
           label="Admin door"
           series={series}
-          labels={doorLabels}
+          labels={doorSeriesLabels}
           bucketSeconds={view.window.bucketSeconds}
           noun={["event", "events"]}
         />

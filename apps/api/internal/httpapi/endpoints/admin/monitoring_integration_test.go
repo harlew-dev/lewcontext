@@ -40,6 +40,33 @@ func showMonitoring(t *testing.T, h http.Handler, cookie *http.Cookie, page, que
 	return decodeAdmin[monitoringView](t, w.Body.Bytes())
 }
 
+// chartSeries finds every chart's series in a page's sections: a chart
+// stacks five at most (chart.tsx refuses more).
+func chartSeries(t *testing.T, raw json.RawMessage) [][]any {
+	t.Helper()
+	var v any
+	apitest.Must(0, json.Unmarshal(raw, &v))(t)
+	var found [][]any
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			if series, ok := x["series"].([]any); ok && x["buckets"] != nil {
+				found = append(found, series)
+			}
+			for _, child := range x {
+				walk(child)
+			}
+		case []any:
+			for _, child := range x {
+				walk(child)
+			}
+		}
+	}
+	walk(v)
+	return found
+}
+
 // signal finds a signal in a page's answer.
 func (v monitoringView) signal(t *testing.T, name string) monitor.Result {
 	t.Helper()
@@ -114,6 +141,11 @@ func TestAdminMonitoringPages(t *testing.T) {
 			}
 			if v.Page != page || v.Window.Name != want || !v.Window.From.Before(v.Window.To) || v.Window.BucketSeconds == 0 || len(v.Signals) == 0 {
 				t.Fatalf("%s %s: %+v", page, window, v)
+			}
+			for _, series := range chartSeries(t, v.Sections) {
+				if len(series) > 5 {
+					t.Fatalf("%s: a chart with %d series: %v", page, len(series), series)
+				}
 			}
 			recorded := apitest.EventsNamed(t, db, "admin.monitoring.viewed")
 			if len(recorded) != before+1 {

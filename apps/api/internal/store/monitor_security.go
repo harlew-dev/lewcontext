@@ -461,10 +461,19 @@ func (s *Store) IndexDoorEvents(ctx context.Context, from, to time.Time) ([]Door
 	return rows, err
 }
 
+// The admin door's chart series: failed guesses, refusals (of real
+// credentials, or of the key from outside the allowlist), moved sessions.
+// Three, not one per outcome: a chart stacks five at most.
+var DoorSeries = []string{"failed", "refused", "moved"}
+
+// doorSeriesKey puts an admin door event in its DoorSeries; a sign-in that
+// went on to its code is in none.
+const doorSeriesKey = "CASE WHEN e.name = 'admin.access_refused' THEN 'refused' WHEN e.name = 'admin.session.moved' THEN 'moved' WHEN e.payload->>'result' IN (?) THEN 'failed' WHEN e.payload->>'result' IN (?) THEN 'refused' END"
+
 // SummarizeDoor counts the admin door's failures, refusals and moved
-// sessions per bucket of w, by outcome (DoorOutcomes).
+// sessions per bucket of w (DoorSeries).
 func (s *Store) SummarizeDoor(ctx context.Context, w SummaryWindow) (MonitorSeries, error) {
-	return s.bucketedCounts(ctx, w, doorNames, DoorOutcomes, doorKey)
+	return s.bucketedCounts(ctx, w, doorNames, DoorSeries, doorSeriesKey, bun.In(DoorFailed), bun.In(DoorRefused))
 }
 
 // MaxSessionsPerAccount is how many sessions an account keeps at most

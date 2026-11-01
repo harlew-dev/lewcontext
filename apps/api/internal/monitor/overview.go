@@ -267,7 +267,7 @@ func overviewPage(ctx context.Context, env Env, w Window) (any, error) {
 		}),
 		"failed_sign_ins": eventSeries("Failed sign-ins", signIns, "wrong_password", "unknown_account"),
 		"limits":          eventSeries("Shared limits reached", limits, limits.Series...),
-		"admin_door":      eventSeries("Failures and refusals", door, append(append([]string{"access_refused"}, store.DoorFailed...), store.DoorRefused...)...),
+		"admin_door":      eventSeries("Failures and refusals", door, "failed", "refused"),
 		"sign_ups":        eventSeries("Sign-ups", signUps, "auth.registered"),
 	}
 	tiles := make([]Tile, len(overviewTiles))
