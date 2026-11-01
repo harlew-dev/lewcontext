@@ -130,4 +130,24 @@ Both need an hourly rollup (decision 3) if real traffic reaches that volume.
 
 ### Security review (part 2)
 
-_Running._
+The independent reviewer found **no data exposure or injection**. It confirmed sound:
+- **The one-address page:** parsing (a host, mapped, or a /64 only; zones and wider ranges refused), the address only as a placeholder, an indexed query.
+- **Recording:** exactly one recorded read per page served.
+- **Logs:** they carry only the route pattern, never the address.
+- **What's shown:** names as text only; at most 50 accounts in review lists; `decodeAdmin` on every response.
+- **SQL:** the top-10 query is correct; the builder is used throughout.
+- **Timeouts:** a timed-out section cancels its query and leaks no connection.
+- **Workspaces:** every workspace write records an event, so none grows unseen.
+- **The seeder:** fake data only.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **An attacker could blind the takeover check.** Signing in from a new network each time made the check's cost grow quadratically: two accounts kept the 24-hour view from loading, exactly the view that would show their real takeover. About 20 cheap fake takeovers also pushed a real one off the list. Measured | Only accounts that changed something are checked, against their last 50 sign-ins at most; one row per account in the list |
+| 2 | Low–medium | **A spam link in a workspace's name went unflagged** if a workspace *admin* (not the owner) renamed it | Names are checked for the workspaces the window's events are about, credited to whoever acted |
+| 3 | Low | A stolen session could use up the owner's "sign out other sessions" limit | The limit is per session, not per user |
+| 4 | Low | One workspace with millions of events could stop "rows per workspace" from loading | Each count stops at what the threshold needs |
+| 5–6 | Nits | Inactive accounts need a `last_seen_at` backfill once migrations stop being squashed; the registry test accepted partial indexes | Documented; test tightened |
+
+**Merge task (for A7's minimiser):** `admin.ip.viewed`'s `address` and `admin.session.moved`'s `from`/`to` hold addresses or networks outside the fields the minimiser covers.
+
+_These fixes are being made by the A4 part 3 builder first._
