@@ -208,8 +208,15 @@ func TestMonitoringSeeder(t *testing.T) {
 		"accounts.new_and_busy":         monitor.LevelWarn,
 		"workspaces.quota_used":         monitor.LevelWarn,
 		"workspaces.throwaway_accounts": monitor.LevelWarn,
+		// Part 3.
+		"integrity.overdue_deliveries":   monitor.LevelCritical,
+		"integrity.unmatched_deliveries": monitor.LevelWarn,
+		"integrity.critical_checks":      monitor.LevelCritical,
+		"integrity.warning_checks":       monitor.LevelWarn,
+		"errors.new":                     monitor.LevelWarn,
+		"errors.new_panics":              monitor.LevelOK,
 	}
-	values := map[string]float64{"usage.inactive_accounts": 2, "workspaces.quota_used": 90, "ips.sign_up_cluster": 9}
+	values := map[string]float64{"usage.inactive_accounts": 2, "workspaces.quota_used": 90, "ips.sign_up_cluster": 9, "errors.new": 2, "errors.open": 2}
 	for _, r := range results {
 		if level, ok := want[r.Name]; ok && r.Level != level {
 			t.Errorf("%s: %v (%v), want %v", r.Name, r.Level, r.Value, level)
