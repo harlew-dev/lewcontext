@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useChallenge } from "@/lib/challenge/challenge";
 import { useOptionalSession } from "@/lib/session";
 import { browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
@@ -55,7 +56,12 @@ export const paths = {
 //   await api.projects(workspace.id).store(input);
 export function useApi(): ApiClient {
   const csrfToken = useOptionalSession()?.csrfToken;
-  return useMemo(() => client(browserHttp(csrfToken)), [csrfToken]);
+  // A rate limit's challenge (428) opens the CAPTCHA and resends once.
+  const solve = useChallenge();
+  return useMemo(
+    () => client(browserHttp(csrfToken, solve)),
+    [csrfToken, solve],
+  );
 }
 // The API for route loaders, which run outside components. Reads only: it has
 // no CSRF token, so mutations go through useApi().

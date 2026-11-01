@@ -8,6 +8,7 @@ import {
   ScrollRestoration,
 } from "react-router";
 import { BaseProvider } from "baseui";
+import { ChallengeProvider } from "@/lib/challenge/challenge";
 import { MotionConfig } from "motion/react";
 import { SWRConfig } from "swr";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
@@ -55,7 +56,9 @@ function Providers({ children }: { children: ReactNode }) {
   return (
     <BaseProvider theme={theme}>
       <SWRConfig value={swrConfig}>
-        <MotionConfig reducedMotion="user">{children}</MotionConfig>
+        <MotionConfig reducedMotion="user">
+          <ChallengeProvider>{children}</ChallengeProvider>
+        </MotionConfig>
       </SWRConfig>
     </BaseProvider>
   );
