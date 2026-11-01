@@ -4,9 +4,10 @@ Plan: [monitoring](../monitoring.md), built on main in three parts, with every r
 
 | Part | Pages | State |
 | --- | --- | --- |
-| 1 | Overview, Security, Rate limits | **committed**, under review |
-| 2 | IP addresses, Accounts, Workspaces, Usage (plus A7's inactive accounts) | _building_ |
-| 3 | Data, Integrity, Performance, Errors, Configuration | next |
+| 1 | Overview, Security, Rate limits | **done** (reviewed, fixed) |
+| 2 | IP addresses (and a page per address), Accounts, Workspaces, Usage (plus A7's inactive accounts) | **committed**, under review |
+| 3 | Integrity, Performance, Errors, Configuration | _building_ |
+| 3b | Data (needs A7's `prune.completed`, after the events branch merges) | after the merge |
 
 ## Part 1
 
@@ -84,3 +85,49 @@ The independent reviewer confirmed these sound:
 **Worth knowing for alerts (A5):** any account can raise a Critical level on purpose, with a few wrong passwords on its own account or a handful of junk emails. That's fine for pages, but alerts must allow for it.
 
 _These fixes are being made by the A4 part 2 builder first._
+
+
+## Part 1 fixes (`f017cfe`..`d82d331`)
+
+- **The Security-page flood is closed.** "Sign out other sessions" records nothing when there's nothing to revoke, and gets its own limit, `sessions-revoke:per-user` (30 an hour). The takeover check starts from sign-ins, so the page took 51 ms with 20,000 of an account's own changes.
+- **Every section of every Monitoring page has its own 2 s budget.** A slow section shows "Not loaded" with Try again; the rest of the page renders.
+- **The session check never waits for the account's row** (SKIP LOCKED), so there's no deadlock.
+- **Each signal says whether its drill-down is exact.** The admin door's two are broader; the docs say so.
+- **`/metrics` without a token** needs a literal address (no `localhost`).
+
+## Part 2
+
+| Commit | What |
+| --- | --- |
+| `f5557cc` | Endpoints for IP addresses, Accounts, Workspaces and Usage; a page for one address (`GET /api/admin/ips/{ip}`, recorded as `admin.ip.viewed`); the workspace-tables registry; inactive accounts (A7's decision 9) |
+| `7f46861` | Seeder patterns (an invitation spammer, a near-full quota, …) |
+| `7f3c87c` | The pages |
+| `0baeef0`, `a6986fd`, `c27460d` | Fixes: whole days in clusters, UI polish, a faster IP list query |
+| `ce21590` | Docs, plan, e2e |
+
+**Screenshots:**
+- [IP addresses](monitoring/part2/ips-light.png), [one address](monitoring/part2/ip-light.png), [on a phone](monitoring/part2/ips-phone.png);
+- [Accounts](monitoring/part2/accounts-light.png), [Accounts, dark](monitoring/part2/accounts-dark.png);
+- [Workspaces](monitoring/part2/workspaces-light.png), [Workspaces, dark](monitoring/part2/workspaces-dark.png);
+- [Usage](monitoring/part2/usage-light.png);
+- [Overview](monitoring/part2/overview-light.png).
+
+**How the pages stay bounded:**
+- Rows per workspace and quota headroom are counted only for workspaces with an event in the window (a workspace only grows by writing).
+- Inactive accounts are a top 20 plus a count, through a new index.
+- The workspace total is PostgreSQL's estimate.
+
+**Read-only for now:** A6's "Block this address" and the account actions plug in when the events branch merges; the places are marked.
+
+**Measured at a million events:**
+- every page answers;
+- **IP addresses over 7 days** misses its 2 s budget and shows "took too long" for that section;
+- **Security over 7 days** takes about 3.8 s (under the 5 s limit, over the plan's 2 s).
+
+Both need an hourly rollup (decision 3) if real traffic reaches that volume.
+
+**Merge task:** `admin.ip.viewed` keeps the looked-up address in its payload. A7's minimiser (on the events branch) only shortens the IP column, so it needs extending to this field when the branches merge. Erasure doesn't apply here, since IPs are kept.
+
+### Security review (part 2)
+
+_Running._
