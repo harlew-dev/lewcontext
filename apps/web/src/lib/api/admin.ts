@@ -36,6 +36,7 @@ import {
   type MailWindow,
   type MonitoringPage,
   type MonitoringView,
+  type ErrorView,
   type MonitoringWindow,
   defaultMonitoringWindow,
 } from "@/types/admin";
@@ -218,6 +219,16 @@ export const adminPaths = {
         }),
       ),
   },
+  // One grouped error's page, read whole and recorded with the group;
+  // 24h is the default window.
+  errors: {
+    show: (error: string, window?: MonitoringWindow) =>
+      path<ErrorView>(
+        url(`${base}/errors/${encodeURIComponent(error)}`, {
+          window: window === defaultMonitoringWindow ? undefined : window,
+        }),
+      ),
+  },
   // The Admins page: every admin, one list (no paging).
   admins: {
     index: () => path<{ data: AdminAccount[] }>(`${base}/admins`),
@@ -326,6 +337,10 @@ export function adminClient(http: Http) {
     ips: () => ({
       show: (ip: string, window?: MonitoringWindow) =>
         http.get(adminPaths.ips.show(ip, window)),
+    }),
+    errors: () => ({
+      show: (error: string, window?: MonitoringWindow) =>
+        http.get(adminPaths.errors.show(error, window)),
     }),
     admins: () => ({ index: () => http.get(adminPaths.admins.index()) }),
     // Signs out every other admin session of yours, keeping this one.

@@ -89,8 +89,9 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
 | `admin.event.exported` | `admin`, `filters` (as `admin.event.listed`'s), `rows` (how many the CSV held, at most 10,000); actor only | the Events page's Download CSV, recorded before the file is sent ([compliance.md](../compliance.md#events-csv)) |
 | `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
-| `admin.monitoring.viewed` | `admin`, `page` (`overview`, `security`, `limits`, `ips`, `accounts`, `workspaces`, `usage`), `window` (`1h`, `24h`, `7d`); actor only | a Monitoring page served, once for its signals, charts and lists ([monitoring.md](monitoring.md)) |
+| `admin.monitoring.viewed` | `admin`, `page` (`overview`, `security`, `limits`, `ips`, `accounts`, `workspaces`, `usage`, `integrity`, `performance`, `errors`, `configuration`), `window` (`1h`, `24h`, `7d`); actor only | a Monitoring page served, once for its signals, charts and lists ([monitoring.md](monitoring.md)) |
 | `admin.ip.viewed` | `admin`, `address` (the address or IPv6 /64 looked at: the event's `ip` column is the admin's own), `window`; actor only | one address's page served ([monitoring.md](monitoring.md#one-address)) |
+| `admin.error.viewed` | `admin`, `error` (the group's `err_` ID), `window`; actor only | one error group's page served, its message and stack ([monitoring.md](monitoring.md#one-group)) |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
 | `admin.admin.listed` | `admin`; actor only | the Admins page |
 | `admin.email_block.listed` | `admin`, `q`, `sort`, `page`; actor only | every read of the Email blocks page |

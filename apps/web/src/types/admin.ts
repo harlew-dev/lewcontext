@@ -329,6 +329,10 @@ export const monitoringPages = [
   "accounts",
   "workspaces",
   "usage",
+  "integrity",
+  "performance",
+  "errors",
+  "configuration",
 ] as const;
 export type MonitoringPage = (typeof monitoringPages)[number];
 export const monitoringWindows = ["1h", "24h", "7d"] as const;
@@ -394,7 +398,13 @@ export type MonitoringTile = {
     points: { start: string; value: number }[];
   } | null;
 };
-export type OverviewSections = { tiles: MonitoringTile[] };
+// How the live servers store metrics (METRICS_STORE): with it off the
+// request, latency and pool numbers read nothing. Empty: no server live.
+export type MetricsStore = "on" | "off" | "mixed" | "";
+export type OverviewSections = {
+  tiles: MonitoringTile[];
+  metricsStore: MetricsStore;
+};
 export type FailedChecksRow = {
   period: string;
   account: AccountRef;
@@ -613,4 +623,127 @@ export type UsageSections = {
       admin: boolean;
     }[];
   };
+};
+// The Integrity page: each check's rows (its count and level are its
+// signal's), then duplicates and retries over the window.
+export type CheckResult = {
+  count: number;
+  capped?: boolean;
+  samples: string[];
+};
+export type IntegritySections = {
+  checks: { name: string; capped?: boolean; samples: string[] }[];
+  duplicates: CheckResult & { byName: { name: string; count: number }[] };
+  duplicateSends: CheckResult;
+  retriedDeliveries: CheckResult;
+  timedOutWrites: { route: string; count: number }[];
+};
+// The Performance page: percentiles in milliseconds.
+export type Latencies = { p50: number; p95: number; p99: number };
+export type LatencyRow = Latencies & { label: string; count: number };
+export type GaugePoint = { start: string; value: number };
+export type RouteRow = Latencies & {
+  route: string;
+  requests: number;
+  status4xx: number;
+  status429: number;
+  status5xx: number;
+  timeouts: number;
+};
+export type ServerRow = {
+  id: string;
+  hostname: string;
+  version: string;
+  startedAt: string;
+  lastSeenAt: string;
+  live: boolean;
+  goroutines: number | null;
+  heapBytes: number | null;
+  memoryBytes: number | null;
+  gcPauseMs: number | null;
+  poolOpen: number | null;
+  poolInUse: number | null;
+  poolIdle: number | null;
+  measuredAt: string | null;
+};
+// pg_stat_statements' statements, as PostgreSQL normalised them ($1 for
+// every constant); available false when the database doesn't have it.
+export type StatementStats = {
+  available: boolean;
+  statements: {
+    query: string;
+    calls: number;
+    totalMs: number;
+    meanMs: number;
+    rows: number;
+  }[];
+  hidden: number;
+};
+export type PerformanceSections = {
+  metricsStore: MetricsStore;
+  requests: (Latencies & {
+    start: string;
+    requests: number;
+    serverErrors: number;
+  })[];
+  routes: RouteRow[];
+  database: {
+    operations: LatencyRow[];
+    slowQueries: { label: string; count: number }[];
+    inUse: GaugePoint[];
+    waits: { from: string; waits: number; waitedMs: number; minutes: number };
+    statements: StatementStats | null;
+  };
+  worker: {
+    deliveries: MonitorSeries;
+    lag: LatencyRow[];
+    pending: GaugePoint[];
+  };
+  slotsBusy: number;
+  servers: ServerRow[];
+};
+// The Errors page: grouped errors (app_errors). A browser's group
+// (source client) holds a user's text: shown as text, never a link.
+export type ErrorSource =
+  "request" | "panic" | "worker" | "background" | "client";
+export type ErrorGroup = {
+  id: string;
+  source: ErrorSource;
+  route: string;
+  message: string;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastRequestId: string;
+  // Only in a release's shape (a revision, or dev); empty otherwise.
+  lastVersion: string;
+  resolvedAt: string | null;
+};
+export type Release = { version: string; startedAt: string };
+export type ErrorsSections = {
+  release: Release | null;
+  groups: ErrorGroup[];
+  occurrences: MonitorSeries;
+};
+// One group's page.
+export type ErrorView = {
+  window: MonitoringView<unknown>["window"];
+  group: ErrorGroup & { stack: string };
+  release: Release | null;
+  occurrences: MonitorSeries;
+};
+// The Configuration page: servers, their settings side by side (the
+// compared servers' values in their order), and warnings by ID.
+export type ConfigurationSections = {
+  servers: {
+    id: string;
+    hostname: string;
+    version: string;
+    startedAt: string;
+    lastSeenAt: string;
+    live: boolean;
+  }[];
+  compared: string[];
+  settings: { name: string; values: string[]; differs: boolean }[];
+  warnings: { id: string; count?: number }[];
 };

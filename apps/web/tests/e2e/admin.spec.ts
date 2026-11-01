@@ -29,6 +29,7 @@ test.afterAll(() => {
   sql(
     `DELETE FROM events WHERE payload->>'email' LIKE 'e2e-${stamp}-list%@lewcontext.test'`,
   );
+  sql(`DELETE FROM app_errors WHERE message LIKE '% ${stamp}'`);
 });
 // Creates an account through the API, then forgets its session.
 async function register(page: Page, email: string, name: string) {
@@ -408,7 +409,7 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   await expect(
     page.getByRole("heading", { name: "Overview", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Its page comes later.").first()).toBeVisible();
+  await expect(page.getByText("Critical checks failing")).toBeVisible();
   await page.getByRole("link", { name: "Failed sign-ins" }).click();
   await expect(page).toHaveURL(`/admin/${key}/monitoring/security`);
   await expect(
@@ -486,6 +487,37 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   await expect(
     page.getByRole("heading", { name: "Not seen for two years" }),
   ).toBeVisible();
+  expect(errors).toEqual([]);
+
+  // Part 3: Integrity, Performance, Errors and Configuration load; a
+  // group a browser reported is labelled user-reported, its text never a
+  // link, and its own page is a read recorded with the group.
+  const prize = `Claim your prize at <url> ${stamp}`;
+  sql(
+    `INSERT INTO app_errors (fingerprint, source, route, message, first_seen_at, last_seen_at) VALUES (md5('${stamp}') || md5('${stamp}x'), 'client', '/app/:workspace/projects', '${prize}', now() - interval '1 hour', now() - interval '5 minutes')`,
+  );
+  for (const [name, heading] of [
+    ["Integrity", "Checks"],
+    ["Performance", "Routes"],
+    ["Configuration", "Servers"],
+    ["Errors", "Error groups"],
+  ]) {
+    await page.getByRole("link", { name, exact: true }).last().click();
+    await expect(
+      page.getByRole("heading", { name: heading, exact: true }),
+    ).toBeVisible();
+  }
+  const reported = page.getByRole("row").filter({ hasText: prize });
+  await expect(reported).toContainText("User-reported");
+  await expect(reported.getByRole("link", { name: prize })).toHaveCount(0);
+  await reported.getByRole("link", { name: "Details" }).click();
+  await expect(page.getByRole("heading", { name: "Stack" })).toBeVisible();
+  await expect(page.getByText(/Reported by a browser/)).toBeVisible();
+  expect(
+    sql(
+      `SELECT payload->>'error' = (SELECT public_id FROM app_errors WHERE message = '${prize}') FROM events WHERE name = 'admin.error.viewed' ORDER BY id DESC LIMIT 1`,
+    ),
+  ).toBe("t");
   expect(errors).toEqual([]);
 
   // Back to app is another build: it loads as a new page, which Go answers

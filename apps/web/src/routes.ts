@@ -94,6 +94,26 @@ const adminRoutes = [
       "admin/:key/monitoring/usage",
       "pages/admin/[key]/monitoring/usage.tsx",
     ),
+    route(
+      "admin/:key/monitoring/integrity",
+      "pages/admin/[key]/monitoring/integrity.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/performance",
+      "pages/admin/[key]/monitoring/performance.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/errors",
+      "pages/admin/[key]/monitoring/errors.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/errors/:error",
+      "pages/admin/[key]/monitoring/errors/[error].tsx",
+    ),
+    route(
+      "admin/:key/monitoring/configuration",
+      "pages/admin/[key]/monitoring/configuration.tsx",
+    ),
   ]),
 ] satisfies RouteConfig;
 

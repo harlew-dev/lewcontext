@@ -12,6 +12,10 @@ import {
   Squares2X2Icon,
   UsersIcon,
   ClockIcon,
+  CheckBadgeIcon,
+  BoltIcon,
+  BugAntIcon,
+  Cog6ToothIcon,
 } from "@heroicons/react/20/solid";
 import {
   defaultEventWindow,
@@ -87,6 +91,17 @@ export const adminRoutes = {
       monitoringUrl(`/admin/${key}/monitoring/workspaces`, window),
     usage: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/usage`, window),
+    integrity: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/integrity`, window),
+    performance: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/performance`, window),
+    errors: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/errors`, window),
+    // One grouped error.
+    error: (key: string, error: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/errors/${error}`, window),
+    configuration: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/configuration`, window),
   },
 } as const;
 // An address as one path segment: an IPv6 /64's slash escaped, its colons
@@ -138,6 +153,26 @@ export function adminMonitoringNavigation(key: string) {
       label: "Usage",
       href: adminRoutes.monitoring.usage(key),
       icon: ChartBarIcon,
+    },
+    {
+      label: "Integrity",
+      href: adminRoutes.monitoring.integrity(key),
+      icon: CheckBadgeIcon,
+    },
+    {
+      label: "Performance",
+      href: adminRoutes.monitoring.performance(key),
+      icon: BoltIcon,
+    },
+    {
+      label: "Errors",
+      href: adminRoutes.monitoring.errors(key),
+      icon: BugAntIcon,
+    },
+    {
+      label: "Configuration",
+      href: adminRoutes.monitoring.configuration(key),
+      icon: Cog6ToothIcon,
     },
   ];
 }

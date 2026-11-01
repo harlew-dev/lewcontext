@@ -25,6 +25,7 @@ import {
   type MonitoringPage,
   type MonitoringView,
   type MonitoringWindow,
+  type MetricsStore,
   type MonitorSeries,
   type SharedLimit,
   type Signal,
@@ -202,7 +203,26 @@ export function signalWindow(signal: Signal): string {
   if (s === 3600) return "Last hour";
   if (s === 86400) return "Last 24 hours";
   if (s === 7 * 86400) return "Last 7 days";
+  if (s === 360) return "Last 6 minutes";
   return "Now";
+}
+// Said where metric numbers would be when the live servers don't store
+// them (METRICS_STORE=off): they read zero, which isn't "no traffic".
+export function MetricsStoreNotice({
+  store,
+  className,
+}: {
+  store: MetricsStore;
+  className?: string;
+}) {
+  if (store !== "off" && store !== "mixed") return null;
+  return (
+    <Notice variant="warning" className={className}>
+      {store === "off"
+        ? "Metric storage is off (METRICS_STORE=off): requests, latency, the pool and the worker read zero here. /metrics and the logs still have them."
+        : "Metric storage is off on some live servers (METRICS_STORE=off): their requests, latency, pool and worker aren't counted here."}
+    </Notice>
+  );
 }
 // Its thresholds, in words: "Warning at 100 · critical at 1,000".
 export function thresholds(signal: Signal): string | null {
