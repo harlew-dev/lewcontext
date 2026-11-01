@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import {
   Bar,
@@ -13,6 +13,7 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import { cx } from "@/lib/cx";
+import { Link } from "./link";
 // Charts, drawn by Recharts (docs/ui/design.md). This is the only file that
 // imports it: pages pass rows and series and never style Recharts.
 
@@ -37,18 +38,27 @@ export type ChartRow<K extends string> = {
 // A column per row (a time bucket), its series stacked: a legend above, a
 // tooltip per column, and the numbers as a table for screen readers (the
 // SVG is hidden from them). `label` names the chart; `summary` says in a
-// sentence what it shows.
-export function BarChart<K extends string>({
+// sentence what it shows. With `onSelect`, clicking a column picks its row
+// (a pointer shortcut: the page offers the same another way), and the
+// tooltip ends with `selectHint`.
+export function BarChart<
+  K extends string,
+  R extends ChartRow<K> = ChartRow<K>,
+>({
   label,
   summary,
   rows,
   series,
+  onSelect,
+  selectHint,
   className,
 }: {
   label: string;
   summary: string;
-  rows: ChartRow<K>[];
+  rows: R[];
   series: ChartSeries<K>[];
+  onSelect?: (row: R) => void;
+  selectHint?: string;
   className?: string;
 }) {
   const reducedMotion = useReducedMotion() ?? false;
@@ -71,13 +81,23 @@ export function BarChart<K extends string>({
       {series.length > 1 && <Legend series={series} />}
       <div
         aria-hidden="true"
-        className="mt-4 h-60 text-xs text-zinc-500 dark:text-zinc-400"
+        className={cx(
+          "mt-4 h-60 text-xs text-zinc-500 dark:text-zinc-400",
+          onSelect && "cursor-pointer",
+        )}
       >
         <ResponsiveContainer width="100%" height="100%">
           <Bars
             data={rows}
             margin={{ top: 4, right: 0, bottom: 0, left: -16 }}
             accessibilityLayer={false}
+            onClick={
+              onSelect &&
+              ((state) => {
+                const row = rows[Number(state.activeTooltipIndex)];
+                if (row) onSelect(row);
+              })
+            }
           >
             <CartesianGrid
               vertical={false}
@@ -93,13 +113,16 @@ export function BarChart<K extends string>({
             />
             <YAxis
               allowDecimals={false}
+              tickFormatter={compact}
               axisLine={false}
               tickLine={false}
               tick={{ fill: "currentColor" }}
               width={48}
             />
             <Tooltip
-              content={(props) => <ChartTooltip {...props} series={series} />}
+              content={(props) => (
+                <ChartTooltip {...props} series={series} hint={selectHint} />
+              )}
               cursor={{
                 fill: "currentColor",
                 className: "text-zinc-950/5 dark:text-white/5",
@@ -130,6 +153,11 @@ export function BarChart<K extends string>({
       <ChartTable label={label} rows={rows} series={series} total={total} />
     </figure>
   );
+}
+// An axis tick, short enough for its gutter: 950, 1.2K, 35K, 1.4M.
+const compactFormat = new Intl.NumberFormat("en-US", { notation: "compact" });
+function compact(value: number): string {
+  return compactFormat.format(value);
 }
 // The last series with a value in a row: its segment gets the rounded end.
 function topKey<K extends string>(
@@ -173,7 +201,8 @@ function ChartTooltip<K extends string>({
   payload,
   label,
   series,
-}: TooltipContentProps & { series: ChartSeries<K>[] }) {
+  hint,
+}: TooltipContentProps & { series: ChartSeries<K>[]; hint?: string }) {
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload as ChartRow<K>;
   return (
@@ -196,6 +225,9 @@ function ChartTooltip<K extends string>({
           </li>
         ))}
       </ul>
+      {hint && (
+        <div className="mt-1.5 text-zinc-500 dark:text-zinc-400">{hint}</div>
+      )}
     </div>
   );
 }
@@ -238,4 +270,62 @@ function ChartTable<K extends string>({
       </tbody>
     </table>
   );
+}
+export type BarListItem = {
+  key: string;
+  label: ReactNode;
+  value: number;
+  href: string;
+};
+// A ranked list of links, each over a bar as wide as its share of the
+// largest: the name, the count and its share of `total`. Plain HTML, so it
+// reads as a list of links as it is, with no hidden table.
+export function BarList({
+  label,
+  items,
+  total,
+  className,
+}: {
+  label: string;
+  items: BarListItem[];
+  total: number;
+  className?: string;
+}) {
+  const largest = Math.max(1, ...items.map((item) => item.value));
+  return (
+    <ol aria-label={label} className={cx(className, "space-y-1")}>
+      {items.map((item) => (
+        <li key={item.key}>
+          <Link
+            href={item.href}
+            className="group relative flex items-center justify-between gap-x-4 rounded-md px-2 py-1.5 text-sm/6 data-focus:outline-2 data-focus:outline-blue-500"
+          >
+            <span
+              aria-hidden="true"
+              style={
+                { "--share": `${(item.value / largest) * 100}%` } as object
+              }
+              className="absolute inset-y-0 left-0 w-(--share) rounded-md bg-sky-600/15 group-data-hover:bg-sky-600/25 dark:bg-sky-500/20 dark:group-data-hover:bg-sky-500/30"
+            />
+            <span className="relative min-w-0 truncate text-zinc-950 dark:text-white">
+              {item.label}
+            </span>
+            <span className="relative shrink-0 text-zinc-500 tabular-nums dark:text-zinc-400">
+              <span className="font-medium text-zinc-950 dark:text-white">
+                {item.value.toLocaleString("en-US")}
+              </span>
+              {" · "}
+              {percent(item.value, total)}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ol>
+  );
+}
+// A share as a whole percentage, "<1%" for a small one.
+function percent(value: number, total: number): string {
+  if (total <= 0) return "0%";
+  const share = (value / total) * 100;
+  return share > 0 && share < 1 ? "<1%" : `${Math.round(share)}%`;
 }
