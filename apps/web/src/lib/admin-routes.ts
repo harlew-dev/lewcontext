@@ -1,6 +1,7 @@
 import {
   BuildingOffice2Icon,
   ChartBarIcon,
+  CircleStackIcon,
   GlobeAltIcon,
   RectangleStackIcon,
   UserGroupIcon,
@@ -91,6 +92,8 @@ export const adminRoutes = {
       monitoringUrl(`/admin/${key}/monitoring/workspaces`, window),
     usage: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/usage`, window),
+    data: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/data`, window),
     integrity: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/integrity`, window),
     performance: (key: string, window?: MonitoringWindow) =>
@@ -156,6 +159,11 @@ export function adminMonitoringNavigation(key: string) {
       label: "Usage",
       href: adminRoutes.monitoring.usage(key),
       icon: ChartBarIcon,
+    },
+    {
+      label: "Data",
+      href: adminRoutes.monitoring.data(key),
+      icon: CircleStackIcon,
     },
     {
       label: "Integrity",

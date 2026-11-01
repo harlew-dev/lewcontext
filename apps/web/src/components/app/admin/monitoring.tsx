@@ -193,9 +193,23 @@ export function formatSignal(
       return v < 1 ? "under a minute" : `${counts.format(v)} min`;
     case "per_minute":
       return `${counts.format(v)}/min`;
+    case "bytes":
+      return formatBytes(v);
     default:
       return counts.format(v);
   }
+}
+const byteUnits = ["bytes", "kB", "MB", "GB", "TB"];
+// A size in bytes, in 1,024s: "512 bytes", "8 kB", "1.2 GB".
+export function formatBytes(bytes: number): string {
+  let v = Math.abs(bytes);
+  let unit = 0;
+  while (v >= 1024 && unit < byteUnits.length - 1) {
+    v /= 1024;
+    unit++;
+  }
+  const sign = bytes < 0 ? "-" : "";
+  return `${sign}${unit === 0 ? Math.round(v) : counts.format(v)} ${byteUnits[unit]}`;
 }
 // What a signal counts over: "Last hour", "Last 24 hours", "Now".
 export function signalWindow(signal: Signal): string {

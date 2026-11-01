@@ -95,6 +95,10 @@ const adminRoutes = [
       "pages/admin/[key]/monitoring/usage.tsx",
     ),
     route(
+      "admin/:key/monitoring/data",
+      "pages/admin/[key]/monitoring/data.tsx",
+    ),
+    route(
       "admin/:key/monitoring/integrity",
       "pages/admin/[key]/monitoring/integrity.tsx",
     ),

@@ -76,6 +76,8 @@ function usePageHref() {
         return adminRoutes.monitoring.limits(key, window);
       case "usage":
         return adminRoutes.monitoring.usage(key, window);
+      case "data":
+        return adminRoutes.monitoring.data(key, window);
       case "integrity":
         return adminRoutes.monitoring.integrity(key, window);
       case "performance":
