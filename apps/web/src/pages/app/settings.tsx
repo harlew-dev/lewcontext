@@ -937,7 +937,7 @@ function DataExportControls() {
   // Each opening starts with an empty password.
   const [opened, setOpened] = useState(0);
   return (
-    <div className="flex justify-end">
+    <div className="flex items-start justify-end">
       <Button
         outline
         onClick={() => {
