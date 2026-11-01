@@ -41,6 +41,9 @@ type Env struct {
 	Store  *store.Store
 	Limits []ratelimit.Limit
 	Now    time.Time
+	// Budget is how long a page's signal or section may take before it's
+	// shown as not loaded (sections.go); zero: no budget of its own.
+	Budget time.Duration
 }
 
 // Span is what a signal is counted over: [From, To). From is its window
@@ -73,8 +76,13 @@ type Signal struct {
 	MinSample int64
 	Measure   func(ctx context.Context, env Env, span Span) (Reading, error)
 	// Drill is the Events page's filter behind the number (its window is
-	// added), or nil when it has none.
-	Drill url.Values
+	// added), or nil when it has none. DrillExact: it lists exactly the
+	// rows counted (or, for a share, the attempts it's a share of);
+	// otherwise it lists the events the number was counted from, more
+	// than it counted (the Events page has no filter for, say, an address
+	// trying 10 emails).
+	Drill      url.Values
+	DrillExact bool
 }
 
 // Result is a signal as read, for a page.
@@ -90,6 +98,10 @@ type Result struct {
 	MinSample     int64             `json:"minSample,omitempty"`
 	WindowSeconds int               `json:"windowSeconds"`
 	Drill         map[string]string `json:"drill,omitempty"`
+	DrillExact    bool              `json:"drillExact,omitempty"`
+	// Unavailable: it couldn't be read within its budget; its value and
+	// level mean nothing.
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 // LevelOf is the level of value read from sample.
@@ -122,7 +134,7 @@ func Read(ctx context.Context, env Env, sig Signal) (Result, error) {
 		Name: sig.Name, Label: sig.Label, Unit: sig.Unit,
 		Value: reading.Value, Sample: reading.Sample, Level: sig.LevelOf(reading),
 		Warn: sig.Warn, Critical: sig.Critical, MinSample: sig.MinSample,
-		WindowSeconds: int(sig.Window.Seconds()),
+		WindowSeconds: int(sig.Window.Seconds()), DrillExact: sig.DrillExact,
 	}
 	if sig.Drill != nil {
 		out.Drill = map[string]string{"window": windowName(sig.Window)}

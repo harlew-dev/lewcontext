@@ -61,9 +61,11 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	dataExport := account.DataExport{Server: s}
 	mux.Handle("POST /api/auth/export", s.RequireSession(s.LimitAuth(http.HandlerFunc(dataExport.Store))))
 	// The recovery routes skip the signed-in budget, so a stolen session can't
-	// use it up to keep the owner from signing it out (limits.go).
+	// use it up to keep the owner from signing it out (limits.go). Signing
+	// out the others has a limit of its own instead, counted after the CSRF
+	// check (RequireSessionUnmetered), so no other site can spend it.
 	mux.Handle("POST /api/auth/logout", httpapi.AllowUnverified(s.RequireSessionUnmetered(http.HandlerFunc(sessions.Logout))))
-	mux.Handle("DELETE /api/auth/sessions", httpapi.AllowUnverified(s.RequireSessionUnmetered(http.HandlerFunc(sessions.RevokeOthers))))
+	mux.Handle("DELETE /api/auth/sessions", httpapi.AllowUnverified(s.RequireSessionUnmetered(s.Limit(httpapi.SessionsRevokePerUser, sessions.RevokeOthers))))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
 	mux.Handle("POST /api/auth/password/verify", s.RequireSessionUnmetered(s.LimitAuth(http.HandlerFunc(password.Verify))))
 	mux.Handle("PATCH /api/auth/password", s.RequireSessionUnmetered(s.LimitAuth(http.HandlerFunc(password.Update))))
@@ -150,6 +152,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	eventExport := admin.EventExport{Server: s}
 	mail := admin.Mail{Server: s}
 	monitoring := admin.Monitoring{Server: s}
+	ipAddresses := admin.IPAddresses{Server: s}
 	deliveries := admin.Deliveries{Server: s}
 	admins := admin.Admins{Server: s}
 	emailBlocks := admin.EmailBlocks{Server: s}
@@ -194,6 +197,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	// A Monitoring page, read whole and recorded once; bounded like the
 	// Events charts (httpapi.Summaries).
 	signedIn.HandleFunc("GET", "/monitoring/{page}", monitoring.Show)
+	// One address's page, from the IP addresses page: bounded the same
+	// way, and recorded with the address looked at.
+	signedIn.HandleFunc("GET", "/ips/{ip}", ipAddresses.Show)
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
 	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
 	signedIn.HandleFunc("GET", "/ip-blocks", ipBlocks.Index)

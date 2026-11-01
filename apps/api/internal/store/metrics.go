@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/observe"
@@ -121,15 +122,18 @@ func (s *Store) RecordMetrics(ctx context.Context, server ServerInstance, m obse
 	return err
 }
 
-// maxMinuteSkew is how far a minute's start may be from the database's
-// clock, beyond the minute itself: a flush writes the minute just ended
-// (or, stopping, the one in progress) within seconds.
+// maxMinuteSkew is how far ahead of the database's clock a minute's start
+// may be: a flush writes the minute just ended (or, stopping, the one in
+// progress) within seconds.
 const maxMinuteSkew = 5 * time.Minute
 
 // minuteInTime reports whether a minute starting at minute is close
-// enough to the database's now to be stored.
+// enough to the database's now to be stored: at most maxMinuteSkew ahead,
+// and starting less than RollupDelay ago, so it can't arrive after its
+// hour was summed (an hour is summed RollupDelay after it ends, and its
+// last minute starts a minute before that).
 func minuteInTime(minute, now time.Time) bool {
-	return !minute.Before(now.Add(-maxMinuteSkew-time.Minute)) && !minute.After(now.Add(maxMinuteSkew))
+	return minute.After(now.Add(-RollupDelay)) && !minute.After(now.Add(maxMinuteSkew))
 }
 
 // Bounds of the minute tables' columns (021, 023), checked before a row is
@@ -195,10 +199,13 @@ func (s *Store) RecordServerStop(ctx context.Context, server ServerInstance, rea
 	})
 }
 
-// DeleteSilentServerInstances deletes the rows of servers not seen since
-// before: they stopped (a server silent for 2 minutes is shown as gone).
-func (s *Store) DeleteSilentServerInstances(ctx context.Context, before time.Time) (int, error) {
-	result, err := s.DB.NewDelete().Model((*ServerInstance)(nil)).Where("last_seen_at < ?", before).Exec(ctx)
+// DeleteSilentServerInstances deletes the rows of servers not seen for
+// silent, by the database's clock (which moved their last_seen_at): they
+// stopped (a server silent for 2 minutes is shown as gone).
+func (s *Store) DeleteSilentServerInstances(ctx context.Context, silent time.Duration) (int, error) {
+	result, err := s.DB.NewDelete().Model((*ServerInstance)(nil)).
+		Where("last_seen_at < now() - ?::interval", fmt.Sprintf("%d seconds", int(silent.Seconds()))).
+		Exec(ctx)
 	if err != nil {
 		return 0, err
 	}

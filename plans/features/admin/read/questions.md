@@ -25,6 +25,8 @@ Last updated 2026-11-01, during the overnight run.
 | 13 | **The doc link check ignores untracked files.** Other sessions keep untracked markdown in this checkout with dead links, which would fail `make check` forever. A doc is checked once it's `git add`-ed | Keep | [observability findings](../findings/observability.md#the-merge-0cf723a) |
 | 14 | **A6: send "You already have an account" to suspended accounts?** It's sent today when someone signs up with a suspended account's address. Also: new convention-check names (`Suspend`, `Unsuspend`, `Requeue`, `Retry`, five `admin.*` event resources, the `Housekeeping` registrar) | Keep sending; accept the names | [actions findings](../findings/actions.md#for-you-to-decide) |
 | 15 | **IPv6 block width (A6).** The confirmed cap lets one block cover an IPv6 /32, a whole ISP's allocation. The dialog now warns above /48. Lower the cap to /48? | Warn only (as confirmed) | [actions findings](../findings/actions.md#security-review) |
+| 16 | **`LevelBadge` takes `level`, not `variant` (A4).** AGENTS.md rule 6 asks for `variant` on components with alternatives, but a monitoring level is the signal's value, not a style. Rename for consistency? | Keep `level` | [monitoring findings](../findings/monitoring.md#where-the-build-differs-from-the-plan-recorded-in-the-plan) |
+| 17 | **A7 retention and export.** Audit events (all of `auth.*`, `admin.*`, `server.*`, `prune.*`) are kept a year; `email.*` (who blocked what) only 90 days: move it to a year? Download my data asks for the password only, as account deletion does, not a code; `admin export` works for suspended accounts | As built | [compliance findings](../findings/compliance.md#for-you-to-decide) |
 
 ## Every open plan: recommendations taken as accepted
 

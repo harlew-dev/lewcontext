@@ -28,6 +28,9 @@ func TestSignalsAreWellFormed(t *testing.T) {
 			t.Errorf("%s: warn %v, critical %v", sig.Name, sig.Warn, sig.Critical)
 		}
 		if sig.Drill == nil {
+			if sig.DrillExact {
+				t.Errorf("%s: exact, with no drill-down", sig.Name)
+			}
 			continue
 		}
 		if windowName(sig.Window) == "" {
@@ -59,7 +62,7 @@ func TestSignalsAreWellFormed(t *testing.T) {
 			}
 		}
 	}
-	if len(overviewSignals()) == 0 || len(PageNames()) != 3 {
+	if len(overviewSignals()) == 0 || len(PageNames()) != 7 {
 		t.Fatal("pages")
 	}
 }
@@ -144,5 +147,26 @@ func TestSignalSpans(t *testing.T) {
 	}
 	if _, ok := ResolveWindow("30d", now); ok {
 		t.Fatal("30d resolved")
+	}
+}
+
+// One address's page takes an IP address (an IPv4-mapped one as IPv4, no
+// zone) or an IPv6 /64, and offers an IPv6 address's /64.
+func TestParseAddress(t *testing.T) {
+	for _, c := range []struct{ raw, ip, network string }{
+		{"203.0.113.66", "203.0.113.66", ""},
+		{"::ffff:203.0.113.66", "203.0.113.66", ""},
+		{"2001:db8:1:2::ffff", "2001:db8:1:2::ffff", "2001:db8:1:2::/64"},
+		{"2001:db8:1:2:aa::/64", "2001:db8:1:2::/64", ""},
+	} {
+		ip, network, ok := ParseAddress(c.raw)
+		if !ok || ip != c.ip || network != c.network {
+			t.Errorf("%s: %q %q %v", c.raw, ip, network, ok)
+		}
+	}
+	for _, raw := range []string{"", "localhost", "203.0.113.0/24", "2001:db8::/48", "fe80::1%eth0", "::ffff:1.2.3.4/64", "1.2.3", "203.0.113.66 "} {
+		if _, _, ok := ParseAddress(raw); ok {
+			t.Errorf("%q accepted", raw)
+		}
 	}
 }

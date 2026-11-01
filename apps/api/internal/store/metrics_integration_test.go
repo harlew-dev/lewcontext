@@ -92,7 +92,9 @@ func TestRecordMetrics(t *testing.T) {
 	}
 	// A minute far from the database's clock (a server whose clock is
 	// wrong) is dropped, ahead or behind; its heartbeat still goes in.
-	for _, skew := range []time.Duration{10 * time.Minute, -15 * time.Minute, 24 * time.Hour} {
+	// Behind: one that starts RollupDelay ago could arrive after its hour
+	// was summed.
+	for _, skew := range []time.Duration{10 * time.Minute, -RollupDelay - time.Minute, -15 * time.Minute, 24 * time.Hour} {
 		far := observe.Minute{Minute: minute.Add(skew), Routes: []observe.RouteTotals{{Route: "GET /far", Requests: 1}}}
 		if err := s.RecordMetrics(ctx, server, far); err != nil {
 			t.Fatal(err)
@@ -217,7 +219,7 @@ func TestServerInstances(t *testing.T) {
 	if _, err := factory.ServerInstances.State(factory.LastSeenAt(time.Now().Add(-25*time.Hour))).Create(ctx, s.DB, f, 2); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.DeleteSilentServerInstances(ctx, time.Now().Add(-24*time.Hour))
+	n, err := s.DeleteSilentServerInstances(ctx, 24*time.Hour)
 	if err != nil || n != 2 || countRows(t, s, (*ServerInstance)(nil), "") != 1 {
 		t.Fatalf("deleted %d (%v)", n, err)
 	}

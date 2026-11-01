@@ -45,13 +45,15 @@ func TestMetricsSettings(t *testing.T) {
 		"[::%lo]:9090", "[::%eth0]:9090", "[0::0%1]:9090", "[::1%lo]:9090",
 		// Public and link-local addresses are reachable beyond a private
 		// network.
-		"203.0.113.5:9090", "[2001:db8::5]:9090", "[fe80::1]:9090", "169.254.0.5:9090"} {
+		"203.0.113.5:9090", "[2001:db8::5]:9090", "[fe80::1]:9090", "169.254.0.5:9090",
+		// A name, localhost too: the resolver could point it anywhere.
+		"localhost:9090"} {
 		vars := map[string]string{"METRICS_ADDR": addr}
 		for k, v := range production {
 			vars[k] = v
 		}
 		setEnv(t, vars)
-		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "METRICS_TOKEN") {
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "METRICS_TOKEN") || !strings.Contains(err.Error(), "127.0.0.1") {
 			t.Errorf("production %s without a token: %v", addr, err)
 		}
 		vars["METRICS_TOKEN"] = token
@@ -60,7 +62,7 @@ func TestMetricsSettings(t *testing.T) {
 			t.Errorf("production %s with a token: %v", addr, err)
 		}
 	}
-	for _, addr := range []string{"127.0.0.1:9090", "[::1]:9090", "10.0.0.5:9090", "192.168.1.5:9090", "172.16.0.5:9090", "[fd00::5]:9090", "[::ffff:10.0.0.5]:9090", "localhost:9090"} {
+	for _, addr := range []string{"127.0.0.1:9090", "[::1]:9090", "10.0.0.5:9090", "192.168.1.5:9090", "172.16.0.5:9090", "[fd00::5]:9090", "[::ffff:10.0.0.5]:9090"} {
 		vars := map[string]string{"METRICS_ADDR": addr}
 		for k, v := range production {
 			vars[k] = v

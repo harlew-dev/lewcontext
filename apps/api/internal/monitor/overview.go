@@ -12,8 +12,8 @@ import (
 // and if not, where? A grid of tiles, each one or more signals with their
 // levels, a sparkline over the window, and the page they belong to. Tiles
 // whose page isn't built yet still show their numbers where the data is
-// already there (metrics, the mail queue, grouped errors, last seen);
-// Integrity and Alerts come with their pages.
+// already there (metrics, the mail queue, grouped errors); Integrity and
+// Alerts come with their pages.
 
 // PageOverview is the Overview's name.
 const PageOverview = "overview"
@@ -23,7 +23,6 @@ const PageOverview = "overview"
 const (
 	pagePerformance   = "performance"
 	pageErrors        = "errors"
-	pageUsage         = "usage"
 	pageConfiguration = "configuration"
 	pageMail          = "mail"
 )
@@ -32,7 +31,7 @@ const (
 const requestWindow = time.Hour
 
 // OverviewSignals are the signals of tiles from pages not built yet, read
-// by the Overview; the others are on their own pages.
+// by the Overview; the others are on their own pages (Sign-ups' on Usage).
 var OverviewSignals = []Signal{
 	{
 		Name: "servers.live", Page: pageConfiguration, Label: "Live servers", Unit: UnitCount,
@@ -124,21 +123,6 @@ var OverviewSignals = []Signal{
 			return count(g.Open, err)
 		},
 	},
-	{
-		Name: "usage.sign_ups", Page: pageUsage, Label: "Sign-ups", Unit: UnitCount,
-		Window: 24 * time.Hour,
-		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
-			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "auth.registered"))
-		},
-		Drill: drill("auth.registered"),
-	},
-	{
-		Name: "usage.active_accounts", Page: pageUsage, Label: "Active accounts", Unit: UnitCount,
-		Window: 24 * time.Hour,
-		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
-			return count(env.Store.CountActiveAccounts(ctx, sp.From))
-		},
-	},
 }
 
 // requestTotals totals every server's requests in sp.
@@ -218,13 +202,13 @@ var overviewTiles = []Tile{
 	{ID: "failed_sign_ins", Label: "Failed sign-ins", Page: PageSecurity, Signals: []string{"auth.failed_sign_ins"}},
 	{ID: "limits", Label: "Shared limits", Page: PageLimits, Signals: []string{"limits.shared_reached"}},
 	{ID: "admin_door", Label: "Admin door", Page: PageSecurity, Signals: []string{"admin.door_refusals", "admin.door_failures"}},
-	{ID: "sign_ups", Label: "Sign-ups", Page: pageUsage, Signals: []string{"usage.sign_ups", "usage.active_accounts"}},
+	{ID: "sign_ups", Label: "Sign-ups", Page: PageUsage, Signals: []string{"usage.sign_ups", "usage.active_accounts"}},
 }
 
 // overviewSignals are every tile's signals, in tile order.
 func overviewSignals() []Signal {
 	var out []Signal
-	all := append(append(append([]Signal{}, OverviewSignals...), SecuritySignals...), LimitsSignals...)
+	all := Signals()
 	for _, t := range overviewTiles {
 		for _, name := range t.Signals {
 			i := slices.IndexFunc(all, func(s Signal) bool { return s.Name == name })
@@ -235,47 +219,64 @@ func overviewSignals() []Signal {
 }
 
 // overviewPage reads the tiles' sparklines over w.
-func overviewPage(ctx context.Context, env Env, w Window) (any, error) {
+func overviewPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
-	requests, err := s.SummarizeRequests(ctx, w.SummaryWindow)
+	series := map[string]*TileSeries{}
+	// Each sparkline is a part of its own, named by its tile (the request
+	// totals feed three); a tile whose part timed out has none.
+	read, err := readSections(ctx, env, nil, []section{
+		{"requests", func(ctx context.Context) error {
+			requests, err := s.SummarizeRequests(ctx, w.SummaryWindow)
+			if err != nil {
+				return err
+			}
+			series["requests"] = requestSeries("Requests", UnitCount, requests, func(b store.RequestBucket) float64 { return float64(b.Requests) })
+			series["server_errors"] = requestSeries("Server errors", UnitPercent, requests, func(b store.RequestBucket) float64 {
+				return share(b.ServerErrors, b.Requests).Value
+			})
+			series["latency"] = requestSeries("95th percentile", UnitMs, requests, func(b store.RequestBucket) float64 {
+				return Percentile(b.Durations, 0.95)
+			})
+			return nil
+		}},
+		{"failed_sign_ins", func(ctx context.Context) error {
+			signIns, err := s.SummarizeSignIns(ctx, w.SummaryWindow)
+			series["failed_sign_ins"] = eventSeries("Failed sign-ins", signIns, "wrong_password", "unknown_account")
+			return err
+		}},
+		{"limits", func(ctx context.Context) error {
+			limits, err := s.SummarizeLimitsReached(ctx, w.SummaryWindow, globalLimits(env)...)
+			series["limits"] = eventSeries("Shared limits reached", limits, limits.Series...)
+			return err
+		}},
+		{"admin_door", func(ctx context.Context) error {
+			door, err := s.SummarizeDoor(ctx, w.SummaryWindow)
+			series["admin_door"] = eventSeries("Failures and refusals", door, "failed", "refused")
+			return err
+		}},
+		{"sign_ups", func(ctx context.Context) error {
+			signUps, err := s.SummarizeEventNames(ctx, w.SummaryWindow, "auth.registered")
+			series["sign_ups"] = eventSeries("Sign-ups", signUps, "auth.registered")
+			return err
+		}},
+	})
 	if err != nil {
-		return nil, err
+		return Sections{}, err
 	}
-	signIns, err := s.SummarizeSignIns(ctx, w.SummaryWindow)
-	if err != nil {
-		return nil, err
-	}
-	limits, err := s.SummarizeLimitsReached(ctx, w.SummaryWindow, globalLimits(env)...)
-	if err != nil {
-		return nil, err
-	}
-	door, err := s.SummarizeDoor(ctx, w.SummaryWindow)
-	if err != nil {
-		return nil, err
-	}
-	signUps, err := s.SummarizeEventNames(ctx, w.SummaryWindow, "auth.registered")
-	if err != nil {
-		return nil, err
-	}
-	series := map[string]*TileSeries{
-		"requests": requestSeries("Requests", UnitCount, requests, func(b store.RequestBucket) float64 { return float64(b.Requests) }),
-		"server_errors": requestSeries("Server errors", UnitPercent, requests, func(b store.RequestBucket) float64 {
-			return share(b.ServerErrors, b.Requests).Value
-		}),
-		"latency": requestSeries("95th percentile", UnitMs, requests, func(b store.RequestBucket) float64 {
-			return Percentile(b.Durations, 0.95)
-		}),
-		"failed_sign_ins": eventSeries("Failed sign-ins", signIns, "wrong_password", "unknown_account"),
-		"limits":          eventSeries("Shared limits reached", limits, limits.Series...),
-		"admin_door":      eventSeries("Failures and refusals", door, append(append([]string{"access_refused"}, store.DoorFailed...), store.DoorRefused...)...),
-		"sign_ups":        eventSeries("Sign-ups", signUps, "auth.registered"),
+	for _, name := range read.Unavailable {
+		delete(series, name)
+		if name == "requests" {
+			delete(series, "server_errors")
+			delete(series, "latency")
+		}
 	}
 	tiles := make([]Tile, len(overviewTiles))
 	for i, t := range overviewTiles {
 		t.Series = series[t.ID]
 		tiles[i] = t
 	}
-	return overviewSections{Tiles: tiles}, nil
+	read.Value = overviewSections{Tiles: tiles}
+	return read, nil
 }
 
 // requestSeries is a sparkline of a value per request bucket.

@@ -40,6 +40,33 @@ func showMonitoring(t *testing.T, h http.Handler, cookie *http.Cookie, page, que
 	return decodeAdmin[monitoringView](t, w.Body.Bytes())
 }
 
+// chartSeries finds every chart's series in a page's sections: a chart
+// stacks five at most (chart.tsx refuses more).
+func chartSeries(t *testing.T, raw json.RawMessage) [][]any {
+	t.Helper()
+	var v any
+	apitest.Must(0, json.Unmarshal(raw, &v))(t)
+	var found [][]any
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			if series, ok := x["series"].([]any); ok && x["buckets"] != nil {
+				found = append(found, series)
+			}
+			for _, child := range x {
+				walk(child)
+			}
+		case []any:
+			for _, child := range x {
+				walk(child)
+			}
+		}
+	}
+	walk(v)
+	return found
+}
+
 // signal finds a signal in a page's answer.
 func (v monitoringView) signal(t *testing.T, name string) monitor.Result {
 	t.Helper()
@@ -115,6 +142,11 @@ func TestAdminMonitoringPages(t *testing.T) {
 			if v.Page != page || v.Window.Name != want || !v.Window.From.Before(v.Window.To) || v.Window.BucketSeconds == 0 || len(v.Signals) == 0 {
 				t.Fatalf("%s %s: %+v", page, window, v)
 			}
+			for _, series := range chartSeries(t, v.Sections) {
+				if len(series) > 5 {
+					t.Fatalf("%s: a chart with %d series: %v", page, len(series), series)
+				}
+			}
 			recorded := apitest.EventsNamed(t, db, "admin.monitoring.viewed")
 			if len(recorded) != before+1 {
 				t.Fatalf("%s %s: %d reads recorded", page, window, len(recorded)-before)
@@ -126,7 +158,7 @@ func TestAdminMonitoringPages(t *testing.T) {
 		}
 	}
 	before := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed"))
-	adminCall(t, h, "GET", "/api/admin/monitoring/ips", "", "", 404, cookie)
+	adminCall(t, h, "GET", "/api/admin/monitoring/data", "", "", 404, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=30d", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=all", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?page=2", "", "", 400, cookie)
@@ -156,6 +188,37 @@ func TestAdminMonitoringBounds(t *testing.T) {
 	adminCall(t, h, "GET", "/api/admin/monitoring/security", "", "", 503, session.Cookie())
 	if n := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed")); n != 0 {
 		t.Fatalf("%d reads recorded for pages not served", n)
+	}
+}
+
+// A section that can't be read within its budget is listed as
+// unavailable, and the rest of the page still answers: here the sessions
+// table is locked (a column being added in an open transaction), so the
+// Sessions section waits past its budget. One read is recorded, as for any
+// page served.
+func TestAdminMonitoringSectionsFailAlone(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	_, session := adminSignedIn(t, db, factory.TestFaker(t))
+	s.Summaries.Section = 300 * time.Millisecond
+	tx := apitest.Must(db.BeginTx(ctx, nil))(t)
+	defer func() { _ = tx.Rollback() }()
+	apitest.Must(tx.NewAddColumn().Model((*factory.Session)(nil)).ColumnExpr("blocker int").Exec(ctx))(t)
+	v := showMonitoring(t, h, session.Cookie(), "security", "")
+	var unavailable struct {
+		Unavailable []string `json:"unavailable"`
+	}
+	raw := adminCall(t, h, "GET", "/api/admin/monitoring/security", "", "", 200, session.Cookie())
+	apitest.Must(0, json.Unmarshal(raw.Body.Bytes(), &unavailable))(t)
+	if len(unavailable.Unavailable) != 1 || unavailable.Unavailable[0] != "sessions" {
+		t.Fatalf("unavailable: %v", unavailable.Unavailable)
+	}
+	if len(v.Signals) == 0 || v.signal(t, "auth.failed_sign_ins").Unavailable {
+		t.Fatalf("signals: %+v", v.Signals)
+	}
+	if n := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed")); n != 2 {
+		t.Fatalf("%d reads recorded for two pages served", n)
 	}
 }
 
@@ -193,6 +256,9 @@ func TestAdminMonitoringSecuritySignals(t *testing.T) {
 	query := url.Values{"summary": {"include"}}
 	for k, v := range failed.Drill {
 		query.Set(k, v)
+	}
+	if !failed.DrillExact {
+		t.Fatal("failed sign-ins' drill-down isn't marked exact")
 	}
 	if page := indexEvents(t, h, cookie, "?"+query.Encode()); page.Summary == nil || page.Summary.AdminEventCounts == nil || page.Summary.Total != 100 {
 		t.Fatalf("drill-down %v: %+v", query, page.Summary)
@@ -297,6 +363,11 @@ func TestAdminMonitoringSecuritySignals(t *testing.T) {
 	for k, val := range door.Drill {
 		query.Set(k, val)
 	}
+	// Broader than the count, and marked so: the Events page's failed
+	// admin sign-ins hold the wrong password too.
+	if door.DrillExact {
+		t.Fatal("the door's drill-down is marked exact")
+	}
 	if page := listEvents(t, h, cookie, "?"+query.Encode()); len(page.Data) != 2 {
 		t.Fatalf("door drill-down %v: %d rows, want the refusal and the failure", query, len(page.Data))
 	}
@@ -365,6 +436,38 @@ func TestAdminMonitoringTakeovers(t *testing.T) {
 	v := showMonitoring(t, h, session.Cookie(), "security", "")
 	if got := v.signal(t, "auth.possible_takeovers"); got.Level != monitor.LevelWarn || got.Value != 1 {
 		t.Fatalf("signal: %+v", got)
+	}
+}
+
+// An account flooding its own changes (signing out other sessions, say)
+// doesn't slow the takeover check: it's driven by sign-ins, which their
+// limits bound, so the page still answers within its deadline.
+func TestAdminMonitoringTakeoverFlood(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	_, session := adminSignedIn(t, db, f)
+	m := eventMaker{t, db, f}
+	ctx := context.Background()
+	flooder := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	signIn := func(ip string, ago time.Duration) {
+		m.make("auth.logged_in", map[string]any{"user": flooder.PublicID}, ip, ago, func(e *factory.Event) { e.UserID = flooder.ID })
+	}
+	signIn("192.0.2.10", 10*24*time.Hour)
+	signIn("192.0.2.11", 20*time.Hour)
+	const flood = 20000
+	apitest.Must(factory.Events.Sequence(func(i int, e *factory.Event) {
+		e.Name, e.UserID, e.ActorID = "auth.other_sessions_revoked", flooder.ID, flooder.ID
+		e.Payload = map[string]any{"user": flooder.PublicID, "count": 1}
+		e.CreatedAt = time.Now().Add(-time.Duration(i%(23*60)) * time.Minute)
+	}).Create(ctx, db, f, flood))(t)
+	start := time.Now()
+	v := showMonitoring(t, h, session.Cookie(), "security", "")
+	if got := v.signal(t, "auth.possible_takeovers"); got.Value != 0 {
+		t.Fatalf("takeovers in a flood from a known network: %+v", got)
+	}
+	if took := time.Since(start); took > s.Summaries.Deadline {
+		t.Fatalf("the page took %v", took)
 	}
 }
 

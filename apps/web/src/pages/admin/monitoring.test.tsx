@@ -52,6 +52,7 @@ function signal(overrides: Partial<Signal>): Signal {
 const overview: MonitoringView<OverviewSections> = {
   page: "overview",
   window,
+  unavailable: [],
   signals: [
     signal({
       value: 1204,
@@ -116,6 +117,7 @@ const flow = { series: emptySeries, topAddresses: [], limit: null };
 const security: MonitoringView<SecuritySections> = {
   page: "security",
   window,
+  unavailable: [],
   signals: [
     signal({
       name: "auth.stuffing_successes",
@@ -181,7 +183,13 @@ const security: MonitoringView<SecuritySections> = {
     },
     adminDoor: {
       counts: [{ outcome: "not_admin", count: 1 }],
-      series: emptySeries,
+      series: {
+        series: ["failed", "refused", "moved"],
+        buckets: buckets([
+          [0, 0, 0],
+          [2, 1, 0],
+        ]),
+      },
       recent: [],
     },
     sessions: { series: emptySeries, live: 12, accountsAtCap: 0 },
@@ -190,6 +198,7 @@ const security: MonitoringView<SecuritySections> = {
 const limits: MonitoringView<LimitsSections> = {
   page: "limits",
   window,
+  unavailable: [],
   signals: [
     signal({
       name: "limits.shared_reached",
@@ -347,6 +356,9 @@ describe("the Security page", () => {
       expect.stringContaining("1,000 of 1,000"),
     );
     expect(screen.getAllByText("Critical").length).toBeGreaterThanOrEqual(2);
+    // The admin door's chart: three series, named.
+    const door = screen.getByRole("table", { name: "Admin door" });
+    expect(within(door).getByText("Refusals")).toBeInTheDocument();
   });
   it("shows a chart's numbers as a table on request", async () => {
     stubApi({
@@ -362,6 +374,37 @@ describe("the Security page", () => {
     const table = screen.getByRole("table", { name: "Sign-in attempts" });
     expect(table).not.toHaveClass("sr-only");
     expect(within(table).getByText("40")).toBeInTheDocument();
+  });
+});
+describe("a section that took too long", () => {
+  it("shows Try again in its place, and the rest of the page", async () => {
+    const slow = {
+      ...security,
+      signals: [
+        ...security.signals,
+        signal({
+          name: "auth.possible_takeovers",
+          label: "Possible takeovers",
+          unavailable: true,
+        }),
+      ],
+      // Missing, as the server sends it: the gate mustn't render it.
+      sections: { ...security.sections, takeovers: null },
+      unavailable: ["takeovers"],
+    } as unknown as MonitoringView<SecuritySections>;
+    stubApi({
+      "GET /api/admin/me": { body: me },
+      "GET /api/admin/monitoring/security": { body: slow },
+    });
+    renderAdmin(`/admin/${key}/monitoring/security`);
+    expect(
+      await screen.findByText("This section took too long to load."),
+    ).toBeVisible();
+    expect(screen.getByText("Not loaded")).toBeVisible();
+    expect(screen.getByRole("link", { name: "203.0.113.66" })).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Try again" })).toHaveLength(
+      1,
+    );
   });
 });
 describe("the Rate limits page", () => {

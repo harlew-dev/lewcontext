@@ -303,7 +303,7 @@ func TestAdminCatalogue(t *testing.T) {
 		t.Fatalf("catalogue: %+v", c)
 	}
 	if len(c.EventGroups) != 9 || c.EventGroups[0].ID != "auth.*" || c.EventGroups[0].Label != "Accounts and sign-in" ||
-		c.EventGroups[8].ID != "admin-reads" || len(c.EventGroups[8].Names) != 13 || c.EventGroups[0].Groups[0].ID != "auth.password_reset.*" {
+		c.EventGroups[8].ID != "admin-reads" || len(c.EventGroups[8].Names) != 14 || c.EventGroups[0].Groups[0].ID != "auth.password_reset.*" {
 		t.Fatalf("event groups: %+v", c.EventGroups)
 	}
 	if after := apitest.Must(db.NewSelect().TableExpr("events").Count(context.Background()))(t); after != before {

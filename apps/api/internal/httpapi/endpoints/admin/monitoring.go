@@ -33,33 +33,16 @@ func (h Monitoring) Show(w http.ResponseWriter, r *http.Request) {
 		httpapi.Fail(w, 404, "Page not found.")
 		return
 	}
-	params, ok := input.Query(r, "window")
+	window, now, ok := monitoringWindow(w, r)
 	if !ok {
-		httpapi.Fail(w, 400, "Invalid query parameters.")
-		return
-	}
-	name := params["window"]
-	if name == "" {
-		name = monitor.DefaultWindow
-	}
-	now := time.Now().UTC()
-	window, ok := monitor.ResolveWindow(name, now)
-	if !ok {
-		httpapi.Fail(w, 400, "Check the window.")
 		return
 	}
 	admin := httpapi.Admin(r).User.PublicID
-	view, err := h.show(r.Context(), admin, page, window, now)
-	switch {
-	case errors.Is(err, errMonitoringBusy):
-		w.Header().Set("Retry-After", "1")
-		httpapi.Fail(w, 503, monitoringBusy)
-		return
-	case errors.Is(err, errMonitoringTooSlow):
-		httpapi.Fail(w, 503, monitoringTooSlow)
-		return
-	case err != nil:
-		httpapi.InternalError(w, r, err)
+	env := monitor.Env{Store: h.Repo, Limits: httpapi.RateLimits, Now: now, Budget: h.Summaries.Section}
+	view, err := bounded(r.Context(), h.Server, admin, func(ctx context.Context) (monitor.View, error) {
+		return monitor.Show(ctx, env, page, window)
+	})
+	if failBounded(w, r, err) {
 		return
 	}
 	// One read recorded for the page, once it was read.
@@ -71,28 +54,72 @@ func (h Monitoring) Show(w http.ResponseWriter, r *http.Request) {
 	httpapi.JSON(w, 200, view)
 }
 
+// monitoringWindow reads a Monitoring read's one parameter, its window
+// (monitor.DefaultWindow when it's left out), resolved now. Any other
+// parameter, or one given twice, answers 400.
+func monitoringWindow(w http.ResponseWriter, r *http.Request) (monitor.Window, time.Time, bool) {
+	params, ok := input.Query(r, "window")
+	if !ok {
+		httpapi.Fail(w, 400, "Invalid query parameters.")
+		return monitor.Window{}, time.Time{}, false
+	}
+	name := params["window"]
+	if name == "" {
+		name = monitor.DefaultWindow
+	}
+	now := time.Now().UTC()
+	window, ok := monitor.ResolveWindow(name, now)
+	if !ok {
+		httpapi.Fail(w, 400, "Check the window.")
+	}
+	return window, now, ok
+}
+
 var (
 	errMonitoringBusy    = errors.New("monitoring busy")
 	errMonitoringTooSlow = errors.New("monitoring too slow")
 )
 
-// show reads the page within its bounds: a slot (httpapi.Summaries), then
-// the deadline.
-func (h Monitoring) show(ctx context.Context, admin string, page monitor.Page, window monitor.Window, now time.Time) (monitor.View, error) {
-	release, ok := h.Summaries.Acquire(ctx, admin)
+// bounded runs a Monitoring read within its bounds: a slot for the admin
+// (httpapi.Summaries), then the deadline, each signal and section of a
+// page on its own budget within it (monitor/sections.go). Too slow only
+// when nothing at all was read (monitor.ErrNothingRead).
+func bounded[T any](ctx context.Context, s *httpapi.Server, admin string, read func(context.Context) (T, error)) (T, error) {
+	var zero T
+	release, ok := s.Summaries.Acquire(ctx, admin)
 	if !ok {
 		if err := ctx.Err(); err != nil {
-			return monitor.View{}, err
+			return zero, err
 		}
-		return monitor.View{}, errMonitoringBusy
+		return zero, errMonitoringBusy
 	}
 	defer release()
-	bounded, cancel := context.WithTimeout(ctx, h.Summaries.Deadline)
+	ctxBounded, cancel := context.WithTimeout(ctx, s.Summaries.Deadline)
 	defer cancel()
-	env := monitor.Env{Store: h.Repo, Limits: httpapi.RateLimits, Now: now}
-	view, err := monitor.Show(bounded, env, page, window)
-	if err != nil && ctx.Err() == nil && bounded.Err() != nil {
-		return monitor.View{}, errMonitoringTooSlow
+	out, err := read(ctxBounded)
+	if err != nil && ctx.Err() == nil && (ctxBounded.Err() != nil || errors.Is(err, monitor.ErrNothingRead)) {
+		return zero, errMonitoringTooSlow
 	}
-	return view, err
+	return out, err
+}
+
+// failBounded answers a read that failed (busy, too slow, or an error),
+// reporting whether it did. An admin who went away gets no 500 and no
+// grouped error (httpapi.ClientGone).
+func failBounded(w http.ResponseWriter, r *http.Request, err error) bool {
+	if err != nil && r.Context().Err() != nil {
+		err = errors.Join(r.Context().Err(), err)
+	}
+	switch {
+	case errors.Is(err, errMonitoringBusy):
+		w.Header().Set("Retry-After", "1")
+		httpapi.Fail(w, 503, monitoringBusy)
+	case errors.Is(err, errMonitoringTooSlow):
+		httpapi.Fail(w, 503, monitoringTooSlow)
+	case err != nil:
+		httpapi.InternalError(w, r, err)
+	default:
+		return false
+	}
+	return true
 }

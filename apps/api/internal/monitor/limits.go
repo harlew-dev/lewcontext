@@ -35,7 +35,8 @@ var LimitsSignals = []Signal{
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
 			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "rate_limit.reached"))
 		},
-		Drill: drill("rate_limit.reached"),
+		Drill:      drill("rate_limit.reached"),
+		DrillExact: true,
 	},
 }
 
@@ -63,37 +64,50 @@ type blockedLimit struct {
 	Subjects *int64 `json:"subjects"`
 }
 
-// limitsPage reads the Rate limits page's sections over w.
-func limitsPage(ctx context.Context, env Env, w Window) (any, error) {
+// limitsPage reads the Rate limits page's sections over w, each on its
+// own budget.
+func limitsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
-	var out limitsSections
-	steps := []func() error{
-		func() (err error) { out.Reached, err = s.SummarizeLimitsReached(ctx, w.SummaryWindow); return },
-		func() (err error) { out.ByLimit, err = s.IndexLimitsReached(ctx, w.From, w.To); return },
-		func() (err error) {
+	out := &limitsSections{}
+	return readSections(ctx, env, out, []section{
+		{"reached", func(ctx context.Context) (err error) {
+			out.Reached, err = s.SummarizeLimitsReached(ctx, w.SummaryWindow)
+			return
+		}},
+		{"byLimit", func(ctx context.Context) (err error) {
+			out.ByLimit, err = s.IndexLimitsReached(ctx, w.From, w.To)
+			return
+		}},
+		{"refused", func(ctx context.Context) (err error) {
 			out.Refused, err = s.SummarizeMetricTotals(ctx, "rate_limit_refused_total", "limit", w.From, w.To)
 			return
-		},
-		func() (err error) { out.Shared, err = sharedLimits(ctx, env, w, globalLimits(env)); return },
-		func() (err error) { out.Blocked, err = blocked(ctx, env); return },
-		func() (err error) { out.TopAccounts, err = s.IndexTopAccountsReaching(ctx, w.From, w.To); return },
-		func() (err error) { out.TopAddresses, err = s.IndexTopAddressesReaching(ctx, w.From, w.To); return },
-		func() (err error) {
+		}},
+		{"shared", func(ctx context.Context) (err error) {
+			out.Shared, err = sharedLimits(ctx, env, w, globalLimits(env))
+			return
+		}},
+		{"blocked", func(ctx context.Context) (err error) { out.Blocked, err = blocked(ctx, env); return }},
+		{"topAccounts", func(ctx context.Context) (err error) {
+			out.TopAccounts, err = s.IndexTopAccountsReaching(ctx, w.From, w.To)
+			return
+		}},
+		{"topAddresses", func(ctx context.Context) (err error) {
+			out.TopAddresses, err = s.IndexTopAddressesReaching(ctx, w.From, w.To)
+			return
+		}},
+		{"budgets", func(ctx context.Context) (err error) {
 			out.Budgets, err = s.IndexTopAccountsReaching(ctx, w.From, w.To, budgetLimits...)
 			return
-		},
-		func() (err error) {
+		}},
+		{"quotas", func(ctx context.Context) (err error) {
 			out.Quotas, err = s.SummarizeMetricTotals(ctx, "quota_refused_total", "quota", w.From, w.To)
 			return
-		},
-		func() (err error) { out.Routes, err = s.IndexRouteRefusals(ctx, w.From, w.To); return },
-	}
-	for _, step := range steps {
-		if err := step(); err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
+		}},
+		{"routes", func(ctx context.Context) (err error) {
+			out.Routes, err = s.IndexRouteRefusals(ctx, w.From, w.To)
+			return
+		}},
+	})
 }
 
 // blocked counts, per limit counted by subject, the subjects at it now.

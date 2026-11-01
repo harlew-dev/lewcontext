@@ -161,10 +161,11 @@ type RouteRefusals struct {
 // IndexRouteRefusals lists the routes with 429s in [from, to), most
 // first, from every server's minutes (and hours, for a long window).
 func (s *Store) IndexRouteRefusals(ctx context.Context, from, to time.Time) ([]RouteRefusals, error) {
-	source, err := s.requestRows(ctx, from, to, "m.route, m.requests, m.status_429, m.status_5xx")
+	requests, err := s.requestRows(ctx, from, to)
 	if err != nil {
 		return nil, err
 	}
+	source := requests("m.route, m.requests, m.status_429, m.status_5xx")
 	rows := []RouteRefusals{}
 	err = s.DB.NewSelect().TableExpr("(?) AS x", source).
 		ColumnExpr("x.route").

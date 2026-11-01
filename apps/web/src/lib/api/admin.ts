@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useOptionalAdmin } from "@/lib/admin";
 import { url, type Page } from "@/lib/pagination";
-import { eventQuery, eventsUrl } from "@/lib/admin-routes";
+import { addressSegment, eventQuery, eventsUrl } from "@/lib/admin-routes";
 import type { Project, ProjectSort } from "@/types/projects";
 import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
@@ -27,6 +27,7 @@ import {
   type AdminWorkspace,
   type AdminWorkspaceDetail,
   type AdminWorkspaceSort,
+  type AddressView,
   type CursorPage,
   type DeliveryStatus,
   type EventFilters,
@@ -207,6 +208,16 @@ export const adminPaths = {
         }),
       ),
   },
+  // One address's page (or an IPv6 /64's, its slash escaped), read whole
+  // and recorded with the address; 24h is the default window.
+  ips: {
+    show: (ip: string, window?: MonitoringWindow) =>
+      path<AddressView>(
+        url(`${base}/ips/${addressSegment(ip)}`, {
+          window: window === defaultMonitoringWindow ? undefined : window,
+        }),
+      ),
+  },
   // The Admins page: every admin, one list (no paging).
   admins: {
     index: () => path<{ data: AdminAccount[] }>(`${base}/admins`),
@@ -311,6 +322,10 @@ export function adminClient(http: Http) {
     monitoring: () => ({
       show: <S>(page: MonitoringPage, window?: MonitoringWindow) =>
         http.get(adminPaths.monitoring.show<S>(page, window)),
+    }),
+    ips: () => ({
+      show: (ip: string, window?: MonitoringWindow) =>
+        http.get(adminPaths.ips.show(ip, window)),
     }),
     admins: () => ({ index: () => http.get(adminPaths.admins.index()) }),
     // Signs out every other admin session of yours, keeping this one.

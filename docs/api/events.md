@@ -44,7 +44,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.login_attempted` | `email`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` / `suspended` (a [suspended](auth.md#suspended-accounts) account's right password, or right code: refused 403) | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
-| `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
+| `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions`, only when it signed at least one session out |
 | `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` / `mfa_setup` / `mfa_disable` / `recovery_codes` / `export_data` | both password endpoints (changing the password only without MFA), both deletions that need it, setting up, turning off and renewing the codes of two-factor authentication, and downloading the account's data, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
 | `auth.password_reset.requested` | `email` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
@@ -89,7 +89,8 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
 | `admin.event.exported` | `admin`, `filters` (as `admin.event.listed`'s), `rows` (how many the CSV held, at most 10,000); actor only | the Events page's Download CSV, recorded before the file is sent ([compliance.md](../compliance.md#events-csv)) |
 | `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
-| `admin.monitoring.viewed` | `admin`, `page` (`overview`, `security`, `limits`), `window` (`1h`, `24h`, `7d`); actor only | a Monitoring page served, once for its signals, charts and lists ([monitoring.md](monitoring.md)) |
+| `admin.monitoring.viewed` | `admin`, `page` (`overview`, `security`, `limits`, `ips`, `accounts`, `workspaces`, `usage`), `window` (`1h`, `24h`, `7d`); actor only | a Monitoring page served, once for its signals, charts and lists ([monitoring.md](monitoring.md)) |
+| `admin.ip.viewed` | `admin`, `address` (the address or IPv6 /64 looked at: the event's `ip` column is the admin's own), `window`; actor only | one address's page served ([monitoring.md](monitoring.md#one-address)) |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
 | `admin.admin.listed` | `admin`; actor only | the Admins page |
 | `admin.email_block.listed` | `admin`, `q`, `sort`, `page`; actor only | every read of the Email blocks page |

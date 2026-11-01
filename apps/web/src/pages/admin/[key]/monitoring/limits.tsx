@@ -6,6 +6,7 @@ import {
   MonitoringHeader,
   MonitoringSection,
   NoneFound,
+  SectionGate,
   SeriesChart,
   SharedLimitMeter,
   SignalGrid,
@@ -53,21 +54,42 @@ function Limits({ view }: { view: View }) {
   return (
     <>
       <SignalGrid className="mt-8" signals={view.signals} />
-      <Shared view={view} />
-      <Reached view={view} />
+      <SectionGate names={["shared"]} title="Shared limits">
+        <Shared view={view} />
+      </SectionGate>
+      <SectionGate names={["reached", "byLimit"]} title="Windows reached">
+        <Reached view={view} />
+      </SectionGate>
       <div className="grid gap-x-14 lg:grid-cols-2">
-        <Refused view={view} />
-        <Blocked view={view} />
+        <SectionGate names={["refused"]} title="Requests refused">
+          <Refused view={view} />
+        </SectionGate>
+        <SectionGate names={["blocked"]} title="Blocked right now">
+          <Blocked view={view} />
+        </SectionGate>
       </div>
       <div className="grid gap-x-14 lg:grid-cols-2">
-        <TopAccounts view={view} />
-        <TopAddresses view={view} />
+        <SectionGate names={["topAccounts"]} title="Accounts reaching the most">
+          <TopAccounts view={view} />
+        </SectionGate>
+        <SectionGate
+          names={["topAddresses"]}
+          title="Addresses reaching the most"
+        >
+          <TopAddresses view={view} />
+        </SectionGate>
       </div>
       <div className="grid gap-x-14 lg:grid-cols-2">
-        <Budgets view={view} />
-        <Quotas view={view} />
+        <SectionGate names={["budgets"]} title="Budgets">
+          <Budgets view={view} />
+        </SectionGate>
+        <SectionGate names={["quotas"]} title="Quotas">
+          <Quotas view={view} />
+        </SectionGate>
       </div>
-      <Routes view={view} />
+      <SectionGate names={["routes"]} title="By route">
+        <Routes view={view} />
+      </SectionGate>
     </>
   );
 }

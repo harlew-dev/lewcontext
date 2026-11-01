@@ -68,10 +68,17 @@ func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 		Where("token_hash = ? AND expires_at > now() AND last_seen_at > now() - interval '30 minutes'", hash).
 		Where("NOT EXISTS (?)", suspendedUser(s.DB, "s.user_id")).
 		Returning("user_id, csrf_token, created_at, expires_at")
+	// The account's row is locked only if it's free: whoever holds it
+	// (changing the password, a new session) locks the account and then
+	// its sessions, the other way round from here, and waiting would
+	// deadlock. An hourly time can skip a beat.
+	free := s.DB.NewSelect().TableExpr("users AS x").ColumnExpr("x.id").
+		Where("x.id IN (SELECT a.user_id FROM active AS a)").
+		Where("x.last_seen_at IS NULL OR x.last_seen_at < now() - make_interval(secs => ?)", int(seenEvery.Seconds())).
+		For("NO KEY UPDATE SKIP LOCKED")
 	seen := s.DB.NewUpdate().Model((*User)(nil)).
 		Set("last_seen_at = now()").
-		Where("u.id IN (SELECT a.user_id FROM active AS a)").
-		Where("u.last_seen_at IS NULL OR u.last_seen_at < now() - make_interval(secs => ?)", int(seenEvery.Seconds()))
+		Where("u.id IN (?)", free)
 	var session Session
 	err := s.DB.NewSelect().
 		With("active", active).
@@ -105,11 +112,13 @@ func (s *Store) DeleteSession(ctx context.Context, u User, hash string) error {
 }
 
 // DeleteOtherSessions signs out every session of the user's except hash and
-// records auth.other_sessions_revoked.
+// records auth.other_sessions_revoked, only when it signed one out: asking
+// with nothing to sign out changes nothing, so it records nothing (and
+// can't fill the audit trail).
 func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		count, err := deleteSessions(ctx, tx, "user_id = ? AND token_hash <> ?", u.ID, hash)
-		if err != nil {
+		if err != nil || count == 0 {
 			return err
 		}
 		return s.record(ctx, tx, events.OtherSessionsRevoked{User: u.PublicID, Count: count}, EventScope{UserID: u.ID})

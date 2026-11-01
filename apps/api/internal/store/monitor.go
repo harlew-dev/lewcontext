@@ -205,11 +205,14 @@ func (s *Store) FindLimitStates(ctx context.Context, names []string) (map[string
 // requestRows is where request totals come from for [from, to): the
 // minutes, which are kept 48 hours; for a longer window, the hours summed
 // so far, then the minutes after the last hour summed, so nothing is
-// counted twice.
-func (s *Store) requestRows(ctx context.Context, from, to time.Time, columns string) (*bun.SelectQuery, error) {
-	minutes := s.DB.NewSelect().TableExpr("request_minutes AS m").
-		ColumnExpr("m.minute AS t, "+columns).
-		Where("m.minute >= ?", from).Where("m.minute < ?", to)
+// counted twice. The cutoff between them is read once, here: every query
+// built from the returned source splits at the same hour.
+func (s *Store) requestRows(ctx context.Context, from, to time.Time) (func(columns string) *bun.SelectQuery, error) {
+	minutes := func(columns string) *bun.SelectQuery {
+		return s.DB.NewSelect().TableExpr("request_minutes AS m").
+			ColumnExpr("m.minute AS t, "+columns).
+			Where("m.minute >= ?", from).Where("m.minute < ?", to)
+	}
 	if to.Sub(from) <= MinuteRetention-time.Hour {
 		return minutes, nil
 	}
@@ -217,11 +220,12 @@ func (s *Store) requestRows(ctx context.Context, from, to time.Time, columns str
 	if err != nil || cutoff.IsZero() {
 		return minutes, err
 	}
-	hours := s.DB.NewSelect().TableExpr("request_hours AS m").
-		ColumnExpr("m.hour AS t, "+columns).
-		Where("m.hour >= ?", from).Where("m.hour < ?", cutoff)
-	minutes = minutes.Where("m.minute >= ?", cutoff)
-	return hours.UnionAll(minutes), nil
+	return func(columns string) *bun.SelectQuery {
+		hours := s.DB.NewSelect().TableExpr("request_hours AS m").
+			ColumnExpr("m.hour AS t, "+columns).
+			Where("m.hour >= ?", from).Where("m.hour < ?", cutoff)
+		return hours.UnionAll(minutes(columns).Where("m.minute >= ?", cutoff))
+	}, nil
 }
 
 // metricRows is requestRows for a metric's series: minutes, or hours then

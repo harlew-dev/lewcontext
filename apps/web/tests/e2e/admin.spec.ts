@@ -440,6 +440,54 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   ).toBeVisible();
   expect(errors).toEqual([]);
 
+  // IP addresses: the same address, sorted by failed sign-ins, opens its
+  // own page (one read recorded with the address); an IPv6 /64's page,
+  // its slash escaped, gets through the page gate and the router.
+  await page.getByRole("link", { name: "IP addresses" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Top addresses" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: /Failed sign-ins/ }).click();
+  await expect(page).toHaveURL(
+    `/admin/${key}/monitoring/ips?sort=failedSignIns`,
+  );
+  const address = page.getByRole("row").filter({ hasText: stuffingIP });
+  await expect(address).toContainText("12");
+  await address.getByRole("link", { name: stuffingIP }).click();
+  await expect(page).toHaveURL(`/admin/${key}/monitoring/ips/${stuffingIP}`);
+  await expect(
+    page.getByRole("heading", { name: stuffingIP, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("It tried 12 different emails with no account"),
+  ).toBeVisible();
+  expect(
+    sql(
+      `SELECT payload->>'address' FROM events WHERE name = 'admin.ip.viewed' ORDER BY id DESC LIMIT 1`,
+    ),
+  ).toBe(stuffingIP);
+  const network = `2001:db8:${(stamp % 9000).toString(16)}:1::/64`;
+  sql(
+    `INSERT INTO events (name, payload, ip) VALUES ('auth.logged_in', '{"user": "usr_00000000000001"}', '${network.replace("::/64", "::7")}'), ('auth.logged_in', '{"user": "usr_00000000000001"}', '${network.replace("::/64", "::8")}')`,
+  );
+  await page.goto(
+    `/admin/${key}/monitoring/ips/${network.replace("/", "%2F")}`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Addresses in this /64" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: network })).toBeVisible();
+  for (const name of ["Accounts", "Workspaces", "Usage"]) {
+    await page.getByRole("link", { name, exact: true }).last().click();
+    await expect(
+      page.getByRole("heading", { name, exact: true }),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Not seen for two years" }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+
   // Back to app is another build: it loads as a new page, which Go answers
   // (this browser has no app session, so login, returning to /app).
   await page.getByRole("button", { name: "Admin account menu" }).click();
