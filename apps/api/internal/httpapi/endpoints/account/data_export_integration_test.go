@@ -258,3 +258,43 @@ func TestSuspendedAccountsCantExport(t *testing.T) {
 		t.Fatal("a suspended account's export was recorded")
 	}
 }
+
+// An operator's note stays out of the export: suspended and unsuspended
+// from the command line, the account's auth.suspended and auth.unsuspended
+// are exported with who did it (by cli), never the reason typed.
+func TestExportLeavesOutOperatorNotes(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	const suspended, unsuspended = "Operator note: chargeback fraud, ticket 77.", "Operator note: cleared by the payments team."
+	apitest.Must(s.Repo.SuspendUser(ctx, user.PublicID, store.Suspension{Reason: suspended}, nil))(t)
+	apitest.Must(s.Repo.UnsuspendUser(ctx, user.PublicID, unsuspended, nil))(t)
+	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
+	w := apitest.Call(t, h, "POST", "/api/auth/export", exportBody(factory.DefaultPassword), session.CSRFToken, session.Cookie(), 200)
+	if body := w.Body.String(); strings.Contains(body, "Operator note") {
+		t.Fatalf("the export holds an operator's note: %s", body)
+	}
+	var export store.AccountExport
+	apitest.Must(0, json.Unmarshal(w.Body.Bytes(), &export))(t)
+	found := 0
+	for _, e := range export.Events {
+		if e.Name != "auth.suspended" && e.Name != "auth.unsuspended" {
+			continue
+		}
+		found++
+		var payload map[string]any
+		apitest.Must(0, json.Unmarshal(e.Payload, &payload))(t)
+		if _, ok := payload["reason"]; ok || payload["by"] != "cli" || payload["user"] != user.PublicID {
+			t.Errorf("%s: %v", e.Name, payload)
+		}
+	}
+	if found != 2 {
+		t.Fatalf("%d suspension events exported", found)
+	}
+	// Stored as they were: only the export leaves the note out.
+	if e := apitest.OnlyEvent(t, db, "auth.suspended"); e.Payload["reason"] != suspended {
+		t.Fatalf("auth.suspended as stored: %s", e.Raw)
+	}
+}

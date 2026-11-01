@@ -56,7 +56,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.recovery_codes.created` | `user`, `count` | `CreateRecoveryCodes`: a new set replaced the old |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `auth.suspended` | `user`, `by`: `admin` (beside `admin.user.suspended`, which holds the reason; the admin is the actor) / `cli` (`admin suspend`, no actor, `reason` here), `sessionsRevoked` (app and admin), `invitationsRevoked`; `user_id` set | `SuspendUser` |
-| `auth.unsuspended` | `user`, `by` (as `auth.suspended`), `reason` from the command line; `user_id` set | `UnsuspendUser` |
+| `auth.unsuspended` | `user`, `by` (as `auth.suspended`), `reason` from the command line; `user_id` set. The account's Download my data leaves both events' `reason` out (an operator's note) | `UnsuspendUser` |
 | `auth.sessions_revoked_all` | `sessions`, `adminSessions` (how many were signed out), `challenges` (sign-ins waiting for a code, ended); no scope or actor | `RevokeAllSessions` (`admin sessions revoke-all`) |
 | `auth.data_exported` | `user`; `user_id` set, the account as actor | `POST /api/auth/export`: the account downloaded its data, after its password ([compliance.md](../compliance.md#download-my-data)) |
 | `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |

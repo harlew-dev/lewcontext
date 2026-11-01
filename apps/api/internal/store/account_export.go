@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/events"
 	"time"
 )
 
@@ -93,7 +94,8 @@ type ExportedInvitation struct {
 }
 
 // ExportedEvent is an event about the account, or one it caused, as
-// stored (within the events' retention). IP and UserAgent are the
+// stored (within the events' retention), apart from an operator's note: a
+// suspension's reason from the command line (exportedPayload). IP and UserAgent are the
 // account's own request's: shown only for events it caused, never for
 // one someone else caused about it (a member's change of its role, a
 // sign-in attempt on its email).
@@ -205,6 +207,15 @@ func exportOwnedWorkspaces(ctx context.Context, tx bun.Tx, userID int64) ([]Expo
 	return owned, nil
 }
 
+// exportedPayload is an event's payload as the export shows it: as stored,
+// apart from the reason an operator typed when suspending or unsuspending
+// the account from the command line (auth.suspended's and
+// auth.unsuspended's reason, by cli), which is the operator's note, not
+// the account's data; who did it (by) stays. From the dashboard, the
+// reason is in the admin.* event, never exported.
+var exportedPayload = bun.SafeQuery("CASE WHEN e.name IN (?) THEN e.payload - 'reason' ELSE e.payload END",
+	bun.In([]string{events.Suspended{}.EventName(), events.Unsuspended{}.EventName()}))
+
 // exportEvents are the events about the account (user_id), and those it
 // caused (actor_id) apart from its admin dashboard's: an admin's reads and
 // actions hold other people's data (a stranger's invitations it revoked,
@@ -219,7 +230,8 @@ func exportEvents(ctx context.Context, tx bun.Tx, userID int64) ([]ExportedEvent
 		Own bool
 	}
 	err := tx.NewSelect().Model((*eventRecord)(nil)).
-		ColumnExpr("e.public_id AS id, e.name, e.created_at, e.payload").
+		ColumnExpr("e.public_id AS id, e.name, e.created_at").
+		ColumnExpr("? AS payload", exportedPayload).
 		ColumnExpr("coalesce(?, '') AS ip, e.user_agent", eventIPText).
 		ColumnExpr("e.actor_id IS NOT DISTINCT FROM ? AS own", userID).
 		Where("e.user_id = ? OR (e.actor_id = ? AND NOT e.admin_request AND split_part(e.name, '.', 1) <> 'admin')", userID, userID).
