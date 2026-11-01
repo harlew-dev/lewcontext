@@ -27,7 +27,7 @@ var domainVerbs = map[string]string{
 	"Change":    "changing a password, which also ends other sessions",
 	"Cleanup":   "removing expired rows the requests left behind",
 	"Complete":  "completing a sign-up with its emailed code",
-	"Count":     "counting: rows for a number shown elsewhere (what pruning would delete, the deliveries waiting), or a hit against a rate limit's counter (CountHit, CountHitUntil)",
+	"Count":     "counting: rows for a number shown elsewhere (what pruning would delete, the deliveries waiting, the monitoring signals), or a hit against a rate limit's counter (CountHit, CountHitUntil)",
 	"Disable":   "turning MFA off",
 	"Enable":    "turning MFA on, with the first recovery codes",
 	"Flag":      "flagging an admin session that moved network",
@@ -43,7 +43,7 @@ var domainVerbs = map[string]string{
 	"Revoke":    "revoking an invitation, or admin from the CLI",
 	"Setup":     "existing; to fix: starting MFA setup (should be SetUp, a verb)",
 	"StepUp":    "opening an admin session's step-up window",
-	"Summarize": "summing rows into totals: the admin Events page's chart counts, the metrics' hours",
+	"Summarize": "summing rows into totals: the admin Events page's chart counts, the metrics' hours, the monitoring pages' charts",
 	"Unblock":   "taking an email address off the block list",
 	"Verify":    "verifying an email address",
 }

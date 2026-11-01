@@ -24,6 +24,7 @@ import {
   SidebarBody,
   SidebarFooter,
   SidebarHeader,
+  SidebarHeading,
   SidebarItem,
   SidebarLabel,
   SidebarSection,
@@ -33,7 +34,11 @@ import { toast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api";
 import { useAdminApi } from "@/lib/api/admin";
 import { useAdminKey, useAdminSession, usePreviousAdminKey } from "@/lib/admin";
-import { adminNavigation, adminRoutes } from "@/lib/admin-routes";
+import {
+  adminMonitoringNavigation,
+  adminNavigation,
+  adminRoutes,
+} from "@/lib/admin-routes";
 import { initials } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { useClearCache } from "@/lib/use-clear-cache";
@@ -130,6 +135,28 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   <SidebarLabel>{label}</SidebarLabel>
                 </SidebarItem>
               ))}
+            </SidebarSection>
+            <SidebarSection
+              aria-labelledby="admin-monitoring-heading"
+              className="mt-8"
+            >
+              <SidebarHeading id="admin-monitoring-heading">
+                Monitoring
+              </SidebarHeading>
+              {adminMonitoringNavigation(key).map(
+                ({ label, href, icon: Icon }) => (
+                  // Each page is current on its own path only: Overview's
+                  // path is the others' prefix.
+                  <SidebarItem
+                    key={href}
+                    href={href}
+                    current={currentPath === href}
+                  >
+                    <Icon />
+                    <SidebarLabel>{label}</SidebarLabel>
+                  </SidebarItem>
+                ),
+              )}
             </SidebarSection>
           </SidebarBody>
           <SidebarFooter>

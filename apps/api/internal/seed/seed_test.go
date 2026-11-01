@@ -8,6 +8,9 @@ import (
 	"lewcontext/api/internal/database/dbtest"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/monitor"
+	"lewcontext/api/internal/store"
 	"strings"
 	"testing"
 	"time"
@@ -167,5 +170,41 @@ func TestEventsInsertFakeHistory(t *testing.T) {
 	}
 	if seeder, _ := Find("events"); seeder.MaxFor() != 2_000_000 {
 		t.Fatalf("events max: %d", seeder.MaxFor())
+	}
+}
+
+// The monitoring seeder plants what the Security and Rate limits pages
+// look for: each of their main signals is at its level.
+func TestMonitoringSeeder(t *testing.T) {
+	db := migrated(t)
+	if summary := run(t, db, "monitoring", Options{}); !strings.Contains(summary, SeedStuffingIP) {
+		t.Fatalf("summary: %s", summary)
+	}
+	env := monitor.Env{Store: &store.Store{DB: db}, Limits: httpapi.RateLimits, Now: time.Now()}
+	results, err := monitor.ReadAll(context.Background(), env, append(append([]monitor.Signal{}, monitor.SecuritySignals...), monitor.LimitsSignals...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]monitor.Level{
+		"auth.stuffing_addresses":        monitor.LevelWarn,
+		"auth.stuffing_successes":        monitor.LevelCritical,
+		"auth.distributed_guessing":      monitor.LevelWarn,
+		"auth.success_after_failures":    monitor.LevelCritical,
+		"auth.possible_takeovers":        monitor.LevelWarn,
+		"auth.second_factor_failures":    monitor.LevelWarn,
+		"admin.door_failures":            monitor.LevelWarn,
+		"admin.door_refusals":            monitor.LevelCritical,
+		"limits.shared_reached":          monitor.LevelCritical,
+		"auth.unknown_account_share":     monitor.LevelOK,
+		"auth.reauthentication_failures": monitor.LevelOK,
+	}
+	for _, r := range results {
+		if level, ok := want[r.Name]; ok && r.Level != level {
+			t.Errorf("%s: %v (%v), want %v", r.Name, r.Level, r.Value, level)
+		}
+	}
+	var unseeded int
+	if err := db.NewSelect().Model((*factory.Event)(nil)).ColumnExpr("count(*)").Where("NOT (payload->>'seeded')::boolean").Scan(context.Background(), &unseeded); err != nil || unseeded != 0 {
+		t.Fatalf("%d events not marked seeded (%v)", unseeded, err)
 	}
 }

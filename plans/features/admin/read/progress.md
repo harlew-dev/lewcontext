@@ -35,6 +35,9 @@ All were fixed before committing, apart from the few listed as accepted in each 
   3. Metrics, server heartbeats, slow queries, `/metrics`.
 - **Plans written and committed:** [policies](../../implemented/policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
 
+
+> **Pause:** at about 10:00 every agent stopped on the account's 5-hour usage limit. They were resumed at 12:51, each from where it stopped. No work was lost.
+
 ## The parallel plan (from 2026-11-01, about 05:00)
 
 You asked for every open plan to be built, with their recommendations accepted for you to review in the morning, and for unrelated work to run in parallel git worktrees, merged in once each is finished.
