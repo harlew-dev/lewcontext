@@ -8,7 +8,7 @@ import {
   type Mail,
 } from "./mail";
 // Blocking an email address from an invitation's block link
-// (plans/features/email-blocks.md): the block, the silent refusals of
+// (plans/features/implemented/email-blocks.md): the block, the silent refusals of
 // invitations and sign-up, unblocking, and an address with an account.
 const stamp = Date.now();
 const inviterEmail = `e2e-${stamp}-blocker-inviter@lewcontext.test`;

@@ -13,7 +13,7 @@ import { useAction } from "@/lib/use-action";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import type { EmailBlockLink } from "@/types/email-blocks";
 // The page a block link opens: /auth/email-blocks/<token>, from the footer of
-// an invitation (plans/features/email-blocks.md). It checks the link, then
+// an invitation (plans/features/implemented/email-blocks.md). It checks the link, then
 // offers to block the address it went to, or to unblock it. An address with
 // an account can't be blocked: it would lose password reset.
 //

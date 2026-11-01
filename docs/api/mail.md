@@ -1,6 +1,6 @@
 # Mail
 
-Code: `internal/mail`. Plans: [forgot-password](../../plans/features/implemented/forgot-password.md), [email-delivery](../../plans/features/implemented/email-delivery.md), [email-blocks](../../plans/features/email-blocks.md).
+Code: `internal/mail`. Plans: [forgot-password](../../plans/features/implemented/forgot-password.md), [email-delivery](../../plans/features/implemented/email-delivery.md), [email-blocks](../../plans/features/implemented/email-blocks.md).
 
 The API sends email through `mailer.Send(ctx, to, template, data)`. It renders the email's HTML and plain-text parts from templates and hands them to a driver: SMTP (`MAIL_DRIVER=smtp`, the default), a development mailbox file (`log`), or nothing (`off`). In development and in the tests, SMTP goes to Mailpit, a local inbox at `http://localhost:8025`.
 

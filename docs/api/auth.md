@@ -53,7 +53,7 @@ Code: `internal/httpapi/endpoints/account/registrations.go` (sign-up), `endpoint
 
 ## Blocking an email address
 
-Code: `internal/httpapi/endpoints/account/email_blocks.go`, `internal/store/email_blocks.go`, `internal/database/lock.go` (the email lock), `internal/mail` (the link and the check), `cmd/admin/blocks.go`. Plan: [plans/features/email-blocks.md](../../plans/features/email-blocks.md).
+Code: `internal/httpapi/endpoints/account/email_blocks.go`, `internal/store/email_blocks.go`, `internal/database/lock.go` (the email lock), `internal/mail` (the link and the check), `cmd/admin/blocks.go`. Plan: [plans/features/implemented/email-blocks.md](../../plans/features/implemented/email-blocks.md).
 
 Invitations go to addresses an inviter types, so each one carries a **block link** (`/auth/email-blocks/<token>`, [mail.md](mail.md#blocked-addresses)). Its page checks the link (`POST /api/email-blocks/check`), then blocks (`POST /api/email-blocks {token}`) or unblocks (`DELETE`) the address it went to. A blocked address gets no email at all and can't become an account.
 

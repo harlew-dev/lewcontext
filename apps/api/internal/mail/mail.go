@@ -55,7 +55,7 @@ var subjects = map[Template]string{
 
 // blockable are the templates whose emails carry a block link: a footer
 // line and List-Unsubscribe, for addresses that may have never heard of us
-// (plans/features/email-blocks.md). Mail that only reaches accounts, and
+// (plans/features/implemented/email-blocks.md). Mail that only reaches accounts, and
 // sign-up codes, which someone just asked for, don't.
 var blockable = map[Template]bool{
 	WorkspaceInvitation: true,

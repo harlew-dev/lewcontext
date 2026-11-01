@@ -1,6 +1,6 @@
 # Blocking an email address
 
-Status: **decisions 1–16 confirmed and implemented 2026-11-01** (see [Built so far](#built-so-far)). Revised 2026-11-01 for email verification, the existing `cmd/admin` and migrations 011–017, and to make every refusal silent (decisions 2, 3, 14). Builds on [email delivery](implemented/email-delivery.md) (the SMTP driver, the per-recipient rule in [mail.md](../../docs/api/mail.md#who-gets-email-and-how-often)), [workspace invitations](implemented/workspace-invitations.md) and [email verification](implemented/email-verification.md).
+Status: **implemented 2026-11-01** (see [Built so far](#built-so-far) for where the build differs, and the docs updated). Revised 2026-11-01 for email verification, the existing `cmd/admin` and migrations 011–017, and to make every refusal silent (decisions 2, 3, 14). The admin dashboard's block list and unblocking (decisions 17–21 here) moved to their own plan, [admin/email-blocks](../admin/email-blocks.md). Builds on [email delivery](email-delivery.md) (the SMTP driver, the per-recipient rule in [mail.md](../../../docs/api/mail.md#who-gets-email-and-how-often)), [workspace invitations](workspace-invitations.md) and [email verification](email-verification.md).
 
 ## Why
 
@@ -13,9 +13,9 @@ The link is built so other emails can carry it later: a template is marked **blo
 - **Password reset** and **"You already have an account"** only reach existing accounts, so the link would always answer "delete your account first";
 - **sign-up codes** go to someone who just asked for one, and a blocked address never gets them anyway;
 - **security mail** is never blockable;
-- **workspace notifications** (future) are opt-in and turned off in settings ([mail.md](../../docs/api/mail.md#who-gets-email-and-how-often)).
+- **workspace notifications** (future) are opt-in and turned off in settings ([mail.md](../../../docs/api/mail.md#who-gets-email-and-how-often)).
 
-**A block is visible only to the inbox's owner.** Whoever invites or signs up with a blocked address is told nothing different (decision 14): a harasser who invites someone must not learn that they blocked, which would also confirm the address is read by a person. Only someone holding a link or a code sent to that inbox ever sees the word "blocked".
+**A block is visible only to the inbox's owner.** Whoever invites or signs up with a blocked address is told nothing different (decision 14): a harasser who invites someone must not learn that they blocked, which would also confirm the address is read by a person. Only someone holding a link or a code sent to that inbox ever sees the word "blocked", apart from the operators who look after the block list from the command line.
 
 ## Design
 
@@ -34,7 +34,7 @@ The link is built so other emails can carry it later: a template is marked **blo
    | Not blocked | "Block **ada@example.com**? You won't receive any more email from lewcontext, and this address can't be used to sign up. You can undo this from this link for a year." | **Block this address** |
    | Blocked | "**ada@example.com** is blocked. You won't receive email from lewcontext, and it can't be used to sign up. Keep this email: its link lets you unblock this address for a year." | **Unblock** |
 
-   The page works signed in or out (no `guestLoader`), like the reset and invitation links. It uses `AuthLayout` with one full-width primary button, per [forms-and-actions.md](../../docs/ui/forms-and-actions.md). Blocking or unblocking switches it to the other state, with a status message.
+   The page works signed in or out (no `guestLoader`), like the reset and invitation links. It uses `AuthLayout` with one full-width primary button, per [forms-and-actions.md](../../../docs/ui/forms-and-actions.md). Blocking or unblocking switches it to the other state, with a status message.
 3. **Blocking** (`POST /api/email-blocks {token}`) and **unblocking** (`DELETE /api/email-blocks {token}`) work only with a live link.
 
 ### What a block does
@@ -71,7 +71,7 @@ The lock goes where a `users` row is created: `BlockEmail`, the sign-up verify t
 | POST | `/api/email-blocks` | Origin, JSON, `auth:per-ip` | 204; the address is blocked (blocking an address that's already blocked is also 204). Body `{token}`. 409 "This address has an account. Delete your account first." when one uses it; 422 with `field: "token"` for a dead link |
 | DELETE | `/api/email-blocks` | Origin, JSON, `auth:per-ip` | 204; the address is unblocked (unblocking one that isn't blocked is also 204). Body `{token}`. 422 with `field: "token"` for a dead link |
 
-- **Named for the resource, not the page** ([naming.md](../../docs/naming.md)). The controller is `account.EmailBlocks` (`endpoints/account/email_blocks.go`) with `Check`, `Store` and `Destroy`; `Check` is a named action on the link, like `Invitations.Check`. It lives in the `account` area rather than a new area for three routes, the way `/api/invitations/*` lives in `workspace`; naming.md notes the exception. The token is only ever in the body, never in an API URL. The page path carries it, as the reset and invitation pages do (AGENTS.md's single-use-link exception).
+- **Named for the resource, not the page** ([naming.md](../../../docs/naming.md)). The controller is `account.EmailBlocks` (`endpoints/account/email_blocks.go`) with `Check`, `Store` and `Destroy`; `Check` is a named action on the link, like `Invitations.Check`. It lives in the `account` area rather than a new area for three routes, the way `/api/invitations/*` lives in `workspace`; naming.md notes the exception. The token is only ever in the body, never in an API URL. The page path carries it, as the reset and invitation pages do (AGENTS.md's single-use-link exception).
 - **Store methods:** `IssueEmailBlockLink`, `CheckEmailBlockLink`, `BlockEmail`, `UnblockEmail` (by link, or by address for the command line), `IndexEmailBlocks`, and `CheckEmailBlocked` (the yes/no question).
 - **Client:** `api.emailBlocks().check(token)`, `.store(token)` and `.destroy(token)`, with `paths.emailBlocks()`. Page route `routes.emailBlocks.show(token)`; the page file is `pages/auth/email-blocks/[token].tsx`, exporting `EmailBlockShow`.
 - **Rate limits:** `auth:per-ip`, counted in the controller as `password-reset/check` does. Tokens are unguessable (256 bits), so the limit only bounds load. No new limit.
@@ -123,7 +123,7 @@ admin unblock -email ada@example.com -confirm  # unblocks; records email.unblock
 | `email.blocked` | `email`, `ip` | `BlockEmail`, when the address wasn't already blocked |
 | `email.unblocked` | `email`, `ip` (empty from the command line), `by`: `link` or `cli` | `UnblockEmail`, when it was blocked |
 
-The address is in the payload (decision 6), as it is for sign-in attempts, reset requests and invitations, so the audit trail shows who blocked and unblocked. Like those, it's deleted with the event by the 90-day prune. No user, workspace or actor. Both are added to `events.Catalogue` and the catalogue in [events.md](../../docs/api/events.md).
+The address is in the payload (decision 6), as it is for sign-in attempts, reset requests and invitations, so the audit trail shows who blocked and unblocked. Like those, it's deleted with the event by the 90-day prune. No user, workspace or actor. Both are added to `events.Catalogue` and the catalogue in [events.md](../../../docs/api/events.md).
 
 ## Security risks and how they're avoided
 
@@ -135,8 +135,7 @@ The address is in the payload (decision 6), as it is for sign-in attempts, reset
 | A block and a sign-up racing | A transaction-scoped advisory lock keyed by the email serialises a block with account creation (verify, or register with verification off) |
 | An invitation or code queued before a block still emailed | `Send` checks the block list for every email, so even mail queued before the block isn't sent |
 | Personal data | `email_blocks` holds each blocked address for as long as it's blocked: the minimum needed to honour the request. `email_block_links` holds addresses for up to a year, deleted by the cleanup. The two events hold the address for 90 days, like other events with an email. A database leak would expose who asked not to be contacted; digests were considered and rejected (decision 10) |
-| Misuse of the command line | `admin unblock` only removes a block, needs `-confirm`, and records `email.unblocked` with `by: "cli"`. It runs with database access, which already allows anything |
-| A token in a URL | Only in the page path (AGENTS.md's single-use-link exception), never in API URLs or `?next=`. The page sends it in the body |
+| Misuse of the command line | `admin unblock` only removes a block, needs `-confirm`, and records `email.unblocked` with `by: "cli"`. It runs with database access, which already allows anything || A token in a URL | Only in the page path (AGENTS.md's single-use-link exception), never in API URLs or `?next=`. The page sends it in the body |
 | Header injection through `List-Unsubscribe` | Its value is built from `APP_ORIGIN` and a base64url token, with no user data |
 
 ## Tests
@@ -172,7 +171,7 @@ The address is in the payload (decision 6), as it is for sign-in attempts, reset
   - invite an unregistered address, open the block link from Mailpit, block it;
   - inviting it again succeeds but nothing reaches Mailpit; signing up with it reaches the code page but no code arrives;
   - unblock from the same link, and the next invitation arrives;
-  - a registered address's link says to delete the account first;
+  - a registered address's link says to delete the account first.
 
 ## Docs
 
@@ -212,15 +211,17 @@ The address is in the payload (decision 6), as it is for sign-in attempts, reset
 | 15 | Sign-up with a blocked address (verification off) | Refused with the taken-email 409 that mode already gives. Allowing it would leave an account whose mail is blocked (no password reset), or let anyone lift someone's block by typing their address, since that mode doesn't prove ownership. **Confirmed 2026-11-01.** |
 | 16 | Where the controller lives | `account.EmailBlocks`, keeping `/api/email-blocks`; noted in naming.md. **Confirmed 2026-11-01.** |
 
+Decisions 17–21 (the admin dashboard's block list and unblocking) moved to [admin/email-blocks](../admin/email-blocks.md) as its decisions 1–5, still to confirm.
+
 ## Built so far
 
-Decisions 1–16 shipped on 2026-11-01. Docs updated: [mail.md](../../docs/api/mail.md#blocked-addresses), [auth.md](../../docs/api/auth.md#blocking-an-email-address), [endpoints.md](../../docs/api/endpoints.md#email-blocks), [events.md](../../docs/api/events.md), [database.md](../../docs/api/database.md), [rate-limits.md](../../docs/api/rate-limits.md), [admin.md](../../docs/api/admin.md) (the command line, the Mail page), [seeding.md](../../docs/api/seeding.md), [api/testing.md](../../docs/api/testing.md), [api/README.md](../../docs/api/README.md), [naming.md](../../docs/naming.md), [ui/pages.md](../../docs/ui/pages.md), [ui/api.md](../../docs/ui/api.md), [ui/testing.md](../../docs/ui/testing.md), [deployment.md](../../docs/deployment.md), [testing.md](../../docs/testing.md), AGENTS.md. Where the build differs from the design above:
+Decisions 1–16 shipped on 2026-11-01. Docs updated: [mail.md](../../../docs/api/mail.md#blocked-addresses), [auth.md](../../../docs/api/auth.md#blocking-an-email-address), [endpoints.md](../../../docs/api/endpoints.md#email-blocks), [events.md](../../../docs/api/events.md), [database.md](../../../docs/api/database.md), [rate-limits.md](../../../docs/api/rate-limits.md), [admin.md](../../../docs/api/admin.md) (the command line, the Mail page), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [api/README.md](../../../docs/api/README.md), [naming.md](../../../docs/naming.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/api.md](../../../docs/ui/api.md), [ui/testing.md](../../../docs/ui/testing.md), [deployment.md](../../../docs/deployment.md), [testing.md](../../../docs/testing.md), AGENTS.md. Where the build differs from the design above:
 
 - **Verify for an address blocked after its code was sent** answers **401** through the existing "start again" path ("This address has been blocked. To use it, unblock it from the link in an email we sent, then sign up again."), not a 422: the sign-up is over and its rows are deleted, and the code page already handles 401 with the API's reason.
 - **The code page's line** is "If you blocked this address, no code can reach it: unblock it from the link in our email first." The shared code step already says to check the spam folder.
 - **The mailer** keeps `subjects` and adds a `blockable` set beside it, rather than one `templates` map. `Blocks.IssueEmailBlockLink(ctx, email, hash)` stores a digest the mailer made (`auth.Token` in `Send`, as listeners make the other tokens), and only after both parts have rendered. `mail.New` refuses a mailer without `Blocks` or `Origin`. **Every** mail listener treats `ErrBlocked` as done (`done(err)`), not only the invitation and sign-up ones.
 - **Events** carry `email` (and `by`) only: the IP is the `events.ip` column, as for every event (no payload has an `ip` field, `TestPayloadsHoldNothingSensitive`). `email` is a new event area in the name test and naming.md.
-- **`email_block_links.token_hash`** is `text`, like the other tables' digests, not `bytea`.
+- **`email_block_links.token_hash`** is `text`, like the other tables' digests, not `bytea`; there's no `email` index ([admin/email-blocks](../admin/email-blocks.md) adds one for its page).
 - **Extra store methods:** `FindEmailBlock` (the command line's preview) and `UnblockEmailAddress` (by address, `by: "cli"`), beside `UnblockEmail` (by link).
 - **The page's status message** is a success `Notice` ("Address blocked." / "Address unblocked."): sign-in pages have no `Toaster`.
 
@@ -230,6 +231,6 @@ Decisions 1–16 shipped on 2026-11-01. Docs updated: [mail.md](../../docs/api/m
 - **A block link on password reset, sign-up codes or security mail.**
 - **Telling an inviter an address is blocked** (decision 2).
 - **A way for registered users to refuse invitations** ("Don't accept invitations" in settings). `invitation:per-email` caps them meanwhile.
-- **Blocks in the admin dashboard.** `admin blocks` lists them; a page can come with the admin plans.
+- **Blocks in the admin dashboard.** `admin blocks` lists them; the page and unblocking from it are [admin/email-blocks](../admin/email-blocks.md).
 - **Removing pending invitations on block** (decision 9).
 - **Workspace notifications and their settings** (their own plan; the opt-in rule is already in mail.md).

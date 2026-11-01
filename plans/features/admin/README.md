@@ -15,8 +15,10 @@ Admin access left out the Events, Mail and Monitoring pages, any write action, a
 | A5 | [alerts](alerts.md) | Alert rules checked every minute by one server, the Alerts page, email to admins and an optional webhook | A4 |
 | A6 | [actions](actions.md) | The first write actions, behind a fresh code (step-up), a written reason and the `operator` role: sign out everywhere, reset MFA, suspend an account, retry a delivery, block an IP, revoke a workspace's invitations, acknowledge an alert | A2 (roles), A1 (retry), A5 (acknowledge) |
 | A7 | [compliance](compliance.md) | Retention per kind of data, scrubbing a deleted account's email from the log, "Download my data", audit events shipped to the log, a data map (`docs/compliance.md`) and an incident runbook | A1, A3, A6 |
+| A8 | [separate-build](separate-build.md) | The admin pages as their own build (`WEB_BUILD=admin`), out of the public bundle and served only behind the key: its scripts at `/admin-assets/` need an "assets pass" cookie that only the admin page gate sets. A build check that no admin code is left in the app build | admin access |
+| A9 | [email-blocks](email-blocks.md) | The **Email blocks** page (the block list, from [email blocks](../implemented/email-blocks.md)) and Unblock, the first write: it builds A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` early, and waits for A2 only for the `operator` role | admin access, A1 |
 
-A2 can go at any point after admin access; it's small and stands alone. A4 is large and can ship page by page in the order listed in it.
+A2 and A8 can each go at any point after admin access; both are small and stand alone. A8 should land before A4, whose pages (rate-limit thresholds, abuse checks, alert rules) are the code most worth keeping out of public view. A4 is large and can ship page by page in the order listed in it.
 
 ## What the dashboard answers, and what it can't
 
@@ -43,6 +45,7 @@ These come from admin access and AGENTS.md. A plan that needs an exception says 
 4. **Bounded queries.** Every aggregate has a time window (at most 7 days, 24 hours by default) and an index behind it, and runs inside the request's 10 s timeout. A query that can't meet that becomes a rollup, not a slower page.
 5. **Actions are deliberate.** A write needs the `operator` role, a fresh code and a reason, and records who did what and why (A6). Granting admin stays CLI-only.
 6. **No third parties by default.** Logs, metrics and errors stay on our servers unless the operator ships them somewhere. Nothing loads a tracking or analytics script.
+7. **Admin code stays in the admin build** (from A8 on). New admin pages go in `adminRoutes`; their API calls, route helpers and types live in the admin modules (`lib/api/admin.ts`, `lib/admin-routes.ts`, `types/admin.ts`), never in modules the app imports. The build fails if admin code reaches the app build.
 
 ## Admin sidebar, once all ship
 
@@ -51,6 +54,7 @@ Users          (admin access)
 Workspaces     (admin access)
 Events         A1
 Mail           A1
+Email blocks   A9
 Monitoring     A4: Overview · Security · Rate limits · IPs · Accounts · Workspaces · Usage · Data · Integrity · Performance · Errors · Configuration
 Alerts         A5   (a count badge while any is open)
 Admins         A2

@@ -10,7 +10,7 @@ import (
 // LockEmail takes a transaction-scoped advisory lock on an email address,
 // held until tx commits or rolls back. Blocking an address and creating an
 // account with it each take it before they check the other, so the two
-// can't both pass their check at once (plans/features/email-blocks.md). The
+// can't both pass their check at once (plans/features/implemented/email-blocks.md). The
 // key is the first 8 bytes of the address's SHA-256; two addresses sharing
 // one only wait for each other.
 func LockEmail(ctx context.Context, tx bun.Tx, email string) error {

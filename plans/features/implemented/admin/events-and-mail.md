@@ -111,7 +111,7 @@ Each row: `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `em
 
 Stat tiles for the queue, a bar chart of volume per hour, the asked-for-vs-sent pair, the top recipients table (each address links to Events `?email=`), the driver box, then the deliveries table with status tabs (Failed first when there are any).
 
-Retrying a failed delivery is an action ([actions](../../admin/actions.md)). When [email blocks](../../email-blocks.md) ships, Mail gets a Blocked addresses tab listing `email_blocks`.
+Retrying a failed delivery is an action ([actions](../../admin/actions.md)). When [email blocks](../email-blocks.md) ships, Mail gets a Blocked addresses tab listing `email_blocks`.
 
 ## Charts (decision 12)
 

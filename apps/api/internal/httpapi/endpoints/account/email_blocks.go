@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-// Blocking an email address (plans/features/email-blocks.md): a blockable
+// Blocking an email address (plans/features/implemented/email-blocks.md): a blockable
 // email (an invitation) carries a block link, whose page checks it, then
 // blocks or unblocks the address it went to. Only an address without an
 // account can be blocked, and only with its link, so only that inbox can.

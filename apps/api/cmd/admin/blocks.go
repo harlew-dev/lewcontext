@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// The block list (plans/features/email-blocks.md): an operator can list it
+// The block list (plans/features/implemented/email-blocks.md): an operator can list it
 // and unblock an address, for example after its links have expired. There is
 // no block command: blocking takes the inbox owner's link.
 

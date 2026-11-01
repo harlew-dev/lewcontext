@@ -2,6 +2,8 @@
 
 Status: **draft 2026-10-31**, decisions to confirm. Plan A6 of the [admin plans](README.md). Needs [access hardening](access-hardening.md) (the `operator` role), [events-and-mail](../implemented/admin/events-and-mail.md) (deliveries), [monitoring](monitoring.md) (errors, IPs) and [alerts](alerts.md) (acknowledging). Docs it will change: [admin.md](../../../docs/api/admin.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [events.md](../../../docs/api/events.md), [database.md](../../../docs/api/database.md), [deployment.md](../../../docs/deployment.md), [ui/forms-and-actions.md](../../../docs/ui/forms-and-actions.md) (the admin action dialog). Also AGENTS.md: the security invariant "It stays read-only until a plan adds actions" becomes this plan's rules.
 
+**The first action ships earlier, with [email blocks](email-blocks.md)** (A9, if its decisions are confirmed): unblocking an email address, an account-and-access action. That plan builds this one's step-up (`POST /api/admin/step-up`, `admin_sessions.stepped_up_until`, `RequireAdminStepUp`), required reasons, `admin-action:per-user` and `AdminActionDialog` as described here. This plan reuses them, and adds `requireAdminRole(operator)` to the unblock route along with its own.
+
 ## Why
 
 The dashboard shows abuse but can't stop it. Today every response is a command run on the server (`admin reset-mfa`) or SQL against production, which is slower, unrecorded by the dashboard, and riskier. Admin access promised actions "with step-up codes in a later plan" (its decision 4). This is that plan: a short list of actions that support and incident response need, each one deliberate, recorded and reversible where it can be.
@@ -88,6 +90,14 @@ CREATE TABLE ip_blocks (
 - **Enforced in `clientAddress`** from an in-memory list each server reloads every 30 seconds (one small query), so the check costs a prefix lookup. Blocked requests get `403 {"error": "Access from your network has been blocked."}` (a plain 403 page for pages), and count in `ip_block_refused_total`.
 - **Not blocked:** `/api/health*` and the admin door (`/admin/…`, `/api/admin/…`), so a mistaken block can't lock admins out of undoing it. The admin door has its own allowlist ([access hardening](access-hardening.md)).
 - **The edge is better for floods:** a blocked request still reaches the server. [deployment.md](../../../docs/deployment.md) will say to use a Cloudflare or proxy rule for volume; this is for a few abusive addresses.
+
+### Email addresses
+
+| Action | Route | Event |
+| --- | --- | --- |
+| **Unblock an address** | `DELETE /api/admin/email-blocks {email, reason}` | `admin.email.unblocked`; `email.unblocked` (`by: "admin"`) |
+
+Built by [email blocks](email-blocks.md) (A9), on the Email blocks page. There is no admin block: blocking comes only from the inbox owner's link.
 
 ### Admins
 
