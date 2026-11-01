@@ -82,7 +82,10 @@ function WorkspaceDetails({ workspace }: { workspace: AdminWorkspaceDetail }) {
         <Heading className="min-w-0 truncate">{workspace.name}</Heading>
         <Button
           outline
-          href={adminRoutes.events.index(key, { workspace: workspace.id })}
+          href={adminRoutes.events.index(key, {
+            workspace: workspace.id,
+            window: "all",
+          })}
         >
           Activity
         </Button>

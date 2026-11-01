@@ -1,11 +1,24 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { createRoutesStub, Outlet, useLocation } from "react-router";
 import { SWRConfig } from "swr";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { adminLoader } from "@/lib/admin";
-import { stubApi, type Sent } from "@/test/api";
+import { stubApi, type Reply, type Sent } from "@/test/api";
 import { testSession } from "@/test/session";
-import type { AdminEvent, AdminMail } from "@/types/admin";
+import {
+  failureKinds,
+  type AdminEvent,
+  type AdminEventPage,
+  type AdminMail,
+  type EventSummary,
+} from "@/types/admin";
 import AdminEventIndex from "./[key]/events";
 import AdminEventShow from "./[key]/events/[event]";
 import AdminDeliveryIndex from "./[key]/mail";
@@ -18,8 +31,39 @@ const me = { user: admin.user, csrfToken: "admin-csrf", expiresAt: "" };
 const catalogue = {
   events: [
     "auth.login_attempted",
+    "auth.logged_in",
+    "auth.mfa.enabled",
+    "auth.mfa.checked",
     "workspace.created",
     "workspace.member.removed",
+    "admin.user.viewed",
+  ],
+  eventGroups: [
+    {
+      id: "auth.*",
+      label: "Accounts and sign-in",
+      names: ["auth.login_attempted", "auth.logged_in"],
+      groups: [
+        {
+          id: "auth.mfa.*",
+          label: "Two-factor authentication",
+          names: ["auth.mfa.enabled", "auth.mfa.checked"],
+          groups: [],
+        },
+      ],
+    },
+    {
+      id: "workspace.*",
+      label: "Workspaces",
+      names: ["workspace.created", "workspace.member.removed"],
+      groups: [],
+    },
+    {
+      id: "admin-reads",
+      label: "Admin reads",
+      names: ["admin.user.viewed"],
+      groups: [],
+    },
   ],
   limits: ["auth:per-ip"],
   listeners: ["mail.password_reset"],
@@ -29,6 +73,7 @@ function event(n: number, overrides: Partial<AdminEvent> = {}): AdminEvent {
     id: `evt_0000000000000${n}`,
     name: "auth.login_attempted",
     createdAt: "2026-10-30T12:00:00Z",
+    failed: false,
     actor: null,
     user: { id: "usr_00000000000001", name: "Ada", email: "ada@example.com" },
     workspace: null,
@@ -78,77 +123,293 @@ function eventRequests(sent: Sent[]): string[] {
     .map((r) => r.url)
     .filter((url) => url.startsWith("/api/admin/events"));
 }
+const start = "2026-11-01T12:00:00Z";
+const next = "2026-11-01T12:30:00Z";
+function okSummary(): EventSummary {
+  return {
+    status: "ok",
+    bucketSeconds: 1800,
+    total: 12,
+    stackedBy: "group",
+    series: ["auth.*", "workspace.*", "other"],
+    buckets: [
+      { start, counts: [5, 1, 0] },
+      { start: next, counts: [4, 1, 1] },
+    ],
+    topNames: [
+      { name: "auth.login_attempted", count: 9 },
+      { name: "workspace.created", count: 2 },
+    ],
+    failures: {
+      total: 4,
+      series: [...failureKinds],
+      buckets: [
+        { start, counts: [3, 0, 0, 0, 0] },
+        { start: next, counts: [0, 1, 0, 0, 0] },
+      ],
+    },
+    limitsReached: 1,
+    signInAttempts: 9,
+  };
+}
+function eventPage(
+  data: AdminEvent[],
+  extra: Partial<AdminEventPage> = {},
+): AdminEventPage {
+  return {
+    data,
+    next: null,
+    window: { from: "2026-10-31T12:00:00Z", to: "2026-11-01T12:47:00Z" },
+    refs: { account: null, workspace: null },
+    ...extra,
+  };
+}
+function stubEvents(replies: Record<string, Reply | Reply[]>) {
+  return stubApi({
+    "GET /api/admin/me": { body: me },
+    "GET /api/admin/catalogue": { body: catalogue },
+    ...replies,
+  });
+}
+function location() {
+  return screen.getByLabelText("Location").textContent;
+}
 describe("the Events page", () => {
-  it("reads its filters from the URL and writes them back when applied", async () => {
-    const api = stubApi({
-      "GET /api/admin/me": { body: me },
-      "GET /api/admin/catalogue": { body: catalogue },
-      "GET /api/admin/events": { body: { data: [event(1)], next: null } },
+  it("shows the tiles, charts and top events from the newest page, with their numbers for screen readers", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events": {
+        body: eventPage([event(1, { failed: true })], {
+          summary: okSummary(),
+        }),
+      },
     });
-    renderAdmin(`/admin/${key}/events?account=usr_00000000000001&ip=nope`);
+    renderAdmin(`/admin/${key}/events`);
+    expect(
+      await screen.findByText(
+        "12 events in the last 24 hours, most at 12:00 UTC (6).",
+      ),
+    ).toBeInTheDocument();
+    expect(eventRequests(api.sent())).toEqual([
+      "/api/admin/events?summary=include",
+    ]);
+    expect(screen.getByText("Oct 31, 12:00 – Nov 1, 12:47 UTC")).toBeVisible();
+    const events = screen.getByRole("table", { name: "Events over time" });
+    const rows = within(events).getAllByRole("row");
+    expect(
+      within(rows[0])
+        .getAllByRole("columnheader")
+        .map((c) => c.textContent),
+    ).toEqual(["Time", "Accounts and sign-in", "Workspaces", "Other", "Total"]);
+    expect(
+      within(rows[2])
+        .getAllByRole("cell")
+        .map((c) => c.textContent),
+    ).toEqual(["4", "1", "1", "6"]);
+    expect(
+      screen.getByText("4 failed checks, most of them sign-in (3)."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("33% of sign-ins")).toBeInTheDocument();
+    const top = screen.getByRole("list", { name: "Top events" });
+    expect(
+      within(top).getByRole("link", { name: /auth.login_attempted/ }),
+    ).toHaveAttribute("href", `/admin/${key}/events?name=auth.login_attempted`);
+    // The row's Failed badge comes from the API's `failed`.
+    const row = screen.getByRole("row", { name: /wrong_password/ });
+    expect(within(row).getByText("Failed")).toBeInTheDocument();
+  });
+  it("reads names canonically, waiting for the catalogue, and leaves out what the API would refuse", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
+    });
+    renderAdmin(
+      `/admin/${key}/events?window=7d&name=auth.logged_in,auth.login_attempted,auth.mfa.*,nope.thing,BAD&account=usr_x`,
+    );
     expect(
       await screen.findByText("wrong_password · ada@example.com"),
     ).toBeInTheDocument();
-    // A value the API would refuse is left out, not sent.
-    expect(eventRequests(api.sent())).toEqual([
-      "/api/admin/events?account=usr_00000000000001",
-    ]);
-    expect(screen.getByLabelText("Account")).toHaveValue("usr_00000000000001");
-    expect(screen.getByRole("link", { name: "203.0.113.5" })).toHaveAttribute(
-      "href",
-      `/admin/${key}/events?ip=203.0.113.5`,
+    const urls = api.sent().map((r) => r.url);
+    expect(urls.indexOf("/api/admin/catalogue")).toBeLessThan(
+      urls.findIndex((u) => u.startsWith("/api/admin/events")),
     );
+    expect(eventRequests(api.sent())).toEqual([
+      "/api/admin/events?window=7d&name=auth.*&summary=include",
+    ]);
+    expect(screen.getByText("Events: auth.*")).toBeInTheDocument();
+  });
+  it("applies the dialog's filters in one navigation, and Cancel and Clear all apply nothing", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
+    });
+    renderAdmin(`/admin/${key}/events?ip=203.0.113.5`);
+    await screen.findByText("wrong_password · ada@example.com");
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    let dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("IP address or range")).toHaveValue(
+      "203.0.113.5",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Clear all" }));
+    expect(within(dialog).getByLabelText("IP address or range")).toHaveValue(
+      "",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(location()).toBe(`/admin/${key}/events?ip=203.0.113.5`);
+    expect(eventRequests(api.sent())).toHaveLength(1);
 
-    fireEvent.change(screen.getByLabelText("Email"), {
+    // Opened again, it starts from what's applied.
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("IP address or range")).toHaveValue(
+      "203.0.113.5",
+    );
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
       target: { value: " ADA@example.com " },
     });
-    fireEvent.change(screen.getByLabelText("From (UTC)"), {
-      target: { value: "2026-10-30" },
-    });
-    fireEvent.change(screen.getByLabelText("To (UTC)"), {
-      target: { value: "2026-10-30" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
-    const applied = `/admin/${key}/events?account=usr_00000000000001&email=ada%40example.com&from=2026-10-30T00%3A00%3A00Z&to=2026-10-31T00%3A00%3A00Z`;
-    expect(await screen.findByText(applied)).toBeInTheDocument();
-    expect(eventRequests(api.sent()).at(-1)).toBe(
-      `/api/admin/events${applied.slice(applied.indexOf("?"))}`,
+    fireEvent.click(within(dialog).getAllByRole("combobox")[0]);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /^auth\.mfa\.\* / }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Apply filters" }),
+    );
+    const applied = `/admin/${key}/events?name=auth.mfa.*&email=ada%40example.com&ip=203.0.113.5`;
+    await waitFor(() => expect(location()).toBe(applied));
+    await waitFor(() => expect(eventRequests(api.sent())).toHaveLength(2));
+    expect(eventRequests(api.sent())[1]).toBe(
+      `/api/admin/events${applied.slice(applied.indexOf("?"))}&summary=include`,
     );
   });
   it("refuses a malformed filter on its field, without loading", async () => {
-    const api = stubApi({
-      "GET /api/admin/me": { body: me },
-      "GET /api/admin/catalogue": { body: catalogue },
-      "GET /api/admin/events": { body: { data: [event(1)], next: null } },
+    const api = stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
     });
     renderAdmin(`/admin/${key}/events`);
     await screen.findByText("wrong_password · ada@example.com");
-    fireEvent.change(screen.getByLabelText("Workspace"), {
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Workspace"), {
       target: { value: "acme" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Apply filters" }),
+    );
     expect(
-      await screen.findByText("A workspace ID starts with wsp_."),
+      await within(dialog).findByText("A workspace ID starts with wsp_."),
     ).toBeInTheDocument();
-    expect(eventRequests(api.sent())).toEqual(["/api/admin/events"]);
+    expect(eventRequests(api.sent())).toHaveLength(1);
   });
-  it("pages older and back newer by the cursor", async () => {
-    const api = stubApi({
-      "GET /api/admin/me": { body: me },
-      "GET /api/admin/catalogue": { body: catalogue },
+  it("names the account and workspace in badges, and removes one filter each", async () => {
+    stubEvents({
       "GET /api/admin/events": {
-        body: { data: [event(1)], next: "evt_00000000000001" },
+        body: eventPage([event(1)], {
+          refs: {
+            account: {
+              id: "usr_00000000000001",
+              name: "Ada Lovelace",
+              email: "ada@example.com",
+            },
+            workspace: { id: "wsp_00000000000002" },
+          },
+        }),
+      },
+    });
+    renderAdmin(
+      `/admin/${key}/events?account=usr_00000000000001&workspace=wsp_00000000000002&ip=203.0.113.5`,
+    );
+    expect(
+      await screen.findByText("Account: Ada Lovelace"),
+    ).toBeInTheDocument();
+    // A deleted workspace: its ID alone.
+    expect(screen.getByText("Workspace: wsp_00000000000002")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Filters 3/ })).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove filter: IP: 203.0.113.5" }),
+    );
+    await waitFor(() =>
+      expect(location()).toBe(
+        `/admin/${key}/events?account=usr_00000000000001&workspace=wsp_00000000000002`,
+      ),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(location()).toBe(`/admin/${key}/events`));
+  });
+  it("writes the time range, and reloads when the same one is picked", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
+    });
+    renderAdmin(`/admin/${key}/events?email=ada%40example.com`);
+    await screen.findByText("wrong_password · ada@example.com");
+    fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
+    fireEvent.click(await screen.findByRole("option", { name: "Last hour" }));
+    await waitFor(() =>
+      expect(location()).toBe(
+        `/admin/${key}/events?window=1h&email=ada%40example.com`,
+      ),
+    );
+    await waitFor(() => expect(eventRequests(api.sent())).toHaveLength(2));
+    fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
+    fireEvent.click(await screen.findByRole("option", { name: "Last hour" }));
+    await waitFor(() => expect(eventRequests(api.sent())).toHaveLength(3));
+  });
+  // The calendar hands back local dates at local midnight; the range is
+  // those days in UTC, east and west of it alike.
+  for (const zone of ["Pacific/Kiritimati", "America/Los_Angeles"])
+    it(`builds a custom range from the calendar's days in UTC (${zone})`, async () => {
+      const tz = process.env.TZ;
+      process.env.TZ = zone;
+      vi.useFakeTimers({
+        toFake: ["Date"],
+        now: new Date("2026-11-01T12:00:00Z"),
+      });
+      try {
+        stubEvents({
+          "GET /api/admin/events": { body: eventPage([event(1)]) },
+        });
+        renderAdmin(`/admin/${key}/events`);
+        await screen.findByText("wrong_password · ada@example.com");
+        fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
+        fireEvent.click(
+          await screen.findByRole("option", { name: "Custom range…" }),
+        );
+        const dialog = await screen.findByRole("dialog");
+        fireEvent.click(
+          within(dialog).getByRole("gridcell", { name: /October 20th 2026/ }),
+        );
+        fireEvent.click(
+          within(dialog).getByRole("gridcell", { name: /October 23rd 2026/ }),
+        );
+        expect(within(dialog).getByText("Oct 20 – Oct 23, UTC")).toBeVisible();
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "Apply range" }),
+        );
+        await waitFor(() =>
+          expect(location()).toBe(
+            `/admin/${key}/events?from=2026-10-20T00%3A00%3A00Z&to=2026-10-24T00%3A00%3A00Z`,
+          ),
+        );
+        expect(
+          await screen.findByRole("combobox", { name: /Oct 20 – Oct 23 UTC/ }),
+        ).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+        process.env.TZ = tz;
+      }
+    });
+  it("asks for the summary on the newest page only, and keeps it while paging", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events?summary=include": {
+        body: eventPage([event(1)], {
+          next: "evt_00000000000001",
+          summary: okSummary(),
+        }),
       },
       "GET /api/admin/events?before=evt_00000000000001": {
-        body: {
-          data: [
-            event(2, {
-              payload: { limit: "auth:per-ip:block" },
-              name: "rate_limit.reached",
-            }),
-          ],
-          next: null,
-        },
+        body: eventPage([
+          event(2, {
+            payload: { limit: "auth:per-ip:block" },
+            name: "rate_limit.reached",
+          }),
+        ]),
       },
     });
     renderAdmin(`/admin/${key}/events`);
@@ -156,30 +417,151 @@ describe("the Events page", () => {
     expect(screen.getByRole("button", { name: "Newer" })).toBeDisabled();
     fireEvent.click(screen.getByRole("link", { name: "Older" }));
     expect(await screen.findByText("auth:per-ip:block")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Older" })).toBeDisabled();
+    expect(
+      screen.getByRole("table", { name: "Events over time" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Newer" }));
     expect(
       await screen.findByText("wrong_password · ada@example.com"),
     ).toBeInTheDocument();
     // The newest page comes back from the cache: no second recorded read.
     expect(eventRequests(api.sent())).toEqual([
-      "/api/admin/events",
+      "/api/admin/events?summary=include",
       "/api/admin/events?before=evt_00000000000001",
     ]);
   });
+  it("arriving at an older page, says the charts come with the newest", async () => {
+    stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(2)]) },
+    });
+    renderAdmin(`/admin/${key}/events?before=evt_00000000000001`);
+    expect(
+      await screen.findByText("Charts show with the newest events.", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show newest" }));
+    await waitFor(() => expect(location()).toBe(`/admin/${key}/events`));
+  });
+  it("says why there are no charts, with Retry or a shorter range", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events?window=all&summary=include": {
+        body: eventPage([event(1)], {
+          window: null,
+          summary: { status: "too_wide" },
+        }),
+      },
+      "GET /api/admin/events?summary=include": [
+        { body: eventPage([event(1)], { summary: { status: "too_slow" } }) },
+        { body: eventPage([event(1)], { summary: { status: "busy" } }) },
+      ],
+    });
+    renderAdmin(`/admin/${key}/events?window=all`);
+    expect(
+      await screen.findByText("Charts cover 7 days or less.", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("All time, newest first")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the last 7 days" }),
+    );
+    await waitFor(() =>
+      expect(location()).toBe(`/admin/${key}/events?window=7d`),
+    );
+    cleanup();
+    renderAdmin(`/admin/${key}/events`);
+    expect(
+      await screen.findByText(
+        "Charts took too long. Add filters or pick a shorter range.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      await screen.findByText("Charts are busy. Try again in a moment."),
+    ).toBeInTheDocument();
+    expect(
+      eventRequests(api.sent()).filter(
+        (u) => u === "/api/admin/events?summary=include",
+      ),
+    ).toHaveLength(2);
+  });
+  it("opens a row in place, with its payload as text, without a request", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events": {
+        body: eventPage([
+          event(1, { payload: { name: "<script>alert(1)</script>" } }),
+        ]),
+      },
+    });
+    renderAdmin(`/admin/${key}/events`);
+    const details = await screen.findByRole("button", {
+      name: "Details of auth.login_attempted at Oct 30, 12:00:00",
+    });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    const before = api.sent().length;
+    fireEvent.click(details);
+    expect(details).toHaveAttribute("aria-expanded", "true");
+    const payload = screen.getByText(/"name": "<script>alert\(1\)<\/script>"/);
+    expect(payload.tagName).toBe("PRE");
+    expect(document.querySelector("pre script")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open event" })).toHaveAttribute(
+      "href",
+      `/admin/${key}/events/evt_00000000000001`,
+    );
+    expect(api.sent()).toHaveLength(before);
+    // An IP keeps the window and filters.
+    expect(screen.getByRole("link", { name: "203.0.113.5" })).toHaveAttribute(
+      "href",
+      `/admin/${key}/events?ip=203.0.113.5`,
+    );
+  });
+  it("shows the loading state, then why nothing is listed", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    stubEvents({
+      "GET /api/admin/events": {
+        body: eventPage([], {
+          summary: {
+            ...(okSummary() as Extract<EventSummary, { status: "ok" }>),
+            total: 0,
+          },
+        }),
+        gate,
+      },
+    });
+    renderAdmin(`/admin/${key}/events`);
+    expect(await screen.findByLabelText("Loading events")).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: "Loading chart" })).toHaveLength(
+      3,
+    );
+    release();
+    expect(
+      await screen.findByText("No events in the last 24 hours"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("table", { name: "Events over time" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the last 7 days" }),
+    );
+    await waitFor(() =>
+      expect(location()).toBe(`/admin/${key}/events?window=7d`),
+    );
+  });
   it("says when nothing matches, and keeps an error with Retry", async () => {
-    stubApi({
-      "GET /api/admin/me": { body: me },
-      "GET /api/admin/catalogue": { body: catalogue },
+    stubEvents({
       "GET /api/admin/events": [
         { status: 400, body: { error: "Check the filters." } },
-        { body: { data: [], next: null } },
+        { body: eventPage([]) },
       ],
     });
     renderAdmin(`/admin/${key}/events?email=nobody%40example.com`);
     expect(await screen.findByText("Check the filters.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("No events match")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(location()).toBe(`/admin/${key}/events`));
   });
 });
 describe("an event's page", () => {

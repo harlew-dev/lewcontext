@@ -80,7 +80,10 @@ function UserDetails({ user }: { user: AdminUserDetail }) {
         </div>
         <Button
           outline
-          href={adminRoutes.events.index(key, { account: user.id })}
+          href={adminRoutes.events.index(key, {
+            account: user.id,
+            window: "all",
+          })}
         >
           Activity
         </Button>

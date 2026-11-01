@@ -333,7 +333,10 @@ function TopRecipients({ mail }: { mail: AdminMail }) {
               <TableRow key={r.email}>
                 <TableCell className="max-w-56 truncate">
                   <TextLink
-                    href={adminRoutes.events.index(key, { email: r.email })}
+                    href={adminRoutes.events.index(key, {
+                      email: r.email,
+                      window: mail.window,
+                    })}
                   >
                     {r.email}
                   </TextLink>

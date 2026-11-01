@@ -178,7 +178,10 @@ function BlockRow({
           </DropdownButton>
           <DropdownMenu anchor="bottom end">
             <DropdownItem
-              href={adminRoutes.events.index(key, { email: block.email })}
+              href={adminRoutes.events.index(key, {
+                email: block.email,
+                window: "all",
+              })}
             >
               <DropdownLabel>Show activity</DropdownLabel>
             </DropdownItem>

@@ -6,7 +6,11 @@ import {
   QueueListIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
-import type { DeliveryPageQuery, EventFilters } from "@/types/admin";
+import {
+  defaultEventWindow,
+  type DeliveryPageQuery,
+  type EventFilters,
+} from "@/types/admin";
 import { url } from "./pagination";
 // The admin dashboard's page URLs, at its secret key (ADMIN_ROUTE_KEY, from
 // the URL; lib/admin.tsx), registered with their page files in src/routes.ts.
@@ -27,7 +31,7 @@ export const adminRoutes = {
   // Events, filtered: links from elsewhere open the rows behind them.
   events: {
     index: (key: string, filters: EventFilters = {}) =>
-      url(`/admin/${key}/events`, filters),
+      eventsUrl(`/admin/${key}/events`, eventQuery(filters)),
     show: (key: string, event: string) => `/admin/${key}/events/${event}`,
   },
   // The Mail page lists deliveries (AdminDeliveryIndex), with the summary's
@@ -75,4 +79,28 @@ export function adminNavigation(key: string) {
     },
     { label: "Admins", href: adminRoutes.admins.index(key), icon: KeyIcon },
   ];
+}
+// The Events filters as query parameters, for the page URL and the API
+// alike: the name tokens as one comma-separated `name`, the default window
+// left out, so each view has one URL and one SWR key.
+export function eventQuery(filters: EventFilters) {
+  return {
+    window: filters.window === defaultEventWindow ? undefined : filters.window,
+    name: filters.names?.length ? filters.names.join(",") : undefined,
+    outcome: filters.outcome,
+    account: filters.account,
+    workspace: filters.workspace,
+    email: filters.email,
+    ip: filters.ip,
+    from: filters.from,
+    to: filters.to,
+    before: filters.before,
+  };
+}
+// `url`, keeping the name list's commas readable ("auth.*,project.*").
+export function eventsUrl(
+  path: string,
+  params: Parameters<typeof url>[1],
+): string {
+  return url(path, params).replaceAll("%2C", ",");
 }

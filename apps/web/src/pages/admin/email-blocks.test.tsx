@@ -182,7 +182,7 @@ describe("the Email blocks list", () => {
     });
     expect(activity).toHaveAttribute(
       "href",
-      `/admin/${key}/events?email=ada%40example.com`,
+      `/admin/${key}/events?window=all&email=ada%40example.com`,
     );
     expect(
       screen.queryByRole("menuitem", { name: "Unblock" }),
