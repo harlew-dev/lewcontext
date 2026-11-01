@@ -28,6 +28,9 @@ func TestSignalsAreWellFormed(t *testing.T) {
 			t.Errorf("%s: warn %v, critical %v", sig.Name, sig.Warn, sig.Critical)
 		}
 		if sig.Drill == nil {
+			if sig.DrillExact {
+				t.Errorf("%s: exact, with no drill-down", sig.Name)
+			}
 			continue
 		}
 		if windowName(sig.Window) == "" {

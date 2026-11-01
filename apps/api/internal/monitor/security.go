@@ -29,7 +29,8 @@ var SecuritySignals = []Signal{
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
 			return count(env.Store.CountFailedSignIns(ctx, sp.From, sp.To))
 		},
-		Drill: drill("auth.login_attempted", "outcome", "failed"),
+		Drill:      drill("auth.login_attempted", "outcome", "failed"),
+		DrillExact: true,
 	},
 	{
 		Name: "auth.stuffing_addresses", Page: PageSecurity, Label: "Addresses trying many emails", Unit: UnitCount,
@@ -64,7 +65,8 @@ var SecuritySignals = []Signal{
 			s, err := env.Store.CountUnknownAccounts(ctx, sp.From, sp.To)
 			return share(s.Unknown, s.Attempts), err
 		},
-		Drill: drill("auth.login_attempted"),
+		Drill:      drill("auth.login_attempted"),
+		DrillExact: true,
 	},
 	{
 		Name: "auth.success_after_failures", Page: PageSecurity, Label: "Sign-ins after 5+ failures", Unit: UnitCount,

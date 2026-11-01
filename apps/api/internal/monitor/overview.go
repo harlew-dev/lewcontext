@@ -130,7 +130,8 @@ var OverviewSignals = []Signal{
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
 			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "auth.registered"))
 		},
-		Drill: drill("auth.registered"),
+		Drill:      drill("auth.registered"),
+		DrillExact: true,
 	},
 	{
 		Name: "usage.active_accounts", Page: pageUsage, Label: "Active accounts", Unit: UnitCount,

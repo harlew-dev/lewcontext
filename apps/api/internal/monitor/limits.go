@@ -35,7 +35,8 @@ var LimitsSignals = []Signal{
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
 			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "rate_limit.reached"))
 		},
-		Drill: drill("rate_limit.reached"),
+		Drill:      drill("rate_limit.reached"),
+		DrillExact: true,
 	},
 }
 

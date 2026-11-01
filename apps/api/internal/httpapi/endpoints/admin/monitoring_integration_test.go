@@ -257,6 +257,9 @@ func TestAdminMonitoringSecuritySignals(t *testing.T) {
 	for k, v := range failed.Drill {
 		query.Set(k, v)
 	}
+	if !failed.DrillExact {
+		t.Fatal("failed sign-ins' drill-down isn't marked exact")
+	}
 	if page := indexEvents(t, h, cookie, "?"+query.Encode()); page.Summary == nil || page.Summary.AdminEventCounts == nil || page.Summary.Total != 100 {
 		t.Fatalf("drill-down %v: %+v", query, page.Summary)
 	}
@@ -359,6 +362,11 @@ func TestAdminMonitoringSecuritySignals(t *testing.T) {
 	query = url.Values{}
 	for k, val := range door.Drill {
 		query.Set(k, val)
+	}
+	// Broader than the count, and marked so: the Events page's failed
+	// admin sign-ins hold the wrong password too.
+	if door.DrillExact {
+		t.Fatal("the door's drill-down is marked exact")
 	}
 	if page := listEvents(t, h, cookie, "?"+query.Encode()); len(page.Data) != 2 {
 		t.Fatalf("door drill-down %v: %d rows, want the refusal and the failure", query, len(page.Data))
