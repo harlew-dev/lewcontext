@@ -52,7 +52,7 @@ make serve          # make build, then run bin/api on http://localhost:3000
 To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGIN`, `API_ADDR`, `APP_ENV`) and start `./bin/api`. `APP_ORIGIN` must be the address browsers use. With `APP_ENV=production`, it also needs HTTPS and a database URL with `sslmode=verify-full`, and it refuses to start without the web build embedded.
 
 - **`bin/api` takes no arguments.** It ignores anything after it and starts the server. So `./bin/api migrate` doesn't migrate: it starts a full server, delivery worker included, against `DATABASE_URL`. Migrate with `make migrate`, or `cd apps/api && DATABASE_URL=… go run ./cmd/migrate` for another database. The Docker image is different: it installs every `cmd/*` as its own command, which is why `docker compose run --rm app migrate` works there.
-- **:3000 can also be held by Docker.** `make docker-dev` leaves the `app` container listening on :3000. It runs the code from its last `make docker-app`, not your working tree, and it shares the local database. Stop it (`docker compose stop app`) or serve on another port ([ui/testing.md](ui/testing.md#against-a-server-of-your-own)).
+- **:3000 can also be held by Docker.** `make docker-dev` leaves the `app` container listening on :3000. It runs the code from its last `make docker-app`, not your working tree, and it shares the local database. Stop it (`docker compose stop app`) or serve on another port ([ui/testing.md](ui/testing.md#running-several-at-once)).
 
 ## Configuration
 
@@ -62,7 +62,7 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Before claiming a change works
 
-`make test` (which includes the PostgreSQL integration tests and needs `make db`), `make check`, `make test-e2e` ([ui/testing.md](ui/testing.md); `E2E_PORT=auto` if another run may be going) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them. Other people's runs may share the machine: check what's running before starting a heavy one.
+`make test` (which includes the PostgreSQL integration tests and needs `make db`), `make check` (which also checks the docs' relative links and anchors: fix a dead one rather than ignoring it; [checks.md](checks.md)), `make test-e2e` ([ui/testing.md](ui/testing.md); `E2E_PORT=auto` if another run may be going) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them. Other people's runs may share the machine: check what's running before starting a heavy one.
 
 ## Manual demo
 

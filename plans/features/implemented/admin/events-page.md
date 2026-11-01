@@ -263,7 +263,7 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 
 | File | Holds |
 | --- | --- |
-| `pages/admin/[key]/events.tsx` (or `events/index.tsx` if [page folders](../../page-folders.md) lands first) | `AdminEventIndex`: the header, the range `Listbox` and the custom range dialog, the Filters dialog, the badges, the summary (tiles and charts), the list and its states, as named local functions (rule 3: used by this page alone) |
+| `pages/admin/[key]/events.tsx` (or `events/index.tsx` if the page-folders plan lands first) | `AdminEventIndex`: the header, the range `Listbox` and the custom range dialog, the Filters dialog, the badges, the summary (tiles and charts), the list and its states, as named local functions (rule 3: used by this page alone) |
 | `pages/admin/[key]/events/[event].tsx` | "More like this" |
 | `components/app/admin/event-filters.ts` | Shared by the events page, the event page and the links in (user, workspace, Mail, Email blocks): `eventFilters(search)` (the forgiving parser), `compressNames` / `expandTokens` (names ↔ canonical tokens), `selectionLabel` (the chip and badge text), `windowLabel` |
 | `components/app/admin/events.tsx` | `EventTable` with the disclosure, the Failed badge and seconds |

@@ -43,7 +43,7 @@ You asked for every open plan to be built, with their recommendations accepted f
 | --- | --- | --- | --- |
 | Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A6 actions → A7 compliance (each needs the one before) |
 | ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (_7 commits done, under review_; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy) → [captcha challenges](../../captcha-challenges.md) |
-| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (_building_) → [convention checks](../../convention-checks.md) |
+| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (_building_) → [convention checks](../../implemented/convention-checks.md) |
 | Last, on main | after the merges | | [page-folders](../../page-folders.md): it moves every page file, so it would collide with everything else |
 
 **Keeping parallel lines apart:**

@@ -189,7 +189,7 @@ Specific limits run after the budget, and per-subject limits run before shared o
 | 9 | `Retry-After` | The time left in the window, not the whole window. |
 | 10 | Configuration | Values stay hard-coded in `limits.go` and the store. Add environment variables only when a deployment needs different numbers. |
 | 11 | The end-to-end tests | One run signs up about 12 users from one IP and has one user own 25 workspaces, past `register:per-ip`, `workspace:per-user` and the owned-workspace quota. A `RATE_LIMITS=off` setting, refused in production like `MAIL_DRIVER=file`, switches every rate limit off (quotas and hashing slots stay) for the server the e2e tests run against. The switcher test adds its workspaces past the quota as memberships through `TEST_DATABASE_URL`, and is skipped without it. |
-| 12 | Plan order | Built before [convention checks](../convention-checks.md): `TestRateLimitNames` is a test of its own in `httpapi`, which that plan can absorb. |
+| 12 | Plan order | Built before [convention checks](convention-checks.md): `TestRateLimitNames` is a test of its own in `httpapi`, which that plan can absorb. |
 
 ## Not included
 

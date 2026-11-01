@@ -57,7 +57,7 @@ export default function TaskIndex() {
 
 **Tabs share a layout.** Workspace settings' General and Members are children of `pages/app/[workspace]/settings/layout.tsx` (`route("app/:workspace/settings", layout, [index(general), route("members", members)])`), which renders the heading and `SettingsTabs` (current tab from the URL) and marks itself a tab group, so switching tabs slides the content instead of fading the whole page ([design.md](design.md#styling-rules)). The pages render only what's under the tabs.
 
-**Moving between pages never waits.** Pages have no loaders: they render on the first frame and show skeletons while `useResource` loads ([api.md](api.md#reading-data-useresource)). Revisiting a page shows SWR's cached data at once and refreshes it in the background. A record that doesn't exist (`useResource(...).missing`) renders "not found" inside the layout.
+**Moving between pages never waits.** Pages have no loaders: they render on the first frame and show skeletons while `useResource` loads ([api.md](api.md#reading-data-useresource-libuse-resourcets)). Revisiting a page shows SWR's cached data at once and refreshes it in the background. A record that doesn't exist (`useResource(...).missing`) renders "not found" inside the layout.
 
 ## Route loaders (`lib/loaders.ts`)
 
