@@ -5,9 +5,9 @@ Plan: [monitoring](../monitoring.md), built on main in three parts, with every r
 | Part | Pages | State |
 | --- | --- | --- |
 | 1 | Overview, Security, Rate limits | **done** (reviewed, fixed) |
-| 2 | IP addresses (and a page per address), Accounts, Workspaces, Usage (plus A7's inactive accounts) | **committed**, under review |
-| 3 | Integrity, Performance, Errors, Configuration | _building_ |
-| 3b | Data (needs A7's `prune.completed`, after the events branch merges) | after the merge |
+| 2 | IP addresses (and a page per address), Accounts, Workspaces, Usage (plus A7's inactive accounts) | **done** (reviewed, fixed) |
+| 3 | Integrity, Performance, Errors (and one group), Configuration | **committed**, under review |
+| 3b | Data | _building_ (unblocked: the events branch merged into main) |
 
 ## Part 1
 
@@ -150,4 +150,53 @@ The independent reviewer found **no data exposure or injection**. It confirmed s
 
 **Merge task (for A7's minimiser):** `admin.ip.viewed`'s `address` and `admin.session.moved`'s `from`/`to` hold addresses or networks outside the fields the minimiser covers.
 
-_These fixes are being made by the A4 part 3 builder first._
+**Fix results:**
+- **`8446617`, takeovers:** only accounts with a change are checked, each against its last 50 sign-ins, with `INCLUDE (ip)` on the sign-in index; one row per account. Two accounts each signing in 3,360 times from new networks: the 7-day page answers in 0.33 s, and the real victim is still listed.
+- **`9900a2f`, workspace names:** a linked name is credited to whoever acted.
+- **`ab59173`, `sessions-revoke`:** each session gets its own budget. The limit keeps the name `sessions-revoke:per-user`, because a `per-session` kind needs your agreement under the naming checks (question 18).
+- **`c5d3c5b`, rows per workspace:** counts stop at 50,001 ("Over 50,000").
+- **`bb4171c`, `dea74ad`:** the registry test is tightened; the backfill note is added.
+
+
+## Part 3
+
+| Commit | What |
+| --- | --- |
+| `1c32c0f` | Endpoints for Integrity, Performance, Errors and Configuration; one error group's page (`GET /api/admin/errors/{error}`, recorded as `admin.error.viewed`); `app_errors.public_id` (`err_`); Database and Integrity tiles on the Overview |
+| `bd7781b` | Seeder: a stuck delivery, a project created twice, a reset sent twice, three error groups (one user-reported). Nothing is ever sent |
+| `e17f6b6` | The pages |
+| `3c53ba4`, `64f5cd4`, `5f08fb2`, `2cb68a5` | Fixes, e2e, docs |
+
+**Screenshots:**
+- [Overview](monitoring/part3/overview-light.png), [Overview, dark](monitoring/part3/overview-dark.png);
+- [Integrity](monitoring/part3/integrity-light.png), [on a phone](monitoring/part3/integrity-phone.png);
+- [Performance](monitoring/part3/performance-light.png);
+- [Errors](monitoring/part3/errors-light.png), [one error group](monitoring/part3/error-group-light.png);
+- [Configuration](monitoring/part3/configuration-light.png).
+
+**What each page answers:**
+- **Integrity:** checks that should never fail. Each is its own section and catches its planted row by ID.
+- **Performance:** route latency (p50, p95, p99), the database pool, delivery lag, and `pg_stat_statements` (normalised statements only, never one with a literal left in it).
+- **Errors:** groups by source and route. **Browser-reported groups are labelled user-reported and never turned into links.** The request ID ties a group to the logs.
+- **Configuration:** live servers and versions, and the warnings the earlier plans asked for:
+  - `ADMIN_ALLOWED_IPS` without `CLIENT_IP_HEADER`;
+  - sessions still on the previous admin key;
+  - more than one version live;
+  - migrations pending;
+  - mail off;
+  - no admin with MFA.
+
+  **Never a secret.** A test seeds a summary full of secrets and checks none reaches the answer.
+
+**Speed at a million events:** Integrity about 0.5 s, Configuration 0.6 s, Performance and Errors under 0.03 s. The Overview is now 0.7–1.2 s, since it runs every integrity check.
+
+**Where the build differs (recorded in the plan):**
+- **Hashing wait** has no histogram, so busy-slot refusals are shown instead.
+- **Delivery lag** tops out at the histogram's 10 s, so the oldest-waiting delivery covers stalls.
+- **Pool waits** are averages.
+- **Error charts** are by source and route, not per group.
+- **Resolving an error group** is A6's housekeeping action, still to come with A5.
+
+### Security review (part 3)
+
+_Running._
