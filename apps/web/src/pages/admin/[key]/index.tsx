@@ -224,7 +224,7 @@ function AdminSetup({
         <Text>
           {codes
             ? "Two-factor authentication is on. Save your recovery codes before you go on."
-            : "Admins need two-factor authentication. Scan this with your authenticator app."}
+            : "Admins need two-factor authentication to sign in."}
         </Text>
       </HeadingGroup>
       {codes ? (
