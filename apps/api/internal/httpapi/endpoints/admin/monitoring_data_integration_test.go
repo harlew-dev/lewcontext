@@ -84,7 +84,7 @@ func TestAdminMonitoringDataRetention(t *testing.T) {
 				notRunning++
 			}
 		}
-		if len(page.Retention) != 7 {
+		if len(page.Retention) != 8 {
 			t.Fatalf("%d targets", len(page.Retention))
 		}
 		if got := v.signal(t, "data.retention_overdue"); got.Value != overdue || got.Level != monitor.LevelWarn {

@@ -30,6 +30,7 @@ var DataTables = []string{
 	"user_suspensions",
 	"ip_blocks",
 	"app_errors",
+	"alerts",
 	"request_minutes",
 	"request_hours",
 	"metric_minutes",
