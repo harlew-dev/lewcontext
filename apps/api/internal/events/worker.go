@@ -128,13 +128,19 @@ func (w *Worker) deliver(d Delivery) error {
 	defer cancel()
 	handle := w.Bus.handler(d.Listener, d.Event)
 	if handle == nil {
+		// Not a registered name, so not a label: counted as unmatched.
+		observe.Deliveries.Inc(observe.Unmatched, observe.DeliveryFailed)
 		cause := fmt.Errorf("no listener %q for %s", d.Listener, d.Event)
 		w.Log.Error("event listener not registered", "listener", d.Listener, "event", d.Event, "id", d.PublicID)
 		observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: cause})
 		return w.Queue.Fail(ctx, d, cause)
 	}
+	if d.Attempts == 1 {
+		observe.DeliveryLag.Observe(time.Since(d.CreatedAt), d.Listener)
+	}
 	cause := w.run(ctx, handle, d)
 	if cause == nil {
+		observe.Deliveries.Inc(d.Listener, observe.DeliveryDelivered)
 		return w.Queue.Delivered(ctx, d)
 	}
 	attrs := []any{"listener", d.Listener, "event", d.Event, "id", d.PublicID, "attempt", d.Attempts, observe.ErrorAttr(cause)}
@@ -144,8 +150,10 @@ func (w *Worker) deliver(d Delivery) error {
 		if !errors.As(cause, new(listenerPanic)) {
 			observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: cause})
 		}
+		observe.Deliveries.Inc(d.Listener, observe.DeliveryFailed)
 		return w.Queue.Fail(ctx, d, cause)
 	}
+	observe.Deliveries.Inc(d.Listener, observe.DeliveryRetried)
 	w.Log.Warn("event listener failed; will retry", attrs...)
 	return w.Queue.Retry(ctx, d, time.Now().Add(w.Backoff[d.Attempts-1]), cause)
 }

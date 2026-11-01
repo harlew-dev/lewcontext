@@ -134,6 +134,24 @@ func TestFailuresRetryWithBackoffThenFail(t *testing.T) {
 	if cause := q.failed["test.last"]; cause == nil || cause.Error() != "smtp down" {
 		t.Fatalf("last attempt not failed: %v", q.failed)
 	}
+	// Each outcome is counted by listener, and a first attempt's lag.
+	var metrics bytes.Buffer
+	if err := observe.Metrics.WritePrometheus(&metrics); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		`deliveries_total{listener="test.first",outcome="retried"}`,
+		`deliveries_total{listener="test.last",outcome="failed"}`,
+		`deliveries_total{listener="test.ok",outcome="delivered"}`,
+		`delivery_lag_ms_count{listener="test.ok"}`,
+	} {
+		if !strings.Contains(metrics.String(), line) {
+			t.Errorf("no %s", line)
+		}
+	}
+	if strings.Contains(metrics.String(), `delivery_lag_ms_count{listener="test.last"}`) {
+		t.Error("a retry's lag counted")
+	}
 }
 
 func TestPanicsTimeoutsAndUnknownListeners(t *testing.T) {
@@ -155,6 +173,14 @@ func TestPanicsTimeoutsAndUnknownListeners(t *testing.T) {
 	}
 	if cause := q.failed["test.renamed"]; cause == nil || !strings.Contains(cause.Error(), "no listener") {
 		t.Errorf("a delivery for an unregistered listener: %v", cause)
+	}
+	// A name nobody registered never becomes a label.
+	var metrics bytes.Buffer
+	if err := observe.Metrics.WritePrometheus(&metrics); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(metrics.String(), "test.renamed") {
+		t.Error("an unregistered listener's name is a label")
 	}
 }
 

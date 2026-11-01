@@ -41,6 +41,10 @@ type Request struct {
 	// Aborted is set when a handler ended the request with
 	// http.ErrAbortHandler: the connection is dropped with no answer.
 	Aborted bool
+	// TimedOut is set when the request's 10 s deadline (httpapi.Security)
+	// had passed by the time its handler returned: on a write, the change
+	// may have committed though the client saw an error.
+	TimedOut bool
 	// idHeader backs the X-Request-ID header's value, so setting it costs
 	// nothing more.
 	idHeader [1]string
@@ -200,12 +204,27 @@ func NewRequestID() string {
 	return newRequestID(&b)
 }
 
-// newRequestID makes an ID in b: one 16-byte read from crypto/rand, more
-// only if too many bytes were skipped. Bytes 248 and above are skipped so
-// that each character is equally likely (248 = 4 × 62).
+// NewServerID is a new server's ID (server_instances.id): srv_ and 14
+// base62 characters, made like a request ID, new at every start.
+func NewServerID() string {
+	var b [len(serverIDPrefix) + requestIDLength]byte
+	return newID(&b, serverIDPrefix)
+}
+
+// serverIDPrefix is a server ID's prefix; as long as requestIDPrefix.
+const serverIDPrefix = "srv_"
+
+// newRequestID makes a request ID in b.
 func newRequestID(b *[len(requestIDPrefix) + requestIDLength]byte) string {
-	copy(b[:], requestIDPrefix)
-	n := len(requestIDPrefix)
+	return newID(b, requestIDPrefix)
+}
+
+// newID makes an ID with prefix in b: one 16-byte read from crypto/rand,
+// more only if too many bytes were skipped. Bytes 248 and above are skipped
+// so that each character is equally likely (248 = 4 × 62).
+func newID(b *[len(requestIDPrefix) + requestIDLength]byte, prefix string) string {
+	copy(b[:], prefix)
+	n := len(prefix)
 	var random [16]byte
 	for n < len(b) {
 		_, _ = rand.Read(random[:]) // never fails (crypto/rand)

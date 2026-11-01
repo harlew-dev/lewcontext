@@ -47,11 +47,29 @@ func (s *Server) Security(next http.Handler) http.Handler {
 				}
 			}
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 		defer cancel()
-		ctx = events.WithUserAgent(ctx, r.UserAgent())
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(events.WithUserAgent(ctx, r.UserAgent())))
+		markTimedOut(ctx)
 	})
+}
+
+// RequestTimeout is how long an API request may run: its context ends
+// then, and the queries it is waiting on with it.
+const RequestTimeout = 10 * time.Second
+
+// markTimedOut flags the request as ended by its deadline when the
+// deadline had passed by the time its handler returned (and not because
+// the client went away, which cancels instead), for http_timeouts_total
+// and request_minutes.timeouts: on a write, the change may have committed
+// though the client saw an error.
+func markTimedOut(ctx context.Context) {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return
+	}
+	if request := observe.FromContext(ctx); request != nil {
+		request.TimedOut = true
+	}
 }
 
 // RequireSession lets through requests with a live session, and a valid CSRF
@@ -191,6 +209,7 @@ func (s *Server) LimitAuth(next http.Handler) http.Handler {
 		case s.authSlots <- struct{}{}:
 			defer func() { <-s.authSlots }()
 		default:
+			observe.PasswordHashBusy.Inc()
 			Fail(w, 503, "Sign-in is busy. Please try again shortly.")
 			return
 		}

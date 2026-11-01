@@ -4,6 +4,7 @@ import (
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/ratelimit"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -168,6 +169,8 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 	if allowed {
 		return true
 	}
+	// Every refusal is counted; only the first in a window is an event.
+	observe.RateLimitRefused.Inc(l.Name + ":block")
 	left := time.Until(resetsAt)
 	w.Header().Set("Retry-After", ratelimit.RetryAfter(left))
 	if l.Busy != "" {

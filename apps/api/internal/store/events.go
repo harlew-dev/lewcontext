@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/observe"
 	"time"
 )
 
@@ -66,6 +67,8 @@ func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope 
 	if _, err = db.NewInsert().Model(&row).Returning("id, public_id").Exec(ctx); err != nil {
 		return "", err
 	}
+	// Counted once written, in a transaction that may still roll back.
+	observe.EventsRecorded.Inc(row.Name)
 	return row.PublicID, s.queueDeliveries(ctx, db, row.ID, row.Name)
 }
 

@@ -83,9 +83,12 @@ func NewCollector(store func(ctx context.Context, groups []ErrorGroup) error, ve
 	return &Collector{Store: store, Version: version, Now: time.Now}
 }
 
-// Report groups p (Reporter). Safe from any goroutine.
+// Report groups p (Reporter), and counts it in errors_total by its source
+// and route (once checked, so the label is a fixed name or Unmatched). Safe
+// from any goroutine.
 func (c *Collector) Report(_ context.Context, p Problem) {
 	g := c.group(p)
+	ErrorsTotal.Inc(g.Source, g.Route)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.add(g)

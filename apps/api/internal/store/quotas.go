@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/observe"
 )
 
 // Quotas cap how many rows of a kind can exist at once: a rate limit slows
@@ -31,6 +32,13 @@ type QuotaError struct {
 
 func (e QuotaError) Error() string { return fmt.Sprintf("at most %d %s", e.Max, e.What) }
 
+// refuseQuota counts a refusal in quota_refused_total under the quota's
+// name, and returns its error.
+func refuseQuota(name string, e QuotaError) error {
+	observe.QuotaRefused.Inc(name)
+	return e
+}
+
 // checkOwnedWorkspaces locks the user's row, so creates for one user count
 // one at a time, then refuses when they already own MaxOwnedWorkspaces.
 func checkOwnedWorkspaces(ctx context.Context, tx bun.Tx, userID int64) error {
@@ -42,7 +50,7 @@ func checkOwnedWorkspaces(ctx context.Context, tx bun.Tx, userID int64) error {
 		return err
 	}
 	if owned >= MaxOwnedWorkspaces {
-		return QuotaError{What: "owned workspaces", Max: MaxOwnedWorkspaces}
+		return refuseQuota("owned_workspaces", QuotaError{What: "owned workspaces", Max: MaxOwnedWorkspaces})
 	}
 	return nil
 }
@@ -58,7 +66,7 @@ func checkWorkspaceProjects(ctx context.Context, tx bun.Tx, workspaceID int64) e
 		return err
 	}
 	if projects >= MaxWorkspaceProjects {
-		return QuotaError{What: "projects in a workspace", Max: MaxWorkspaceProjects}
+		return refuseQuota("workspace_projects", QuotaError{What: "projects in a workspace", Max: MaxWorkspaceProjects})
 	}
 	return nil
 }
@@ -80,7 +88,7 @@ func checkWorkspaceMembers(ctx context.Context, tx bun.Tx, workspaceID, acceptin
 		return err
 	}
 	if members+pending >= MaxWorkspaceMembers {
-		return QuotaError{What: "members and pending invitations in a workspace", Max: MaxWorkspaceMembers}
+		return refuseQuota("workspace_members", QuotaError{What: "members and pending invitations in a workspace", Max: MaxWorkspaceMembers})
 	}
 	return nil
 }

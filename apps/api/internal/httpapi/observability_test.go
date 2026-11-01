@@ -576,7 +576,7 @@ func BenchmarkRequestOverhead(b *testing.B) {
 	previous := slog.Default()
 	slog.SetDefault(observe.NewLogger(io.Discard, observe.FormatJSON, slog.LevelInfo))
 	defer slog.SetDefault(previous)
-	s := &Server{}
+	s := &Server{Metrics: observe.NewRegistry()}
 	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		observe.SetRoute(r.Context(), "GET /api/workspaces/{workspace}/projects")
 		w.WriteHeader(http.StatusOK)

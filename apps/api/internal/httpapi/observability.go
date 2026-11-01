@@ -42,8 +42,9 @@ const slowRequest = time.Second
 // finishRequest runs when ClientAddress is done with a request: a panic
 // that got past RecoverPanics (in ClientAddress itself, Security or the
 // dispatch to the API or the pages) is logged and answered as RecoverPanics
-// would, or the connection cut once the answer has started; then the access
-// line is written, a panic of its own caught too. Deferred, so it runs
+// would, or the connection cut once the answer has started; then the
+// request is counted and its access line written, a panic of either caught
+// too. Deferred, so it runs
 // however the request ended.
 func (s *Server) finishRequest(w http.ResponseWriter, r *http.Request, request *observe.Request, start time.Time) {
 	if p := recover(); p != nil {
@@ -60,7 +61,7 @@ func (s *Server) finishRequest(w http.ResponseWriter, r *http.Request, request *
 	s.safeLogRequest(r, request, start)
 }
 
-// safeLogRequest is logRequest, a panic in it logged and dropped: the
+// safeLogRequest is endRequest, a panic in it logged and dropped: the
 // answer has been written by then.
 func (s *Server) safeLogRequest(r *http.Request, request *observe.Request, start time.Time) {
 	defer func() {
@@ -68,7 +69,22 @@ func (s *Server) safeLogRequest(r *http.Request, request *observe.Request, start
 			logPanic(r, p)
 		}
 	}()
-	s.logRequest(r, request, start)
+	s.endRequest(r, request, start)
+}
+
+// endRequest counts the request in the metrics (Server.Metrics: its route,
+// status class, duration, and whether it timed out or was aborted), then
+// logs its access line (logRequest). Counted whatever ACCESS_LOG says.
+func (s *Server) endRequest(r *http.Request, request *observe.Request, start time.Time) {
+	elapsed := time.Since(start)
+	status := request.Status
+	if status == 0 && !request.Aborted {
+		status = http.StatusOK // the handler wrote nothing: net/http sends 200
+	}
+	if s.Metrics != nil {
+		s.Metrics.Requests.Observe(request.Route, status, elapsed, request.TimedOut, request.Aborted)
+	}
+	s.logRequest(r, request, status, elapsed)
 }
 
 // logRequest writes the request's access line (msg "request"): its ID, the
@@ -79,14 +95,9 @@ func (s *Server) safeLogRequest(r *http.Request, request *observe.Request, start
 // (proxyRequestId) and aborted, when there are. Health checks log at debug,
 // so probes don't fill the log; what ACCESS_LOG says is left out (never an
 // aborted request). Status 0 is a request aborted before any answer.
-func (s *Server) logRequest(r *http.Request, request *observe.Request, start time.Time) {
+func (s *Server) logRequest(r *http.Request, request *observe.Request, status int, elapsed time.Duration) {
 	if s.Config.AccessLog == config.AccessLogOff {
 		return
-	}
-	elapsed := time.Since(start)
-	status := request.Status
-	if status == 0 && !request.Aborted {
-		status = http.StatusOK // the handler wrote nothing: net/http sends 200
 	}
 	if s.Config.AccessLog == config.AccessLogErrors && !request.Aborted && status < 400 && elapsed < slowRequest {
 		return
