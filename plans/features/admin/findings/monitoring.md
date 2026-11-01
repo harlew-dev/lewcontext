@@ -7,7 +7,7 @@ Plan: [monitoring](../../implemented/admin/monitoring.md), built on main in thre
 | 1 | Overview, Security, Rate limits | **done** (reviewed, fixed) |
 | 2 | IP addresses (and a page per address), Accounts, Workspaces, Usage (plus A7's inactive accounts) | **done** (reviewed, fixed) |
 | 3 | Integrity, Performance, Errors (and one group), Configuration | **committed**, under review |
-| 3b | Data | _building_ (unblocked: the events branch merged into main) |
+| 3b | Data | **committed** (A4 complete, plan moved to `implemented/`), under review |
 
 ## Part 1
 
@@ -223,4 +223,24 @@ The independent reviewer found **nothing high-severity**. It confirmed sound:
 
 **For the ui branch's merge:** the captcha settings need rows on the Configuration page (provider, whether the secret is set, never its value) and a place in the no-secrets test. The ui integration agent has been told.
 
-_These fixes are being made by the Data page builder first._
+**Fix results:** all made first, as separate commits (`1ec1c80`..`92c980d`). The Overview reads Integrity last and shows partial results; any `pg_stat_statements` error now shows "unreadable" rather than a 500; `SafeStatement` refuses numbers, odd quoted names and `SELECT … INTO`; `auth.mfa.enabled` counts as a takeover change (the "wait over an hour" gap is documented, since no session network is recorded); error groups carry a server-computed `new` flag; the previous-key warning appears only when its count succeeded; `SMTP_HOST` refuses `@`.
+
+
+## Part 4: the Data page (A4 complete)
+
+| Commit | What |
+| --- | --- |
+| `adaf000` | Migration 026 `table_stats_daily`, its factory, a daily writer (one server, once a day, insert-only), a `table_stats_daily` prune target (400 days), the Data queries and signals |
+| `125ec20`, `0972b4c`, `a221c64` | Tests and seeder, the page, docs and e2e |
+| `26b365b` | The plan moved to `plans/features/implemented/admin/monitoring.md` |
+
+**Screenshots:** [Data](monitoring/data/data-light.png), [dark](monitoring/data/data-dark.png), [phone](monitoring/data/data-phone.png) (taken before a width fix), [Overview with the Data tile](monitoring/data/overview-light.png), [Configuration](monitoring/data/configuration-light.png).
+
+- **What it shows:** database and table sizes, connections (counts only), lock waits, growth (a rate and a 90-day projection once two days of sizes exist), and retention: the oldest event per class against its limit and the last `prune.completed` per target, with a warning on Configuration when prune isn't running.
+- **Never shown:** query text, role names or client addresses from `pg_stat_activity`; a test holds a lock with a marker in its query and checks none of it appears. Only tables the app knows are listed.
+- **Fix beyond the brief:** hidden chart tables widened the phone page to 684 px; they're now clipped.
+- **Not done:** the million-event volume check for this page (its queries are catalog reads and index probes), and disk space (not visible from SQL).
+
+### Security review (Data page and part 3 fixes)
+
+_Running._
