@@ -8,6 +8,7 @@ import { Description, Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
+import { Strong, Text, TextLink } from "@/components/ui/text";
 import { needsVerification, useApi, type Registration } from "@/lib/api";
 import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
@@ -111,6 +112,15 @@ export default function Register() {
         <Button type="submit" className="w-full" loading={loading}>
           Create account
         </Button>
+        <Text>
+          Already have an account?{" "}
+          <TextLink
+            href={authPath(routes.login, search.get("next"))}
+            state={arrived.invitation ? { invitation: true } : undefined}
+          >
+            <Strong>Sign in</Strong>
+          </TextLink>
+        </Text>
       </form>
     </AuthLayout>
   );

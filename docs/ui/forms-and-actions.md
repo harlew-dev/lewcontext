@@ -26,7 +26,7 @@ The way back is a **Back** button right under the logo, never a "Back to …" or
 | --- | --- |
 | Login | the homepage |
 | Login's and the admin door's code step (`CodeStep`) | the password step, the email kept (it was "Sign in as someone else") |
-| Register | login, with `?next=` and the invitation |
+| Register | login, with `?next=` and the invitation (its "Already have an account? Sign in" stays too) |
 | A sign-up's code page | register, with the email filled in (it was "Use a different email") |
 | Forgot password | login, with the typed email |
 | Forgot password's "Check your email" | the form, the email kept, to try again (it was Try again and Back to sign in) |
