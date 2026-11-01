@@ -219,6 +219,13 @@ type TakeoverRow struct {
 	Network    string     `json:"network" bun:"network"`
 }
 
+// takeovers is driven by the sign-ins (auth.logged_in) in [from-1h, to),
+// which sign-in's limits bound: each from a network the account hadn't
+// used in TakeoverLookback, though it had signed in then (two lookups in
+// events_logged_in_idx), then the changes the account made within the hour
+// after it, in [from, to) (events_user_created_idx). The changes are
+// joined last, so an account recording many of its own costs no more than
+// its sign-ins. One row per change, with the latest such sign-in before it.
 func (s *Store) takeovers(from, to time.Time) *bun.SelectQuery {
 	lookback := fmt.Sprintf("%d seconds", int(TakeoverLookback.Seconds()))
 	earlier := func(alias string) *bun.SelectQuery {
@@ -229,31 +236,31 @@ func (s *Store) takeovers(from, to time.Time) *bun.SelectQuery {
 			Where(alias+".created_at >= l.created_at - ?::interval", lookback).
 			Where(alias + ".ip IS NOT NULL")
 	}
-	signIn := s.DB.NewSelect().TableExpr("events AS l").
-		ColumnExpr("l.created_at").
+	signIns := s.DB.NewSelect().TableExpr("events AS l").
+		ColumnExpr("l.user_id, l.created_at").
 		ColumnExpr("text("+fmt.Sprintf(signInNetwork, "l")+") AS network").
 		Where("l.name = 'auth.logged_in'").
-		Where("l.user_id = e.user_id").
-		Where("l.created_at <= e.created_at").
-		Where("l.created_at >= e.created_at - interval '1 hour'").
-		Where("l.ip IS NOT NULL").
+		Where("l.created_at >= ?::timestamptz - interval '1 hour'", from).
+		Where("l.created_at < ?", to).
+		Where("l.user_id IS NOT NULL AND l.ip IS NOT NULL").
 		// It had a baseline: signed in before, in the lookback,
 		Where("EXISTS (?)", earlier("b")).
 		// but never from this network.
-		Where("NOT EXISTS (?)", earlier("p").Where("p.ip <<= "+fmt.Sprintf(signInNetwork, "l"))).
-		OrderExpr("l.created_at DESC").
-		Limit(1)
-	return s.eventsIn(from, to, takeoverChanges...).
+		Where("NOT EXISTS (?)", earlier("p").Where("p.ip <<= "+fmt.Sprintf(signInNetwork, "l")))
+	changes := s.DB.NewSelect().TableExpr("(?) AS si", signIns).
+		Join("JOIN events AS e ON e.user_id = si.user_id AND e.name IN (?) AND e.created_at >= si.created_at AND e.created_at <= si.created_at + interval '1 hour' AND e.created_at >= ? AND e.created_at < ?",
+			bun.In(takeoverChanges), from, to).
+		DistinctOn("e.id").
 		ColumnExpr("e.created_at AS changed_at, e.name AS change, e.public_id AS event, e.user_id").
 		ColumnExpr("si.created_at AS signed_in_at, si.network").
-		Join("JOIN LATERAL (?) AS si ON true", signIn).
-		Where("e.user_id IS NOT NULL")
+		OrderExpr("e.id, si.created_at DESC")
+	return s.DB.NewSelect().TableExpr("(?) AS t", changes).ColumnExpr("t.*")
 }
 
 // IndexTakeovers lists possible takeovers in [from, to), newest first.
 func (s *Store) IndexTakeovers(ctx context.Context, from, to time.Time) ([]TakeoverRow, error) {
 	rows := []TakeoverRow{}
-	if err := s.takeovers(from, to).OrderExpr("e.created_at DESC").Limit(maxReviewRows).Scan(ctx, &rows); err != nil {
+	if err := s.takeovers(from, to).OrderExpr("t.changed_at DESC, t.event").Limit(maxReviewRows).Scan(ctx, &rows); err != nil {
 		return nil, err
 	}
 	ids := make([]int64, len(rows))

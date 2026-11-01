@@ -94,7 +94,7 @@ From `auth.login_attempted`, `auth.mfa.checked`, `auth.password_checked`, `auth.
 | Admin door | counts per outcome (wrong password, unknown account, not an admin, admin without MFA, address not allowed, session moved), per bucket as failed sign-ins, refusals and moved sessions (three series: a chart stacks five at most, which `TestAdminMonitoringPages` checks for every chart), and the latest 20 with time, outcome and address (never the email typed), each linking to its event |
 | Sessions | sign-ins per bucket, live app sessions, accounts at the 5-session cap |
 
-**Indexes:** `events_name_created_idx (name, created_at DESC)` finds every name in its window; the takeover check walks one account's sign-ins through `events_logged_in_idx (user_id, created_at DESC) WHERE name = 'auth.logged_in'`; `sessions` holds live sessions only (the cleanup).
+**Indexes:** `events_name_created_idx (name, created_at DESC)` finds every name in its window; the takeover check starts from the sign-ins in the window (and the hour before), keeps those from a new network by walking the account's earlier sign-ins through `events_logged_in_idx (user_id, created_at DESC) WHERE name = 'auth.logged_in'`, and only then looks up the account's changes in the hour after each (`events_user_created_idx`). It's driven by sign-ins, which sign-in's limits bound, so an account recording thousands of its own changes doesn't slow it (`TestAdminMonitoringTakeoverFlood`). `sessions` holds live sessions only (the cleanup).
 
 ## Rate limits
 

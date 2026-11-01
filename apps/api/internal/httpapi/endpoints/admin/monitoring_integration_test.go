@@ -400,6 +400,38 @@ func TestAdminMonitoringTakeovers(t *testing.T) {
 	}
 }
 
+// An account flooding its own changes (signing out other sessions, say)
+// doesn't slow the takeover check: it's driven by sign-ins, which their
+// limits bound, so the page still answers within its deadline.
+func TestAdminMonitoringTakeoverFlood(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	_, session := adminSignedIn(t, db, f)
+	m := eventMaker{t, db, f}
+	ctx := context.Background()
+	flooder := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	signIn := func(ip string, ago time.Duration) {
+		m.make("auth.logged_in", map[string]any{"user": flooder.PublicID}, ip, ago, func(e *factory.Event) { e.UserID = flooder.ID })
+	}
+	signIn("192.0.2.10", 10*24*time.Hour)
+	signIn("192.0.2.11", 20*time.Hour)
+	const flood = 20000
+	apitest.Must(factory.Events.Sequence(func(i int, e *factory.Event) {
+		e.Name, e.UserID, e.ActorID = "auth.other_sessions_revoked", flooder.ID, flooder.ID
+		e.Payload = map[string]any{"user": flooder.PublicID, "count": 1}
+		e.CreatedAt = time.Now().Add(-time.Duration(i%(23*60)) * time.Minute)
+	}).Create(ctx, db, f, flood))(t)
+	start := time.Now()
+	v := showMonitoring(t, h, session.Cookie(), "security", "")
+	if got := v.signal(t, "auth.possible_takeovers"); got.Value != 0 {
+		t.Fatalf("takeovers in a flood from a known network: %+v", got)
+	}
+	if took := time.Since(start); took > s.Summaries.Deadline {
+		t.Fatalf("the page took %v", took)
+	}
+}
+
 // The Rate limits page: windows reached by limit, the shared limits
 // against their caps (critical when reached), subjects at a limit now,
 // who reached the most, budgets, refusals, quotas and routes.
