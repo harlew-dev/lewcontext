@@ -39,10 +39,10 @@ Stop it getting worse. Each dashboard action needs the `operator` role, a fresh 
 | An admin account compromised | `admin revoke -email … -confirm` (ends their admin sessions); **Sign out** their other sessions from the Admins page; then treat it as a taken-over account |
 | The admin key exposed | Rotate `ADMIN_ROUTE_KEY` ([deployment.md](deployment.md#rotating-the-admin-key)); set `ADMIN_ALLOWED_IPS` if it isn't |
 | The SMTP password, `METRICS_TOKEN` or a database password exposed | Rotate it at the provider and in the secret store; restart the servers |
-| `APP_KEY` exposed | It **can't be rotated yet** (it seals MFA secrets and keys the email pseudonyms; [compliance.md](compliance.md#known-gaps)). Treat every MFA secret as exposed: tell users with MFA on to set it up again, and plan the rotation |
+| `APP_KEY` exposed | It **can't be rotated yet** (it seals MFA secrets and keys the email pseudonyms; [compliance.md](compliance.md#known-gaps)). Treat every MFA secret as exposed: tell users with MFA on to set it up again, and plan the rotation. Treat the email pseudonyms as reversible too: with the key, anyone holding a database copy can check a guessed address against them (`hmac:…`), so minimised events no longer protect the addresses in them |
 | A bad release | Roll the servers back to the previous image ([deployment.md](deployment.md#releasing-a-new-version)); don't run down migrations in production, fix forward |
 
-Keep what you need for later: don't prune, delete or restore over the evidence while you're still scoping. Export what you'll need now (next step), before `prune` would remove it.
+Keep what you need for later: don't prune, delete or restore over the evidence while you're still scoping. **Pause the `pseudonymise` and `prune` cron jobs** ([deployment.md](deployment.md#retention-and-erasure)) until scoping is done: `pseudonymise` cuts IPs to their network and replaces addresses with pseudonyms, and `prune` deletes old events, both for good, so a run mid-incident destroys the detail you're scoping with. Write down when you paused them and why (the breach register), and turn them back on once you've exported what you need. Export what you'll need now (next step).
 
 ## 4. Scope
 
