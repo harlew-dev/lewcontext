@@ -321,11 +321,17 @@ const workspaces = view<WorkspacesSections>("workspaces", {
     owners: [],
   },
   rows: {
+    cap: 50000,
     tables: [
       { table: "projects", label: "Projects" },
       { table: "events", label: "Events" },
     ],
     workspaces: [
+      {
+        workspace: { id: "wsp_00000000000006", name: "Busy" },
+        counts: [3, 50001],
+        total: 50004,
+      },
       {
         workspace: { id: "wsp_00000000000005", name: "Northwind Archive" },
         counts: [850, 12],
@@ -363,6 +369,9 @@ describe("the Workspaces page", () => {
     expect(screen.getAllByText("Warning")).toHaveLength(2);
     expect(screen.getByRole("columnheader", { name: "Events" })).toBeVisible();
     expect(screen.getByText("862")).toBeVisible();
+    // A table counted past its cap reads as over it.
+    expect(screen.getByText("Over 50,000")).toBeVisible();
+    expect(screen.getByText("Over 50,004")).toBeVisible();
     expect(screen.getByText(/About 41 workspaces/)).toBeVisible();
   });
 });

@@ -401,6 +401,7 @@ type workspacesSections struct {
 		Owners     []store.OwnerQuota `json:"owners"`
 	} `json:"quotas"`
 	Rows struct {
+		Cap        int64                  `json:"cap"`
 		Tables     []store.WorkspaceTable `json:"tables"`
 		Workspaces []store.WorkspaceRows  `json:"workspaces"`
 	} `json:"rows"`
@@ -533,6 +534,44 @@ func TestAdminMonitoringWorkspaces(t *testing.T) {
 	}
 	if created != 3 || deleted != 4 {
 		t.Fatalf("totals: %d created, %d deleted", created, deleted)
+	}
+}
+
+// A workspace with more events than the rows list counts costs no more
+// than the cap: each table is counted up to one past it, which reads as
+// over it (and is the warning), whatever the workspace's history.
+func TestAdminMonitoringWorkspaceRowsCapped(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	ctx := context.Background()
+	_, session := adminSignedIn(t, db, f)
+	owner := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	busy := apitest.Must(factory.WorkspaceFor(ctx, db, f, owner.ID))(t)
+	const events = store.WorkspaceRowsCap + 500
+	for done := 0; done < events; done += 10_000 {
+		apitest.Must(factory.Events.Sequence(func(i int, e *factory.Event) {
+			e.Name, e.WorkspaceID, e.ActorID = "project.updated", busy.ID, owner.ID
+			e.Payload = map[string]any{"workspace": busy.PublicID}
+			e.CreatedAt = time.Now().Add(-time.Duration(done+i) * time.Second)
+		}).Create(ctx, db, f, min(10_000, events-done)))(t)
+	}
+	start := time.Now()
+	v := showMonitoring(t, h, session.Cookie(), "workspaces", "?window=7d")
+	took := time.Since(start)
+	levelOf(t, v, "workspaces.largest", monitor.LevelWarn, store.WorkspaceRowsCap+2)
+	page := sections[workspacesSections](t, v)
+	if page.Rows.Cap != store.WorkspaceRowsCap || len(page.Rows.Workspaces) != 1 {
+		t.Fatalf("rows: %+v", page.Rows)
+	}
+	for i, table := range page.Rows.Tables {
+		n := page.Rows.Workspaces[0].Counts[i]
+		if table.Name == "events" && n != store.WorkspaceRowsCap+1 || table.Name == "workspace_user" && n != 1 {
+			t.Fatalf("%s: %d rows", table.Name, n)
+		}
+	}
+	if took > s.Summaries.Section {
+		t.Fatalf("the page took %v", took)
 	}
 }
 

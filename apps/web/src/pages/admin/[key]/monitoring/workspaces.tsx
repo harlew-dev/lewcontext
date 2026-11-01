@@ -155,11 +155,14 @@ function Quotas({ view }: { view: View }) {
   );
 }
 function Rows({ view }: { view: View }) {
-  const { tables, workspaces } = view.sections.rows;
+  const { cap, tables, workspaces } = view.sections.rows;
+  // A table counted past its cap holds more than it: "over 50,000".
+  const rows = (n: number) =>
+    n > cap ? `Over ${cap.toLocaleString("en-US")}` : n.toLocaleString("en-US");
   return (
     <MonitoringSection
       title="Rows per workspace"
-      description="The workspaces holding the most rows across every table with a workspace, of those with an event in this window. Over 50,000 is a warning."
+      description="The workspaces holding the most rows across every table with a workspace, of those with an event in this window, each table counted up to 50,000. Over 50,000 is a warning."
     >
       {workspaces.length === 0 ? (
         <NoneFound>No workspace had an event in this window.</NoneFound>
@@ -174,11 +177,13 @@ function Rows({ view }: { view: View }) {
               </TableCell>
               {w.counts.map((n, i) => (
                 <TableCell key={tables[i]?.table ?? i} className="tabular-nums">
-                  {n.toLocaleString("en-US")}
+                  {rows(n)}
                 </TableCell>
               ))}
               <TableCell className="font-medium tabular-nums">
-                {w.total.toLocaleString("en-US")}
+                {w.counts.some((n) => n > cap)
+                  ? `Over ${w.total.toLocaleString("en-US")}`
+                  : w.total.toLocaleString("en-US")}
               </TableCell>
             </TableRow>
           ))}

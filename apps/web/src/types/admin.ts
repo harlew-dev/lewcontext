@@ -534,6 +534,8 @@ export type WorkspacesSections = {
     owners: { account: AccountRef; owned: number; used: number }[];
   };
   rows: {
+    // Each table is counted up to one more than cap: more reads "over".
+    cap: number;
     tables: { table: string; label: string }[];
     workspaces: { workspace: WorkspaceRef; counts: number[]; total: number }[];
   };
