@@ -1,4 +1,12 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { FunnelIcon } from "@heroicons/react/16/solid";
 import { CursorNav } from "@/components/app/admin/cursor-nav";
@@ -16,6 +24,7 @@ import {
   narrowingFilters,
   rangeLabel,
   selectionLabel,
+  utcAt,
   utcDay,
   windowCaption,
   windowLabel,
@@ -89,6 +98,22 @@ export default function AdminEventIndex() {
   );
   const charts = useCharts(filters, list);
   const [dialog, setDialog] = useState<"filters" | "range" | null>(null);
+  const filtersButton = useId();
+  // After a badge is removed: the badge to focus next, or the Filters
+  // button ("filters"), once the URL's filters have changed.
+  const focusNext = useRef<string | null>(null);
+  useEffect(() => {
+    const next = focusNext.current;
+    if (!next) return;
+    focusNext.current = null;
+    const target =
+      next === "filters"
+        ? document.getElementById(filtersButton)?.querySelector("button")
+        : document.querySelector<HTMLElement>(
+            `[data-badge="${next}"] button[aria-label^="Remove filter"]`,
+          );
+    target?.focus();
+  }, [search, filtersButton]);
   const apply = (next: EventFilters) =>
     void navigate(
       adminRoutes.events.index(key, { ...next, before: undefined }),
@@ -119,6 +144,7 @@ export default function AdminEventIndex() {
             onCustom={() => setDialog("range")}
           />
           <FiltersButton
+            id={filtersButton}
             count={filterBadges(filters, undefined).length}
             onClick={() => setDialog("filters")}
           />
@@ -128,7 +154,10 @@ export default function AdminEventIndex() {
         filters={filters}
         refs={list.data?.refs}
         time={time}
-        onRemove={apply}
+        onRemove={(next, focus) => {
+          focusNext.current = focus;
+          apply(next);
+        }}
         onOpen={() => setDialog("filters")}
       />
       {catalogue.error && waiting && (
@@ -146,7 +175,9 @@ export default function AdminEventIndex() {
         filters={filters}
         index={index}
         onApply={apply}
-        onRetry={list.refresh}
+        // On an older page the charts are the newest page's, kept: retrying
+        // them is loading the newest page, as Show newest does.
+        onRetry={filters.before ? () => apply(filters) : list.refresh}
       />
       <EventList
         list={list}
@@ -252,23 +283,27 @@ function RangeListbox({
   );
 }
 function FiltersButton({
+  id,
   count,
   onClick,
 }: {
+  id: string;
   count: number;
   onClick: () => void;
 }) {
   return (
-    <Button outline onClick={onClick}>
-      <FunnelIcon />
-      Filters
-      {count > 0 && (
-        <Badge>
-          {count}
-          <span className="sr-only"> applied</span>
-        </Badge>
-      )}
-    </Button>
+    <span id={id} className="contents">
+      <Button outline onClick={onClick}>
+        <FunnelIcon />
+        Filters
+        {count > 0 && (
+          <Badge>
+            {count}
+            <span className="sr-only"> applied</span>
+          </Badge>
+        )}
+      </Button>
+    </span>
   );
 }
 // One badge per applied filter, in the dialog's order: its text, a
@@ -343,20 +378,24 @@ function FilterBadges({
   filters: EventFilters;
   refs: AdminEventPage["refs"] | undefined;
   time: EventFilters;
-  onRemove: (filters: EventFilters) => void;
+  // The filters without one, and what to focus once applied: the next
+  // badge's ID, or "filters" for the Filters button.
+  onRemove: (filters: EventFilters, focus: string) => void;
   onOpen: () => void;
 }) {
   const badges = filterBadges(filters, refs);
+  const nextOf = (i: number) =>
+    badges[i + 1]?.id ?? badges[i - 1]?.id ?? "filters";
   if (badges.length === 0) return null;
   return (
     <ul
       aria-label="Applied filters"
       className="mt-4 flex flex-wrap items-center gap-2"
     >
-      {badges.map((badge) => (
-        <li key={badge.id}>
+      {badges.map((badge, i) => (
+        <li key={badge.id} data-badge={badge.id}>
           <Badge
-            onRemove={() => onRemove(badge.without)}
+            onRemove={() => onRemove(badge.without, nextOf(i))}
             removeLabel={`Remove filter: ${badge.text}`}
           >
             <BadgeText badge={badge} onClick={onOpen} />
@@ -365,7 +404,10 @@ function FilterBadges({
       ))}
       {badges.length >= 2 && (
         <li>
-          <TextButton className="text-sm/6" onClick={() => onRemove(time)}>
+          <TextButton
+            className="text-sm/6"
+            onClick={() => onRemove(time, "filters")}
+          >
             Clear all
           </TextButton>
         </li>
@@ -852,8 +894,10 @@ function FiltersForm({
     setChecked(true);
     if (textFields.some(({ field }) => problem(field, clean(field)))) return;
     onApply({
-      names:
-        index && values.names.length > 0
+      // Without the catalogue the picker is empty: keep what's applied.
+      names: !index
+        ? filters.names
+        : values.names.length > 0
           ? compressNames(values.names, index)
           : undefined,
       outcome: values.outcome === "failed" ? "failed" : undefined,
@@ -931,7 +975,13 @@ function FiltersForm({
         <Button plain onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">Apply filters</Button>
+        <Button
+          type="submit"
+          disabled={!index}
+          disabledReason="Loading the events to pick from"
+        >
+          Apply filters
+        </Button>
       </DialogActions>
     </form>
   );
@@ -983,16 +1033,42 @@ function RangeDialog({
     </Dialog>
   );
 }
-// The range already applied, when it's whole days, as calendar dates.
-function startingRange(filters: EventFilters): CalendarValue {
+// The range already applied, as the calendar's days and UTC times: an end
+// at midnight is the end of the day before (its time left blank).
+function startingRange(filters: EventFilters): RangeValues {
   const { from, to } = filters;
-  const midnight = (time?: string) => Boolean(time?.endsWith("T00:00:00Z"));
-  if (!from || !to || !midnight(from) || !midnight(to)) return null;
-  return [localDay(from), localDay(to, 1)];
+  if (!from || !to) return { days: null, start: "00:00", end: "" };
+  const endsAtMidnight = to.endsWith("T00:00:00Z");
+  return {
+    days: [localDay(from), localDay(to, endsAtMidnight ? 1 : 0)],
+    start: utcClock(from),
+    end: endsAtMidnight ? "" : utcClock(to),
+  };
+}
+type RangeValues = { days: CalendarValue; start: string; end: string };
+// An RFC 3339 time's hh:mm in UTC.
+function utcClock(value: string): string {
+  return new Date(value).toISOString().slice(11, 16);
 }
 // A calendar date as "Oct 20": its own year, month and day.
 function calendarDay(date: Date): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+const clockPattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+// The range's bounds in RFC 3339: the first day at the start time, and the
+// last day at the end time (blank: the end of that day). Null when it isn't
+// a range: no day, a malformed time, or an end before the start.
+function rangeBounds(values: RangeValues): { from: string; to: string } | null {
+  const [first, last] = Array.isArray(values.days)
+    ? values.days
+    : [values.days];
+  if (!first || !clockPattern.test(values.start)) return null;
+  if (values.end && !clockPattern.test(values.end)) return null;
+  const from = utcAt(first, values.start);
+  const to = values.end
+    ? utcAt(last ?? first, values.end)
+    : utcDay(last ?? first, 1);
+  return Date.parse(from) < Date.parse(to) ? { from, to } : null;
 }
 function RangeForm({
   filters,
@@ -1003,7 +1079,7 @@ function RangeForm({
   onApply: (from: string, to: string) => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState<CalendarValue>(() =>
+  const [values, setValues] = useState<RangeValues>(() =>
     startingRange(filters),
   );
   // Today's UTC day, as the calendar's local date.
@@ -1013,33 +1089,64 @@ function RangeForm({
     today.getMonth(),
     today.getDate(),
   );
-  const [start, end] = Array.isArray(value) ? value : [value];
+  const [first, last] = Array.isArray(values.days)
+    ? values.days
+    : [values.days];
+  const bounds = rangeBounds(values);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!start) return;
-    onApply(utcDay(start), utcDay(end ?? start, 1));
+    if (bounds) onApply(bounds.from, bounds.to);
   };
   let picked: ReactNode = "Pick the first day, then the last.";
-  if (start)
+  if (bounds) picked = rangeLabel(bounds.from, bounds.to);
+  else if (first)
     picked =
-      end && end.getTime() !== start.getTime()
-        ? `${calendarDay(start)} – ${calendarDay(end)}, UTC`
-        : `${calendarDay(start)}, UTC`;
+      last && last.getTime() !== first.getTime()
+        ? `${calendarDay(first)} – ${calendarDay(last)}: the end comes before the start.`
+        : `${calendarDay(first)}: the end comes before the start.`;
   return (
     <form onSubmit={submit} aria-label="Custom range">
       <DialogTitle>Custom range</DialogTitle>
       <DialogDescription>
-        Whole days in UTC, up to a year back. Charts cover 7 days or less.
+        Days and times in UTC, up to a year back. Charts cover 7 days or less.
       </DialogDescription>
       <DialogBody>
         <Calendar
           range
-          value={value}
-          onChange={setValue}
+          value={values.days}
+          onChange={(days) => setValues((v) => ({ ...v, days }))}
           minDate={yearAgo}
           maxDate={today}
           className="mx-auto"
         />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <Field>
+            <Label>Start time (UTC)</Label>
+            <Input
+              type="time"
+              name="start"
+              value={values.start}
+              onChange={(e) => {
+                const start = e.currentTarget.value;
+                setValues((v) => ({ ...v, start }));
+              }}
+            />
+            <Description>On the first day.</Description>
+          </Field>
+          <Field>
+            <Label>End time (UTC)</Label>
+            <Input
+              type="time"
+              name="end"
+              value={values.end}
+              onChange={(e) => {
+                const end = e.currentTarget.value;
+                setValues((v) => ({ ...v, end }));
+              }}
+            />
+            <Description>On the last day; blank for its end.</Description>
+          </Field>
+        </div>
         <Text className="mt-4" aria-live="polite">
           {picked}
         </Text>
@@ -1050,7 +1157,7 @@ function RangeForm({
         </Button>
         <Button
           type="submit"
-          disabled={!start}
+          disabled={!bounds}
           disabledReason="Fill in required fields"
         >
           Apply range

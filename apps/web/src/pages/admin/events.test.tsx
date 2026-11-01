@@ -330,6 +330,14 @@ describe("the Events page", () => {
         `/admin/${key}/events?account=usr_00000000000001&workspace=wsp_00000000000002`,
       ),
     );
+    // Focus moves to the badge before it (the last one was removed).
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", {
+          name: "Remove filter: Workspace: wsp_00000000000002",
+        }),
+      ),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Clear all" }));
     await waitFor(() => expect(location()).toBe(`/admin/${key}/events`));
   });
@@ -378,7 +386,7 @@ describe("the Events page", () => {
         fireEvent.click(
           within(dialog).getByRole("gridcell", { name: /October 23rd 2026/ }),
         );
-        expect(within(dialog).getByText("Oct 20 – Oct 23, UTC")).toBeVisible();
+        expect(within(dialog).getByText("Oct 20 – Oct 23 UTC")).toBeVisible();
         fireEvent.click(
           within(dialog).getByRole("button", { name: "Apply range" }),
         );
@@ -395,6 +403,109 @@ describe("the Events page", () => {
         process.env.TZ = tz;
       }
     });
+  it("reaches any bucket from the keyboard: a day and UTC start and end times", async () => {
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: new Date("2026-11-01T12:00:00Z"),
+    });
+    try {
+      stubEvents({
+        "GET /api/admin/events": { body: eventPage([event(1)]) },
+      });
+      renderAdmin(`/admin/${key}/events?ip=203.0.113.5`);
+      await screen.findByText("wrong_password · ada@example.com");
+      fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
+      fireEvent.click(
+        await screen.findByRole("option", { name: "Custom range…" }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      const apply = within(dialog).getByRole("button", { name: "Apply range" });
+      expect(apply).toBeDisabled();
+      fireEvent.click(
+        within(dialog).getByRole("gridcell", { name: /October 20th 2026/ }),
+      );
+      fireEvent.change(within(dialog).getByLabelText("Start time (UTC)"), {
+        target: { value: "14:00" },
+      });
+      fireEvent.change(within(dialog).getByLabelText("End time (UTC)"), {
+        target: { value: "13:30" },
+      });
+      // An end before the start isn't a range.
+      expect(apply).toBeDisabled();
+      fireEvent.change(within(dialog).getByLabelText("End time (UTC)"), {
+        target: { value: "14:30" },
+      });
+      expect(
+        within(dialog).getByText("Oct 20, 14:00 – 14:30 UTC"),
+      ).toBeVisible();
+      fireEvent.click(apply);
+      await waitFor(() =>
+        expect(location()).toBe(
+          `/admin/${key}/events?ip=203.0.113.5&from=2026-10-20T14%3A00%3A00Z&to=2026-10-20T14%3A30%3A00Z`,
+        ),
+      );
+      // Opened again, it starts from the applied range's days and times.
+      fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
+      fireEvent.click(
+        await screen.findByRole("option", {
+          name: /Oct 20, 14:00 – 14:30 UTC/,
+        }),
+      );
+      const again = await screen.findByRole("dialog");
+      expect(within(again).getByLabelText("Start time (UTC)")).toHaveValue(
+        "14:00",
+      );
+      expect(within(again).getByLabelText("End time (UTC)")).toHaveValue(
+        "14:30",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("waits for the catalogue before applying, so the names aren't dropped", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const api = stubApi({
+      "GET /api/admin/me": { body: me },
+      "GET /api/admin/catalogue": { body: catalogue, gate },
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
+    });
+    renderAdmin(`/admin/${key}/events?ip=203.0.113.5`);
+    await screen.findByText("wrong_password · ada@example.com");
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    const dialog = await screen.findByRole("dialog");
+    const apply = within(dialog).getByRole("button", { name: "Apply filters" });
+    expect(apply).toBeDisabled();
+    expect(eventRequests(api.sent())).toHaveLength(1);
+    release();
+    await waitFor(() => expect(apply).toBeEnabled());
+  });
+  it("retries charts kept on an older page by going to the newest", async () => {
+    const api = stubEvents({
+      "GET /api/admin/events?summary=include": {
+        body: eventPage([event(1)], {
+          next: "evt_00000000000001",
+          summary: { status: "too_slow" },
+        }),
+      },
+      "GET /api/admin/events?before=evt_00000000000001": {
+        body: eventPage([event(2, { name: "rate_limit.reached" })]),
+      },
+    });
+    renderAdmin(`/admin/${key}/events`);
+    await screen.findByText("wrong_password · ada@example.com");
+    fireEvent.click(screen.getByRole("link", { name: "Older" }));
+    await waitFor(() =>
+      expect(location()).toBe(`/admin/${key}/events?before=evt_00000000000001`),
+    );
+    await screen.findByText("rate_limit.reached");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(location()).toBe(`/admin/${key}/events`));
+    // Not the older rows again.
+    expect(
+      eventRequests(api.sent()).filter((u) => u.includes("before=")),
+    ).toHaveLength(1);
+  });
   it("asks for the summary on the newest page only, and keeps it while paging", async () => {
     const api = stubEvents({
       "GET /api/admin/events?summary=include": {

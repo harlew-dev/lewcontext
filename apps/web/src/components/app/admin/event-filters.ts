@@ -225,6 +225,18 @@ export function utcDay(date: Date, plusDays = 0): string {
   );
   return new Date(time).toISOString().replace(".000Z", "Z");
 }
+// A calendar's local date at a UTC time of day ("14:30"), in RFC 3339.
+export function utcAt(date: Date, clock: string): string {
+  const [hours, minutes] = clock.split(":").map(Number);
+  const time = Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    hours,
+    minutes,
+  );
+  return new Date(time).toISOString().replace(".000Z", "Z");
+}
 // A UTC day as the calendar's local date at local midnight.
 export function localDay(value: string, minusDays = 0): Date {
   const time = new Date(new Date(value).getTime() - minusDays * dayMs);

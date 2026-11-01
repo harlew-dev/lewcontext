@@ -86,6 +86,13 @@ describe("Combobox", () => {
     expect(
       screen.getByText("auth.* Accounts, group, 3 of 4 selected"),
     ).toBeInTheDocument();
+    // The picked state is aria-checked; aria-selected is BaseUI's highlight.
+    expect(option("auth.mfa.* Two-factor")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(option("auth.* Accounts")).toHaveAttribute("aria-checked", "mixed");
+    expect(option("auth.logged_in")).toHaveAttribute("aria-checked", "false");
     fireEvent.click(option("auth.mfa.checked"));
     expect(
       screen.getByText("auth.mfa.* Two-factor, group, 2 of 3 selected"),

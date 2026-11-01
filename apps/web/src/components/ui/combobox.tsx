@@ -1,5 +1,6 @@
 import {
   createContext,
+  forwardRef,
   useContext,
   useId,
   useMemo,
@@ -235,7 +236,7 @@ export function Combobox({
               },
               DropdownContainer: { component: ListboxPanel },
               Dropdown: { component: ListboxList },
-              DropdownListItem: { component: ListboxOptionItem },
+              DropdownListItem: { component: ComboboxOptionItem },
               OptionContent: { component: ComboboxOptionContent },
             }}
           />
@@ -301,14 +302,35 @@ function ComboboxChip({
     </Badge>
   );
 }
+// Whether a row is picked: all its leaves, none, or some (a group).
+function pickedState(row: Row, picked: Set<string>) {
+  const count = row.leaves.filter((leaf) => picked.has(leaf)).length;
+  const state: "checked" | "mixed" | "empty" =
+    count === 0 ? "empty" : count === row.leaves.length ? "checked" : "mixed";
+  return { count, state };
+}
+const ariaChecked = { checked: "true", mixed: "mixed", empty: "false" };
+// A row's list item: BaseUI's aria-selected says which row is highlighted,
+// so the picked state is aria-checked ("true", "false" or "mixed").
+const ComboboxOptionItem = forwardRef<HTMLElement, Record<string, unknown>>(
+  function ComboboxOptionItem({ item, ...props }, ref) {
+    const { picked } = useContext(StateContext);
+    const checked = isRow(item)
+      ? ariaChecked[pickedState(item, picked).state]
+      : undefined;
+    return <ListboxOptionItem ref={ref} {...props} aria-checked={checked} />;
+  },
+);
+// BaseUI hands the list item its option as `item`.
+function isRow(item: unknown): item is Row {
+  return typeof item === "object" && item !== null && "leaves" in item;
+}
 // A row: indented by depth, a check box (checked, empty, or a dash for a
 // partly picked group), its label and, for a group, how many it holds.
 function ComboboxRowLabel({ row }: { row: Row }) {
   const { picked } = useContext(StateContext);
-  const count = row.leaves.filter((leaf) => picked.has(leaf)).length;
+  const { count, state } = pickedState(row, picked);
   const group = Boolean(row.node.children);
-  const state =
-    count === 0 ? "empty" : count === row.leaves.length ? "checked" : "mixed";
   const spoken = group
     ? `${row.text}, group, ${count} of ${row.leaves.length} selected`
     : `${row.text}, ${state === "checked" ? "selected" : "not selected"}`;

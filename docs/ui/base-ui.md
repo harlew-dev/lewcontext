@@ -75,6 +75,7 @@ So our classes transition on `data-closed` in both directions. Popovers instead 
 | The toast's close icon can't be reached by keyboard | Our `DismissButton` replaces it (`toast.tsx`) |
 | `Select` positions its panel below the button | A popper.js modifier, `alignSelection`, opens it over the button (`listbox.tsx`) |
 | `Select` names the control "Selected <option's `labelKey`>. <aria-label>", which reads "Selected [object Object]." when the label is markup | Each option also gets `text`, the text inside its children, and `labelKey="text"` (`listbox.tsx`, `listbox.test.tsx`) |
+| The `Select`'s options carry `aria-selected` for the **highlighted** row, not the chosen one | `Combobox` gives each row `aria-checked` (`true`, `false` or `mixed`) for what's picked (`ComboboxOptionItem`), and says it in its text for screen readers too |
 | `Select` with `multi` renders each chosen value as its `Tag` (the `MultiValue` slot), whose remove is `onActionClick`, not `removeValue` | `ComboboxChip` takes `onActionClick` (`combobox.tsx`) |
 | The datepicker's `Calendar` hands back **local `Date`s at local midnight**: `toISOString()` on one moves the day for anyone east of UTC | Read the year, month and day (`getFullYear`, `getMonth`, `getDate`) and build the UTC day from them (`utcDay` in `components/app/admin/event-filters.ts`; tested with `TZ` east and west of UTC) |
 | The `Calendar` picks a range only when `value` is an array; with `null` every click is a single day | `Calendar` passes `[]` for nothing picked (`calendar.tsx`) |

@@ -40,8 +40,10 @@ export type ChartRow<K extends string> = {
 // tooltip per column, and the numbers as a table for screen readers (the
 // SVG is hidden from them). `label` names the chart; `summary` says in a
 // sentence what it shows. With `onSelect`, clicking a column's bar picks its
-// row (a pointer shortcut: the page offers the same another way), and the
-// tooltip ends with `selectHint`.
+// row, and the tooltip ends with `selectHint`. It's a pointer shortcut only
+// (the SVG is hidden from the keyboard and screen readers), so a page using
+// it must offer the same another way: the Events page's custom range takes
+// days and UTC times, reaching any column.
 export function BarChart<
   K extends string,
   R extends ChartRow<K> = ChartRow<K>,
