@@ -19,3 +19,18 @@ func TestEveryRuleMakesASubject(t *testing.T) {
 		}
 	}
 }
+
+// An alert whose signal is no longer defined is told by a fixed title that
+// makes a valid subject, not by its raw name (which holds an underscore).
+func TestAnUndefinedSignalHasAFixedTitle(t *testing.T) {
+	about := AboutSignal("auth.renamed_since")
+	if about.Title != "An alert" {
+		t.Fatalf("title: %q", about.Title)
+	}
+	for _, kind := range []string{"opened", "escalated", "reminded", "resolved"} {
+		data := mail.AlertData{Kind: kind, Level: "Critical", Title: about.Title}
+		if err := mail.CheckSubject(mail.Alert, data); err != nil {
+			t.Errorf("%s: %v", kind, err)
+		}
+	}
+}

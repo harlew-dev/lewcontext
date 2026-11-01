@@ -22,7 +22,9 @@ type About struct {
 
 // AboutSignal describes the signal named name.
 func AboutSignal(name string) About {
-	about := About{Title: name, Unit: monitor.UnitCount}
+	// A signal no longer defined (renamed since the alert opened) is told
+	// by a fixed title, never its raw name: names aren't fit for a subject.
+	about := About{Title: "An alert", Unit: monitor.UnitCount}
 	if sig, ok := monitor.FindSignal(name); ok {
 		about.Title, about.Unit = sig.Label, sig.Unit
 	}
