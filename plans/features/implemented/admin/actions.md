@@ -24,6 +24,7 @@ Built on the events worktree (branch `admin-run/events`) with every recommendati
 - **Answers:** Suspend is 201 `{sessionsRevoked, invitationsRevoked}`; `revokeInvitations` left out means true.
 
 **The other actions:**
+- **`sessions revoke-all`** also ends every sign-in waiting for its code (`mfa_challenges`, the app's and the admin door's), counted as `challenges` in `auth.sessions_revoked_all` beside `sessions` and `adminSessions` (not one `count`), so a password typed before the command can't become a session after it (found by the security review).
 - **Sign another admin out** ends their app sessions too, not only their admin sessions (a lost laptop holds both); they stay an admin. 404 for an account that isn't an admin.
 - **Reset MFA** needs `confirmed: true` in the body (422 on `confirmed`), so the out-of-band tick isn't only the dialog's; 409 when MFA is off.
 - **Revoke pending invitations** is 409 with none live, recording nothing; the workspace's page shows `pendingInvitations` and disables the button at 0.

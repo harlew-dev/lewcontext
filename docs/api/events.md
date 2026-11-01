@@ -55,7 +55,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `auth.suspended` | `user`, `by`: `admin` (beside `admin.user.suspended`, which holds the reason; the admin is the actor) / `cli` (`admin suspend`, no actor, `reason` here), `sessionsRevoked` (app and admin), `invitationsRevoked`; `user_id` set | `SuspendUser` |
 | `auth.unsuspended` | `user`, `by` (as `auth.suspended`), `reason` from the command line; `user_id` set | `UnsuspendUser` |
-| `auth.sessions_revoked_all` | `sessions`, `adminSessions` (how many were signed out); no scope or actor | `RevokeAllSessions` (`admin sessions revoke-all`) |
+| `auth.sessions_revoked_all` | `sessions`, `adminSessions` (how many were signed out), `challenges` (sign-ins waiting for a code, ended); no scope or actor | `RevokeAllSessions` (`admin sessions revoke-all`) |
 | `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
 | `workspace.renamed` | `workspace`, `changes.name` (`from`, `to`) | `RenameWorkspace`, only when the name changed |

@@ -150,7 +150,9 @@ func (s *Store) Cleanup(ctx context.Context) error {
 }
 
 // RevokeAllSessions signs every account out, app and admin sessions alike,
-// and records auth.sessions_revoked_all with how many, with no actor (the
+// ends every sign-in waiting for its code (the app's and the admin door's,
+// so a password typed before can't become a session after), and records
+// auth.sessions_revoked_all with how many of each, with no actor (the
 // operator's command line, admin sessions revoke-all): for a suspected leak
 // of the session tables. Everyone signs in again with their password (and
 // code).
@@ -161,26 +163,44 @@ func (s *Store) RevokeAllSessions(ctx context.Context) (events.SessionsRevokedAl
 		if e.Sessions, err = deleteSessions(ctx, tx, "TRUE"); err != nil {
 			return err
 		}
-		result, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("TRUE").Exec(ctx)
-		if err != nil {
+		if e.AdminSessions, err = deleteAll(ctx, tx, (*adminSessionRecord)(nil)); err != nil {
 			return err
 		}
-		n, err := result.RowsAffected()
-		if err != nil {
+		if e.Challenges, err = deleteAll(ctx, tx, (*mfaChallenge)(nil)); err != nil {
 			return err
 		}
-		e.AdminSessions = int(n)
 		return s.record(ctx, tx, e, EventScope{})
 	})
 	return e, err
 }
 
-// CountSessions counts the live app and admin sessions, for revoke-all's
-// preview.
-func (s *Store) CountSessions(ctx context.Context) (sessions, adminSessions int64, err error) {
-	if sessions, err = s.DB.NewSelect().Model((*sessionRecord)(nil)).Count(ctx); err != nil {
-		return 0, 0, err
+// deleteAll deletes every row of model's table, returning how many.
+func deleteAll(ctx context.Context, tx bun.Tx, model any) (int, error) {
+	result, err := tx.NewDelete().Model(model).Where("TRUE").Exec(ctx)
+	if err != nil {
+		return 0, err
 	}
-	adminSessions, err = s.DB.NewSelect().Model((*adminSessionRecord)(nil)).Count(ctx)
-	return sessions, adminSessions, err
+	n, err := result.RowsAffected()
+	return int(n), err
+}
+
+// CountSessions counts what revoke-all would end, for its preview: the app
+// and admin sessions, and the sign-ins waiting for a code.
+func (s *Store) CountSessions(ctx context.Context) (events.SessionsRevokedAll, error) {
+	var counts events.SessionsRevokedAll
+	for _, count := range []struct {
+		model any
+		into  *int
+	}{
+		{(*sessionRecord)(nil), &counts.Sessions},
+		{(*adminSessionRecord)(nil), &counts.AdminSessions},
+		{(*mfaChallenge)(nil), &counts.Challenges},
+	} {
+		n, err := s.DB.NewSelect().Model(count.model).Count(ctx)
+		if err != nil {
+			return counts, err
+		}
+		*count.into = int(n)
+	}
+	return counts, nil
 }

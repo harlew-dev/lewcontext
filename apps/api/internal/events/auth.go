@@ -235,10 +235,12 @@ func (Unsuspended) EventName() string { return "auth.unsuspended" }
 
 // SessionsRevokedAll: the operator signed every account out from the
 // command line (admin sessions revoke-all), for a suspected leak of the
-// session tables: Sessions app sessions and AdminSessions admin sessions.
+// session tables: Sessions app sessions and AdminSessions admin sessions
+// signed out, and Challenges sign-ins waiting for their code ended.
 type SessionsRevokedAll struct {
 	Sessions      int `json:"sessions"`
 	AdminSessions int `json:"adminSessions"`
+	Challenges    int `json:"challenges"`
 }
 
 func (SessionsRevokedAll) EventName() string { return "auth.sessions_revoked_all" }

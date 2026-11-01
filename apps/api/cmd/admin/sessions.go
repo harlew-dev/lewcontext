@@ -37,16 +37,16 @@ func sessions(args []string) {
 	}
 }
 
-// revokeAllSessions previews (how many app and admin sessions there are)
-// or, with confirm, deletes every one and records
-// auth.sessions_revoked_all.
+// revokeAllSessions previews (how many app and admin sessions, and sign-ins
+// waiting for a code, there are) or, with confirm, ends every one and
+// records auth.sessions_revoked_all.
 func revokeAllSessions(ctx context.Context, repository *store.Store, confirm bool, out io.Writer) error {
 	if !confirm {
-		sessions, adminSessions, err := repository.CountSessions(ctx)
+		counts, err := repository.CountSessions(ctx)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "Would sign everyone out: %d app sessions and %d admin sessions.\n", sessions, adminSessions)
+		fmt.Fprintf(out, "Would sign everyone out: %d app sessions and %d admin sessions, and end %d sign-ins waiting for a code.\n", counts.Sessions, counts.AdminSessions, counts.Challenges)
 		fmt.Fprintln(out, "Nothing changed. Re-run with -confirm (make admin cmd=\"sessions revoke-all\" CONFIRM=1) to do it.")
 		return nil
 	}
@@ -54,6 +54,6 @@ func revokeAllSessions(ctx context.Context, repository *store.Store, confirm boo
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Signed everyone out: %d app sessions and %d admin sessions. Everyone signs in again with their password (and code).\n", revoked.Sessions, revoked.AdminSessions)
+	fmt.Fprintf(out, "Signed everyone out: %d app sessions and %d admin sessions, and ended %d sign-ins waiting for a code. Everyone signs in again with their password (and code).\n", revoked.Sessions, revoked.AdminSessions, revoked.Challenges)
 	return nil
 }

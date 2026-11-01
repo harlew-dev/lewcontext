@@ -22,8 +22,9 @@ func migrated(t *testing.T) *store.Store {
 }
 
 // sessions revoke-all previews without -confirm, changing nothing; with it,
-// every app and admin session is gone and one auth.sessions_revoked_all is
-// recorded, with no actor.
+// every app and admin session is gone, and every sign-in waiting for a code
+// (so a password typed before can't become a session after), and one
+// auth.sessions_revoked_all is recorded with the counts, with no actor.
 func TestRevokeAllSessions(t *testing.T) {
 	repository := migrated(t)
 	ctx := context.Background()
@@ -34,6 +35,8 @@ func TestRevokeAllSessions(t *testing.T) {
 	}
 	must(factory.Admins.State(factory.AdminFor(users[0].ID)).CreateOne(ctx, repository.DB, f))(t)
 	must(factory.AdminSessions.State(factory.AdminSessionFor(users[0].ID)).CreateOne(ctx, repository.DB, f))(t)
+	must(factory.MFAChallenges.State(factory.ChallengeFor(users[1].ID)).CreateOne(ctx, repository.DB, f))(t)
+	must(factory.MFAChallenges.State(factory.ChallengeFor(users[0].ID)).State(factory.Purpose("admin")).CreateOne(ctx, repository.DB, f))(t)
 	count := func(table string) int {
 		return int(must(repository.DB.NewSelect().TableExpr(table).Count(ctx))(t))
 	}
@@ -41,20 +44,20 @@ func TestRevokeAllSessions(t *testing.T) {
 	if err := revokeAllSessions(ctx, repository, false, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "2 app sessions and 1 admin sessions") || count("sessions") != 2 || count("admin_sessions") != 1 || count("events") != 0 {
+	if !strings.Contains(out.String(), "2 app sessions and 1 admin sessions, and end 2 sign-ins") || count("sessions") != 2 || count("admin_sessions") != 1 || count("mfa_challenges") != 2 || count("events") != 0 {
 		t.Fatalf("the preview: %s", out.String())
 	}
 	out.Reset()
 	if err := revokeAllSessions(ctx, repository, true, &out); err != nil {
 		t.Fatal(err)
 	}
-	if count("sessions") != 0 || count("admin_sessions") != 0 || !strings.Contains(out.String(), "Signed everyone out") {
+	if count("sessions") != 0 || count("admin_sessions") != 0 || count("mfa_challenges") != 0 || !strings.Contains(out.String(), "Signed everyone out") {
 		t.Fatalf("after: %s", out.String())
 	}
 	var payload string
 	var actor *int64
 	err := repository.DB.NewSelect().TableExpr("events").Column("payload", "actor_id").Where("name = 'auth.sessions_revoked_all'").Scan(ctx, &payload, &actor)
-	if err != nil || actor != nil || !strings.Contains(payload, `"sessions": 2`) || !strings.Contains(payload, `"adminSessions": 1`) || count("events") != 1 {
+	if err != nil || actor != nil || !strings.Contains(payload, `"sessions": 2`) || !strings.Contains(payload, `"adminSessions": 1`) || !strings.Contains(payload, `"challenges": 2`) || count("events") != 1 {
 		t.Fatalf("the event: %s %v %v", payload, actor, err)
 	}
 }
