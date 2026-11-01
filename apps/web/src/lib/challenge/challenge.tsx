@@ -41,20 +41,26 @@ export function ChallengeProvider({ children }: { children: ReactNode }) {
       }),
     [],
   );
+  // Challenges already resolved or rejected: a second settle of the same
+  // one (a token and Cancel together) is ignored, and never reaches the next.
+  const settled = useRef(new WeakSet<Pending>());
   const current = queue[0];
-  const finish = useMemo(
-    () => ({
+  const finish = useMemo(() => {
+    const settle = (end: (pending: Pending) => void) => {
+      if (!current || settled.current.has(current)) return;
+      settled.current.add(current);
+      end(current);
+      setQueue((q) => q.filter((p) => p.id !== current.id));
+    };
+    return {
       solved(token: string) {
-        current?.resolve(token);
-        setQueue((q) => q.slice(1));
+        settle((p) => p.resolve(token));
       },
       cancelled() {
-        current?.reject(new ApiError("Check cancelled.", 428));
-        setQueue((q) => q.slice(1));
+        settle((p) => p.reject(new ApiError("Check cancelled.", 428)));
       },
-    }),
-    [current],
-  );
+    };
+  }, [current]);
   return (
     <SolveContext.Provider value={solve}>
       {children}

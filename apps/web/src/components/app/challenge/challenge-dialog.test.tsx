@@ -126,3 +126,35 @@ describe("ChallengeDialog", () => {
     );
   });
 });
+describe("ChallengeProvider", () => {
+  it("settles a challenge once, and never drops the next", async () => {
+    window.turnstile = turnstile;
+    vi.spyOn(providers, "loadScript").mockResolvedValue();
+    renderAsker({ count: 2 });
+    await waitFor(() => expect(widget).toBeDefined());
+    const first = widget!;
+    // The token arrives, then Cancel and the token again before the
+    // dialog moves on: only the first counts.
+    act(() => {
+      first.callback("one");
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      first.callback("again");
+    });
+    await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    act(() => widget!.callback("two"));
+    await waitFor(() =>
+      expect(screen.getByTestId("results")).toHaveTextContent(
+        "token one, token two",
+      ),
+    );
+  });
+  it("supports only the providers it has, not an object's own keys", async () => {
+    const load = vi.spyOn(providers, "loadScript");
+    renderAsker({ provider: "constructor" });
+    expect(
+      await screen.findByText(/This check isn’t supported/),
+    ).toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+  });
+});

@@ -41,7 +41,11 @@ export function ChallengeDialog({
   const [state, setState] = useState<State>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const slot = useRef<HTMLDivElement>(null);
-  const widget = challenge ? providers[challenge.provider] : undefined;
+  // Own keys only, so a provider named "constructor" is unsupported too.
+  const widget =
+    challenge && Object.hasOwn(providers, challenge.provider)
+      ? providers[challenge.provider]
+      : undefined;
   useEffect(() => {
     if (!challenge || !widget) return;
     let live = true;
