@@ -66,6 +66,8 @@ func TestChangePassword(t *testing.T) {
 		{apitest.ChangeBody(factory.DefaultPassword, "too short"), "newPassword"},
 		{apitest.ChangeBody(factory.DefaultPassword, strings.Repeat("x", 129)), "newPassword"},
 		{apitest.ChangeBody(factory.DefaultPassword, factory.DefaultPassword), "newPassword"},
+		// Without MFA a code doesn't stand in for the password.
+		{fmt.Sprintf(`{"newPassword":%q,"code":"123456"}`, apitest.NewPassword), "currentPassword"},
 	} {
 		refused := apitest.Call(t, h, "PATCH", path, tc.body, session.CSRFToken, cookie, 422)
 		if apitest.ErrorField(t, refused) != tc.field {
@@ -100,6 +102,87 @@ func TestChangePassword(t *testing.T) {
 	email := apitest.EmailOf(t, db, session.UserID)
 	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, factory.DefaultPassword), "", nil, 401)
 	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, email, apitest.NewPassword), "", nil, 200)
+}
+
+// With MFA on, a code confirms the change instead of the current password.
+func TestChangePasswordWithMFA(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	a := apitest.WithMFA(t, db, f)
+	session := apitest.Must(factory.SessionFor(ctx, db, f, a.User.ID))(t)
+	cookie, csrf := session.Cookie(), session.CSRFToken
+	const path = "/api/auth/password"
+	body := func(newPassword, code string) string {
+		return fmt.Sprintf(`{"newPassword":%q,"code":%q}`, newPassword, code)
+	}
+	refuse := func(body, field string) {
+		t.Helper()
+		if w := apitest.Call(t, h, "PATCH", path, body, csrf, cookie, 422); apitest.ErrorField(t, w) != field {
+			t.Fatalf("%s: want field %s: %s", body, field, w.Body.String())
+		}
+	}
+
+	// The right password isn't enough, and isn't counted as a check.
+	refuse(apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), "code")
+	refuse(body(apitest.NewPassword, "  "), "code")
+	if n := len(apitest.EventsNamed(t, db, "auth.password_checked")) + len(apitest.EventsNamed(t, db, "auth.mfa.checked")); n != 0 {
+		t.Fatalf("a missing code recorded %d checks", n)
+	}
+	refuse(body(apitest.NewPassword, "000000"), "code")
+	if e := apitest.OnlyEvent(t, db, "auth.mfa.checked"); e.Payload["ok"] != false || e.Payload["step"] != "password_update" {
+		t.Fatalf("auth.mfa.checked: %+v", e)
+	}
+	// Refusing the new password rolls back, so the code still works after.
+	code := a.CodeAt(0)
+	refuse(body(factory.DefaultPassword, code), "newPassword")
+	if !storedPasswordIs(t, db, a.User.ID, factory.DefaultPassword) {
+		t.Fatal("a refused change altered the password")
+	}
+	apitest.Call(t, h, "GET", "/api/auth/me", "", "", cookie, 200)
+
+	changed := apitest.Call(t, h, "PATCH", path, body(apitest.NewPassword, code), csrf, cookie, 200)
+	if !storedPasswordIs(t, db, a.User.ID, apitest.NewPassword) {
+		t.Fatal("new password not saved")
+	}
+	if n := len(apitest.EventsNamed(t, db, "auth.password_checked")); n != 0 {
+		t.Fatalf("the password was recorded as checked %d times", n)
+	}
+	apitest.Call(t, h, "GET", "/api/auth/me", "", "", cookie, 401)
+	var signed apitest.SessionResponse
+	apitest.Must(0, json.Unmarshal(changed.Body.Bytes(), &signed))(t)
+	cookie, csrf = changed.Result().Cookies()[0], signed.CSRF
+
+	// Each code works once; a recovery code works too, and is used up.
+	refuse(body("another new password", code), "code")
+	apitest.Call(t, h, "PATCH", path, body("another new password", a.Codes[0].Code), csrf, cookie, 200)
+	checks := apitest.EventsNamed(t, db, "auth.mfa.checked")
+	if last := checks[len(checks)-1]; last.Payload["ok"] != true || last.Payload["method"] != "recovery_code" || last.Payload["recoveryCodesLeft"] != 1.0 {
+		t.Fatalf("auth.mfa.checked: %+v", last)
+	}
+
+	// Signing in with the new password still asks for a code.
+	w := apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":"another new password"}`, a.User.Email), "", nil, 200)
+	if !strings.Contains(w.Body.String(), `"mfaRequired":true`) || apitest.CookieNamed(w, auth.CookieName(false)) != nil {
+		t.Fatalf("signing in after the change: %s", w.Body.String())
+	}
+}
+
+// Codes for a password change share the account's code limit.
+func TestChangePasswordWithMFARateLimit(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	a := apitest.WithMFA(t, db, f)
+	session := apitest.Must(factory.SessionFor(ctx, db, f, a.User.ID))(t)
+	apitest.Must(factory.RateLimits.State(factory.ForLimit("mfa:per-account", a.User.PublicID)).State(factory.Exhausted(5)).CreateOne(ctx, db, f))(t)
+	body := fmt.Sprintf(`{"newPassword":%q,"code":%q}`, apitest.NewPassword, a.CodeAt(0))
+	apitest.Call(t, h, "PATCH", "/api/auth/password", body, session.CSRFToken, session.Cookie(), 429)
+	if !storedPasswordIs(t, db, a.User.ID, factory.DefaultPassword) {
+		t.Fatal("rate-limited change altered the password")
+	}
 }
 
 // Password checks share the account's sign-in limit.

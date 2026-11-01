@@ -417,7 +417,8 @@ func TestLosingAdminEndsAdminSessions(t *testing.T) {
 		},
 		"a password change": func(a apitest.MFAAccount) {
 			user := store.User{ID: a.User.ID, PublicID: a.User.PublicID}
-			apitest.Must(0, s.Repo.ChangePassword(ctx, user, "", func(string) (string, error) { return "new-hash", nil }))(t)
+			confirm := store.PasswordConfirmation{Factor: s.SecondFactor(user, a.CodeAt(0))}
+			apitest.Must(s.Repo.ChangePassword(ctx, user, "", confirm, func(string) (string, error) { return "new-hash", nil }))(t)
 		},
 		"a password reset": func(a apitest.MFAAccount) {
 			reset := apitest.Must(factory.PasswordResets.State(factory.ResetFor(a.User.ID)).CreateOne(ctx, db, f))(t)

@@ -356,10 +356,12 @@ function PasswordControls() {
     </div>
   );
 }
-// Two steps: the current password, checked by the API before moving on, then
-// the new one. Saving sends the current password again, since the API checks
-// it on every change. The passwords live only in this dialog's state and are
-// cleared when it closes.
+// Two steps. Without MFA: the current password, checked by the API before
+// moving on, then the new one; saving sends the current password again, since
+// the API checks it on every change. With MFA on: the new password, then a
+// code from the authenticator app (or a recovery code), which the API takes
+// instead of the current password. What's typed lives only in this dialog's
+// state and is cleared when it closes.
 function ChangePasswordDialog({
   open,
   onClose,
@@ -370,13 +372,17 @@ function ChangePasswordDialog({
   const api = useApi();
   const session = useSession();
   const renew = useRenewSession();
-  const [step, setStep] = useState<"current" | "new">("current");
+  const mfa = session.user.mfaEnabledAt !== null;
+  const [step, setStep] = useState<"current" | "new" | "code">(
+    mfa ? "new" : "current",
+  );
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [code, setCode] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  // An API error about one field shows under it (a wrong current password
-  // also returns to the first step); anything else goes above the form.
+  // An API error about one field shows under it, on that field's step;
+  // anything else goes above the form.
   function showOnField(e: unknown): boolean {
     const field = e instanceof ApiError ? e.field : undefined;
     if (field === "password" || field === "currentPassword") {
@@ -385,7 +391,12 @@ function ChangePasswordDialog({
       return true;
     }
     if (field === "newPassword") {
+      setStep("new");
       setFieldErrors({ newPassword: errorMessage(e) });
+      return true;
+    }
+    if (field === "code") {
+      setFieldErrors({ code: errorMessage(e) });
       return true;
     }
     return false;
@@ -394,69 +405,78 @@ function ChangePasswordDialog({
     onError: showOnField,
   });
   const change = useAction(
-    () => api.auth().changePassword({ currentPassword, newPassword }),
+    () =>
+      api
+        .auth()
+        .changePassword(
+          mfa ? { newPassword, code } : { currentPassword, newPassword },
+        ),
     { onError: showOnField },
   );
   const busy = verify.busy || change.busy;
   const loading = verify.loading || change.loading;
   const error = step === "current" ? verify.error : change.error;
-  function clearPasswords() {
+  const first = step === "current" || (mfa && step === "new");
+  function clearSecrets() {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmation("");
+    setCode("");
   }
   function close() {
     if (busy) return;
-    clearPasswords();
+    clearSecrets();
     onClose();
   }
-  async function submitCurrent(event: FormEvent) {
-    event.preventDefault();
-    if (!(await verify.run()).ok) return;
+  function goTo(next: typeof step) {
+    verify.error.clear();
     change.error.clear();
     setFieldErrors({});
-    setStep("new");
+    setStep(next);
   }
-  async function submitNew(event: FormEvent) {
-    event.preventDefault();
+  async function submitCurrent() {
+    if ((await verify.run()).ok) goTo("new");
+  }
+  async function submitNew() {
     const problems = newPasswordProblems(newPassword, confirmation);
     setFieldErrors(problems);
     if (Object.keys(problems).length > 0) return;
+    if (mfa) goTo("code");
+    else await save();
+  }
+  async function save() {
     const result = await change.run();
     if (!result.ok) return;
     renew(result.value);
     toast.success("Password updated. Other sessions were signed out.");
-    clearPasswords();
+    clearSecrets();
     onClose();
+  }
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (step === "current") return submitCurrent();
+    if (step === "new") return submitNew();
+    return save();
   }
   function back() {
     if (busy) return;
-    verify.error.clear();
-    change.error.clear();
-    setFieldErrors({});
-    setStep("current");
+    goTo(step === "code" ? "new" : "current");
   }
   return (
     <Dialog open={open} onClose={close}>
-      <form onSubmit={step === "current" ? submitCurrent : submitNew}>
+      <form onSubmit={submit}>
         <DialogTitle>Change password</DialogTitle>
         <DialogDescription>
-          {step === "current"
-            ? "Enter your current password to continue."
-            : "Choose a new password. Other sessions will be signed out."}
+          {step === "current" && "Enter your current password to continue."}
+          {step === "new" &&
+            "Choose a new password. Other sessions will be signed out."}
+          {step === "code" &&
+            "Enter the code from your authenticator app to confirm."}
         </DialogDescription>
         <DialogBody>
           <ErrorNotice error={error} className="mb-6" />
-          {/* Tells password managers which account the passwords belong to. */}
-          <input
-            type="email"
-            name="username"
-            autoComplete="username"
-            value={session.user.email}
-            readOnly
-            hidden
-          />
-          {step === "current" ? (
+          <UsernameHint />
+          {step === "current" && (
             <PasswordField
               label="Current password"
               autoComplete="current-password"
@@ -465,7 +485,8 @@ function ChangePasswordDialog({
               error={fieldErrors.currentPassword}
               disabled={loading}
             />
-          ) : (
+          )}
+          {step === "new" && (
             <NewPasswordFields
               password={newPassword}
               confirmation={confirmation}
@@ -475,9 +496,17 @@ function ChangePasswordDialog({
               disabled={loading}
             />
           )}
+          {step === "code" && (
+            <AppOrRecoveryCode
+              value={code}
+              onChange={setCode}
+              error={fieldErrors.code}
+              disabled={loading}
+            />
+          )}
         </DialogBody>
         <DialogActions>
-          {step === "current" ? (
+          {first ? (
             <Button plain onClick={close} disabled={loading}>
               Cancel
             </Button>
@@ -486,8 +515,13 @@ function ChangePasswordDialog({
               Back
             </Button>
           )}
-          <Button type="submit" loading={loading}>
-            {step === "current" ? "Next" : "Confirm"}
+          <Button
+            type="submit"
+            loading={loading}
+            disabled={step === "code" && code.trim() === ""}
+            disabledReason="Fill in required fields"
+          >
+            {step === "code" || (step === "new" && !mfa) ? "Confirm" : "Next"}
           </Button>
         </DialogActions>
       </form>

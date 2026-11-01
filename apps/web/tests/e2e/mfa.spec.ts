@@ -3,7 +3,8 @@ import { createHmac } from "node:crypto";
 import { enterMailedCode } from "./mail";
 import { execFileSync } from "node:child_process";
 const email = `e2e-${Date.now()}-mfa@lewcontext.test`;
-const password = "A thoughtful test passphrase!";
+let password = "A thoughtful test passphrase!";
+const newPassword = "A newer test passphrase, changed!";
 // Runs SQL against this run's database, only for cleanup.
 function sql(statement: string): string {
   return execFileSync(
@@ -53,7 +54,7 @@ async function signIn(page: Page) {
     page.getByRole("heading", { name: "Two-factor authentication" }),
   ).toBeVisible();
 }
-test("two-factor authentication: enable with a hidden QR code, sign in with a code and a recovery code, disable", async ({
+test("two-factor authentication: enable with a hidden QR code, sign in with a code and a recovery code, change the password with a code, disable", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -136,6 +137,31 @@ test("two-factor authentication: enable with a hidden QR code, sign in with a co
     .getByRole("button", { name: "Lost your device? Use a recovery code" })
     .click();
   await page.getByLabel("Recovery code").fill(codes[0]);
+  await page.getByRole("button", { name: "Verify" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // Changing the password takes a code instead of the current password.
+  await page.goto("/app/settings");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await dialog.getByLabel("New password", { exact: true }).fill(newPassword);
+  await expect(dialog.getByLabel("Current password")).toHaveCount(0);
+  await dialog.getByLabel("Confirm new password").fill(newPassword);
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await dialog
+    .getByRole("button", { name: "Lost your device? Use a recovery code" })
+    .click();
+  await dialog.getByLabel("Recovery code").fill(codes[2]);
+  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await expect(
+    page.getByText("Password updated. Other sessions were signed out."),
+  ).toBeVisible();
+  // The new password signs in, still with a code.
+  password = newPassword;
+  await signIn(page);
+  await page
+    .getByRole("button", { name: "Lost your device? Use a recovery code" })
+    .click();
+  await page.getByLabel("Recovery code").fill(codes[3]);
   await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 

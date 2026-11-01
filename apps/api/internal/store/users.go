@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
@@ -77,16 +78,42 @@ func (s *Store) FindPasswordHash(ctx context.Context, userID int64) (string, err
 	return hash, err
 }
 
+// PasswordConfirmation is what confirms a password change: with MFA on the
+// second factor Factor, and with it off Password, which checks the current
+// hash.
+type PasswordConfirmation struct {
+	Factor   SecondFactor
+	Password func(current string) error
+}
+
+// PasswordConfirmed says which check ChangePassword ran: the second factor
+// (MFA, with how it was used once the change committed) or the password.
+type PasswordConfirmed struct {
+	MFA bool
+	FactorUsed
+}
+
 // ChangePassword replaces the user's password hash, deletes their reset link
 // and every session of theirs (sessionHash is the one making the change, and
 // every admin session) and records
 // auth.password_changed, in one transaction with the user row locked.
-// replace receives the current hash and returns the new one; an error from it
-// changes nothing.
-func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, replace func(current string) (string, error)) error {
-	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+// confirm is checked first, against the locked rows: ErrWrongCode for a
+// wrong second factor, or the password check's error. replace then receives
+// the current hash and returns the new one. An error from either changes
+// nothing, so a code isn't used up.
+func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, confirm PasswordConfirmation, replace func(current string) (string, error)) (PasswordConfirmed, error) {
+	var confirmed PasswordConfirmed
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var current string
 		if err := tx.NewSelect().Model((*account)(nil)).Column("password_hash").Where("id = ?", u.ID).For("UPDATE").Scan(ctx, &current); err != nil {
+			return err
+		}
+		used, err := useConfirmedFactor(ctx, tx, u.ID, confirm.Factor)
+		confirmed.MFA = !errors.Is(err, ErrMFANotEnabled)
+		if !confirmed.MFA {
+			err = confirm.Password(current)
+		}
+		if err != nil {
 			return err
 		}
 		hash, err := replace(current)
@@ -110,8 +137,12 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 		if _, err := deleteAdminSessions(ctx, tx, u.ID); err != nil {
 			return err
 		}
+		if used != nil {
+			confirmed.FactorUsed = *used
+		}
 		return s.record(ctx, tx, events.PasswordChanged{User: u.PublicID, OtherSessionsRevoked: others}, EventScope{UserID: u.ID})
 	})
+	return confirmed, err
 }
 
 // DeleteAccount deletes the user, with their sessions, memberships, reset

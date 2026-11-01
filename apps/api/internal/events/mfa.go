@@ -8,10 +8,11 @@ const (
 
 // Steps that check a second factor.
 const (
-	MFAStepLogin         = "login"
-	MFAStepEnable        = "enable"
-	MFAStepDisable       = "disable"
-	MFAStepRecoveryCodes = "recovery_codes"
+	MFAStepLogin          = "login"
+	MFAStepEnable         = "enable"
+	MFAStepDisable        = "disable"
+	MFAStepRecoveryCodes  = "recovery_codes"
+	MFAStepPasswordUpdate = "password_update"
 )
 
 // Why MFA was turned off: by the user, or reset by the operator (admin

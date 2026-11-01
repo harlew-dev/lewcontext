@@ -64,7 +64,10 @@ export const authRoutes = {
   checkPasswordReset: () => "/api/auth/password-reset/check",
 };
 export type ProfileInput = { name: string };
-export type PasswordChange = { currentPassword: string; newPassword: string };
+// With MFA on a code confirms the change, otherwise the current password.
+export type PasswordChange = { newPassword: string } & (
+  { currentPassword: string } | { code: string }
+);
 export type PasswordReset = { token: string; newPassword: string };
 // A workspace named in an error: one you're the only owner of.
 export type WorkspaceSummary = { id: string; name: string };
@@ -131,11 +134,10 @@ export function auth(http: Http) {
       http.send<void>("POST", authRoutes.verifyPassword(), { password }),
     // Saves a new password. The API signs out every session and returns a new
     // one for this browser (new cookie and CSRF token), for useRenewSession().
-    changePassword: ({ currentPassword, newPassword }: PasswordChange) =>
-      http.send<Session>("PATCH", authRoutes.password(), {
-        currentPassword,
-        newPassword,
-      }),
+    // A wrong code is an ApiError with field "code", a wrong password one with
+    // field "currentPassword".
+    changePassword: (change: PasswordChange) =>
+      http.send<Session>("PATCH", authRoutes.password(), change),
     // Asks for a reset link. The API answers the same whether or not an
     // account uses the email; the link arrives by email (in development, the
     // server's mailbox file).

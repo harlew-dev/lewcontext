@@ -318,6 +318,80 @@ describe("change password", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Current password")).toBeInTheDocument();
   });
+  describe("with two-factor authentication on", () => {
+    const withMfa = testSession({
+      csrfToken: "csrf-old",
+      user: { mfaEnabledAt: "2026-10-30T12:00:00Z" },
+    });
+    function renderWithMfa() {
+      renderPage(withMfa);
+      fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    }
+    function chooseNewPassword() {
+      type("New password", "a brand new passphrase");
+      type("Confirm new password", "a brand new passphrase");
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    }
+    it("asks for the new password, then a code instead of the current one", async () => {
+      const api = stubApi({
+        "PATCH /api/auth/password": [
+          {
+            status: 422,
+            body: { error: "That code didn’t work.", field: "code" },
+          },
+          { status: 200, body: { ...withMfa, csrfToken: "csrf-new" } },
+        ],
+      });
+      renderWithMfa();
+      expect(screen.queryByLabelText("Current password")).toBeNull();
+      chooseNewPassword();
+      const confirm = await screen.findByRole("button", { name: "Confirm" });
+      expect(confirm).toBeDisabled();
+      type("Authentication code", "000000");
+      fireEvent.click(confirm);
+      expect(
+        await screen.findByText("That code didn’t work."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Authentication code")).toBeInTheDocument();
+      type("Authentication code", "123456");
+      fireEvent.click(confirm);
+      expect(
+        await screen.findByText(
+          "Password updated. Other sessions were signed out.",
+        ),
+      ).toBeInTheDocument();
+      expect(api.sent("POST")).toHaveLength(0);
+      expect(api.sent("PATCH").map((r) => r.body)).toEqual([
+        { newPassword: "a brand new passphrase", code: "000000" },
+        { newPassword: "a brand new passphrase", code: "123456" },
+      ]);
+    });
+    it("goes back to the new password when the API refuses it", async () => {
+      stubApi({
+        "PATCH /api/auth/password": [
+          {
+            status: 422,
+            body: {
+              error: "Choose a password different from your current one.",
+              field: "newPassword",
+            },
+          },
+        ],
+      });
+      renderWithMfa();
+      chooseNewPassword();
+      type("Authentication code", "123456");
+      fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+      expect(
+        await screen.findByText(
+          "Choose a password different from your current one.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("New password")).toHaveValue(
+        "a brand new passphrase",
+      );
+    });
+  });
 });
 describe("deleting the account", () => {
   const acme = { id: "wsp_2yEHYLwiwPVhLW", name: "Acme" };
