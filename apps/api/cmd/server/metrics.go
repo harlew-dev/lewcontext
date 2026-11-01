@@ -164,7 +164,7 @@ const silentServersTimeout = 10 * time.Second
 func deleteSilentServers(ctx context.Context, repository *store.Store) (int, error) {
 	run, cancel := context.WithTimeout(ctx, silentServersTimeout)
 	defer cancel()
-	return repository.DeleteSilentServerInstances(run, time.Now().Add(-silentServer))
+	return repository.DeleteSilentServerInstances(run, silentServer)
 }
 
 // rollUp runs summarizeMetrics until stopRollup is called, which waits for
