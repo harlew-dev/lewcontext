@@ -79,6 +79,19 @@ func TestAdminEventExport(t *testing.T) {
 	if exported := apitest.EventsNamed(t, db, "admin.event.exported"); len(exported) != 3 || exported[2].Payload["rows"] != float64(10_000) {
 		t.Fatalf("exports recorded: %d", len(exported))
 	}
+
+	// Its query has the summaries' deadline: past it, 503 and nothing
+	// recorded, and the slot is free again.
+	s.Summaries.Deadline = time.Nanosecond
+	slow := adminCall(t, h, "GET", "/api/admin/events/export?window=7d", "", "", 503, cookie)
+	if !strings.Contains(slow.Body.String(), "Narrow the filters") {
+		t.Fatalf("too slow: %s", slow.Body.String())
+	}
+	s.Summaries.Deadline = 5 * time.Second
+	if n := len(apitest.EventsNamed(t, db, "admin.event.exported")); n != 3 {
+		t.Fatalf("a refused export was recorded: %d", n)
+	}
+	adminCall(t, h, "GET", "/api/admin/events/export?name=auth.login_attempted", "", "", 200, cookie)
 }
 
 // An Events search finds an event over 30 days old by its minimised forms:
