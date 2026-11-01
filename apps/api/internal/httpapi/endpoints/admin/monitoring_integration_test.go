@@ -158,7 +158,7 @@ func TestAdminMonitoringPages(t *testing.T) {
 		}
 	}
 	before := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed"))
-	adminCall(t, h, "GET", "/api/admin/monitoring/ips", "", "", 404, cookie)
+	adminCall(t, h, "GET", "/api/admin/monitoring/data", "", "", 404, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=30d", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=all", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?page=2", "", "", 400, cookie)

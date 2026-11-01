@@ -14,3 +14,7 @@ CREATE TABLE users (
  last_seen_at timestamptz
 );
 CREATE INDEX users_last_seen_idx ON users(last_seen_at) WHERE last_seen_at IS NOT NULL;
+-- Accounts not seen for a long time, longest first (monitoring's Usage page,
+-- compliance's inactive accounts): its last signed-in request, or when it was
+-- made if it never had one.
+CREATE INDEX users_inactive_idx ON users((coalesce(last_seen_at, created_at)));

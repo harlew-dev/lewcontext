@@ -221,8 +221,8 @@ type AdminMailViewed struct {
 func (AdminMailViewed) EventName() string { return "admin.mail.viewed" }
 
 // AdminMonitoringViewed: an admin loaded a Monitoring page (overview,
-// security, limits) for Window (1h, 24h or 7d): its signals, charts and
-// review lists together, one read.
+// security, limits, ips, accounts, workspaces, usage) for Window (1h, 24h
+// or 7d): its signals, charts and review lists together, one read.
 type AdminMonitoringViewed struct {
 	Admin  string `json:"admin"`
 	Page   string `json:"page"`
@@ -230,6 +230,18 @@ type AdminMonitoringViewed struct {
 }
 
 func (AdminMonitoringViewed) EventName() string { return "admin.monitoring.viewed" }
+
+// AdminIPViewed: an admin looked at what one address did (Monitoring's IP
+// addresses, one address's page) over Window. Address is the address
+// looked at (or an IPv6 /64), named apart from ip: the admin's own address
+// is the event's ip column, like every event's.
+type AdminIPViewed struct {
+	Admin   string `json:"admin"`
+	Address string `json:"address"`
+	Window  string `json:"window"`
+}
+
+func (AdminIPViewed) EventName() string { return "admin.ip.viewed" }
 
 // AdminDeliveryListed: an admin loaded a page of the deliveries list, with
 // the filters used.

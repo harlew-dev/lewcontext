@@ -19,6 +19,10 @@ var pages = []Page{
 	{Name: PageOverview, Signals: overviewSignals, Sections: overviewPage},
 	{Name: PageSecurity, Signals: func() []Signal { return SecuritySignals }, Sections: securityPage},
 	{Name: PageLimits, Signals: func() []Signal { return LimitsSignals }, Sections: limitsPage},
+	{Name: PageIPs, Signals: func() []Signal { return IPsSignals }, Sections: ipsPage},
+	{Name: PageAccounts, Signals: func() []Signal { return AccountsSignals }, Sections: accountsPage},
+	{Name: PageWorkspaces, Signals: func() []Signal { return WorkspacesSignals }, Sections: workspacesPage},
+	{Name: PageUsage, Signals: func() []Signal { return UsageSignals }, Sections: usagePage},
 }
 
 // PageNames are the pages built, in order.
@@ -70,5 +74,9 @@ func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
 // Signals are every signal defined, for the docs' list and the checks
 // (TestSignalsAreWellFormed).
 func Signals() []Signal {
-	return append(append(append([]Signal{}, SecuritySignals...), LimitsSignals...), OverviewSignals...)
+	var all []Signal
+	for _, list := range [][]Signal{SecuritySignals, LimitsSignals, IPsSignals, AccountsSignals, WorkspacesSignals, UsageSignals, OverviewSignals} {
+		all = append(all, list...)
+	}
+	return all
 }

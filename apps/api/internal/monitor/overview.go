@@ -12,8 +12,8 @@ import (
 // and if not, where? A grid of tiles, each one or more signals with their
 // levels, a sparkline over the window, and the page they belong to. Tiles
 // whose page isn't built yet still show their numbers where the data is
-// already there (metrics, the mail queue, grouped errors, last seen);
-// Integrity and Alerts come with their pages.
+// already there (metrics, the mail queue, grouped errors); Integrity and
+// Alerts come with their pages.
 
 // PageOverview is the Overview's name.
 const PageOverview = "overview"
@@ -23,7 +23,6 @@ const PageOverview = "overview"
 const (
 	pagePerformance   = "performance"
 	pageErrors        = "errors"
-	pageUsage         = "usage"
 	pageConfiguration = "configuration"
 	pageMail          = "mail"
 )
@@ -32,7 +31,7 @@ const (
 const requestWindow = time.Hour
 
 // OverviewSignals are the signals of tiles from pages not built yet, read
-// by the Overview; the others are on their own pages.
+// by the Overview; the others are on their own pages (Sign-ups' on Usage).
 var OverviewSignals = []Signal{
 	{
 		Name: "servers.live", Page: pageConfiguration, Label: "Live servers", Unit: UnitCount,
@@ -124,22 +123,6 @@ var OverviewSignals = []Signal{
 			return count(g.Open, err)
 		},
 	},
-	{
-		Name: "usage.sign_ups", Page: pageUsage, Label: "Sign-ups", Unit: UnitCount,
-		Window: 24 * time.Hour,
-		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
-			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "auth.registered"))
-		},
-		Drill:      drill("auth.registered"),
-		DrillExact: true,
-	},
-	{
-		Name: "usage.active_accounts", Page: pageUsage, Label: "Active accounts", Unit: UnitCount,
-		Window: 24 * time.Hour,
-		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
-			return count(env.Store.CountActiveAccounts(ctx, sp.From))
-		},
-	},
 }
 
 // requestTotals totals every server's requests in sp.
@@ -219,13 +202,13 @@ var overviewTiles = []Tile{
 	{ID: "failed_sign_ins", Label: "Failed sign-ins", Page: PageSecurity, Signals: []string{"auth.failed_sign_ins"}},
 	{ID: "limits", Label: "Shared limits", Page: PageLimits, Signals: []string{"limits.shared_reached"}},
 	{ID: "admin_door", Label: "Admin door", Page: PageSecurity, Signals: []string{"admin.door_refusals", "admin.door_failures"}},
-	{ID: "sign_ups", Label: "Sign-ups", Page: pageUsage, Signals: []string{"usage.sign_ups", "usage.active_accounts"}},
+	{ID: "sign_ups", Label: "Sign-ups", Page: PageUsage, Signals: []string{"usage.sign_ups", "usage.active_accounts"}},
 }
 
 // overviewSignals are every tile's signals, in tile order.
 func overviewSignals() []Signal {
 	var out []Signal
-	all := append(append(append([]Signal{}, OverviewSignals...), SecuritySignals...), LimitsSignals...)
+	all := Signals()
 	for _, t := range overviewTiles {
 		for _, name := range t.Signals {
 			i := slices.IndexFunc(all, func(s Signal) bool { return s.Name == name })
