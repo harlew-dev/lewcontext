@@ -105,7 +105,7 @@ Account & security → **Your data** → **Download your data**: the password in
 
 The account can ask for more by writing to the organisation, which decides case by case (`admin export` gives the same file; the Events page finds the rest by address).
 
-**Never:** a password hash, an MFA secret or recovery code, a token or digest, a CSRF token, an internal ID, or anyone else's data beyond what the account itself typed (another member's name or email, an invitation a co-owner sent, someone else's IP). Each section is a struct of its own listing its fields, so a new column is never exported by accident; `TestDownloadMyData` walks the JSON for those keys and searches it for the actual secrets and the other people's values.
+**Never:** a password hash, an MFA secret or recovery code, a token or digest, a CSRF token, an internal ID, or anyone else's data beyond what the account itself typed or did (another member's name or email, an invitation a co-owner sent, someone else's IP). What it did can name someone: a role change it made carries the member's `usr_` ID ([Known gaps](#known-gaps)). Each section is a struct of its own listing its fields, so a new column is never exported by accident; `TestDownloadMyData` walks the JSON for those keys and searches it for the actual secrets and the other people's values.
 
 **Synchronous:** the quotas bound the size (20 owned workspaces of at most 1,000 projects, 10,000 events), so it fits the request; nothing is stored or emailed, so there are no export files to secure or expire. A suspended account has no session, so it can't export; for someone who can't sign in, after confirming who is asking:
 
@@ -160,6 +160,9 @@ Written down so nobody claims otherwise:
 - **No SSO (SAML, OIDC) or SCIM.**
 - **No audit log for workspace owners yet:** planned, once each event's data has been judged safe for owners to read (other members' IPs and emails, admins' reads). Until then events are admin-only.
 - **Erasure misses partial searches** an admin typed (`q` that's part of an address) and free-text admin reasons that name someone; both leave with the 1-year audit retention.
+- **A name typed into an admin list search** (`q` without an `@`, "Ada Lovelace") is neither minimised at 30 days nor erased: only a `q` holding an `@` is treated as an address. It leaves with the 1-year audit retention.
+- **`user_agent` is neither minimised nor erased.** An event keeps the browser string it was recorded with for its whole retention (90 days, a year for audit events). It identifies a browser build, not a person, but with an IP it narrows one down.
+- **Download my data holds co-members' `usr_` IDs** in the events the account caused about them (`workspace.member.updated` and `.removed`: it changed a member's role or removed them; the payload's `user`). Accepted: it's a record of the account's own action, the ID is opaque (no name or email comes with it), and the account saw that member in its workspace when it acted.
 - **Audit lines for rolled-back events:** a line is written as its row is inserted, so the rare event whose transaction then rolls back leaves a line without a row.
 - **Backups, disaster recovery, data residency and encryption at rest** depend on the hosting provider, and are the operator's to document.
 - **Contracts and policies** (DPAs with processors, a sub-processor list, a privacy notice, security policies, a breach register) are the organisation's.

@@ -27,6 +27,7 @@ Built on the events worktree (branch `admin-run/events`), after merging main (A3
   - **A retry could race pseudonymisation:** `RequeueDelivery` locked only the delivery, so a run could minimise the event between the retry's check and its commit, and the listener would then send to a pseudonym. Both retries now lock the event's row (`FOR UPDATE`, the event before the delivery), which a run skips (`SKIP LOCKED`) or the retry waits for.
   - **The Events CSV held its summary slot for the whole request,** with no deadline. Its query now has the summaries' deadline (503 past it) and lets the slot go before the file is written.
   - **The page guessed "truncated" from the row count,** so a file of exactly 10,000 rows said to narrow the filters. `Http.text` now returns the headers too, and `eventExport().show` reads `X-Export-Truncated`.
+  - **Known gaps added** to [compliance.md](../../../../docs/compliance.md#known-gaps): a name typed into an admin list search isn't minimised or erased; `user_agent` isn't either; and an account's export holds co-members' `usr_` IDs in the `workspace.member.*` events it caused, accepted as a record of its own action (an opaque ID, a member it could see).
 - **Also done here (A6's merge-time tasks):** `ip_block_refused_total` and the `ip_blocks_loaded_timestamp_seconds` gauge on `/metrics` (no labels), and `admin.access_refused` keeping the browser when recorded by a page or an IP block's check.
 
 **For the user to confirm:**
