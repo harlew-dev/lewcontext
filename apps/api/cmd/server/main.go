@@ -224,7 +224,11 @@ func useCaptcha(api *httpapi.Server, c config.Config) error {
 			slog.Info("captcha: test keys, every check fails")
 		}
 	}
-	if c.PerIPLimitsOff {
+	switch {
+	case c.PerIPLimitsOff && c.ClientIPHeader != "":
+		// Production refuses this (config).
+		slog.Warn("PER_IP_LIMITS=off with CLIENT_IP_HEADER set: the proxy sends client addresses, so per-IP limits could count them; remove PER_IP_LIMITS=off (production refuses this)")
+	case c.PerIPLimitsOff:
 		slog.Warn("PER_IP_LIMITS=off: no limit counts client IPs; set CLIENT_IP_HEADER and TRUSTED_PROXIES instead if the proxy can send them")
 	}
 	return nil

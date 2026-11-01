@@ -64,7 +64,7 @@ The challenge level is always below the block level, so real people get a check 
 
 ### Behind a proxy: `PER_IP_LIMITS`
 
-Behind a proxy every connection comes from the proxy, so a per-IP limit would count the whole site together. Set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` ([deployment](../deployment.md#behind-a-proxy-or-load-balancer)). Only for a proxy that can't send the client's address at all, `PER_IP_LIMITS=off` makes every level of every per-IP limit (`auth:per-ip`, `register:per-ip`, `password-reset:per-ip`) `Never` (`Limit.WithoutPerIP`, applied in `Allow`), with a warning at startup. Per-account, per-email, per-user and global limits, quotas and the hashing slots still apply; spraying one password across many accounts is then slowed only by `auth:per-account` and the edge.
+Behind a proxy every connection comes from the proxy, so a per-IP limit would count the whole site together. Set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` ([deployment](../deployment.md#behind-a-proxy-or-load-balancer)). Only for a proxy that can't send the client's address at all, `PER_IP_LIMITS=off` makes every level of every per-IP limit (`auth:per-ip`, `register:per-ip`, `password-reset:per-ip`) `Never` (`Limit.WithoutPerIP`, applied in `Allow`), with a warning at startup. Per-account, per-email, per-user and global limits, quotas and the hashing slots still apply; spraying one password across many accounts is then slowed only by `auth:per-account` and the edge. **With `CLIENT_IP_HEADER` set**, the proxy does send the address, so `off` would give up the per-IP limits for nothing: production refuses the two together at startup, and outside production the server warns.
 
 ## Counting
 

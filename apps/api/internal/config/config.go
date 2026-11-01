@@ -90,6 +90,9 @@ func Load() (Config, error) {
 	if err := c.loadClientIP(); err != nil {
 		return c, err
 	}
+	if c.Production && c.PerIPLimitsOff && c.ClientIPHeader != "" {
+		return c, errors.New("PER_IP_LIMITS=off with CLIENT_IP_HEADER set: the proxy sends each client's address, so per-IP limits can count it; remove PER_IP_LIMITS=off (it's only for a proxy that can't send the address)")
+	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")
 	}
