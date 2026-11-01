@@ -38,6 +38,9 @@ type ErrorGroup struct {
 	LastRequestID string     `json:"lastRequestId" bun:"last_request_id"`
 	LastVersion   string     `json:"lastVersion" bun:"last_version"`
 	ResolvedAt    *time.Time `json:"resolvedAt" bun:"resolved_at"`
+	// New: first seen since the current release started (set by the
+	// page, which knows the release; compared as times, never as text).
+	New bool `json:"new" bun:"-"`
 }
 
 // ErrorGroupDetail is one group with its latest occurrence's stack

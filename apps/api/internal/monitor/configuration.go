@@ -80,6 +80,7 @@ const (
 	WarnSharedAddress   = "shared_address"
 	WarnMetricsTokenOff = "metrics_without_token"
 	WarnNotProduction   = "not_production"
+	WarnPruneNotRunning = "prune_not_running"
 	WarnCaptchaOff      = "captcha_off"
 )
 
@@ -126,13 +127,24 @@ func configurationPage(ctx context.Context, env Env, w Window) (Sections, error)
 				return nil
 			}
 			n, err := s.CountAdminSessionsUnder(ctx, env.AdminKeys.Previous)
+			if err != nil {
+				return err
+			}
 			out.Warnings = append(out.Warnings, Warning{ID: WarnPreviousKey, Count: float64(n)})
-			return err
+			return nil
 		}},
 		{"warnings", func(ctx context.Context) error {
 			n, err := s.CountAdminsWithMFA(ctx)
 			if err == nil && n == 0 {
 				out.Warnings = append(out.Warnings, Warning{ID: WarnNoAdminMFA})
+			}
+			return err
+		}},
+		{"warnings", func(ctx context.Context) error {
+			// data.prune_not_running's measure: the Data page lists which.
+			targets, err := readRetention(ctx, env)
+			if n := countTargets(targets, func(t RetentionTarget) bool { return t.NotRunning }); err == nil && n > 0 {
+				out.Warnings = append(out.Warnings, Warning{ID: WarnPruneNotRunning, Count: float64(n)})
 			}
 			return err
 		}},

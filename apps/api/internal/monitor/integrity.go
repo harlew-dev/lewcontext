@@ -3,9 +3,11 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/store"
+	"slices"
 	"sync"
 	"time"
 )
@@ -30,53 +32,79 @@ const checkNow = time.Minute
 const releaseGrace = 30 * time.Minute
 
 // integrityCheck is one check: a signal's name, label and level (Warn or
-// Critical at 1), its window, and how it's run.
+// Critical at 1), its window, how costly it is (the summaries run the
+// cheapest first), and how it's run.
 type integrityCheck struct {
 	name, label string
 	level       Level
 	window      time.Duration
+	cost        checkCost
 	run         func(ctx context.Context, env Env, sp Span) (store.CheckResult, error)
 }
 
+// checkCost orders the checks for the summaries: a few rows or an index's
+// end first, a window of an index next, and last those that count each
+// workspace with an event in the last day (a day of events read to find
+// them, once per page: Env.activeWorkspaces).
+type checkCost int
+
+const (
+	costRows checkCost = iota
+	costWindow
+	costWorkspaces
+)
+
 // integrityChecks are the checks, in the page's order.
 var integrityChecks = []integrityCheck{
-	{"integrity.ownerless_workspaces", "Workspaces without an owner", LevelCritical, 24 * time.Hour,
+	{"integrity.ownerless_workspaces", "Workspaces without an owner", LevelCritical, 24 * time.Hour, costWorkspaces,
 		func(ctx context.Context, env Env, sp Span) (store.CheckResult, error) {
-			return env.Store.CountOwnerlessWorkspaces(ctx, sp.From, sp.To)
+			ids, err := env.activeWorkspaces(ctx, sp)
+			if err != nil {
+				return store.CheckResult{}, err
+			}
+			return env.Store.CountOwnerlessWorkspaces(ctx, ids)
 		}},
-	{"integrity.workspaces_over_quota", "Workspaces over a quota", LevelCritical, 24 * time.Hour,
+	{"integrity.workspaces_over_quota", "Workspaces over a quota", LevelCritical, 24 * time.Hour, costWorkspaces,
 		func(ctx context.Context, env Env, sp Span) (store.CheckResult, error) {
-			return env.Store.CountWorkspacesOverQuota(ctx, sp.From, sp.To)
+			ids, err := env.activeWorkspaces(ctx, sp)
+			if err != nil {
+				return store.CheckResult{}, err
+			}
+			return env.Store.CountWorkspacesOverQuota(ctx, ids)
 		}},
-	{"integrity.member_invitations", "Live invitations to members", LevelWarn, 24 * time.Hour,
+	{"integrity.member_invitations", "Live invitations to members", LevelWarn, 24 * time.Hour, costWorkspaces,
 		func(ctx context.Context, env Env, sp Span) (store.CheckResult, error) {
-			return env.Store.CountMemberInvitations(ctx, sp.From, sp.To)
+			ids, err := env.activeWorkspaces(ctx, sp)
+			if err != nil {
+				return store.CheckResult{}, err
+			}
+			return env.Store.CountMemberInvitations(ctx, ids)
 		}},
-	{"integrity.admins_without_mfa", "Admins without two-factor", LevelCritical, checkNow,
+	{"integrity.admins_without_mfa", "Admins without two-factor", LevelCritical, checkNow, costRows,
 		func(ctx context.Context, env Env, _ Span) (store.CheckResult, error) {
 			return env.Store.CountAdminsWithoutMFA(ctx)
 		}},
-	{"integrity.expired_rows", "Expired rows not cleaned up", LevelWarn, checkNow,
+	{"integrity.expired_rows", "Expired rows not cleaned up", LevelWarn, checkNow, costWindow,
 		func(ctx context.Context, env Env, _ Span) (store.CheckResult, error) {
 			return env.Store.CountExpiredRows(ctx)
 		}},
-	{"integrity.ended_limit_windows", "Ended limit windows not cleaned up", LevelWarn, checkNow,
+	{"integrity.ended_limit_windows", "Ended limit windows not cleaned up", LevelWarn, checkNow, costRows,
 		func(ctx context.Context, env Env, _ Span) (store.CheckResult, error) {
 			return env.Store.CountEndedLimitWindows(ctx)
 		}},
-	{"integrity.overdue_deliveries", "Deliveries overdue", LevelCritical, checkNow,
+	{"integrity.overdue_deliveries", "Deliveries overdue", LevelCritical, checkNow, costRows,
 		func(ctx context.Context, env Env, _ Span) (store.CheckResult, error) {
 			return env.Store.CountOverdueDeliveries(ctx)
 		}},
-	{"integrity.unmatched_deliveries", "Deliveries with no listener", LevelWarn, 7 * 24 * time.Hour,
+	{"integrity.unmatched_deliveries", "Deliveries with no listener", LevelWarn, 7 * 24 * time.Hour, costWindow,
 		func(ctx context.Context, env Env, sp Span) (store.CheckResult, error) {
 			return env.Store.CountUnmatchedDeliveries(ctx, sp.From, sp.To)
 		}},
-	{"integrity.unknown_events", "Events outside the catalogue", LevelWarn, 24 * time.Hour,
+	{"integrity.unknown_events", "Events outside the catalogue", LevelWarn, 24 * time.Hour, costWindow,
 		func(ctx context.Context, env Env, sp Span) (store.CheckResult, error) {
 			return env.Store.CountUnknownEventNames(ctx, sp.From, sp.To, events.Names())
 		}},
-	{"integrity.servers_out_of_step", "Servers out of step", LevelWarn, checkNow,
+	{"integrity.servers_out_of_step", "Servers out of step", LevelWarn, checkNow, costRows,
 		func(ctx context.Context, env Env, _ Span) (store.CheckResult, error) {
 			servers, err := env.Store.IndexServerInstances(ctx)
 			return serversOutOfStep(servers, env.Now), err
@@ -114,24 +142,28 @@ func integritySignals() []Signal {
 	return signals
 }
 
-// failingChecks is a signal counting the checks at level that fail.
+// failingChecks is a signal counting the checks at level that fail, the
+// cheapest first. When its budget runs out part way it counts the checks
+// it read, marked partial, rather than nothing: the Overview's tile then
+// still says what it knows.
 func failingChecks(name, label string, level Level) Signal {
 	sig := Signal{Name: name, Page: PageIntegrity, Label: label, Unit: UnitCount, Window: checkNow,
 		Measure: func(ctx context.Context, env Env, _ Span) (Reading, error) {
-			var failing int64
-			for _, c := range integrityChecks {
-				if c.level != level {
-					continue
-				}
+			var failing, read int64
+			for _, c := range cheapestFirst(level) {
 				r, err := env.check(ctx, c, checkSpan(c, env.Now))
 				if err != nil {
+					if read > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+						return Reading{Value: float64(failing), Sample: read, Partial: true}, nil
+					}
 					return Reading{}, err
 				}
+				read++
 				if r.Count > 0 {
 					failing++
 				}
 			}
-			return count(failing, nil)
+			return Reading{Value: float64(failing), Sample: read}, nil
 		}}
 	if level == LevelCritical {
 		sig.Critical = 1
@@ -141,16 +173,55 @@ func failingChecks(name, label string, level Level) Signal {
 	return sig
 }
 
+// cheapestFirst are the checks at level, the cheapest first (the page's
+// order within a cost).
+func cheapestFirst(level Level) []integrityCheck {
+	var out []integrityCheck
+	for _, c := range integrityChecks {
+		if c.level == level {
+			out = append(out, c)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b integrityCheck) int { return int(a.cost) - int(b.cost) })
+	return out
+}
+
 // checkSpan is the span a check counts at now, as its signal's.
 func checkSpan(c integrityCheck, now time.Time) Span {
 	return Signal{Window: c.window}.SpanAt(now)
 }
 
 // checkMemo keeps the checks run while a page is read, so a check is run
-// once whether its signal, the summary or the page's list asks first.
+// once whether its signal, the summary or the page's list asks first, and
+// the workspaces with an event the workspace checks look at, by the
+// span's start, so a day of events is read once a page, not once a check.
 type checkMemo struct {
-	mu      sync.Mutex
-	results map[string]store.CheckResult
+	mu        sync.Mutex
+	results   map[string]store.CheckResult
+	workspace map[time.Time][]int64
+}
+
+// activeWorkspaces are the workspaces with an event in sp (internal IDs,
+// passed to the store and never shown), from the page's memo.
+func (env Env) activeWorkspaces(ctx context.Context, sp Span) ([]int64, error) {
+	if env.checks != nil {
+		env.checks.mu.Lock()
+		ids, ok := env.checks.workspace[sp.From]
+		env.checks.mu.Unlock()
+		if ok {
+			return ids, nil
+		}
+	}
+	ids, err := env.Store.IndexActiveWorkspaces(ctx, sp.From, sp.To)
+	if err != nil {
+		return nil, err
+	}
+	if env.checks != nil {
+		env.checks.mu.Lock()
+		env.checks.workspace[sp.From] = ids
+		env.checks.mu.Unlock()
+	}
+	return ids, nil
 }
 
 // check runs c over sp, or answers it from the page's memo.
@@ -177,7 +248,7 @@ func (env Env) check(ctx context.Context, c integrityCheck, sp Span) (store.Chec
 
 // withMemo is env with a memo of its own for one page.
 func (env Env) withMemo() Env {
-	env.checks = &checkMemo{results: map[string]store.CheckResult{}}
+	env.checks = &checkMemo{results: map[string]store.CheckResult{}, workspace: map[time.Time][]int64{}}
 	return env
 }
 

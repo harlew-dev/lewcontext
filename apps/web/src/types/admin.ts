@@ -359,6 +359,9 @@ export type Signal = {
   drill?: Record<string, string>;
   // It couldn't be read in time: its value and level mean nothing.
   unavailable?: boolean;
+  // Only part of it was read in time (the integrity summaries: the
+  // checks read, cheapest first, in `sample`); value and level count that.
+  partial?: boolean;
 };
 // A Monitoring page's answer: its window as resolved, its signals, its
 // own sections, and the sections that couldn't be read in time (by their
@@ -670,9 +673,10 @@ export type ServerRow = {
   measuredAt: string | null;
 };
 // pg_stat_statements' statements, as PostgreSQL normalised them ($1 for
-// every constant); available false when the database doesn't have it.
+// every constant); available false when they can't be read, and why.
 export type StatementStats = {
   available: boolean;
+  unavailable?: "not_installed" | "not_loaded" | "unreadable";
   statements: {
     query: string;
     calls: number;
@@ -721,6 +725,9 @@ export type ErrorGroup = {
   // Only in a release's shape (a revision, or dev); empty otherwise.
   lastVersion: string;
   resolvedAt: string | null;
+  // First seen since the current release started (the server compares
+  // the times).
+  new: boolean;
 };
 export type Release = { version: string; startedAt: string };
 export type ErrorsSections = {

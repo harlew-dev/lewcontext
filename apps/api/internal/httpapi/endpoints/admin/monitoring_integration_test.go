@@ -12,6 +12,7 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/url"
+	"slices"
 	"testing"
 	"time"
 
@@ -158,7 +159,7 @@ func TestAdminMonitoringPages(t *testing.T) {
 		}
 	}
 	before := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed"))
-	adminCall(t, h, "GET", "/api/admin/monitoring/data", "", "", 404, cookie)
+	adminCall(t, h, "GET", "/api/admin/monitoring/alerts", "", "", 404, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=30d", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=all", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?page=2", "", "", 400, cookie)
@@ -441,8 +442,20 @@ func TestAdminMonitoringTakeovers(t *testing.T) {
 	if len(rows) != 1 || rows[0].Account.ID != victim.PublicID || rows[0].Change != "auth.password_changed" || rows[0].Network != "203.0.113.0/24" {
 		t.Fatalf("takeovers: %+v", rows)
 	}
+	// Two-factor turned on from a new network: the owner locked out with
+	// someone else's authenticator.
+	locked := user()
+	signIn(locked, "10.4.4.4", 3*24*time.Hour)
+	signIn(locked, "203.0.113.12", 30*time.Minute)
+	change(locked, "auth.mfa.enabled", 15*time.Minute)
+	rows = takeovers()
+	if len(rows) != 2 || !slices.ContainsFunc(rows, func(r store.TakeoverRow) bool {
+		return r.Account.ID == locked.PublicID && r.Change == "auth.mfa.enabled"
+	}) {
+		t.Fatalf("takeovers: %+v", rows)
+	}
 	v := showMonitoring(t, h, session.Cookie(), "security", "")
-	if got := v.signal(t, "auth.possible_takeovers"); got.Level != monitor.LevelWarn || got.Value != 1 {
+	if got := v.signal(t, "auth.possible_takeovers"); got.Level != monitor.LevelWarn || got.Value != 2 {
 		t.Fatalf("signal: %+v", got)
 	}
 }
@@ -746,7 +759,7 @@ func TestAdminMonitoringOverview(t *testing.T) {
 	tiles := sections[struct {
 		Tiles []monitor.Tile `json:"tiles"`
 	}](t, v).Tiles
-	if len(tiles) != 12 || tiles[0].ID != "servers" || tiles[0].Series != nil || tiles[4].ID != "database" || tiles[7].ID != "integrity" {
+	if len(tiles) != 13 || tiles[0].ID != "servers" || tiles[0].Series != nil || tiles[4].ID != "database" || tiles[5].ID != "data" || tiles[8].ID != "integrity" {
 		t.Fatalf("tiles: %+v", tiles)
 	}
 	total := func(id string, tiles []monitor.Tile) float64 {

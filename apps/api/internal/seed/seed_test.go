@@ -215,6 +215,10 @@ func TestMonitoringSeeder(t *testing.T) {
 		"integrity.warning_checks":       monitor.LevelWarn,
 		"errors.new":                     monitor.LevelWarn,
 		"errors.new_panics":              monitor.LevelOK,
+		// The Data page: request_hours last ran 4 days ago, table sizes
+		// a month old were never pruned; nothing past its retention.
+		"data.prune_not_running": monitor.LevelWarn,
+		"data.retention_overdue": monitor.LevelOK,
 	}
 	values := map[string]float64{"usage.inactive_accounts": 2, "workspaces.quota_used": 90, "ips.sign_up_cluster": 9, "errors.new": 2, "errors.open": 2}
 	for _, r := range results {

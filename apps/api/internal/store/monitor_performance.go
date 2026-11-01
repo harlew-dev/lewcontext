@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"lewcontext/api/internal/observe"
+	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -287,14 +290,27 @@ type Statement struct {
 }
 
 // StatementStats are the statements taking the most time in all, or
-// Available false when the database doesn't have pg_stat_statements
-// (installed and loaded). Hidden counts those read but not shown
-// (SafeStatement).
+// Available false, with Unavailable saying why, when they can't be read
+// (StatementsNotInstalled, StatementsNotLoaded, StatementsUnreadable).
+// Hidden counts those read (the statementsRead with the most total time)
+// but not shown: past the top statementsShown that SafeStatement passes,
+// or refused by it.
 type StatementStats struct {
-	Available  bool        `json:"available"`
-	Statements []Statement `json:"statements"`
-	Hidden     int         `json:"hidden"`
+	Available   bool        `json:"available"`
+	Unavailable string      `json:"unavailable,omitempty"`
+	Statements  []Statement `json:"statements"`
+	Hidden      int         `json:"hidden"`
 }
+
+// Why the statements aren't available: the extension isn't installed in
+// this database, it's installed but not loaded (shared_preload_libraries),
+// or reading it failed otherwise (a revoked grant, an older version's
+// columns; logged with its SQLSTATE).
+const (
+	StatementsNotInstalled = "not_installed"
+	StatementsNotLoaded    = "not_loaded"
+	StatementsUnreadable   = "unreadable"
+)
 
 // Bounds of the statements read and shown.
 const (
@@ -308,7 +324,9 @@ const (
 // with the most total time from pg_stat_statements, when the extension is
 // installed (in whichever schema) and loaded; other databases' and roles'
 // statements are never read. Only statements SafeStatement passes are
-// shown, the first statementsShown of them.
+// shown, the first statementsShown of them. Reading it is never the
+// page's failure: any error but ctx's own (its budget, a client gone)
+// answers Available false with the reason, the error logged.
 func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error) {
 	out := StatementStats{Statements: []Statement{}}
 	var schema string
@@ -318,10 +336,11 @@ func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error)
 		Where("x.extname = 'pg_stat_statements'").
 		Scan(ctx, &schema)
 	if errors.Is(err, sql.ErrNoRows) {
+		out.Unavailable = StatementsNotInstalled
 		return out, nil
 	}
 	if err != nil {
-		return out, err
+		return statementsFailed(ctx, out, err)
 	}
 	var rows []Statement
 	err = s.DB.NewSelect().TableExpr("?.pg_stat_statements AS st", bun.Ident(schema)).
@@ -332,10 +351,11 @@ func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error)
 		Limit(statementsRead).
 		Scan(ctx, &rows)
 	if notLoaded(err) {
+		out.Unavailable = StatementsNotLoaded
 		return out, nil
 	}
 	if err != nil {
-		return out, err
+		return statementsFailed(ctx, out, err)
 	}
 	out.Available = true
 	for _, r := range rows {
@@ -347,6 +367,23 @@ func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error)
 		r.Query = query
 		out.Statements = append(out.Statements, r)
 	}
+	return out, nil
+}
+
+// statementsFailed answers a failed read of pg_stat_statements: ctx's
+// own end is returned (the part's budget, or the request gone), anything
+// else logged and answered as unreadable.
+func statementsFailed(ctx context.Context, out StatementStats, err error) (StatementStats, error) {
+	if ctx.Err() != nil {
+		return out, err
+	}
+	code := ""
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		code = pgErr.Code
+	}
+	slog.WarnContext(ctx, "reading pg_stat_statements failed; the Performance page shows it as unavailable", "sqlstate", code, observe.ErrorAttr(err))
+	out.Unavailable = StatementsUnreadable
 	return out, nil
 }
 
@@ -364,22 +401,73 @@ var statementStarts = []string{"select", "insert", "update", "delete", "with"}
 
 // SafeStatement is a normalised statement as it may be shown, or false
 // when it might hold a value: only a query or a data change (never a
-// utility statement), with no string left in it (a quote, a dollar quote:
-// a constant PostgreSQL didn't replace with $n) and no comment (kept as
-// first seen), valid UTF-8, on one line, at most MaxStatement characters.
+// utility statement, nor SELECT … INTO, which is one), with no string left
+// in it (a quote, a dollar quote: a constant PostgreSQL didn't replace
+// with $n), no number but a placeholder's ($1) or inside a name (t1), no
+// double-quoted name but a plain one ("sessions", never "ada@example.test"),
+// and no comment (kept as first seen), valid UTF-8, on one line, at most
+// MaxStatement characters.
 func SafeStatement(query string) (string, bool) {
 	q := strings.Join(strings.Fields(query), " ")
 	if !utf8.ValidString(q) || strings.ContainsAny(q, "'`\\\x00") || strings.Contains(q, "--") || strings.Contains(q, "/*") || !onlyPlaceholders(q) {
 		return "", false
 	}
-	first, _, _ := strings.Cut(strings.ToLower(q), " ")
-	if !slices.Contains(statementStarts, strings.TrimLeft(first, "(")) {
+	words, ok := statementWords(q)
+	if !ok || len(words) == 0 || !slices.Contains(statementStarts, words[0]) {
 		return "", false
+	}
+	for i, w := range words {
+		// INTO only after INSERT: SELECT … INTO makes a table, a utility
+		// statement whose constants PostgreSQL keeps.
+		if w == "into" && (i == 0 || words[i-1] != "insert") {
+			return "", false
+		}
 	}
 	if utf8.RuneCountInString(q) > MaxStatement {
 		q = string([]rune(q)[:MaxStatement]) + "…"
 	}
 	return q, true
+}
+
+// plainName is a double-quoted name that can't be a value.
+var plainName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+
+// statementWords reads q's words (names and keywords, lower-cased), or
+// false when it holds a number outside a placeholder or a name, or a
+// double-quoted name that isn't plainName. Quoted names aren't words.
+func statementWords(q string) ([]string, bool) {
+	var words []string
+	isWord := func(r byte) bool {
+		return r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r >= utf8.RuneSelf
+	}
+	for i := 0; i < len(q); {
+		c := q[i]
+		switch {
+		case c == '"':
+			end := strings.IndexByte(q[i+1:], '"')
+			if end < 0 || !plainName.MatchString(q[i+1:i+1+end]) {
+				return nil, false
+			}
+			i += end + 2
+		case c == '$':
+			i++
+			for i < len(q) && q[i] >= '0' && q[i] <= '9' {
+				i++
+			}
+		case c >= '0' && c <= '9':
+			return nil, false
+		case isWord(c):
+			j := i
+			for j < len(q) && isWord(q[j]) {
+				j++
+			}
+			words = append(words, strings.ToLower(q[i:j]))
+			i = j
+		default:
+			i++
+		}
+	}
+	return words, true
 }
 
 // onlyPlaceholders reports whether every $ in q starts a placeholder ($1),

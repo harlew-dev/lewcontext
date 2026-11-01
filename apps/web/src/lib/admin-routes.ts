@@ -99,7 +99,10 @@ export const adminRoutes = {
       monitoringUrl(`/admin/${key}/monitoring/errors`, window),
     // One grouped error.
     error: (key: string, error: string, window?: MonitoringWindow) =>
-      monitoringUrl(`/admin/${key}/monitoring/errors/${error}`, window),
+      monitoringUrl(
+        `/admin/${key}/monitoring/errors/${encodeURIComponent(error)}`,
+        window,
+      ),
     configuration: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/configuration`, window),
   },

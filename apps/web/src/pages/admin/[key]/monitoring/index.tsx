@@ -6,6 +6,7 @@ import {
   formatSignal,
   MonitoringBody,
   MonitoringHeader,
+  PartialNote,
   signalWindow,
   thresholds,
   useDrillHref,
@@ -149,6 +150,11 @@ function Tile({
           ))}
         </ul>
       )}
+      {signals
+        .filter((s) => s.partial)
+        .map((s) => (
+          <PartialNote key={s.name} signal={s} labelled />
+        ))}
       {metricsOff && (
         <div className="mt-2 font-medium text-zinc-950 dark:text-white">
           Metric storage is off.

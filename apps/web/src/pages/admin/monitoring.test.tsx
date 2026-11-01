@@ -315,6 +315,57 @@ describe("the Monitoring Overview", () => {
       "/api/admin/monitoring/overview",
     );
   });
+  it("says when the Integrity tile read only some checks in time", async () => {
+    stubApi({
+      "GET /api/admin/me": { body: me },
+      "GET /api/admin/monitoring/overview": {
+        body: {
+          ...overview,
+          signals: [
+            signal({
+              name: "integrity.critical_checks",
+              label: "Critical checks failing",
+              value: 0,
+              sample: 2,
+              critical: 1,
+              partial: true,
+            }),
+            signal({
+              name: "integrity.warning_checks",
+              label: "Warning checks failing",
+              value: 1,
+              sample: 5,
+              level: "warn",
+              warn: 1,
+            }),
+          ],
+          sections: {
+            ...overview.sections,
+            tiles: [
+              {
+                id: "integrity",
+                label: "Integrity",
+                page: "integrity",
+                signals: [
+                  "integrity.critical_checks",
+                  "integrity.warning_checks",
+                ],
+                series: null,
+              },
+            ],
+          },
+        },
+      },
+    });
+    renderAdmin(`/admin/${key}/monitoring`);
+    expect(
+      await screen.findByText(
+        "Critical checks failing: partial, only 2 checks were read in time.",
+      ),
+    ).toBeInTheDocument();
+    // Only the partial one says so.
+    expect(screen.queryByText(/Warning checks failing: partial/)).toBeNull();
+  });
   it("keeps what it showed when a reload fails, with Retry", async () => {
     stubApi({
       "GET /api/admin/me": { body: me },

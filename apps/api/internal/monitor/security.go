@@ -21,7 +21,7 @@ const (
 )
 
 // takeoverDrill is what IndexTakeovers looks at.
-var takeoverDrill = drill("auth.password_changed,auth.mfa.disabled,auth.recovery_codes.created,auth.other_sessions_revoked")
+var takeoverDrill = drill("auth.password_changed,auth.mfa.disabled,auth.mfa.enabled,auth.recovery_codes.created,auth.other_sessions_revoked")
 
 // SecuritySignals are the Security page's signals, in its order.
 var SecuritySignals = []Signal{

@@ -62,8 +62,9 @@ const (
 )
 
 // takeoverChanges are what someone holding an account changes first: its
-// password, its second factor, its recovery codes, its other sessions.
-var takeoverChanges = []string{"auth.password_changed", "auth.mfa.disabled", "auth.recovery_codes.created", "auth.other_sessions_revoked"}
+// password, its second factor (off, or on with their own authenticator,
+// locking the owner out), its recovery codes, its other sessions.
+var takeoverChanges = []string{"auth.password_changed", "auth.mfa.disabled", "auth.mfa.enabled", "auth.recovery_codes.created", "auth.other_sessions_revoked"}
 
 // StuffingRow is an address (an IPv6 /64) that tried StuffingEmails or more
 // distinct emails in a period.

@@ -281,8 +281,27 @@ export function SignalTile({
         {signalWindow(signal)}
         {limits && ` · ${limits}`}
       </span>
+      {signal.partial && <PartialNote signal={signal} />}
       {children}
     </Stat>
+  );
+}
+// Said under a signal only partly read in time: what it counts is what
+// was read.
+// With `labelled`, the signal's label leads (a tile of several signals).
+export function PartialNote({
+  signal,
+  labelled,
+}: {
+  signal: Signal;
+  labelled?: boolean;
+}) {
+  const read = `${signal.sample.toLocaleString("en-US")} ${signal.sample === 1 ? "check was" : "checks were"}`;
+  return (
+    <div className="mt-2 font-medium text-zinc-950 dark:text-white">
+      {labelled ? `${signal.label}: partial` : "Partial"}, only {read} read in
+      time.
+    </div>
   );
 }
 // Signals as a grid of tiles.

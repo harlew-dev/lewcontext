@@ -95,7 +95,7 @@ The old value `file` is refused with a message saying it's now `log`.
 | --- | --- | --- |
 | `MAIL_FROM_ADDRESS` | (required) | A bare address, such as `no-reply@example.com`; the provider must have verified its domain |
 | `MAIL_FROM_NAME` | `APP_NAME` | The display name. Two variables rather than `Name <address>`, whose spaces bash and make read differently in `.env` |
-| `SMTP_HOST` | (required) | `127.0.0.1` for Mailpit |
+| `SMTP_HOST` | (required) | `127.0.0.1` for Mailpit. A host name only: no spaces, `/` or `@` (credentials go in `SMTP_USERNAME` and `SMTP_PASSWORD`, never `user:pass@host`, which the admin Configuration page would show) |
 | `SMTP_TLS` | `starttls` | `starttls` (upgrade a plain connection; a server without STARTTLS gets nothing), `tls` (TLS from the start), or `none` (Mailpit only: refused in production, and refused anywhere with credentials) |
 | `SMTP_PORT` | 587 for `starttls`, 465 for `tls` | Required with `none` (Mailpit: 1025) |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | (empty) | Both or neither; sent with AUTH PLAIN, only over TLS. Some relays authorise by IP and need none |
