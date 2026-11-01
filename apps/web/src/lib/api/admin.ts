@@ -87,6 +87,9 @@ export type AdminEmailBlockIndexQuery = {
 };
 // Unblocking an address: the address in the body (never a path), and why.
 export type AdminUnblock = { email: string; reason: string };
+// The Events CSV: the file's text, and whether rows were left out past
+// the 10,000 it holds (the API's X-Export-Truncated).
+export type EventExportFile = { csv: string; truncated: boolean };
 // Suspending an account: why, and whether to revoke the live invitations
 // it sent (the dialog's default).
 export type AdminSuspend = { reason: string; revokeInvitations: boolean };
@@ -290,10 +293,18 @@ export function adminClient(http: Http) {
         http.get(adminPaths.events.index(query)),
       show: (id: string) => http.get(adminPaths.events.show(id)),
     }),
-    // The CSV's text: the page saves it as a file.
+    // The CSV's text, which the page saves as a file, and whether the API
+    // left rows out (X-Export-Truncated), never guessed from its length.
     eventExport: () => ({
-      show: (filters: EventFilters = {}) =>
-        http.text(adminPaths.eventExport.show(filters)),
+      show: async (filters: EventFilters = {}): Promise<EventExportFile> => {
+        const { text, headers } = await http.text(
+          adminPaths.eventExport.show(filters),
+        );
+        return {
+          csv: text,
+          truncated: headers.get("X-Export-Truncated") === "true",
+        };
+      },
     }),
     catalogue: () => http.get(adminPaths.catalogue()),
     mail: (window?: MailWindow) => http.get(adminPaths.mail(window)),

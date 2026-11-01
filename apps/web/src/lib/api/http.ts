@@ -34,13 +34,16 @@ export function errorMessage(error: unknown): string {
     : "Something went wrong. Please try again.";
 }
 export type Method = "POST" | "PATCH" | "DELETE";
+// A GET answered with a file rather than JSON: its text, and the headers
+// that say more about it (the Events CSV's X-Export-Truncated).
+export type TextResponse = { text: string; headers: Headers };
 // How resource files reach the API.
 export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;
   send<T>(method: Method, path: string, body?: unknown): Promise<T>;
   // A GET whose answer is a file rather than JSON (the admin Events CSV):
-  // its text, refused as get is.
-  text(path: string): Promise<string>;
+  // its text and headers, refused as get is.
+  text(path: string): Promise<TextResponse>;
 };
 // Where and how requests go: the base URL, headers sent with every request,
 // cookies and a timeout. onResponse sees every response, answered or
@@ -91,7 +94,7 @@ async function request<T>(
   }
   // 204, and 202 for work done later (a password reset link), carry no body.
   const text = await response.text();
-  if (asText) return text as T;
+  if (asText) return { text, headers: response.headers } as T;
   return (text === "" ? undefined : JSON.parse(text)) as T;
 }
 // Requests go to the same-origin /api (Go serves it; Vite proxies it in

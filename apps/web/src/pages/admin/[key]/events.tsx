@@ -286,11 +286,10 @@ function RangeListbox({
     </Listbox>
   );
 }
-// The most rows one CSV holds (admin.EventExport's MaxEventExportRows).
-const maxExportRows = 10_000;
 // Download CSV: the current filters' events, newest first, as the API
 // writes them (at most 10,000, each cell safe for a spreadsheet), saved
-// as a file. The API records the export with its filters.
+// as a file. The API records the export with its filters, and says when
+// it left rows out (truncated), which the toast passes on.
 function ExportButton({
   filters,
   disabled,
@@ -308,7 +307,7 @@ function ExportButton({
   async function run() {
     const result = await download.run();
     if (!result.ok) return;
-    const csv = result.value;
+    const { csv, truncated } = result.value;
     const rows = Math.max(csv.split("\r\n").filter(Boolean).length - 1, 0);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const href = URL.createObjectURL(blob);
@@ -318,7 +317,7 @@ function ExportButton({
     link.click();
     URL.revokeObjectURL(href);
     toast.success(
-      rows >= maxExportRows
+      truncated
         ? "Downloaded the newest 10,000 events. Narrow the filters for the rest."
         : `Downloaded ${rows.toLocaleString()} ${rows === 1 ? "event" : "events"}.`,
     );

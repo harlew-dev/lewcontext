@@ -723,6 +723,43 @@ describe("downloading the Events as CSV", () => {
     URL.createObjectURL = realCreate;
     URL.revokeObjectURL = realRevoke;
   });
+  it("says rows were left out only when the API says so, not by counting them", async () => {
+    const { createObjectURL: realCreate, revokeObjectURL: realRevoke } = URL;
+    URL.createObjectURL = vi.fn(() => "blob:events");
+    URL.revokeObjectURL = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    const header = "time,event,name\r\n";
+    const row = "2026-11-01T12:00:00Z,evt_00000000000001,auth.logged_in\r\n";
+    stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
+      "GET /api/admin/events/export": [
+        // Exactly 10,000 rows, all there were.
+        { text: header + row.repeat(10_000) },
+        // Two rows of more: a narrow page of a truncated answer.
+        {
+          text: header + row.repeat(2),
+          headers: { "X-Export-Truncated": "true" },
+        },
+      ],
+    });
+    renderAdmin(`/admin/${key}/events?window=7d`);
+    const button = await screen.findByRole("button", { name: "Download CSV" });
+    fireEvent.click(button);
+    expect(
+      await screen.findByText("Downloaded 10,000 events."),
+    ).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(
+      await screen.findByText(
+        "Downloaded the newest 10,000 events. Narrow the filters for the rest.",
+      ),
+    ).toBeInTheDocument();
+    click.mockRestore();
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  });
 });
 describe("an event's page", () => {
   it("shows the payload as text, markup included, with its deliveries and related events", async () => {
