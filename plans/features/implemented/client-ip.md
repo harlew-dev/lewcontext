@@ -1,6 +1,6 @@
 # Client IP behind a proxy
 
-Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)), with every recommended decision taken. Docs: [deployment.md](../../../docs/deployment.md#behind-a-proxy-or-load-balancer), [api/README.md](../../../docs/api/README.md), [api/auth.md](../../../docs/api/auth.md#rate-limits), [api/rate-limits.md](../../../docs/api/rate-limits.md), [api/events.md](../../../docs/api/events.md), [api/testing.md](../../../docs/api/testing.md), `.env.example`, `README.md` and AGENTS.md. Fills in decision 13 of [CAPTCHA challenges](../captcha-challenges.md). Used by every per-IP limit ([rate limits](rate-limits.md)) and by the `ip` field of events.
+Status: **implemented 2026-10-31** (see [How the build differs](#how-the-build-differs)), with every recommended decision taken. Docs: [deployment.md](../../../docs/deployment.md#behind-a-proxy-or-load-balancer), [api/README.md](../../../docs/api/README.md), [api/auth.md](../../../docs/api/auth.md#rate-limits), [api/rate-limits.md](../../../docs/api/rate-limits.md), [api/events.md](../../../docs/api/events.md), [api/testing.md](../../../docs/api/testing.md), `.env.example`, `README.md` and AGENTS.md. Fills in decision 13 of [CAPTCHA challenges](captcha-challenges.md). Used by every per-IP limit ([rate limits](rate-limits.md)) and by the `ip` field of events.
 
 ## Why
 

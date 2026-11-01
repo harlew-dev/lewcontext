@@ -156,6 +156,7 @@ Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` r
 | 409 | Email already registered, or blocked, with verification off (generic message); blocking an address an account uses |
 | 415 | Mutation without JSON content type (a DELETE needs one only when it has a body) |
 | 422 | Body failed validation. Errors about one field add `"field"`, e.g. `{"error": "Current password is incorrect.", "field": "currentPassword"}`. A quota reached ("A workspace can have up to 1,000 projects.") has no `field` |
+| 428 | A rate limit's challenge level wants a solved CAPTCHA: `{error, challenge: {provider, siteKey, action}}`; resend the same request with the token in `X-Challenge-Token` (only login, register, a reset request and creating an invitation; [rate-limits.md](rate-limits.md#challenges)) |
 | 429 | Rate limited; `Retry-After` is the seconds left in the window ([rate-limits.md](rate-limits.md)) |
 | 503 | Database unavailable, sign-in concurrency full, or a limit shared by everyone reached (sign-up, password reset), with `Retry-After` |
 

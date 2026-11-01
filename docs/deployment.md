@@ -26,7 +26,7 @@ make build                                                     # or, without Doc
 - **PostgreSQL 15+** reachable over TLS with a verifiable certificate. Use a dedicated role that owns the app's tables, not a superuser.
 - **Something that terminates HTTPS in front of the server.** The server only speaks plain HTTP, and production refuses an `http://` origin. That can be a reverse proxy (nginx, Caddy), a cloud load balancer, or Cloudflare. See [Behind a proxy](#behind-a-proxy-or-load-balancer).
 - **An SMTP provider** (Resend, Postmark, Amazon SES, Mailgun, …) and **outbound SMTP** from the server to it, on 587 or 465. Some hosts block outgoing SMTP ports on new accounts; ask them to open it. Or run with `MAIL_DRIVER=off` and no password reset or invitations. See [Email](#email).
-- **Outbound HTTPS** from the server to `challenges.cloudflare.com`, once CAPTCHA challenges are built (**Planned**).
+- **Outbound HTTPS** from the server to `challenges.cloudflare.com`, with `CAPTCHA_PROVIDER=turnstile` (a token check only while a limit is in challenge mode).
 
 ## Configuration
 
@@ -41,6 +41,9 @@ make build                                                     # or, without Doc
 | `MAIL_DRIVER` | `smtp` (the default), or `off` | `smtp` needs the settings below, or the server refuses to start. `off` runs without email: password reset and invitations answer 503, and it needs `EMAIL_VERIFICATION=off`. `log` (the development mailbox) is refused in production |
 | `EMAIL_VERIFICATION` | `on` (the default), or `off` | `on`: a new sign-up enters a 6-digit code emailed to it before its account exists, and sign-up no longer tells anyone whether an email has an account. `off`: sign-up as before. See [Turning on email verification](#turning-on-email-verification) |
 | `EMAIL_VERIFICATION_EXISTING` | `optional` (the default), or `required` | `required`: accounts that never verified (made while it was off) must verify at their next sign-in before anything else |
+| `CAPTCHA_PROVIDER` | `turnstile`, or `off` deliberately | **Required in production.** `turnstile`: above a rate limit's challenge level, sign-in, sign-up, reset requests and invitations ask for a Cloudflare Turnstile check ([rate-limits.md](api/rate-limits.md#challenges)). `off`: challenge levels are skipped (block levels still apply), with a warning at startup. Outside production it defaults to `turnstile` with Cloudflare's always-passing test keys |
+| `CAPTCHA_SITE_KEY`, `CAPTCHA_SECRET_KEY` | your Turnstile widget's keys | Required with `turnstile`. The site key is public (sent to browsers in the 428). **The secret key is a secret:** pass it through your secret store; it's never logged or sent anywhere but Cloudflare. Cloudflare's published test keys (`1x…`, `2x…`, `3x…`) are refused in production |
+| `PER_IP_LIMITS` | `on` (the default) | `off` only if the proxy can't send the client's address at all: every per-IP limit (both levels) is then off, with a warning. Set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` instead |
 | `POLICIES` | `off` (the default), or `on` once the documents are yours | `on` publishes `/policy/terms-of-service` and `/policy/privacy-policy` and makes every sign-up agree to them. **Production refuses `on` while either document is still the template** (`boilerplate: true`). See [Terms of Service and Privacy Policy](#terms-of-service-and-privacy-policy) |
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | `no-reply@example.com`, `Example` | The sender. The address must be bare, on a domain your provider has verified. The name defaults to `APP_NAME` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | `smtp.resend.com`, `587`, `starttls` | `starttls` (port 587 by default) or `tls` (465). **`none` is refused in production.** Certificates are always verified |
@@ -57,9 +60,7 @@ make build                                                     # or, without Doc
 
 | Variable | Plan | Notes |
 | --- | --- | --- |
-| `PER_IP_LIMITS` | [captcha-challenges](../plans/features/captcha-challenges.md) | `off` only if the proxy can't send the client's IP at all |
-| `CAPTCHA_PROVIDER`, `CAPTCHA_SITE_KEY`, `CAPTCHA_SECRET_KEY` | [captcha-challenges](../plans/features/captcha-challenges.md) | `turnstile` with real keys, or `off`. It must be set explicitly in production, and Cloudflare's test keys are refused |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID` | [captcha-challenges](../plans/features/captcha-challenges.md) (future use case) | Only for the edge-protection listener, which isn't built |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID` | [captcha-challenges](../plans/features/implemented/captcha-challenges.md) (future use case) | Only for the edge-protection listener, which isn't built |
 
 ## First deploy
 
@@ -118,7 +119,7 @@ Everything that must be shared lives in PostgreSQL, so several `api` processes b
 | Reset links and invitations | digests in their tables | any server can check a link |
 | The admin assets pass | an HMAC in the cookie, under `APP_KEY` and the admin key's digest | any server accepts another's, **if every server has the same `APP_KEY` and `ADMIN_ROUTE_KEY`** (and `ADMIN_ROUTE_KEY_PREVIOUS` and `ADMIN_ALLOWED_IPS`, or a session works on one server and not the next) |
 | Sign-ups and email codes | `pending_registrations`, `email_verifications`: HMACs under `APP_KEY` | any server can check a code, **if every server has the same `APP_KEY`** |
-| CAPTCHA tokens (**Planned**) | single use enforced by Cloudflare | no table needed |
+| CAPTCHA tokens | single use enforced by Cloudflare | no table needed |
 
 Things that are per process:
 
@@ -149,7 +150,7 @@ To fix that, set `CLIENT_IP_HEADER` to the header your proxy writes the client's
 - **Refused at startup:** one variable without the other, a header other than `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP` (any case; not RFC 7239 `Forwarded`), a range that doesn't parse, an IPv4-mapped IPv6 range (write it as IPv4), and `0.0.0.0/0` or `::/0`, which would be the same as believing the header from anyone. The server logs the header it uses when it starts.
 - **A header that doesn't parse** as an address falls back to the last trusted hop (or the connection), never to a value the client chose. At most 20 `X-Forwarded-For` entries are read; a single-value header with more than one value is ignored.
 - **IPv6 clients** are counted by their /64 in every per-IP limit, with or without a proxy. Events record the full address.
-- **Only use `PER_IP_LIMITS=off`** (**Planned**, [captcha-challenges](../plans/features/captcha-challenges.md)) if the proxy can't send the client's address at all. It switches every per-IP limit off, and sign-in then relies on per-account limits and the edge.
+- **Only use `PER_IP_LIMITS=off`** ([rate-limits.md](api/rate-limits.md#behind-a-proxy-per_ip_limits)) if the proxy can't send the client's address at all. It switches every per-IP limit off, and sign-in then relies on per-account limits and the edge.
 
 Proxy timeouts should be at least the server's own: 15 s to read a request and 20 s to write a response.
 
@@ -162,12 +163,12 @@ These notes apply when the domain is proxied through Cloudflare.
   - the browser gets Cloudflare's clearance cookie when a page load is challenged, and sends it on API calls;
   - an API call without clearance gets Cloudflare's page instead of JSON, and the app shows "Unable to connect. Please try again."
 - **Exclude any public API from bot and challenge rules.** A future programmatic API, for example `/api/v1/*` called with API keys, can't solve a challenge. Rules must exclude it, for example `starts_with(http.request.uri.path, "/api/") and not starts_with(http.request.uri.path, "/api/v1/")`. Protect it with its keys, its own rate limits, and edge rules that count and block, never challenge. **This is configured by the site owner in Cloudflare**, not by the app.
-- **Turnstile (Planned):**
+- **Turnstile** (`CAPTCHA_PROVIDER=turnstile`; it works without proxying the domain through Cloudflare too):
   - **Keys:** create a widget in the Cloudflare dashboard for `APP_ORIGIN`'s hostname, then set `CAPTCHA_PROVIDER=turnstile`, `CAPTCHA_SITE_KEY` and `CAPTCHA_SECRET_KEY`.
-  - **When it loads:** the Turnstile script loads only while a rate limit is in challenge mode, and only from `https://challenges.cloudflare.com` (allowed in the page CSP).
+  - **When it loads:** the Turnstile script loads only when a request is challenged (a rate limit in challenge mode), and only from `https://challenges.cloudflare.com`, which the app pages' CSP allows in `script-src` and `frame-src` only while the provider is set. The admin pages never load it.
   - **What it can read:** while loaded, it runs in our login and register pages, as any CAPTCHA does. The reset and invitation link pages never load it.
   - **If Cloudflare is unreachable** while a limit is in challenge mode, those requests get 503 (the check fails closed). Normal traffic never calls Cloudflare.
-- **Edge protection from rate-limit events (Planned, future use case):** a listener on `rate_limit.reached` could enable a pre-made, disabled Cloudflare rule for the route under attack, and disable it when the window ends. It needs an API token with only "Zone WAF: Edit" on one zone. See [captcha-challenges](../plans/features/captcha-challenges.md#future-use-case-turning-on-cloudflare-edge-protection-not-built).
+- **Edge protection from rate-limit events (Planned, future use case):** a listener on `rate_limit.reached` could enable a pre-made, disabled Cloudflare rule for the route under attack, and disable it when the window ends. It needs an API token with only "Zone WAF: Edit" on one zone. See [captcha-challenges](../plans/features/implemented/captcha-challenges.md#future-use-case-turning-on-cloudflare-edge-protection-not-built).
 
 ## Turning on email verification
 
@@ -225,7 +226,7 @@ Check each provider's own docs for current values.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
 - [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off` deliberately.
 - [ ] Every server on the database has the same `APP_KEY`.
-- [ ] Turnstile keys are real (not Cloudflare's test keys), once built.
+- [ ] `CAPTCHA_PROVIDER` set: `turnstile` with your own widget's keys (the secret in the secret store), or `off` deliberately.
 - [ ] No secrets in the image or the repository: pass them as environment variables or through your platform's secret store.
 - [ ] The server's own security headers aren't stripped or overridden by the proxy: CSP with script hashes, `X-Frame-Options: DENY`, HSTS, `no-store` caching on the app shell and API.
 

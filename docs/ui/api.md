@@ -112,6 +112,15 @@ list.refresh()   // Retry, or after a mutation
 - **After deleting a project,** `ProjectActions` clears its `show` key without refetching (so Back shows "not found", not stale data) and revalidates every key `projects.matches()`.
 - **Success messages are toasts:** `toast.success("Workspace renamed.")` ([design.md](design.md#toasts)), not a `done` state and an inline Notice.
 
+## Challenges
+
+A rate limit's challenge level answers 428 with `{challenge: {provider, siteKey, action}}` ([../api/rate-limits.md](../api/rate-limits.md#challenges)). **No page handles it:** `request()` in `lib/api/http.ts` calls the transport's `solve` (`useApi()` passes `useChallenge()`'s, from `ChallengeProvider` in `root.tsx`), which opens `ChallengeDialog` and resolves with the CAPTCHA's token; the request is then resent once, same method, path and body, with `X-Challenge-Token`.
+
+- **Pending state is unchanged:** the awaited promise stays pending while the dialog is open, so `useAction`'s `busy` and `loading` stay true, the button keeps spinning and a double submit is ignored.
+- **Cancel** throws `ApiError("Check cancelled.", 428)`, shown in the form's `ErrorNotice` like any failure, with the form still filled in. A second 428 is an error too: the client never loops.
+- **Loaders** use `loaderApi()`, which has no `solve`, and are never challenged (no GET has a challenge level). The admin client has none either.
+- The 12-second timeout is per fetch; time in the dialog doesn't count.
+
 ## Adding a resource
 
 1. `src/lib/api/<resource>.ts`: an `<Resource>IndexQuery` type, exported `<resource>Routes` (with `path<T>()` for GET paths), and the methods the API supports.
