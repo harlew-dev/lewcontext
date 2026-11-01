@@ -16,7 +16,13 @@ export type AdminSession = {
   role: AdminRole;
   csrfToken: string;
   expiresAt: string;
+  // Which alerts the admin is emailed, and how many alerts were open when
+  // the page loaded (the sidebar's badge).
+  alertEmail: AlertEmail;
+  openAlerts: number;
 };
+export const alertEmails = ["all", "critical", "none"] as const;
+export type AlertEmail = (typeof alertEmails)[number];
 // An admin as the Admins page lists them: their live admin sessions,
 // and lastSignedInAt, their newest admin sign-in still in the audit trail
 // (events are kept 90 days by default).
@@ -36,6 +42,7 @@ export type AdminAccount = {
   mfaEnabled: boolean;
   // While set and ahead, they may still set MFA up at the door.
   mfaSetupUntil: string | null;
+  alertEmail: AlertEmail;
   grantedAt: string;
   lastSignedInAt: string | null;
   sessions: AdminAccountSession[];
@@ -747,3 +754,41 @@ export type ConfigurationSections = {
   settings: { name: string; values: string[]; differs: boolean }[];
   warnings: { id: string; count?: number }[];
 };
+
+// An alert as the Alerts page shows it: a signal that stayed at its level.
+// Details hold its Events drill-down and an integrity check's sample IDs
+// (the dashboard only: emails and the webhook carry neither).
+export type AdminAlertPerson = { id: string; name: string; email: string };
+export type AdminAlert = {
+  id: string;
+  signal: string;
+  title: string;
+  unit: Signal["unit"];
+  page: string;
+  meaning: string;
+  level: "warn" | "critical";
+  openedAt: string;
+  resolvedAt: string | null;
+  lastValue: number;
+  peakValue: number;
+  warn?: number;
+  critical?: number;
+  forSeconds: number;
+  hourly: boolean;
+  details: { drill?: Record<string, string>; samples?: string[] };
+  notified: "mail" | "held" | "digest" | "quiet";
+  lastNotifiedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: AdminAlertPerson | null;
+  silencedUntil: string | null;
+  silencedBy: AdminAlertPerson | null;
+};
+export const alertStates = ["open", "resolved", "all"] as const;
+export type AlertState = (typeof alertStates)[number];
+export type AdminAlertPage = { data: AdminAlert[]; next: string | null };
+export const alertSilences = [
+  { value: "1h", label: "1 hour" },
+  { value: "4h", label: "4 hours" },
+  { value: "24h", label: "24 hours" },
+] as const;
+export type AlertSilence = (typeof alertSilences)[number]["value"];

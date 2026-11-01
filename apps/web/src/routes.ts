@@ -67,6 +67,8 @@ const adminRoutes = [
     route("admin/:key/mail", "pages/admin/[key]/mail.tsx"),
     route("admin/:key/email-blocks", "pages/admin/[key]/email-blocks.tsx"),
     route("admin/:key/ip-blocks", "pages/admin/[key]/ip-blocks.tsx"),
+    route("admin/:key/alerts", "pages/admin/[key]/alerts.tsx"),
+    route("admin/:key/alerts/:alert", "pages/admin/[key]/alerts/[alert].tsx"),
     route("admin/:key/admins", "pages/admin/[key]/admins.tsx"),
     route("admin/:key/monitoring", "pages/admin/[key]/monitoring/index.tsx"),
     route(

@@ -16,11 +16,13 @@ import {
   BoltIcon,
   BugAntIcon,
   Cog6ToothIcon,
+  BellAlertIcon,
 } from "@heroicons/react/20/solid";
 import {
   defaultEventWindow,
   defaultMonitoringWindow,
   type DeliveryPageQuery,
+  type AlertState,
   type EventFilters,
   type MonitoringWindow,
 } from "@/types/admin";
@@ -64,6 +66,14 @@ export const adminRoutes = {
   // Client addresses and ranges every server refuses, each until it ends.
   ipBlocks: {
     index: (key: string) => `/admin/${key}/ip-blocks`,
+  },
+  // The alerts the evaluator opened, and one alert.
+  alerts: {
+    index: (key: string, state?: AlertState) =>
+      url(`/admin/${key}/alerts`, {
+        state: state === "open" ? undefined : state,
+      }),
+    show: (key: string, alert: string) => `/admin/${key}/alerts/${alert}`,
   },
   // Who holds admin: roles, MFA, last sign-in, live sessions.
   admins: {
@@ -205,6 +215,11 @@ export function adminNavigation(key: string) {
       label: "IP blocks",
       href: adminRoutes.ipBlocks.index(key),
       icon: ShieldExclamationIcon,
+    },
+    {
+      label: "Alerts",
+      href: adminRoutes.alerts.index(key),
+      icon: BellAlertIcon,
     },
     { label: "Admins", href: adminRoutes.admins.index(key), icon: KeyIcon },
   ];

@@ -33,10 +33,14 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { useAction } from "@/lib/use-action";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import { useOpenCount } from "@/lib/use-open-count";
-import type {
-  AdminAccount,
-  AdminAccountSession,
-  AdminRole,
+import { Field, Label } from "@/components/ui/fieldset";
+import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
+import {
+  alertEmails,
+  type AdminAccount,
+  type AdminAccountSession,
+  type AdminRole,
+  type AlertEmail,
 } from "@/types/admin";
 // Who holds admin, for an access review: each admin's role, MFA, when they
 // were granted admin and last signed in to the dashboard, and every live
@@ -74,6 +78,7 @@ export default function AdminAdminIndex() {
       {admins ? (
         <>
           <AdminTable admins={admins} onChanged={list.refresh} />
+          <AlertEmailSetting admins={admins} onDone={list.refresh} />
           <Subheading className="mt-12">Live sessions</Subheading>
           <SessionTable admins={admins} />
           <OtherSessions admins={admins} onDone={list.refresh} />
@@ -380,4 +385,63 @@ function downloadAdmins(admins: AdminAccount[]) {
   link.download = `admins-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(href);
+}
+
+const alertEmailLabels: Record<AlertEmail, string> = {
+  all: "Every alert (warnings too)",
+  critical: "Critical alerts only",
+  none: "None",
+};
+// Which alerts you're emailed (docs/api/monitoring.md#alerts): your own
+// setting only, so it needs no role or code; it changes only your inbox.
+// Critical only by default.
+function AlertEmailSetting({
+  admins,
+  onDone,
+}: {
+  admins: AdminAccount[];
+  onDone: () => void;
+}) {
+  const api = useAdminApi();
+  const me = useAdminSession().user.id;
+  const mine = admins.find((admin) => admin.user.id === me);
+  const save = useAction(
+    (setting: AlertEmail) => api.settings().update(setting),
+    {
+      onError: (e) => {
+        toast.error(errorMessage(e));
+        return true;
+      },
+    },
+  );
+  if (!mine) return null;
+  async function change(setting: AlertEmail) {
+    if (!(await save.run(setting)).ok) return;
+    toast.success("Alert emails updated.");
+    onDone();
+  }
+  return (
+    <>
+      <Subheading className="mt-12">Alert emails</Subheading>
+      <Text className="mt-2 max-w-2xl">
+        Alerts are emailed to admins who want them, with the signal and its
+        numbers only: never a link into the dashboard or anyone&rsquo;s details.
+        This is your setting; each admin chooses their own.
+      </Text>
+      <Field className="mt-4 max-w-sm">
+        <Label>Email me</Label>
+        <Listbox
+          value={mine.alertEmail}
+          disabled={save.busy}
+          onChange={(value) => void change(value as AlertEmail)}
+        >
+          {alertEmails.map((setting) => (
+            <ListboxOption key={setting} value={setting}>
+              <ListboxLabel>{alertEmailLabels[setting]}</ListboxLabel>
+            </ListboxOption>
+          ))}
+        </Listbox>
+      </Field>
+    </>
+  );
 }

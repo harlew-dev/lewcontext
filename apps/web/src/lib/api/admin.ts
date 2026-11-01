@@ -13,6 +13,11 @@ import {
   defaultAdminUserSort,
   defaultAdminWorkspaceSort,
   type AdminAccount,
+  type AdminAlert,
+  type AdminAlertPage,
+  type AlertEmail,
+  type AlertSilence,
+  type AlertState,
   type AdminCatalogue,
   type AdminDeliveryRow,
   type AdminEmailBlock,
@@ -229,6 +234,27 @@ export const adminPaths = {
         }),
       ),
   },
+  // The alerts, a cursor page (open ones all at once), and one alert.
+  alerts: {
+    index: ({ state, before }: { state?: AlertState; before?: string } = {}) =>
+      path<AdminAlertPage>(
+        url(`${base}/alerts`, {
+          state: state === "open" ? undefined : state,
+          before,
+        }),
+      ),
+    show: (alert: string) => path<AdminAlert>(`${base}/alerts/${alert}`),
+    update: (alert: string) => `${base}/alerts/${alert}`,
+  },
+  alertSilence: (alert: string) => ({
+    store: () => `${base}/alerts/${alert}/silence`,
+  }),
+  // Resolving an error group (the group's page reads it by show).
+  errorGroup: (error: string) => ({
+    update: () => `${base}/errors/${encodeURIComponent(error)}`,
+  }),
+  // The signed-in admin's own settings.
+  settings: { update: () => `${base}/me` },
   // The Admins page: every admin, one list (no paging).
   admins: {
     index: () => path<{ data: AdminAccount[] }>(`${base}/admins`),
@@ -431,6 +457,35 @@ export function adminClient(http: Http) {
         http.send<void>("DELETE", adminPaths.ipBlocks.destroy(id), {
           reason,
         }),
+    }),
+    // Acknowledging an alert (housekeeping: no code, no reason).
+    alerts: () => ({
+      index: (query: { state?: AlertState; before?: string } = {}) =>
+        http.get(adminPaths.alerts.index(query)),
+      update: (alert: string) =>
+        http.send<AdminAlert>("PATCH", adminPaths.alerts.update(alert), {
+          acknowledged: true,
+        }),
+    }),
+    // Silencing an alert's signal, an action: a code and a reason.
+    alertSilence: (alert: string) => ({
+      store: (duration: AlertSilence, reason: string) =>
+        http.send<AdminAlert>("POST", adminPaths.alertSilence(alert).store(), {
+          duration,
+          reason,
+        }),
+    }),
+    // Resolving an error group (housekeeping).
+    errorGroup: (error: string) => ({
+      update: () =>
+        http.send<void>("PATCH", adminPaths.errorGroup(error).update(), {
+          resolved: true,
+        }),
+    }),
+    // The admin's own alert email setting.
+    settings: () => ({
+      update: (alertEmail: AlertEmail) =>
+        http.send<void>("PATCH", adminPaths.settings.update(), { alertEmail }),
     }),
     // Signs another admin out of every admin and app session.
     adminSessions: (user: string) => ({

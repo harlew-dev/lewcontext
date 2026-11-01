@@ -1,4 +1,8 @@
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
+import { errorMessage } from "@/lib/api";
+import { useAction } from "@/lib/use-action";
 import {
   GroupBadges,
   releaseText,
@@ -18,9 +22,9 @@ import {
   DescriptionTerm,
 } from "@/components/ui/description-list";
 import { Code, Text } from "@/components/ui/text";
-import { useAdminKey } from "@/lib/admin";
+import { adminCan, useAdminKey, useAdminSession } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
-import { adminPaths } from "@/lib/api/admin";
+import { adminPaths, useAdminApi } from "@/lib/api/admin";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import type { ErrorView, MonitoringWindow } from "@/types/admin";
 // One grouped error: its scrubbed message and stack (function names, files
@@ -30,9 +34,8 @@ import type { ErrorView, MonitoringWindow } from "@/types/admin";
 // words. One request, recorded with the group looked at
 // (admin.error.viewed).
 //
-// TODO(A6, housekeeping), at merge: "Resolve" goes in the header beside
-// the time range, for operators, through AdminActionDialog (a reason and a
-// fresh code). Until then the page only reads.
+// Operators can Resolve a group (housekeeping, docs/api/admin.md: no code,
+// no reason); a new occurrence opens it again.
 export default function AdminMonitoringError() {
   const key = useAdminKey();
   const error = useParams().error ?? "";
@@ -40,6 +43,20 @@ export default function AdminMonitoringError() {
   const [search] = useSearchParams();
   const window = monitoringWindow(search);
   const resource = useAdminResource(adminPaths.errors.show(error, window));
+  const api = useAdminApi();
+  const operator = adminCan(useAdminSession().role, "operator");
+  const resolve = useAction(() => api.errorGroup(error).update(), {
+    onError: (e) => {
+      toast.error(errorMessage(e));
+      return true;
+    },
+  });
+  async function resolveGroup() {
+    if (!(await resolve.run()).ok) return;
+    toast.success("Marked resolved. A new occurrence opens it again.");
+    resource.refresh();
+  }
+  const resolved = resource.data?.group.resolvedAt != null;
   const setWindow = (w: MonitoringWindow) =>
     void navigate(adminRoutes.monitoring.error(key, error, w), {
       preventScrollReset: true,
@@ -52,6 +69,15 @@ export default function AdminMonitoringError() {
         onWindow={setWindow}
         view={resource.data}
         signals={false}
+        actions={
+          operator &&
+          resource.data &&
+          !resolved && (
+            <Button outline loading={resolve.loading} onClick={resolveGroup}>
+              Resolve
+            </Button>
+          )
+        }
       />
       <MonitoringBody resource={resource} label="Loading the error group">
         {(view) => <Group view={view} />}

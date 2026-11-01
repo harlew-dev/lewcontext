@@ -26,10 +26,7 @@ import type { ErrorsSections, MonitoringView } from "@/types/admin";
 // bucket. A group a browser reported holds a user's text: it's labelled
 // as user-reported and always shown as text, never a link. One request,
 // one recorded read; each group's page is a read of its own.
-//
-// TODO(A6, housekeeping), at merge: resolving a group is an operator
-// action ("Resolve" on the group's page, errors/[error].tsx, through
-// AdminActionDialog); until then these pages only read.
+// Resolving a group is an operator's housekeeping, on the group's page.
 export default function AdminMonitoringErrors() {
   const page = useMonitoringPage<ErrorsSections>(
     "errors",

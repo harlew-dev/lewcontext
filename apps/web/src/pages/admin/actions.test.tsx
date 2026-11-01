@@ -25,7 +25,14 @@ const admin = testSession({
   user: { id: "usr_00000000000009", name: "Olive Admin" },
 });
 function me(role: AdminRole): AdminSession {
-  return { user: admin.user, role, csrfToken: "admin-csrf", expiresAt: "" };
+  return {
+    user: admin.user,
+    role,
+    csrfToken: "admin-csrf",
+    expiresAt: "",
+    alertEmail: "critical" as const,
+    openAlerts: 0,
+  };
 }
 const reason = "Reported for invitation spam, ticket 4521.";
 const userId = "usr_00000000000001";

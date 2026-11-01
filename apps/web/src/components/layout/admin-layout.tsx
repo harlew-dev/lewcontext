@@ -133,6 +133,13 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 >
                   <Icon />
                   <SidebarLabel>{label}</SidebarLabel>
+                  {href === adminRoutes.alerts.index(key) &&
+                    session.openAlerts > 0 && (
+                      <Badge color="red" className="ml-auto">
+                        {session.openAlerts}
+                        <span className="sr-only"> open</span>
+                      </Badge>
+                    )}
                 </SidebarItem>
               ))}
             </SidebarSection>
