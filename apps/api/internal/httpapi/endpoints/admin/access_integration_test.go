@@ -74,7 +74,11 @@ func TestAdminAllowedIPs(t *testing.T) {
 
 	// From inside: the door, the API and the files.
 	pass := passFrom(t, inside, key)
-	adminCall(t, inside, "GET", "/api/admin/me", "", "", 200, session.Cookie())
+	me := adminCall(t, inside, "GET", "/api/admin/me", "", "", 200, session.Cookie())
+	// The admin's own user, without the app account's policy agreement.
+	if body := me.Body.String(); !strings.Contains(body, `"email":`) || strings.Contains(body, "policies") {
+		t.Fatalf("admin me: %s", body)
+	}
 	if w := apitest.Get(inside, "GET", apitest.AdminAsset, pass); w.Code != 200 {
 		t.Fatalf("a file from inside: %d", w.Code)
 	}
