@@ -41,9 +41,9 @@ You asked for every open plan to be built, with their recommendations accepted f
 
 | Line | Where | Branch | Order |
 | --- | --- | --- | --- |
-| Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A6 actions → A7 compliance (each needs the one before) |
+| Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A7 compliance (A6 moved to the events worktree) |
 | ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (**done**, reviewed and fixed; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy: **built**, under review; [findings](../findings/policies.md)) → [captcha challenges](../../captcha-challenges.md) (_building_) |
-| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../events-page.md) (_building_) → [convention checks](../../convention-checks.md) |
+| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../events-page.md) (**done**, reviewed and fixed; [findings](../findings/events-page.md)) → convention checks (**done**; [findings](../findings/convention-checks.md)) → **A6 admin actions** (_building_, moved here from main to save time; "acknowledge an alert" waits for A5) |
 | Last, on main | after the merges | | page-folders (`plans/features/page-folders.md`, another session's untracked file): it moves every page file, so it would collide with everything else |
 
 **Keeping parallel lines apart:**
