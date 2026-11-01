@@ -79,7 +79,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `admin.sessions_revoked` | `admin`, `count`; actor only | `DeleteOtherAdminSessions` (`DELETE /api/admin/sessions`) |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page`; actor only | every admin list read |
 | `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` (what was looked at); actor only, so deleting it keeps the record | every admin detail read |
-| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's); actor only | every Events and deliveries list read |
+| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's). For Events: `names` (the name tokens as sent), `outcome`, `account`, `workspace`, `email`, `ip`, `window`, `from` and `to` as resolved, `before`, and `summary`, the charts' status when they were asked for with the list (`ok`, `busy`, `too_slow`, `too_wide`) (older rows have a `name` string and `adminReads` instead); actor only | every Events and deliveries list read, once per request, charts included |
 | `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
 | `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
@@ -89,6 +89,21 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `email.blocked` | `email` (the address, without an account); no user, workspace or actor. The `ip` column is the request's | `BlockEmail`, from a block link, only when the address wasn't blocked already ([auth.md](auth.md#blocking-an-email-address)) |
 | `email.unblocked` | `email`, `by`: `link` (its block link, with the request's `ip`) / `cli` (`admin unblock`, no `ip`) / `admin` (the dashboard's Unblock: the admin as actor, the request's `ip`, beside `admin.email.unblocked`) | `UnblockEmail`, `UnblockEmailAddress`, only when the address was blocked |
 | `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |
+
+## Groups
+
+The admin dashboard's Events page picks names in groups (`internal/events/groups.go`, `events.Groups()`, served by `GET /api/admin/catalogue` as `eventGroups`). They're built from the catalogue, so a new event joins its group without anyone remembering:
+
+| Group ID | Label | Holds |
+| --- | --- | --- |
+| `auth.*` | Accounts and sign-in | every `auth.` name: sub-groups `auth.password_reset.*`, `auth.registration.*`, `auth.email_verification.*`, `auth.mfa.*`, then the single names |
+| `workspace.*` | Workspaces | sub-groups `workspace.member.*`, `workspace.invitation.*`, then `workspace.created`, `.renamed`, `.deleted` |
+| `project.*`, `rate_limit.*`, `email.*` | Projects, Rate limits, Email addresses | their names |
+| `admin.*` | Admin | every `admin.` name **except the reads**; sub-group `admin.session.*` |
+| `admin-reads` | Admin reads | the `admin.<resource>.listed` and `.viewed` names (`events.AdminRead`) |
+
+- **A sub-group** is a three-segment prefix with two or more names; a prefix with one name (`auth.recovery_codes.created`) is just that name. Every name is in exactly one group (`TestEventGroups`). Groups come in catalogue order, sub-groups before single names.
+- **`admin-reads`** can't clash with a name: the `events.name` CHECK allows no `-`. With nothing picked, the Events list shows every name but these.
 
 ## What's stored, and what never is
 

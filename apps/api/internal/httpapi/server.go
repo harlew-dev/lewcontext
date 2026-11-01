@@ -32,6 +32,8 @@ type Server struct {
 	// adminRefusals records addresses outside ADMIN_ALLOWED_IPS, each once
 	// per window, through a bounded queue and one worker (admin_access.go).
 	adminRefusals *adminRefusals
+	// Summaries bound the admin dashboard's aggregates (summaries.go).
+	Summaries *Summaries
 	// draining is set once shutdown has begun (Drain): readiness then
 	// answers 503.
 	draining atomic.Bool
@@ -55,7 +57,7 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	server := &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory(), adminRefusals: newAdminRefusals()}
+	server := &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory(), adminRefusals: newAdminRefusals(), Summaries: newSummaries()}
 	go server.runAdminRefusals()
 	return server, nil
 }

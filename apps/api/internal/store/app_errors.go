@@ -14,7 +14,7 @@ import (
 )
 
 // appErrorRecord is one grouped error (app_errors): a row per fingerprint,
-// written only by ReportErrors (docs/api/observability.md#grouped-errors).
+// written only by RecordErrors (docs/api/observability.md#grouped-errors).
 type appErrorRecord struct {
 	bun.BaseModel `bun:"table:app_errors,alias:ae"`
 	ID            int64 `bun:",pk,autoincrement"`
@@ -31,7 +31,7 @@ type appErrorRecord struct {
 	ResolvedAt    time.Time `bun:",nullzero"`
 }
 
-// ReportErrors upserts the error collector's groups (observe.Collector), in
+// RecordErrors upserts the error collector's groups (observe.Collector), in
 // one statement with a row per fingerprint: a new group is inserted; a
 // known one adds the count, widens its first and last times, takes the
 // latest occurrence's request, release and stack, and is open again (a
@@ -44,7 +44,7 @@ type appErrorRecord struct {
 // own data are dropped: one bad group must not stop every later flush. The
 // answer is then an *observe.FlushError naming the groups to retry (those
 // that failed otherwise) and how many were dropped.
-func (s *Store) ReportErrors(ctx context.Context, groups []observe.ErrorGroup) error {
+func (s *Store) RecordErrors(ctx context.Context, groups []observe.ErrorGroup) error {
 	valid := make([]observe.ErrorGroup, 0, len(groups))
 	for _, g := range groups {
 		if validAppError(g) {

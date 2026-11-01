@@ -20,7 +20,7 @@ import (
 // does, and returns it.
 func collecting(t *testing.T, s *store.Store) *observe.Collector {
 	t.Helper()
-	c := observe.NewCollector(s.ReportErrors, "abc123def456")
+	c := observe.NewCollector(s.RecordErrors, "abc123def456")
 	observe.SetReporter(c)
 	t.Cleanup(func() { observe.SetReporter(nil) })
 	return c

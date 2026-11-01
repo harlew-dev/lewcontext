@@ -33,7 +33,7 @@ type storedClientError struct {
 func TestClientErrors(t *testing.T) {
 	s, db := server(t)
 	h := router.New(s)
-	collector := observe.NewCollector(s.Repo.ReportErrors, "abc123def456")
+	collector := observe.NewCollector(s.Repo.RecordErrors, "abc123def456")
 	observe.SetReporter(collector)
 	t.Cleanup(func() { observe.SetReporter(nil) })
 	f := factory.TestFaker(t)
@@ -189,7 +189,7 @@ func (p *problems) all() []observe.Problem { return p.list }
 func TestClientErrorsCantPoisonTheFlush(t *testing.T) {
 	s, db := server(t)
 	h := router.New(s)
-	collector := observe.NewCollector(s.Repo.ReportErrors, "abc123def456")
+	collector := observe.NewCollector(s.Repo.RecordErrors, "abc123def456")
 	observe.SetReporter(collector)
 	t.Cleanup(func() { observe.SetReporter(nil) })
 	f := factory.TestFaker(t)

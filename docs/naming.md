@@ -2,6 +2,8 @@
 
 How things are named across the API and the web app. **New code follows this page**, and existing code matches it ([`plans/features/implemented/crud-routing-convention.md`](../plans/features/implemented/crud-routing-convention.md) renamed it).
 
+Every rule here is checked by a test or a script; see [checks.md](checks.md) for which, how to read a failure, and what to do when a name is new.
+
 The vocabulary is Laravel's resource controller, used at the HTTP boundary and in the web app. The store uses data verbs.
 
 ## Controllers (`internal/httpapi`)
@@ -32,7 +34,7 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 - **Every route is registered in `router/routes.go`**, the one registry, like Laravel's `routes/api.php`.
 - **A resource gets its own folder only when it has sub-resources:** if projects gain tasks and comments, `endpoints/workspace/project/` holds `Projects`, `Tasks` and `Comments`. Until then, an area is one folder.
 - **Areas never import each other.** What two areas share moves into the core (`httpapi`) or a leaf package (`input`, `ratelimit`, `clientip`). Only the router imports areas.
-- `TestHTTPLayout` (`httpapi/layout_test.go`) checks all of this, with the named actions and the support folders listed in it with their reasons.
+- `TestHTTPLayout` (`httpapi/layout_test.go`) and `TestRouteNames` ([checks.md](checks.md)) check all of this, with the named actions and the support folders listed in it with their reasons.
 - **Paths** are plural nouns under their parent (`/api/workspaces/{workspace}/projects/{project}`), and path IDs are public IDs.
 - **`update` is always PATCH**, even when the body is the whole editable representation. PUT isn't used.
 - **A singleton resource** (one per parent, no ID in the path) uses the same actions: leaving a workspace is `Membership.Destroy` on `DELETE …/membership`.
@@ -52,11 +54,12 @@ Every method starts with a verb:
 | `Check<Thing>` | a yes/no question about a record | `CheckPasswordReset` |
 
 - There are no noun-only methods (`Project`, `Session`).
+- `TestStoreMethodNames` checks the verbs (the domain verbs are listed in it, each with its reason) and that `Index…` returns a list ([checks.md](checks.md)).
 - **The exception:** methods implementing an interface defined elsewhere use its names. That means the event worker's `Claim`, `Delivered`, `Fail` and `Retry` for `events.Queue`.
 
 ## Permissions (`internal/auth/permissions.go`)
 
-`<resource>.<action>`, where the action is the CRUD action of the route the permission guards: `workspace.update`, `project.store`, `workspace.member.destroy`, `workspace.invitation.store`. The Go constant is the same words in PascalCase (`auth.WorkspaceMemberDestroy`).
+`<resource>.<action>`, where the action is the CRUD action of the route the permission guards: `workspace.update`, `project.store`, `workspace.member.destroy`, `workspace.invitation.store`. The Go constant is the same words in PascalCase (`auth.WorkspaceMemberDestroy`). `TestPermissionNames` checks both ([checks.md](checks.md)).
 
 The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, least access first); an admin route that changes anything names the one it needs with `Role` in `router/routes.go`, and an account-and-access action is registered with `Action` instead, which adds the operator role, the step-up and `admin-action:per-user` (`Role` with `operator` is refused for anything but the step-up).
 
@@ -69,7 +72,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 - **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`, `auth.email_verified`); only stored sub-resources (reset links, pending sign-ups, email codes, members, invitations) get a segment (`auth.registration.requested`, `auth.email_verification.sent`). A sign-up waiting for its code is a *registration*, after the `register` route; the table is `pending_registrations`.
 - **Email addresses on their own**, apart from any account, are the `email` area: `email.blocked`, `email.unblocked` (the block list).
 - **The admin dashboard** is the `admin` area: facts about admins and their sessions as a whole are one segment (`admin.granted`, `admin.logged_in`, `admin.sessions_revoked`, `admin.access_refused`); a fact about one stored admin session names it, as the `auth` area's sub-resources do (`admin.session.moved`); what an admin read gets the resource read (`admin.user.viewed`, `admin.workspace.listed`, `admin.admin.listed`, `admin.email_block.listed`); and an admin's action names what it acted on and the fact (`admin.email.unblocked`), beside the store's own event for the change (`email.unblocked`).
-- **At most three segments**, enforced by the `events.name` CHECK and `TestCatalogueNames`. A deeper resource needs this rule revisited, not a fourth dot.
+- **At most three segments**, enforced by the `events.name` CHECK and `TestCatalogueNames`; `TestEventResources` checks a three-segment event's resource against the permissions and its list of stored resources ([checks.md](checks.md)). A deeper resource needs this rule revisited, not a fourth dot.
 - **CRUD actions:** `store` records `<resource>.created`; `update` records `<resource>.updated`, or a more specific fact (`workspace.renamed`); `destroy` records `<resource>.deleted`, or a more specific fact (`workspace.member.removed`, `workspace.member.left`, `workspace.invitation.revoked`).
 - **One event type per fact**, with variable details in the payload, never in the name (`rate_limit.reached` with a `limit` field, not one event per limit).
 - **Listener names** (`mail.password_reset`) name listeners, not events; they are stored with each delivery and don't follow event renames.
@@ -92,6 +95,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 - **URLs read naturally and don't follow the action names:** the workspace `edit` page is `/app/<wsp>/settings`.
 - **Page files are shaped like the URL** (`pages/app/[workspace]/projects/[project].tsx`).
 - **Component files** are kebab-case, grouping a family of named exports (`button.tsx`, `confirmation-dialog.tsx`); see AGENTS.md rule 6.
+- **Checked** ([checks.md](checks.md)): the API client's names, page route constants, resource pages' export names and kebab-case files.
 - **Variants:** components with alternatives take a `variant` prop (`<Notice variant="error">`, `<ConfirmationDialog variant="danger">`), never `tone`, and never one component per alternative.
 
 ## Lists of declarations

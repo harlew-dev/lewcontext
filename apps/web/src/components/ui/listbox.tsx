@@ -24,8 +24,9 @@ import { Highlight } from "./highlight";
 // Listbox styles on BaseUI's Select, which provides the combobox
 // keyboard handling, popover positioning and option highlighting. The open
 // panel covers the button with the selected option over it (alignSelection).
-const ListboxRoot = slot("div", "relative block w-full");
-const ListboxButton = slot(
+// Combobox (combobox.tsx) shares its button, panel and option slots.
+export const ListboxRoot = slot("div", "relative block w-full");
+export const ListboxButton = slot(
   "div",
   [
     "group relative block w-full",
@@ -67,11 +68,11 @@ const ListboxFocusTarget = slot(
     }),
   },
 );
-const ListboxIcons = slot(
+export const ListboxIcons = slot(
   "span",
   "pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2",
 );
-function ChevronUpDown() {
+export function ChevronUpDown() {
   return (
     <svg
       className="size-5 stroke-zinc-500 group-data-disabled:stroke-zinc-600 sm:size-4 dark:stroke-zinc-400 forced-colors:stroke-[CanvasText]"
@@ -96,7 +97,7 @@ function ChevronUpDown() {
 }
 // At least as wide as the button plus the check mark's gutter, which sits to
 // the left of the button so the option text lines up with the button text.
-const ListboxPanel = slot(
+export const ListboxPanel = slot(
   "div",
   [
     "isolate w-max scroll-py-1 rounded-xl p-1 select-none",
@@ -114,7 +115,7 @@ const ListboxPanel = slot(
     }),
   },
 );
-const ListboxList = slot(
+export const ListboxList = slot(
   "ul",
   "max-h-[min(20rem,calc(100dvh-2rem))] focus:outline-hidden",
 );
@@ -123,7 +124,7 @@ const ListboxList = slot(
 // (ListboxOptionContent renders both). They sit at -z-10 and -z-5 in the
 // panel's `isolate` stacking context, so the grey passes under every option's
 // text, and under the blue, while it slides.
-const ListboxOptionItem = slot(
+export const ListboxOptionItem = slot(
   "li",
   [
     "group/option relative grid cursor-default grid-cols-[--spacing(5)_1fr] items-baseline gap-x-2 rounded-lg py-2.5 pr-3.5 pl-2 sm:grid-cols-[--spacing(4)_1fr] sm:py-1.5 sm:pr-3 sm:pl-1.5",

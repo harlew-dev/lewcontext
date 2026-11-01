@@ -15,7 +15,7 @@ import (
 )
 
 // ErrorGroup is the failures that share a fingerprint since the last flush:
-// what the store upserts into app_errors (store.ReportErrors), one row per
+// what the store upserts into app_errors (store.RecordErrors), one row per
 // fingerprint, adding Count to the row's count.
 type ErrorGroup struct {
 	// Fingerprint is the hex SHA-256 of the source, route and scrubbed
@@ -65,7 +65,7 @@ const (
 // nothing retries sooner, so a database outage costs one attempt per
 // interval.
 type Collector struct {
-	// Store writes a flush's groups (store.ReportErrors).
+	// Store writes a flush's groups (store.RecordErrors).
 	Store func(ctx context.Context, groups []ErrorGroup) error
 	// Version is the server's release (Version()), for its own problems.
 	Version string

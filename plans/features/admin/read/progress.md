@@ -33,7 +33,7 @@ All were fixed before committing, apart from the few listed as accepted in each 
   1. Logs, request IDs, panic recovery, health checks: **committed `10797fd`**.
   2. Grouped errors (`app_errors`), errors from the browser: _building_.
   3. Metrics, server heartbeats, slow queries, `/metrics`.
-- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../events-page.md) (A10, `e1cd3b4`).
+- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
 
 ## The parallel plan (from 2026-11-01, about 05:00)
 
@@ -43,7 +43,7 @@ You asked for every open plan to be built, with their recommendations accepted f
 | --- | --- | --- | --- |
 | Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A7 compliance (A6 moved to the events worktree) |
 | ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (**done**, reviewed and fixed; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy: **built**, under review; [findings](../findings/policies.md)) → [captcha challenges](../../captcha-challenges.md) (_building_) |
-| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../events-page.md) (**done**, reviewed and fixed; [findings](../findings/events-page.md)) → convention checks (**done**; [findings](../findings/convention-checks.md)) → **A6 admin actions** (_building_, moved here from main to save time; "acknowledge an alert" waits for A5) |
+| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (**done**, reviewed and fixed; [findings](../findings/events-page.md)) → convention checks (**done**; [findings](../findings/convention-checks.md)) → **A6 admin actions** (_building_, moved here from main to save time; "acknowledge an alert" waits for A5) |
 | Last, on main | after the merges | | page-folders (`plans/features/page-folders.md`, another session's untracked file): it moves every page file, so it would collide with everything else |
 
 **Keeping parallel lines apart:**

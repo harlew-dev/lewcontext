@@ -26,15 +26,15 @@ func errorRows(t *testing.T, s *Store) map[string]appErrorRecord {
 
 // Groups are inserted once and then counted: one row per fingerprint,
 // however many flushes; a resolved group that happens again is open again.
-func TestReportErrorsUpsertsOneRowPerGroup(t *testing.T) {
+func TestRecordErrorsUpsertsOneRowPerGroup(t *testing.T) {
 	s, ctx := queueStore(t, nil)
 	stored := func(groups []observe.ErrorGroup) {
 		t.Helper()
-		if err := s.ReportErrors(ctx, groups); err != nil {
+		if err := s.RecordErrors(ctx, groups); err != nil {
 			t.Fatal(err)
 		}
 	}
-	collector := observe.NewCollector(s.ReportErrors, "abc123def456")
+	collector := observe.NewCollector(s.RecordErrors, "abc123def456")
 	start := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
 	now := start
 	collector.Now = func() time.Time { return now }
@@ -119,7 +119,7 @@ func TestAppErrorChecks(t *testing.T) {
 // one the database refuses for its data (a time out of its range) is
 // dropped after the others are stored one by one. Neither comes back for
 // a retry; a transient failure would (observe's collector tests).
-func TestReportErrorsDropsBadGroups(t *testing.T) {
+func TestRecordErrorsDropsBadGroups(t *testing.T) {
 	s, ctx := queueStore(t, nil)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	group := func(message string) observe.ErrorGroup {
@@ -133,14 +133,14 @@ func TestReportErrorsDropsBadGroups(t *testing.T) {
 	control.Route = "GET /x\r\nforged"
 	source := group("source")
 	source.Source = "browser"
-	err := s.ReportErrors(ctx, []observe.ErrorGroup{good, nul, control, source})
+	err := s.RecordErrors(ctx, []observe.ErrorGroup{good, nul, control, source})
 	var partial *observe.FlushError
 	if !errors.As(err, &partial) || partial.Dropped != 3 || len(partial.Retry) != 0 {
 		t.Fatalf("invalid groups: %v", err)
 	}
 	outOfRange := group("out of range")
 	outOfRange.FirstSeen = time.Date(300000, 1, 1, 0, 0, 0, 0, time.UTC)
-	err = s.ReportErrors(ctx, []observe.ErrorGroup{alsoGood, outOfRange})
+	err = s.RecordErrors(ctx, []observe.ErrorGroup{alsoGood, outOfRange})
 	if !errors.As(err, &partial) || partial.Dropped != 1 || len(partial.Retry) != 0 {
 		t.Fatalf("a group the database refuses: %v", err)
 	}

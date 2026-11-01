@@ -13,11 +13,30 @@ import (
 // a new one can't be left out of the matrix.
 func declaredPermissions(t *testing.T) []Permission {
 	t.Helper()
+	var found []Permission
+	for _, d := range permissionDeclarations(t) {
+		if Permission(d.value) != AnyMember {
+			found = append(found, Permission(d.value))
+		}
+	}
+	if len(found) < 11 {
+		t.Fatalf("found only %d permissions in permissions.go", len(found))
+	}
+	return found
+}
+
+// permissionDeclaration is a Permission constant: its Go name and value.
+type permissionDeclaration struct{ name, value string }
+
+// permissionDeclarations reads every Permission constant in permissions.go,
+// AnyMember included.
+func permissionDeclarations(t *testing.T) []permissionDeclaration {
+	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), "permissions.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var found []Permission
+	var found []permissionDeclaration
 	ast.Inspect(file, func(n ast.Node) bool {
 		spec, ok := n.(*ast.ValueSpec)
 		if !ok {
@@ -26,22 +45,18 @@ func declaredPermissions(t *testing.T) []Permission {
 		if typ, ok := spec.Type.(*ast.Ident); !ok || typ.Name != "Permission" {
 			return true
 		}
-		for _, v := range spec.Values {
+		for i, v := range spec.Values {
 			value, err := strconv.Unquote(v.(*ast.BasicLit).Value)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if Permission(value) != AnyMember {
-				found = append(found, Permission(value))
-			}
+			found = append(found, permissionDeclaration{name: spec.Names[i].Name, value: value})
 		}
 		return true
 	})
-	if len(found) < 11 {
-		t.Fatalf("found only %d permissions in permissions.go", len(found))
-	}
 	return found
 }
+
 func TestEveryPermissionIsGrantedToOwner(t *testing.T) {
 	for _, p := range declaredPermissions(t) {
 		if !RoleOwner.Can(p) {

@@ -102,34 +102,110 @@ export type AdminListQuery<S> = { page: number; q: string; sort: S };
 // email) are missing once it's deleted, leaving the ID from the payload.
 export type AdminRef = { id: string; name?: string; email?: string };
 // An event as the Events list shows it. The payload is as stored: each
-// event's own fields (docs/api/events.md).
+// event's own fields (docs/api/events.md). `failed`: it records a failed
+// check (a wrong password, a refused code, …).
 export type AdminEvent = {
   id: string;
   name: string;
   createdAt: string;
+  failed: boolean;
   actor: AdminRef | null;
   user: AdminRef | null;
   workspace: AdminRef | null;
   ip: string | null;
   payload: Record<string, unknown>;
 };
+// The Events page's time ranges, resolved by the API in UTC; "24h" is the
+// default, and "all" lists rows with no charts.
+export const eventWindows = [
+  "1h",
+  "24h",
+  "today",
+  "yesterday",
+  "7d",
+  "all",
+] as const;
+export type EventWindow = (typeof eventWindows)[number];
+export const defaultEventWindow: EventWindow = "24h";
 // The Events list's filters (docs/api/admin.md), as in its page URL and its
-// API query: a catalogue name or a prefix ending in ".", an account, a
-// workspace, an email, an IP or range, RFC 3339 times, admin reads, and the
-// cursor (rows older than that event).
+// API query: name tokens (catalogue names and group IDs such as "auth.*" or
+// "admin-reads", written as one comma-separated `name`), failed checks
+// only, an account, a workspace, an email, an IP or range, a relative
+// window or RFC 3339 times (never both), and the cursor (rows older than
+// that event).
 export type EventFilters = {
-  name?: string;
+  names?: string[];
+  outcome?: "failed";
   account?: string;
   workspace?: string;
   email?: string;
   ip?: string;
+  window?: EventWindow;
   from?: string;
   to?: string;
-  adminReads?: "include";
   before?: string;
 };
 // A cursor page: rows older than the cursor, and the next one's cursor.
 export type CursorPage<T> = { data: T[]; next: string | null };
+// The kinds of failed check, in the failures chart's order, and how the
+// page names them (mirrors FailureKinds in internal/store).
+export const failureKinds = [
+  "sign_in",
+  "second_factor",
+  "password",
+  "sign_up_code",
+  "admin_door",
+] as const;
+export type FailureKind = (typeof failureKinds)[number];
+export const failureLabels: Record<FailureKind, string> = {
+  sign_in: "Sign-in",
+  second_factor: "Second factor",
+  password: "Password checks",
+  sign_up_code: "Sign-up codes",
+  admin_door: "Admin door",
+};
+// One column of a summary chart: its start, a count per series.
+export type SummaryBucket = { start: string; counts: number[] };
+// The charts' numbers, served with the newest page (summary=include), or
+// why they weren't computed: a window over 7 days ("too_wide"), past their
+// deadline ("too_slow"), or two summaries already running ("busy").
+export type EventSummary =
+  | {
+      status: "ok";
+      bucketSeconds: number;
+      total: number;
+      // Series are group IDs ("auth.*") or, inside one group, names; then
+      // "other".
+      stackedBy: "group" | "name";
+      series: string[];
+      buckets: SummaryBucket[];
+      topNames: { name: string; count: number }[];
+      // Null when no picked event can record a failed check.
+      failures: {
+        total: number;
+        series: FailureKind[];
+        buckets: SummaryBucket[];
+      } | null;
+      limitsReached: number;
+      signInAttempts: number;
+    }
+  | { status: "too_wide" | "too_slow" | "busy" };
+// An Events page: the rows and cursor, the window the API resolved (null
+// for all time; `from` null for a range with no start), the account and
+// workspace filters by name, and the summary when asked for.
+export type AdminEventPage = CursorPage<AdminEvent> & {
+  window: { from: string | null; to: string } | null;
+  refs: { account: AdminRef | null; workspace: AdminRef | null };
+  summary?: EventSummary;
+};
+// A group of event names, from the catalogue: "auth.*" holds sub-groups
+// ("auth.mfa.*") and single names; "admin-reads" the admin reads.
+export type EventGroup = {
+  id: string;
+  label: string;
+  names: string[];
+  groups: EventGroup[];
+};
 export const deliveryStatuses = [
   "failed",
   "retrying",
@@ -156,9 +232,11 @@ export type AdminDeliveryRow = AdminDelivery & {
   event: { id: string; name: string; createdAt: string };
   to: string | null;
 };
-// The filters' names, from GET /api/admin/catalogue.
+// The filters' names, from GET /api/admin/catalogue: every event name in
+// catalogue order, and their groups.
 export type AdminCatalogue = {
   events: string[];
+  eventGroups: EventGroup[];
   limits: string[];
   listeners: string[];
 };

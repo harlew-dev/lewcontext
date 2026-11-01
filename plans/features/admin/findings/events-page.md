@@ -1,6 +1,6 @@
 # Findings: A10, the Events page redesign
 
-Plan: [events-page](../events-page.md) (on the events branch it has moved to `implemented/admin/events-page.md`). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), from your notes.md, with every recommendation in its Decisions table taken as accepted. Screenshots are in [events-page/](events-page/).
+Plan: [events-page](../../implemented/admin/events-page.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), from your notes.md, with every recommendation in its Decisions table taken as accepted. Screenshots are in [events-page/](events-page/).
 
 ## What shipped
 

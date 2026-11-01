@@ -55,7 +55,7 @@ func run() error {
 	// Grouped errors (app_errors): every problem reported from here on is
 	// grouped in memory and stored every 10 seconds, only when there are any,
 	// through the shutdown's drain too, until flushErrors stops it last.
-	collector := observe.NewCollector(repository.ReportErrors, observe.Version())
+	collector := observe.NewCollector(repository.RecordErrors, observe.Version())
 	observe.SetReporter(collector)
 	collecting, stopCollecting := context.WithCancel(context.Background())
 	collected := make(chan struct{})

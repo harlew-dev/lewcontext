@@ -6,6 +6,7 @@ import {
 } from "@/components/app/admin/admin-list";
 import {
   AccountLink,
+  EventPayload,
   EventTable,
   IpLink,
   WorkspaceLink,
@@ -27,14 +28,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Code, Text } from "@/components/ui/text";
+import { Code, Text, TextLink } from "@/components/ui/text";
 import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { formatDateTime } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
 import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
-import type { AdminDelivery, AdminEventDetail } from "@/types/admin";
+import type {
+  AdminDelivery,
+  AdminEventDetail,
+  EventFilters,
+} from "@/types/admin";
 // One event: who, what and from where, its payload as stored, its
 // deliveries to listeners, and the events it's linked with. Opening it is
 // recorded (admin.event.viewed).
@@ -113,11 +118,9 @@ function EventDetails({ event }: { event: AdminEventDetail }) {
       </div>
       <div className="mt-12">
         <Subheading>Payload</Subheading>
-        {/* As text through React's escaping: names and emails may hold markup. */}
-        <pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-950/2.5 p-4 font-mono text-sm/6 text-zinc-950 ring-1 ring-zinc-950/5 dark:bg-white/5 dark:text-white dark:ring-white/10">
-          {JSON.stringify(event.payload, null, 2)}
-        </pre>
+        <EventPayload event={event} className="mt-4" />
       </div>
+      <MoreLikeThis event={event} />
       {event.deliveries.length > 0 && (
         <Deliveries deliveries={event.deliveries} />
       )}
@@ -128,6 +131,46 @@ function EventDetails({ event }: { event: AdminEventDetail }) {
         </div>
       )}
     </>
+  );
+}
+// Links to the Events list filtered like this event, over the last 7 days:
+// the same name, the same IP, the same account.
+function MoreLikeThis({ event }: { event: AdminEventDetail }) {
+  const key = useAdminKey();
+  const account = event.actor ?? event.user;
+  const links: { label: string; filters: EventFilters }[] = [
+    { label: `Events named ${event.name}`, filters: { names: [event.name] } },
+    ...(event.ip
+      ? [{ label: `Events from ${event.ip}`, filters: { ip: event.ip } }]
+      : []),
+    ...(account
+      ? [
+          {
+            label: `Events by ${account.name || account.id}`,
+            filters: { account: account.id },
+          },
+        ]
+      : []),
+  ];
+  return (
+    <div className="mt-12">
+      <Subheading>More like this</Subheading>
+      <ul className="mt-4 space-y-2 text-sm/6">
+        {links.map(({ label, filters }) => (
+          <li key={label}>
+            <TextLink
+              href={adminRoutes.events.index(key, { ...filters, window: "7d" })}
+            >
+              {label}
+            </TextLink>
+            <span className="text-zinc-500 dark:text-zinc-400">
+              {" "}
+              in the last 7 days
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 function Deliveries({ deliveries }: { deliveries: AdminDelivery[] }) {
