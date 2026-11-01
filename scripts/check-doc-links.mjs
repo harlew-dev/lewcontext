@@ -19,12 +19,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const allowedDeadLinks = {
   "plans/README.md → future/framework.md":
     "existing; to fix: a plan that is untracked in the main checkout (plans/future/), not in the repository",
-  "plans/features/admin/read/progress.md → ../../page-folders.md":
-    "existing; to fix: the admin run's notes link a plan that is untracked in the main checkout",
-  "plans/features/admin/read/progress.md → ../../notes.md":
-    "existing; to fix: the admin run's notes link the user's notes, kept outside the repository",
-  "plans/features/admin/read/questions.md → ../../notes.md":
-    "existing; to fix: the admin run's notes link the user's notes, kept outside the repository",
 };
 
 // GitHub's id for a heading: lowercase, punctuation other than - and _
