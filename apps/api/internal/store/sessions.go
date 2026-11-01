@@ -96,11 +96,13 @@ func (s *Store) DeleteSession(ctx context.Context, u User, hash string) error {
 }
 
 // DeleteOtherSessions signs out every session of the user's except hash and
-// records auth.other_sessions_revoked.
+// records auth.other_sessions_revoked, only when it signed one out: asking
+// with nothing to sign out changes nothing, so it records nothing (and
+// can't fill the audit trail).
 func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		count, err := deleteSessions(ctx, tx, "user_id = ? AND token_hash <> ?", u.ID, hash)
-		if err != nil {
+		if err != nil || count == 0 {
 			return err
 		}
 		return s.record(ctx, tx, events.OtherSessionsRevoked{User: u.PublicID, Count: count}, EventScope{UserID: u.ID})

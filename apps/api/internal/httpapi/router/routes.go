@@ -57,9 +57,11 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	// Deleting the account checks the password, like the routes below.
 	mux.Handle("DELETE /api/auth/me", s.RequireSession(s.LimitAuth(http.HandlerFunc(me.Destroy))))
 	// The recovery routes skip the signed-in budget, so a stolen session can't
-	// use it up to keep the owner from signing it out (limits.go).
+	// use it up to keep the owner from signing it out (limits.go). Signing
+	// out the others has a limit of its own instead, counted after the CSRF
+	// check (RequireSessionUnmetered), so no other site can spend it.
 	mux.Handle("POST /api/auth/logout", httpapi.AllowUnverified(s.RequireSessionUnmetered(http.HandlerFunc(sessions.Logout))))
-	mux.Handle("DELETE /api/auth/sessions", httpapi.AllowUnverified(s.RequireSessionUnmetered(http.HandlerFunc(sessions.RevokeOthers))))
+	mux.Handle("DELETE /api/auth/sessions", httpapi.AllowUnverified(s.RequireSessionUnmetered(s.Limit(httpapi.SessionsRevokePerUser, sessions.RevokeOthers))))
 	// Password checks hash like sign-in, so they share its IP limit and hashing slots.
 	mux.Handle("POST /api/auth/password/verify", s.RequireSessionUnmetered(s.LimitAuth(http.HandlerFunc(password.Verify))))
 	mux.Handle("PATCH /api/auth/password", s.RequireSessionUnmetered(s.LimitAuth(http.HandlerFunc(password.Update))))

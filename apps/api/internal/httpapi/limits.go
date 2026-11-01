@@ -89,6 +89,12 @@ var (
 	// The admin pages' own budget, as api-read:per-user is the app's.
 	AdminReadPerUser = ratelimit.Limit{Name: "admin-read:per-user", Max: 1000, Window: 5 * time.Minute, InMemory: true}
 
+	// SessionsRevokePerUser: one user's requests to sign out their other sessions.
+	// The route skips the write budget (a recovery route), so this is its own
+	// limit. Used up by a stolen session, the owner still changes the
+	// password, which signs out every other session too.
+	SessionsRevokePerUser = ratelimit.Limit{Name: "sessions-revoke:per-user", Max: 30, Window: time.Hour}
+
 	// WorkspacePerUser: workspaces created by one user.
 	WorkspacePerUser = ratelimit.Limit{Name: "workspace:per-user", Max: 10, Window: time.Hour}
 	// ProjectPerUser: projects created by one user, across all of their workspaces.
@@ -143,6 +149,7 @@ var RateLimits = []ratelimit.Limit{
 	RegisterPerIP, RegisterPerEmail, RegisterGlobal,
 	EmailCodePerEmail, EmailVerificationPerEmail, EmailVerificationGlobal,
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
+	SessionsRevokePerUser,
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
 	ClientErrorPerUser, ClientErrorGlobal,

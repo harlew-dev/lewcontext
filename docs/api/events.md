@@ -42,7 +42,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.login_attempted` | `email`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
-| `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
+| `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions`, only when it signed at least one session out |
 | `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` / `mfa_setup` / `mfa_disable` / `recovery_codes` | both password endpoints (changing the password only without MFA), both deletions that need it, and setting up, turning off and renewing the codes of two-factor authentication, whenever the current password was checked |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
 | `auth.password_reset.requested` | `email` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |

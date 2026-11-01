@@ -44,6 +44,7 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | `api:per-user` | 300 / 15 min | session user | database | every signed-in write, except the recovery routes below | 429 |
 | `api-read:per-user` | 1,000 / 5 min | session user | memory | every signed-in GET: about 3 a second sustained | 429 |
 | `admin-read:per-user` | 1,000 / 5 min | admin user | memory | every admin dashboard read (`RequireAdminSession`), the admin's own budget ([admin.md](admin.md)) | 429 |
+| `sessions-revoke:per-user` | 30 / hour | session user | database | `DELETE /api/auth/sessions` (signing out the other sessions): the route skips the write budget (a recovery route, below), so this is its own limit. Used up by a stolen session, the owner still changes the password, which signs out every other session too | 429 |
 | `workspace:per-user` | 10 / hour | session user | database | `POST /api/workspaces` | 429 |
 | `project:per-user` | 100 / hour | session user | database | `POST …/projects`, across all of the user's workspaces | 429 |
 | `invitation:per-user` | 20 / hour | session user | database | `POST …/invitations`, across all of the user's workspaces: each one emails an address the inviter chooses | 429 |
@@ -70,7 +71,7 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 
 **Unmetered error reports:** `POST /api/client-errors` uses `RequireSessionUnmetered` too, for another reason: a page stuck in an error loop would otherwise spend its user's write budget and leave them unable to save anything. It is bounded by `client-error:per-user` (counted after the CSRF check, so no other site can spend it) and `client-error:global` instead, and only updates memory.
 
-**Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `RequireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows.
+**Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `RequireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows, and revoking has `sessions-revoke:per-user` (counted after the CSRF check, so no other site can spend it); it records `auth.other_sessions_revoked` only when it signed one out.
 
 **Not limited:** a wrong admin key (no query is made, and guessing 122 bits or more is hopeless), `GET /api/health` and `/api/health/live` (orchestrator probes; put them behind an edge limiter if they're ever public) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
 
