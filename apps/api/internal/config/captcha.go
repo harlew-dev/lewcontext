@@ -34,6 +34,12 @@ const (
 
 var turnstileTestKey = regexp.MustCompile(`^[123]x0+[A-F]{2}$`)
 
+// IsTurnstileTestKey reports whether key is one of Cloudflare's published
+// Turnstile test keys (site or secret), which production refuses.
+func IsTurnstileTestKey(key string) bool {
+	return turnstileTestKey.MatchString(key)
+}
+
 // loadCaptcha reads CAPTCHA_PROVIDER, CAPTCHA_SITE_KEY, CAPTCHA_SECRET_KEY
 // and PER_IP_LIMITS.
 func (c *Config) loadCaptcha() error {
@@ -71,7 +77,7 @@ func (c *Config) loadCaptcha() error {
 	if c.CaptchaSiteKey == "" || c.CaptchaSecretKey == "" {
 		return errors.New("CAPTCHA_PROVIDER=turnstile needs CAPTCHA_SITE_KEY and CAPTCHA_SECRET_KEY")
 	}
-	if turnstileTestKey.MatchString(c.CaptchaSiteKey) || turnstileTestKey.MatchString(c.CaptchaSecretKey) {
+	if IsTurnstileTestKey(c.CaptchaSiteKey) || IsTurnstileTestKey(c.CaptchaSecretKey) {
 		return errors.New("CAPTCHA_SITE_KEY and CAPTCHA_SECRET_KEY are Cloudflare's test keys: production needs your own")
 	}
 	return nil

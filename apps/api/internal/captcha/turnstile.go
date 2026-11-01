@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/config"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,20 +27,35 @@ const (
 	maxResponse   = 64 << 10
 )
 
+// ourFault are siteverify's error codes for a request we got wrong (our
+// secret, our form) or its own failure: not the user's doing, so they're
+// ErrUnavailable (503). Every other code is about the token: ErrRejected.
+var ourFault = []string{"missing-input-secret", "invalid-input-secret", "bad-request", "internal-error"}
+
 // Turnstile is Cloudflare Turnstile, with net/http only.
 type Turnstile struct {
 	siteKey, secret, host string
-	endpoint              string
-	client                *http.Client
+	// testSecret: the secret is one of Cloudflare's test secrets, whose
+	// answers name no action and example.com.
+	testSecret bool
+	endpoint   string
+	client     *http.Client
 }
 
 // NewTurnstile verifies with Cloudflare; tokens must have been solved on
-// host. A nil client uses http.DefaultClient (the timeout is per call).
+// host. It uses a copy of client (nil for the default) that never follows
+// a redirect, so the secret is only ever posted to siteverify.
 func NewTurnstile(siteKey, secret, host string, client *http.Client) *Turnstile {
-	if client == nil {
-		client = http.DefaultClient
+	noRedirects := http.Client{}
+	if client != nil {
+		noRedirects = *client
 	}
-	return &Turnstile{siteKey: siteKey, secret: secret, host: host, endpoint: siteverify, client: client}
+	noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Turnstile{
+		siteKey: siteKey, secret: secret, host: host,
+		testSecret: config.IsTurnstileTestKey(secret),
+		endpoint:   siteverify, client: &noRedirects,
+	}
 }
 
 func (t *Turnstile) Name() string    { return "turnstile" }
@@ -59,47 +76,59 @@ type siteverifyAnswer struct {
 	} `json:"metadata"`
 }
 
-// Verify posts the token to siteverify with our secret, the client's IP and
-// a fresh idempotency key. It must succeed, on our hostname, for action, so
-// a token solved for sign-up can't be spent on login. Single use and the
-// 300-second expiry are Cloudflare's (timeout-or-duplicate). Cloudflare's
-// test secrets answer for any hostname and no action; production refuses
-// them (config), so their answers are taken as they are.
+// Verify posts the token to siteverify with our secret and the client's
+// IP. It must succeed, on our hostname, for action, so a token solved for
+// sign-up can't be spent on login. Single use and the 300-second expiry
+// are Cloudflare's (timeout-or-duplicate). A redirect is ErrUnavailable,
+// never followed. Answers to Cloudflare's test secrets name example.com
+// and no action, so they're taken as they are, but only when our secret is
+// one of them (production refuses those). Failures are logged with
+// siteverify's error codes, never the secret or the token.
 func (t *Turnstile) Verify(ctx context.Context, token, action, ip string) error {
 	if token == "" || len(token) > MaxToken {
 		return ErrRejected
 	}
-	idempotency, err := auth.Token()
+	answer, err := t.siteverify(ctx, token, ip)
 	if err != nil {
-		return err
+		slog.Error("captcha: siteverify couldn't be used", "err", err)
+		return errors.Join(ErrUnavailable, err)
 	}
-	form := url.Values{"secret": {t.secret}, "response": {token}, "remoteip": {ip}, "idempotency_key": {idempotency}}
+	switch {
+	case !answer.Success && slices.ContainsFunc(answer.ErrorCodes, func(code string) bool { return slices.Contains(ourFault, code) }):
+		slog.Error("captcha: siteverify refused our request", "codes", answer.ErrorCodes)
+		return ErrUnavailable
+	case !answer.Success:
+		slog.Warn("captcha: token rejected", "codes", answer.ErrorCodes)
+		return ErrRejected
+	case answer.Metadata.Testing && t.testSecret:
+		return nil
+	case answer.Hostname != t.host || answer.Action != action:
+		slog.Warn("captcha: token solved elsewhere", "hostname", answer.Hostname, "action", answer.Action, "want", action, "testing", answer.Metadata.Testing)
+		return ErrRejected
+	}
+	return nil
+}
+
+// siteverify posts the token and reads the answer: an error when
+// Cloudflare can't be reached, redirects, or answers other than 200 JSON.
+func (t *Turnstile) siteverify(ctx context.Context, token, ip string) (siteverifyAnswer, error) {
+	var answer siteverifyAnswer
+	form := url.Values{"secret": {t.secret}, "response": {token}, "remoteip": {ip}}
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return err
+		return answer, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err := t.client.Do(req)
 	if err != nil {
-		return errors.Join(ErrUnavailable, err)
+		return answer, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return ErrUnavailable
+		return answer, errors.New("siteverify answered " + res.Status)
 	}
-	var answer siteverifyAnswer
-	if err := json.NewDecoder(io.LimitReader(res.Body, maxResponse)).Decode(&answer); err != nil {
-		return errors.Join(ErrUnavailable, err)
-	}
-	switch {
-	case !answer.Success:
-		return ErrRejected
-	case answer.Metadata.Testing:
-		return nil
-	case answer.Hostname != t.host || answer.Action != action:
-		return ErrRejected
-	}
-	return nil
+	err = json.NewDecoder(io.LimitReader(res.Body, maxResponse)).Decode(&answer)
+	return answer, err
 }

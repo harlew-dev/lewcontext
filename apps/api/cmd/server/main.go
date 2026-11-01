@@ -214,6 +214,15 @@ func useCaptcha(api *httpapi.Server, c config.Config) error {
 		}
 	} else {
 		slog.Info("rate limits' challenge levels ask for a CAPTCHA", "provider", provider.Name())
+		// Cloudflare's test secrets answer every check alike: the default
+		// (1x…) passes, the others fail.
+		switch {
+		case c.Production || !config.IsTurnstileTestKey(c.CaptchaSecretKey):
+		case c.CaptchaSecretKey == config.TurnstileTestSecretKey:
+			slog.Info("captcha: test keys, every check passes")
+		default:
+			slog.Info("captcha: test keys, every check fails")
+		}
 	}
 	if c.PerIPLimitsOff {
 		slog.Warn("PER_IP_LIMITS=off: no limit counts client IPs; set CLIENT_IP_HEADER and TRUSTED_PROXIES instead if the proxy can send them")
