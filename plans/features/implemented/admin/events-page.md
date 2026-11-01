@@ -1,6 +1,6 @@
 # Admin: the Events page, redesigned
 
-Status: **draft 2026-11-01**, decisions to confirm. Plan A10 of the [admin plans](README.md). Builds on [events and mail](../implemented/admin/events-and-mail.md) (the page as it is today), keeps the [rules every admin plan keeps](README.md#rules-every-admin-plan-keeps), and draws its charts the way [monitoring](monitoring.md) and [events and mail decision 12](../implemented/admin/events-and-mail.md#charts-decision-12) do. Docs it will change: [admin.md](../../../docs/api/admin.md), [events.md](../../../docs/api/events.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [pagination.md](../../../docs/api/pagination.md), [seeding.md](../../../docs/api/seeding.md), [api/testing.md](../../../docs/api/testing.md), [ui/design.md](../../../docs/ui/design.md), [ui/base-ui.md](../../../docs/ui/base-ui.md), [ui/forms-and-actions.md](../../../docs/ui/forms-and-actions.md), [ui/pages.md](../../../docs/ui/pages.md), [ui/pagination.md](../../../docs/ui/pagination.md), [ui/README.md](../../../docs/ui/README.md), [ui/testing.md](../../../docs/ui/testing.md).
+Status: **implemented 2026-11-01**, with every recommendation in the Decisions table confirmed as written (the user's go-ahead of 2026-11-01); see [How the build differs](#how-the-build-differs). Plan A10 of the [admin plans](../../admin/README.md). Builds on [events and mail](events-and-mail.md) (the page as it was), keeps the [rules every admin plan keeps](../../admin/README.md#rules-every-admin-plan-keeps), and draws its charts the way [monitoring](../../admin/monitoring.md) and [events and mail decision 12](events-and-mail.md#charts-decision-12) do. Docs updated: [admin.md](../../../../docs/api/admin.md), [events.md](../../../../docs/api/events.md), [endpoints.md](../../../../docs/api/endpoints.md), [database.md](../../../../docs/api/database.md), [pagination.md](../../../../docs/api/pagination.md), [seeding.md](../../../../docs/api/seeding.md), [api/testing.md](../../../../docs/api/testing.md), [testing.md](../../../../docs/testing.md), [ui/design.md](../../../../docs/ui/design.md), [ui/base-ui.md](../../../../docs/ui/base-ui.md), [ui/forms-and-actions.md](../../../../docs/ui/forms-and-actions.md), [ui/pages.md](../../../../docs/ui/pages.md), [ui/pagination.md](../../../../docs/ui/pagination.md), [ui/README.md](../../../../docs/ui/README.md), [ui/testing.md](../../../../docs/ui/testing.md).
 
 ## Why
 
@@ -37,7 +37,7 @@ Oct 31, 14:30 – Nov 1, 14:30 UTC
                                                                         [Newer] [Older]
 ```
 
-- **Header** ([forms-and-actions.md](../../../docs/ui/forms-and-actions.md), page header row): the heading on the left; on the right the time range (a `Listbox`, `aria-label="Time range"`) and the **Filters** button (`Button outline`, `FunnelIcon`, the word "Filters" and, when any are applied, a zinc `Badge` with their count; decision 3). Below the heading, a `Text` line with the window the server resolved, in UTC.
+- **Header** ([forms-and-actions.md](../../../../docs/ui/forms-and-actions.md), page header row): the heading on the left; on the right the time range (a `Listbox`, `aria-label="Time range"`) and the **Filters** button (`Button outline`, `FunnelIcon`, the word "Filters" and, when any are applied, a zinc `Badge` with their count; decision 3). Below the heading, a `Text` line with the window the server resolved, in UTC.
 - **Badges** for the applied filters, then the summary, then the list. There is no Refresh button (the user's note of 2026-11-01); a browser reload, or picking a range again, loads again.
 
 ## Filters
@@ -128,7 +128,7 @@ The page URL holds everything, so a link is shareable and back and forward walk 
 
 - **`name`** is one comma-separated list of tokens: a group ID (`auth.*`, `auth.mfa.*`, `admin-reads`) or a catalogue name. The page writes it **canonically**: a fully picked group as its ID, then the names left over, in catalogue order. At most 64 tokens (the catalogue has 60 names), so the longest canonical value is under 2 KB, well inside every browser's and proxy's limit. `*` and `,` need no escaping in a query string.
 - **The parser forgives, the API doesn't.** Reading the URL, the page drops what it doesn't understand (an unknown token, a malformed ID), as `eventFilters` does today, so a hand-edited link still shows a list; the API answers anything it doesn't accept with 400.
-- **Email and IP stay in the URL**, as today and as [email blocks](../implemented/admin/email-blocks.md) accepted for `?email=`: admin pages send `Referrer-Policy: no-referrer`, and our own logs never store query strings ([observability](observability.md)). A proxy in front may log the API's query string; that is no different from today, and `docs/deployment.md` already tells operators what their proxy logs.
+- **Email and IP stay in the URL**, as today and as [email blocks](email-blocks.md) accepted for `?email=`: admin pages send `Referrer-Policy: no-referrer`, and our own logs never store query strings ([observability](../../admin/observability.md)). A proxy in front may log the API's query string; that is no different from today, and `docs/deployment.md` already tells operators what their proxy logs.
 - **`window`** is left out for the default (`24h`); `window` and `from`/`to` never appear together.
 - **Links in** from other pages pass their own window: a user's and a workspace's **Activity**, and Email blocks' **Show activity**, pass `window=all` (the account's whole history, as the link shows today); Mail's frequent addresses pass Mail's window (`24h` or `7d`); an IP in the Events list keeps the current window and filters and adds the IP.
 
@@ -263,7 +263,7 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 
 | File | Holds |
 | --- | --- |
-| `pages/admin/[key]/events.tsx` (or `events/index.tsx` if [page folders](../page-folders.md) lands first) | `AdminEventIndex`: the header, the range `Listbox` and the custom range dialog, the Filters dialog, the badges, the summary (tiles and charts), the list and its states, as named local functions (rule 3: used by this page alone) |
+| `pages/admin/[key]/events.tsx` (or `events/index.tsx` if [page folders](../../page-folders.md) lands first) | `AdminEventIndex`: the header, the range `Listbox` and the custom range dialog, the Filters dialog, the badges, the summary (tiles and charts), the list and its states, as named local functions (rule 3: used by this page alone) |
 | `pages/admin/[key]/events/[event].tsx` | "More like this" |
 | `components/app/admin/event-filters.ts` | Shared by the events page, the event page and the links in (user, workspace, Mail, Email blocks): `eventFilters(search)` (the forgiving parser), `compressNames` / `expandTokens` (names ↔ canonical tokens), `selectionLabel` (the chip and badge text), `windowLabel` |
 | `components/app/admin/events.tsx` | `EventTable` with the disclosure, the Failed badge and seconds |
@@ -321,9 +321,9 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 - `docs/ui/design.md`: `Combobox`, `Calendar`, `Badge onRemove`, `BarChart onSelect`, `BarList` in the component table and Charts. `docs/ui/base-ui.md`: `Select` (`multi`, searchable) → `Combobox`, `Calendar` (datepicker) → `Calendar`, and the local-midnight pitfall under known issues.
 - `docs/ui/forms-and-actions.md`: a row for **List filters** (a Filters button in the page header opening a dialog with Clear all · Cancel · **Apply filters**, applied filters as removable badges under the heading).
 - `docs/ui/pages.md`, `docs/ui/pagination.md` (the kept summary), `docs/ui/README.md` (`event-filters.ts` in `components/app/admin`), `docs/ui/testing.md`.
-- This plan, when it ships: status, how the build differs, moved to `implemented/admin/`. [monitoring](monitoring.md)'s `Drill` builds these parameters (`name` tokens, `window` or `from`/`to`, `outcome`) when A4 is built.
+- This plan, when it ships: status, how the build differs, moved to `implemented/admin/`. [monitoring](../../admin/monitoring.md)'s `Drill` builds these parameters (`name` tokens, `window` or `from`/`to`, `outcome`) when A4 is built.
 
-## Decisions (to confirm)
+## Decisions (confirmed 2026-11-01, as recommended)
 
 | # | Question | Recommendation |
 | --- | --- | --- |
@@ -350,6 +350,23 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 | 21 | The table | Columns as today, **times to the second**, a **Failed** badge, **rows that open in place** with the payload (no request), "More like this" on the event page |
 | 22 | Refresh | **None on this page** (the user's note on removing Refresh buttons); Retry stays on failures (AGENTS.md rule 8), and picking a range again reloads |
 
+## How the build differs
+
+- **The list of a window running to now has no upper bound.** `1h`, `24h`, `today` and `7d` filter `created_at >=` their start only, so the newest rows show whatever the database's clock says; the echoed `to` is the server's time. `yesterday` and a custom range keep their exclusive end. A custom range with only `from` runs to now; one with only `to` has no start, so its summary is `too_wide`.
+- **A relative window keeps its own bucket:** `today` and `yesterday` are always 30 minutes, and `7d` 3 hours, though flooring its start to a bucket makes it a little over 7 days. Flooring also gives the last hour 61 columns and the last 7 days 57.
+- **Empty values** (`name=`, `outcome=`, `summary=`) count as not given, as every other parameter's; anything else not accepted is still 400.
+- **The summary's shape:** only `status` when it isn't `ok`; `series` and `topNames` are `[]` when nothing matched; `failures` is null when no picked name can record a failed check. A database error in the summary that isn't its deadline is a 500 like any other (nothing recorded), not a status.
+- **Names in Go:** the summary is `store.AdminSummary` (`AdminEventSummary` already names a delivery's event on the Mail page), `SummarizeAdminEvents` and `FindAdminEventRefs`; the failure table is its own file, `store/admin_event_failures.go` (with `FailureNames`, `FailureKinds`); windows and buckets are `endpoints/admin/event_window.go` (not `event_windows.go`: Go builds a `_windows.go` file only on Windows). The bound on summaries is `httpapi.Summaries` (`summaries.go`: two slots, a 1 s wait, the 5 s deadline; `Wait` and `Deadline` exported so tests shorten them), one field on `Server`.
+- **Groups:** every group has a label (sub-groups too: "Two-factor authentication", "Members", …); each group's `names` are the names directly in it, `groups` its sub-groups (`[]` for none). Groups come in catalogue order, so `rate_limit.*` comes before `email.*`. A group of one name is still a group, so picking `rate_limit.reached` reads `rate_limit.*`.
+- **Volume** (`make seed only=events count=1000000`, PostgreSQL 17, recorded in [testing.md](../../../../docs/testing.md#volume-check-for-the-events-page)): the default view's list 0.6 ms, its counts 88 ms (index-only on `events_created_idx … INCLUDE (name)`, no heap fetches), its failures 0.3 s; 7 days' counts 1.2 s (an index-only scan of the name index and a sort that spills to disk at the default `work_mem`; 0.8 s at 16 MB), failures 0.3 s; `auth.mfa.*` over 7 days 29 ms; `outcome=failed` 2 ms; all time with rare names 0.1–30 ms (the planner takes the name index when few rows match). Everything is under 2 s, so **the per-name merge wasn't built** and no other index added.
+- **The seeder** has its own bound (2,000,000; the others keep 100,000) and the seed command's timeout is 20 minutes; a million events take about 2½. Refusing production moved into `allowed` in `cmd/seed`, with a test.
+- **`Calendar`:** BaseUI's month and year menus are plain text (the arrows change month); with nothing picked, two months end at the latest pickable one (`highlightedDate`); a range needs an array value, so nothing picked is `[]`. The custom range dialog is `size="2xl"`, not `sm`, to fit two months.
+- **`Combobox`:** shares `Listbox`'s exported slots; its chips are `Badge onRemove` (BaseUI calls the remove `onActionClick`). Its chips list leftover names in tree order (sub-groups first), while the page's badges and URL use catalogue order.
+- **Clicking a column** means clicking its bar (Recharts' `Bar onClick`, which carries the row): the chart-wide click reads the hover index, which lags a quick pointer and zoomed to the wrong bucket in the e2e test. An empty column has nothing to click; the custom range covers it.
+- **Charts:** `BarChart` is generic over its row type (rows carry their bucket's `start`), and its ticks are compact ("1.5K") everywhere, Mail's too. The Failed checks tile reads "N% of sign-ins" (failed sign-ins over attempts), or what can fail when filtering to failed checks.
+- **The page:** `useAdminResource` gained `stale` (the shown data is the last query's), so the charts and caption know when they're kept from other filters (dimmed charts also take no clicks, so a column can't zoom by a bucket about to change); the caption reads a whole-day range as days ("Oct 31 UTC"). An empty "Last 7 days" offers Show all time. The Filters dialog has a one-line description. An IP on an event's page links to its last 7 days (`IpLink` takes an `href`; `EventTable` an `ipHref`). `eventQuery` and `eventsUrl` (`lib/admin-routes.ts`) build both the page URL and the API path, commas kept readable.
+- **The admin plans' table** had no A10 row; it gained one.
+
 ## Not included
 
 - **Saved views** and per-admin defaults.
@@ -360,5 +377,5 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 - **Counts beside each name in the picker**, distinct accounts or IPs in the tiles: more aggregates, mostly reading rows.
 - **Drag to zoom** on a chart: clicking a column does it.
 - **Live tail or auto-refresh:** every load is a recorded read.
-- **CSV export:** [compliance](compliance.md).
-- **Monitoring's signals and thresholds:** [monitoring](monitoring.md) links here instead.
+- **CSV export:** [compliance](../../admin/compliance.md).
+- **Monitoring's signals and thresholds:** [monitoring](../../admin/monitoring.md) links here instead.

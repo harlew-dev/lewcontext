@@ -16,14 +16,14 @@ Last updated 2026-11-01, during the overnight run.
 | 4 | **Refresh buttons ([notes.md](../../notes.md)).** I'm removing the Refresh buttons, but keeping **Retry when a load fails**, which AGENTS.md rule 8 requires. Is that what you meant? | Remove Refresh, keep Retry on failure | — |
 | 5 | **"Didn't receive the email?" modal ([notes.md](../../notes.md)).** It will say "your address might be blocked" to *everyone*, never only to blocked addresses, because AGENTS.md forbids revealing a block | Same text for everyone | — |
 | 6 | **Terms of service and privacy policy:** 19 decisions. You first asked for a plan only; it's now built on the ui line as recommended, since you asked for every plan. Main points: `POLICIES=on\|off` (default off) switched at runtime; Markdown files in `apps/web/content/policy/` turned into pages at build time with `marked`, a **new devDependency** that never reaches the browser; a required checkbox at sign-up; accepted versions stored on `users`; existing accounts aren't asked | Build as recommended | [policies plan](../../policies.md#decisions-to-confirm) |
-| 7 | **Events page redesign:** decisions to confirm. Your notes already settle the multi-select with groups, the date dropdown, the Filters dialog with badges, and graphs. The rest are my recommendations, and I'll build with them tonight unless you say otherwise | Build with recommendations | [events-page plan](../events-page.md) |
+| 7 | **Events page redesign:** decisions to confirm. Your notes already settle the multi-select with groups, the date dropdown, the Filters dialog with badges, and graphs. The rest are my recommendations, and I'll build with them tonight unless you say otherwise | Build with recommendations | [events-page plan](../../implemented/admin/events-page.md) |
 
 ## Every open plan: recommendations taken as accepted
 
 On 2026-11-01 you asked for every open plan to be built while you sleep, to review in the morning. So each plan's Decisions table is being taken **as recommended**:
 - A4 monitoring, A5 alerts, A6 actions, A7 compliance;
 - captcha-challenges, convention-checks, page-folders;
-- the two new plans: [policies](../../policies.md) (terms and privacy) and the [Events page](../events-page.md).
+- the two new plans: [policies](../../policies.md) (terms and privacy) and the [Events page](../../implemented/admin/events-page.md).
 
 Any decision I'd change, or that a builder had to change, is listed in that plan's findings file under `../findings/`. It will also be summarised here as each plan ships.
 

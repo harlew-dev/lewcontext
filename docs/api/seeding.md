@@ -9,6 +9,7 @@ make seed                                   # demo account test@example.com, its
 make seed only=volume count=500             # projects in the demo account's newest workspace
 make seed only=volume email=you@example.com # …or another existing account's (it needs a workspace)
 make seed only=users count=25 projects=20   # 25 fake accounts, each owning a workspace with 0–20 projects
+make seed only=events count=1000000         # fake audit trail events, to check the admin Events page at volume
 ```
 
 | Seeder | Default count | Idempotent |
@@ -16,10 +17,11 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `demo` | The "Acme" workspace, 6 named projects, and 4 fake members (admin, two members, viewer) who can't sign in | Yes |
 | `volume` | 120 projects | No (insert-only; refuses unknown accounts and accounts without a workspace) |
 | `users` | 10 users, each owning a workspace with up to 60 projects; every third never verified its email (as if made while `EMAIL_VERIFICATION` was off), to try the Not verified badge and `EMAIL_VERIFICATION_EXISTING=required` | No (insert-only) |
+| `events` | 10,000 fake events (at most 2,000,000): most in the last 7 days, a thin tail back 90, sign-ins weighted heaviest, and bursts of failed sign-ins from three addresses. Payloads look like the store's but name accounts and workspaces that don't exist. For `EXPLAIN` at volume ([testing.md](../testing.md#volume-check-for-the-events-page)), not for demos | No (insert-only) |
 
 - Accounts created by `demo` and `users` sign in with `DEMO_PASSWORD` from `.env` (`password` in `.env.example`). It may be 1–128 bytes: sign-up's 12-character minimum doesn't apply to seeded development accounts.
-- Each seeder runs in one transaction and prints its fake data seed. Seeders never delete or truncate. Production is refused before connecting.
-- Counts are 0–100 000; 0 means the default. Run `cd apps/api && go run ./cmd/seed -h` to list seeders.
+- Each seeder runs in one transaction and prints its fake data seed. Seeders never delete or truncate. Production is refused before connecting, for every seeder (`TestSeedingIsRefusedInProduction`, `cmd/seed`).
+- Counts are 0–100 000 (`events`: 0–2 000 000); 0 means the default. Run `cd apps/api && go run ./cmd/seed -h` to list seeders.
 - After a schema change, rebuild the local database first: `make migrate-fresh CONFIRM=1 && make seed` ([database.md](database.md#migrations)).
 - **`make` always uses the `DATABASE_URL` from `.env`.** To seed another database or schema, run `cd apps/api && DATABASE_URL=… go run ./cmd/seed -only volume`.
 
@@ -33,7 +35,7 @@ make seed only=users count=25 projects=20   # 25 fake accounts, each owning a wo
 | `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role (any of `auth.Roles`, viewers included). Needs `UserID` and `WorkspaceID`; use `MemberOf` |
 | `Projects` | `Project` | Valid name, description, status and color; created in the last 90 days. Needs `WorkspaceID`; use `ProjectsIn` |
 | `RateLimits` | `RateLimit` | Counter in the current 15-minute window, keyed like the `auth:per-ip` limiter |
-| `Events` | `Event` | `rate_limit.reached` events from the last 90 days (no other records needed); set `UserID`/`WorkspaceID` with a state. Seeders don't create events: fake history would be misleading |
+| `Events` | `Event` | `rate_limit.reached` events from the last 90 days (no other records needed); set `UserID`/`WorkspaceID` with a state. Only the `events` seeder creates events, and only when asked for by name: fake history is for checking volume, never demos |
 | `WorkspaceInvitations` | `WorkspaceInvitation` | A live invitation, not yet sent, to a unique `example.test` address as admin, member or viewer. Needs `WorkspaceID`; use `InvitationsTo(workspaceID)`. `Sent` gives it a link and keeps the raw `Token` |
 | `MFATOTPs` | `MFATOTP` | A confirmed authenticator (MFA on), its secret sealed with `factory.Keys`; `Plain` holds it and `Code()` makes the current code. Use `TOTPFor(userID)`, which sets the user and seals it; `PendingTOTP` leaves setup pending |
 | `RecoveryCodes` | `RecoveryCode` | An unused recovery code, stored as its keyed digest; `Code` keeps it as shown. Use `RecoveryCodesFor(userID)` |

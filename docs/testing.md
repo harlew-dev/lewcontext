@@ -85,6 +85,16 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops them all together). A signed-in page reload should show the "A brief pause." retry screen. During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
 
+## Volume check for the Events page
+
+The admin Events page's list and charts are checked at volume with fake history, on a development database only:
+
+```sh
+make seed only=events count=1000000     # about 2½ minutes
+```
+
+Then run the queries with `EXPLAIN (ANALYZE, BUFFERS)` in `psql` (the SQL is `IndexAdminEvents` and `SummarizeAdminEvents`). At a million events (2026-11-01, PostgreSQL 17): the default view's list 0.6 ms, its counts 88 ms (an index-only scan of `events_created_idx`), its failed checks 0.3 s; 7 days' counts 1.2 s and failed checks 0.3 s; a group (`auth.mfa.*`, 7 days) 29 ms; `outcome=failed` 2 ms; all time with rare names 0.1–30 ms (the planner picks the name index). Each should stay under 2 s; one that doesn't needs an index or a rollup, not a slower page.
+
 ## Migration reversal
 
 See [api/database.md](api/database.md#migrations). Rolling back runs destructive down SQL: don't do it without explicit authorization and a backup.
