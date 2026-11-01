@@ -134,6 +134,8 @@ func TestPseudonymise(t *testing.T) {
 	event(t, s, "admin.event.listed", old, map[string]any{"admin": "usr_00000000000001", "filters": map[string]any{"email": "cy@example.test", "ip": "203.0.113.77", "window": "24h"}}, "198.51.100.200")
 	event(t, s, "admin.user.listed", old, map[string]any{"admin": "usr_00000000000001", "q": "dee@example.test", "sort": "name", "page": 1}, "")
 	event(t, s, "admin.workspace.listed", old, map[string]any{"admin": "usr_00000000000001", "q": "acme", "sort": "name", "page": 12345678901}, "")
+	event(t, s, "admin.ip.viewed", old, map[string]any{"admin": "usr_00000000000001", "address": "2001:db8:aaaa:bbbb::/64", "window": "24h"}, "198.51.100.201")
+	event(t, s, "admin.session.moved", old, map[string]any{"admin": "usr_00000000000001", "from": "198.51.100.9", "to": "2001:db8:5:6::/64", "sessionAge": 60}, "2001:db8:5:6::1")
 	event(t, s, "auth.registered", 10*day, map[string]any{"email": "eve@example.test", "name": "Eve"}, "198.51.100.5")
 	pending := event(t, s, "auth.password_reset.requested", old, map[string]any{"email": "fay@example.test"}, "198.51.100.6")
 	if _, err := factory.DeliveryOf(pending.ID, "mail.password_reset").CreateOne(ctx, s.DB, factory.TestFaker(t)); err != nil {
@@ -145,11 +147,11 @@ func TestPseudonymise(t *testing.T) {
 		t.Fatal("minimised without the pseudonyms' key")
 	}
 	preview, err := Run(ctx, s, target, Options{Pseudonym: keys.EmailPseudonym})
-	if err != nil || preview.Deleted != 5 || preview.Kept != 1 || !strings.HasPrefix(preview.String(), "pseudonymise: would minimise 5 ") {
+	if err != nil || preview.Deleted != 7 || preview.Kept != 1 || !strings.HasPrefix(preview.String(), "pseudonymise: would minimise 7 ") {
 		t.Fatalf("preview: %+v %v", preview, err)
 	}
 	r, err := Run(ctx, s, target, Options{Confirm: true, Batch: 2, Pseudonym: keys.EmailPseudonym})
-	if err != nil || r.Deleted != 5 || !strings.HasPrefix(r.String(), "pseudonymise: minimised 5 ") {
+	if err != nil || r.Deleted != 7 || !strings.HasPrefix(r.String(), "pseudonymise: minimised 7 ") {
 		t.Fatalf("run: %+v %v", r, err)
 	}
 	rows := rowsByName(t, s)
@@ -165,13 +167,21 @@ func TestPseudonymise(t *testing.T) {
 			return r.IP == "198.51.100.0/24" && strings.Contains(r.Payload, `"email": "`+p("cy@example.test")+`"`) && strings.Contains(r.Payload, `"ip": "203.0.113.0/24"`) && strings.Contains(r.Payload, `"window": "24h"`)
 		},
 		"admin.user.listed": func(r minimisedRow) bool { return strings.Contains(r.Payload, `"q": "`+p("dee@example.test")+`"`) },
+		// The address one address's page looked at, and the networks an
+		// admin session moved between, cut like the ip column.
+		"admin.ip.viewed": func(r minimisedRow) bool {
+			return r.IP == "198.51.100.0/24" && strings.Contains(r.Payload, `"address": "2001:db8:aaaa::/48"`) && strings.Contains(r.Payload, `"window": "24h"`)
+		},
+		"admin.session.moved": func(r minimisedRow) bool {
+			return r.IP == "2001:db8:5::/48" && strings.Contains(r.Payload, `"from": "198.51.100.0/24"`) && strings.Contains(r.Payload, `"to": "2001:db8:5::/48"`) && strings.Contains(r.Payload, `"sessionAge": 60`)
+		},
 		"admin.workspace.listed": func(r minimisedRow) bool {
 			return strings.Contains(r.Payload, `"q": "acme"`) && strings.Contains(r.Payload, `"page": 12345678901`)
 		},
 	}
 	for name, ok := range checks {
 		row := rows[name]
-		if !row.Minimised || !ok(row) || strings.Contains(row.Payload, "@") || strings.Contains(row.Payload, "198.51.100.23") {
+		if !row.Minimised || !ok(row) || strings.Contains(row.Payload, "@") || strings.Contains(row.Payload, "198.51.100.23") || strings.Contains(row.Payload, "/64") {
 			t.Errorf("%s: %+v", name, row)
 		}
 	}

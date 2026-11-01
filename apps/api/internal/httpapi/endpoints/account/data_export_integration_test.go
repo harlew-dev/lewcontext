@@ -143,7 +143,9 @@ func TestDownloadMyData(t *testing.T) {
 	}
 	var export store.AccountExport
 	apitest.Must(0, json.Unmarshal(w.Body.Bytes(), &export))(t)
-	if export.Account.ID != user.PublicID || export.Account.Email != user.Email || export.Account.MFAEnabledAt == nil {
+	// Last seen: its signed-in requests moved users.last_seen_at.
+	if export.Account.ID != user.PublicID || export.Account.Email != user.Email || export.Account.MFAEnabledAt == nil ||
+		export.Account.LastSeenAt == nil || time.Since(*export.Account.LastSeenAt) > time.Minute {
 		t.Errorf("account: %+v", export.Account)
 	}
 	if len(export.Sessions) != 2 || len(export.Memberships) != 2 {

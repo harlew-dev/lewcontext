@@ -21,7 +21,8 @@ func lastSeen(t *testing.T, s *Store, userID int64) *time.Time {
 }
 
 // The session check moves users.last_seen_at at most once an hour per
-// account, in the same statement, and never for a session that isn't live.
+// account, in the same statement, and never for a session that isn't live
+// nor a suspended account's.
 func TestSessionCheckMovesLastSeenHourly(t *testing.T) {
 	s, ctx := queueStore(t, nil)
 	f := factory.TestFaker(t)
@@ -85,6 +86,26 @@ func TestSessionCheckMovesLastSeenHourly(t *testing.T) {
 	}
 	if lastSeen(t, s, other.ID) != nil {
 		t.Fatal("an expired session moved last_seen_at")
+	}
+
+	// A suspended account's live session isn't found (the suspension's
+	// backstop, in the same statement), so it isn't seen either.
+	suspended, err := factory.Users.CreateOne(ctx, s.DB, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := factory.SessionFor(ctx, s.DB, f, suspended.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := factory.UserSuspensions.State(factory.SuspensionOf(suspended.ID)).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FindSession(ctx, auth.Digest(live.Token)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("a suspended account's session: %v", err)
+	}
+	if lastSeen(t, s, suspended.ID) != nil {
+		t.Fatal("a suspended account's session moved last_seen_at")
 	}
 }
 

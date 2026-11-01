@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/events"
 	"net/netip"
 	"strings"
 	"time"
@@ -36,10 +37,22 @@ var PrunablePseudonymise = Prunable{
 	Keep:  withPendingDeliveries,
 }
 
+// payloadNetworks are the payload fields holding a client's address or
+// network apart from the ip column, by event name: what one address's
+// page looked at (an address or an IPv6 /64), and the networks an admin
+// session moved between (already a /24 or /48 when recorded; cut again,
+// so a field can never keep more). minimisePayload cuts each like the ip
+// column.
+var payloadNetworks = map[string][]string{
+	events.AdminIPViewed{}.EventName():     {"address"},
+	events.AdminSessionMoved{}.EventName(): {"from", "to"},
+}
+
 // minimisable is an event row as the pseudonymise target reads it.
 type minimisable struct {
 	bun.BaseModel `bun:"table:events,alias:e"`
 	ID            int64
+	Name          string
 	IP            string // text(e.ip): "198.51.100.7/32", or "" for none
 	Payload       json.RawMessage
 }
@@ -54,7 +67,7 @@ func (s *Store) PseudonymiseEvents(ctx context.Context, before time.Time, limit 
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var rows []minimisable
 		err := tx.NewSelect().Model(&rows).
-			Column("e.id", "e.payload").
+			Column("e.id", "e.name", "e.payload").
 			ColumnExpr("coalesce(text(e.ip), '') AS ip").
 			Where("e.minimised_at IS NULL AND e.created_at < ?", before).
 			WhereGroup(" AND NOT ", withPendingDeliveries).
@@ -66,7 +79,7 @@ func (s *Store) PseudonymiseEvents(ctx context.Context, before time.Time, limit 
 			return err
 		}
 		for _, row := range rows {
-			payload, err := minimisePayload(row.Payload, pseudonym)
+			payload, err := minimisePayload(row.Name, row.Payload, pseudonym)
 			if err != nil {
 				return err
 			}
@@ -115,9 +128,9 @@ func minimiseIP(text string) string {
 // minimisePayload replaces the email addresses in an event's payload with
 // pseudonyms: its email, and on the admin reads the email searched for
 // (filters.email) and a search (q) holding an "@"; and cuts an IP searched
-// for (filters.ip) to its network. Everything else stays as it was,
-// numbers included.
-func minimisePayload(raw json.RawMessage, pseudonym func(string) string) ([]byte, error) {
+// for (filters.ip), and the event name's payloadNetworks, to their
+// networks. Everything else stays as it was, numbers included.
+func minimisePayload(name string, raw json.RawMessage, pseudonym func(string) string) ([]byte, error) {
 	var payload map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
@@ -130,11 +143,20 @@ func minimisePayload(raw json.RawMessage, pseudonym func(string) string) ([]byte
 	}
 	if filters, ok := payload["filters"].(map[string]any); ok {
 		minimiseEmail(filters, "email", pseudonym)
-		if ip, ok := filters["ip"].(string); ok && ip != "" {
-			filters["ip"] = minimiseIP(ip)
-		}
+		minimiseNetwork(filters, "ip")
+	}
+	for _, key := range payloadNetworks[name] {
+		minimiseNetwork(payload, key)
 	}
 	return json.Marshal(payload)
+}
+
+// minimiseNetwork cuts m[key], an address or a range, to its IPv4 /24 or
+// IPv6 /48 (minimiseIP), unless it's empty.
+func minimiseNetwork(m map[string]any, key string) {
+	if value, ok := m[key].(string); ok && value != "" {
+		m[key] = minimiseIP(value)
+	}
 }
 
 // minimiseEmail replaces m[key] with its pseudonym, unless it's empty, a
