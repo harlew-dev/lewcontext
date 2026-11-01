@@ -2,6 +2,10 @@ package admin_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"github.com/brianvoe/gofakeit/v7"
+	"github.com/uptrace/bun"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi/apitest"
@@ -11,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -312,5 +317,78 @@ func TestIPBlocksUseTheClientAddress(t *testing.T) {
 	}
 	if send("198.51.100.9", "203.0.113.1") != 403 {
 		t.Fatal("a forged header unblocked someone")
+	}
+}
+
+// manyBlocks makes n live blocks of distinct /24s in 10.0.0.0/8, made at
+// made.
+func manyBlocks(t *testing.T, db bun.IDB, f *gofakeit.Faker, n int, made time.Time) {
+	t.Helper()
+	i := 0
+	distinct := func(b *factory.IPBlock) {
+		b.Network, b.CreatedAt = fmt.Sprintf("10.%d.%d.0/24", i/256, i%256), made
+		i++
+	}
+	apitest.Must(factory.IPBlocks.State(distinct).Create(context.Background(), db, f, n))(t)
+}
+
+// The cap of 1,000 live blocks holds when admins block at once: the live
+// ones are counted under an advisory lock, so of ten blocks made together
+// at 998 exactly two get in. If more were ever live, every server enforces
+// the same 1,000: the oldest.
+func TestIPBlockCap(t *testing.T) {
+	_, db := server(t)
+	s := serverWith(t, db, func(*config.Config) {})
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	operator, _ := operatorSignedIn(t, db, f)
+	manyBlocks(t, db, f, store.MaxIPBlocks-2, time.Now().Add(-time.Hour))
+	a := store.AdminAction{Admin: store.User{ID: operator.User.ID, PublicID: operator.User.PublicID, Name: operator.User.Name, Email: operator.User.Email}, Reason: reason}
+	results := make(chan error, 10)
+	var wg sync.WaitGroup
+	for i := range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			network := netip.MustParsePrefix(fmt.Sprintf("203.0.113.%d/32", i+1))
+			_, err := s.Repo.CreateIPBlock(ctx, store.NewIPBlock{Network: network, For: time.Hour}, a)
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	made, refused := 0, 0
+	for err := range results {
+		switch {
+		case err == nil:
+			made++
+		case errors.Is(err, store.ErrTooManyIPBlocks):
+			refused++
+		default:
+			t.Fatal(err)
+		}
+	}
+	live := apitest.Must(db.NewSelect().TableExpr("ip_blocks").Where("expires_at > now()").Count(ctx))(t)
+	if made != 2 || refused != 8 || live != store.MaxIPBlocks {
+		t.Fatalf("made %d, refused %d, live %d", made, refused, live)
+	}
+
+	// Past the cap (a row made around CreateIPBlock): the oldest 1,000, so
+	// the newest of the two just made is left out.
+	oldest := apitest.Must(factory.IPBlocks.State(factory.BlockOf("192.0.2.0/24")).State(func(b *factory.IPBlock) {
+		b.CreatedAt = time.Now().Add(-2 * time.Hour)
+	}).CreateOne(ctx, db, f))(t)
+	loaded := apitest.Must(s.Repo.IndexLiveIPBlocks(ctx))(t)
+	if len(loaded) != store.MaxIPBlocks || loaded[0].Network != oldest.Network {
+		t.Fatalf("the live list: %d, first %+v", len(loaded), loaded[0])
+	}
+	newest := 0
+	for _, block := range loaded {
+		if strings.HasPrefix(block.Network, "203.0.113.") {
+			newest++
+		}
+	}
+	if newest != 1 {
+		t.Fatalf("of the two newest blocks, %d were loaded, want the older one", newest)
 	}
 }

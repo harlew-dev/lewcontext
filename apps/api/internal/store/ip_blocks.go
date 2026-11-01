@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"net/netip"
 	"time"
@@ -78,10 +79,15 @@ type NewIPBlock struct {
 // CreateIPBlock blocks n.Network until n.For from now (the database's
 // clock), recording admin.ip.blocked. An expired block of the same network
 // not yet cleaned up is replaced. ErrIPBlockExists when it's already
-// blocked, ErrTooManyIPBlocks past MaxIPBlocks.
+// blocked, ErrTooManyIPBlocks past MaxIPBlocks: the live ones are counted
+// under the IP blocks' advisory lock (database.LockIPBlocks), so blocks
+// made at once can't take the list past it.
 func (s *Store) CreateIPBlock(ctx context.Context, n NewIPBlock, a AdminAction) (IPBlock, error) {
 	var block IPBlock
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockIPBlocks(ctx, tx); err != nil {
+			return err
+		}
 		if _, err := tx.NewDelete().Model((*ipBlockRecord)(nil)).Where("network = ? AND expires_at <= now()", n.Network.String()).Exec(ctx); err != nil {
 			return err
 		}
@@ -161,12 +167,15 @@ func (s *Store) IndexIPBlocks(ctx context.Context) ([]IPBlock, error) {
 }
 
 // IndexLiveIPBlocks lists every live block's network and end, for a
-// server's in-memory list: one small query, every 30 seconds.
+// server's in-memory list: one small query, every 30 seconds. At most
+// MaxIPBlocks, the oldest first, so if more were ever live (inserted
+// around CreateIPBlock) every server enforces the same ones.
 func (s *Store) IndexLiveIPBlocks(ctx context.Context) ([]LiveIPBlock, error) {
 	var live []LiveIPBlock
 	err := s.DB.NewSelect().Model((*ipBlockRecord)(nil)).
 		ColumnExpr("host(ipb.network) || '/' || masklen(ipb.network) AS network, ipb.expires_at").
 		Where("ipb.expires_at > now()").
+		OrderExpr("ipb.created_at, ipb.id").
 		Limit(MaxIPBlocks).
 		Scan(ctx, &live)
 	return live, err
