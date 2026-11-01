@@ -163,9 +163,9 @@ func (s *Store) linkCandidates(from, to time.Time) *bun.SelectQuery {
 		ColumnExpr("DISTINCT coalesce(e.actor_id, e.user_id)")
 }
 
-// LinkedName is an account whose name, or a workspace it owns, holds a
-// link or markup (LinkInName). Workspace is the workspace, when it's its
-// name.
+// LinkedName is an account whose name, or a workspace's it owns or named,
+// holds a link or markup (LinkInName). Workspace is the workspace, when
+// it's its name.
 type LinkedName struct {
 	UserID    int64         `bun:"user_id"`
 	Workspace *WorkspaceRef `bun:"-"`
@@ -173,33 +173,50 @@ type LinkedName struct {
 	Name      *string       `bun:"workspace_name"`
 }
 
+// linkedWorkspaces selects (user_id, workspace, workspace_name) for the
+// workspaces whose names hold a link that an account in [from, to) is
+// answerable for: those owned by an account that named something then
+// (workspace_user_user_id_idx), and those the window's creates, renames
+// and invitations are about, credited to the event's actor whoever owns
+// the workspace (an admin renaming someone else's workspace to a link and
+// inviting from it). Each pair once.
+func (s *Store) linkedWorkspaces(from, to time.Time) *bun.SelectQuery {
+	owned := s.DB.NewSelect().TableExpr("workspace_user AS m").
+		Join("JOIN workspaces AS w ON w.id = m.workspace_id").
+		ColumnExpr("m.user_id, w.public_id AS workspace, w.name AS workspace_name").
+		Where("m.role = 'owner'").
+		Where("m.user_id IN (?)", s.linkCandidates(from, to)).
+		Where("w.name ~* ?", linkPattern)
+	named := s.eventsIn(from, to, "workspace.created", "workspace.renamed", "workspace.invitation.created").
+		Join("JOIN workspaces AS w ON w.public_id = e.payload->>'workspace'").
+		ColumnExpr("e.actor_id AS user_id, w.public_id AS workspace, w.name AS workspace_name").
+		Where("e.actor_id IS NOT NULL").
+		Where("w.name ~* ?", linkPattern)
+	return s.DB.NewSelect().TableExpr("(?) AS lw", owned.Union(named)).ColumnExpr("lw.*")
+}
+
 // linkedNames finds, among the accounts that named something in [from,
-// to), those whose name or an owned workspace's holds a link: the account
-// first, then each workspace (workspace_user_user_id_idx).
+// to), those whose name holds a link, then each workspace an account is
+// answerable for whose name holds one (linkedWorkspaces).
 func (s *Store) linkedNames(ctx context.Context, from, to time.Time) ([]LinkedName, error) {
-	candidates := s.linkCandidates(from, to)
 	var accounts []LinkedName
 	err := s.DB.NewSelect().Model((*User)(nil)).ColumnExpr("u.id AS user_id").
-		Where("u.id IN (?)", candidates).
+		Where("u.id IN (?)", s.linkCandidates(from, to)).
 		Where("u.name ~* ?", linkPattern).
 		OrderExpr("u.id").Limit(maxReviewRows).
 		Scan(ctx, &accounts)
 	if err != nil {
 		return nil, err
 	}
-	var owned []LinkedName
-	err = s.DB.NewSelect().TableExpr("workspace_user AS m").
-		Join("JOIN workspaces AS w ON w.id = m.workspace_id").
-		ColumnExpr("m.user_id, w.public_id AS workspace, w.name AS workspace_name").
-		Where("m.role = 'owner'").
-		Where("m.user_id IN (?)", candidates).
-		Where("w.name ~* ?", linkPattern).
-		OrderExpr("m.user_id, w.public_id").Limit(maxReviewRows).
-		Scan(ctx, &owned)
-	for i, o := range owned {
-		owned[i].Workspace = &WorkspaceRef{ID: *o.PublicID, Name: *o.Name}
+	var workspaces []LinkedName
+	err = s.DB.NewSelect().TableExpr("(?) AS x", s.linkedWorkspaces(from, to)).
+		ColumnExpr("x.user_id, x.workspace, x.workspace_name").
+		OrderExpr("x.user_id, x.workspace").Limit(maxReviewRows).
+		Scan(ctx, &workspaces)
+	for i, o := range workspaces {
+		workspaces[i].Workspace = &WorkspaceRef{ID: *o.PublicID, Name: *o.Name}
 	}
-	return append(accounts, owned...), err
+	return append(accounts, workspaces...), err
 }
 
 // AccountReview is an account on the review list: when it was made (new:
@@ -371,12 +388,7 @@ func (s *Store) linkedAccounts(from, to time.Time) *bun.SelectQuery {
 	byName := s.DB.NewSelect().Model((*User)(nil)).ColumnExpr("u.id AS user_id").
 		Where("u.id IN (?)", candidates).
 		Where("u.name ~* ?", linkPattern)
-	byWorkspace := s.DB.NewSelect().TableExpr("workspace_user AS m").
-		Join("JOIN workspaces AS w ON w.id = m.workspace_id").
-		ColumnExpr("m.user_id").
-		Where("m.role = 'owner'").
-		Where("m.user_id IN (?)", candidates).
-		Where("w.name ~* ?", linkPattern)
+	byWorkspace := s.DB.NewSelect().TableExpr("(?) AS x", s.linkedWorkspaces(from, to)).ColumnExpr("x.user_id")
 	return byName.Union(byWorkspace)
 }
 

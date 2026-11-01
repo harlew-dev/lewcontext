@@ -293,6 +293,18 @@ func TestAdminMonitoringAccounts(t *testing.T) {
 	quiet := user()
 	m.make("workspace.created", map[string]any{"workspace": "wsp_00000000000123"}, "", time.Hour, by(quiet))
 	levelOf(t, accounts(), "accounts.links_in_names", monitor.LevelWarn, 2)
+	// An admin of someone else's workspace renaming it to a link and
+	// inviting from it: the admin is flagged, not the owner, who named
+	// nothing.
+	bystander := user()
+	shared := apitest.Must(factory.WorkspaceFor(ctx, db, f, bystander.ID, factory.Named("Prizes at win-big.example")))(t)
+	renamer := user()
+	apitest.Must(factory.WorkspaceUsers.State(func(m *factory.WorkspaceUser) {
+		m.WorkspaceID, m.UserID, m.Role = shared.ID, renamer.ID, "admin"
+	}).CreateOne(ctx, db, f))(t)
+	m.make("workspace.renamed", map[string]any{"workspace": shared.PublicID}, "", 40*time.Minute, by(renamer))
+	m.make("workspace.invitation.created", map[string]any{"workspace": shared.PublicID, "email": "x@example.test"}, "", 30*time.Minute, by(renamer))
+	levelOf(t, accounts(), "accounts.links_in_names", monitor.LevelWarn, 3)
 	// New and busy: the spammer, made 2 hours ago.
 	levelOf(t, accounts(), "accounts.new_and_busy", monitor.LevelWarn, 1)
 
@@ -333,6 +345,14 @@ func TestAdminMonitoringAccounts(t *testing.T) {
 	if r := find(owner); r.New || r.Signals[0].Workspace == nil || r.Signals[0].Workspace.ID != spam.PublicID {
 		t.Fatalf("owner: %+v", r)
 	}
+	if r := find(renamer); r.Signals[0].Signal != store.ReviewLinks || r.Signals[0].Workspace == nil || r.Signals[0].Workspace.ID != shared.PublicID {
+		t.Fatalf("renamer: %+v", r)
+	}
+	for _, r := range page.Review {
+		if r.Account.ID == bystander.PublicID {
+			t.Fatalf("the owner who named nothing is flagged: %+v", r)
+		}
+	}
 	if r := find(ignored); r.Signals[0].Signal != store.ReviewAcceptance || r.Signals[0].Count != 1 || r.Signals[0].Of != 20 {
 		t.Fatalf("low acceptance: %+v", r)
 	}
@@ -355,7 +375,7 @@ func TestAdminMonitoringAccounts(t *testing.T) {
 	if r := find(scattered); r.Signals[0].Signal != store.ReviewAcceptance {
 		t.Fatalf("scattered: %+v", r)
 	}
-	if len(page.Review) != 9 {
+	if len(page.Review) != 10 {
 		t.Fatalf("%d on the review list", len(page.Review))
 	}
 	// The busiest writers: projects and workspaces, never sign-ins.
