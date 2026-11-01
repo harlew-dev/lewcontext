@@ -1,3 +1,4 @@
+import { adminRoutes } from "@/lib/admin-routes";
 import { describe, expect, it } from "vitest";
 import { stubApi } from "@/test/api";
 import { adminClient, adminHttp, adminPaths, needsStepUp } from "./admin";
@@ -75,6 +76,23 @@ describe("the admin client", () => {
       needsStepUp(new ApiError("Nope", 422, undefined, { stepUp: true })),
     ).toBe(false);
     expect(needsStepUp(new Error("Enter a code to continue."))).toBe(false);
+  });
+  it("builds the Monitoring paths and page URLs, leaving out the default window", () => {
+    expect(adminPaths.monitoring.show("overview")).toBe(
+      "/api/admin/monitoring/overview",
+    );
+    expect(adminPaths.monitoring.show("security", "24h")).toBe(
+      "/api/admin/monitoring/security",
+    );
+    expect(adminPaths.monitoring.show("limits", "7d")).toBe(
+      "/api/admin/monitoring/limits?window=7d",
+    );
+    expect(adminRoutes.monitoring.index("k", "24h")).toBe(
+      "/admin/k/monitoring",
+    );
+    expect(adminRoutes.monitoring.security("k", "1h")).toBe(
+      "/admin/k/monitoring/security?window=1h",
+    );
   });
   it("builds the Events, Mail and projects paths, leaving out defaults", () => {
     expect(adminPaths.events.index()).toBe("/api/admin/events");

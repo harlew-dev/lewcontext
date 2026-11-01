@@ -1,6 +1,8 @@
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart as Bars,
   CartesianGrid,
@@ -15,6 +17,8 @@ import {
 } from "recharts";
 import { cx } from "@/lib/cx";
 import { Link } from "./link";
+import { TextButton } from "./text";
+import type { Level } from "./badge";
 // Charts, drawn by Recharts (docs/ui/design.md). This is the only file that
 // imports it: pages pass rows and series and never style Recharts.
 
@@ -54,6 +58,7 @@ export function BarChart<
   series,
   onSelect,
   selectHint,
+  tableToggle = false,
   className,
 }: {
   label: string;
@@ -62,10 +67,14 @@ export function BarChart<
   series: ChartSeries<K>[];
   onSelect?: (row: R) => void;
   selectHint?: string;
+  // A "Show as table" button under the chart, which shows its numbers to
+  // everyone (they're always there for screen readers).
+  tableToggle?: boolean;
   className?: string;
 }) {
   const reducedMotion = useReducedMotion() ?? false;
   const summaryId = useId();
+  const [asTable, setAsTable] = useState(false);
   if (series.length > seriesColors.length)
     throw new Error(`BarChart: at most ${seriesColors.length} series`);
   const total = (row: ChartRow<K>) =>
@@ -152,7 +161,22 @@ export function BarChart<
           </Bars>
         </ResponsiveContainer>
       </div>
-      <ChartTable label={label} rows={rows} series={series} total={total} />
+      <ChartTable
+        label={label}
+        rows={rows}
+        series={series}
+        total={total}
+        visible={asTable}
+      />
+      {tableToggle && (
+        <TextButton
+          className="mt-2 text-sm/6"
+          aria-expanded={asTable}
+          onClick={() => setAsTable(!asTable)}
+        >
+          {asTable ? "Hide table" : "Show as table"}
+        </TextButton>
+      )}
     </figure>
   );
 }
@@ -239,14 +263,22 @@ function ChartTable<K extends string>({
   rows,
   series,
   total,
+  visible = false,
 }: {
   label: string;
   rows: ChartRow<K>[];
   series: ChartSeries<K>[];
   total: (row: ChartRow<K>) => number;
+  visible?: boolean;
 }) {
   return (
-    <table className="sr-only">
+    <table
+      className={
+        visible
+          ? "mt-4 w-full text-left text-sm/6 tabular-nums *:*:*:border-b *:*:*:border-zinc-950/5 *:*:*:py-1 *:*:*:pr-4 dark:*:*:*:border-white/5"
+          : "sr-only"
+      }
+    >
       <caption>{label}</caption>
       <thead>
         <tr>
@@ -330,4 +362,138 @@ function percent(value: number, total: number): string {
   if (total <= 0) return "0%";
   const share = (value / total) * 100;
   return share > 0 && share < 1 ? "<1%" : `${Math.round(share)}%`;
+}
+
+// A tile's trend: one series over time as a small area, with a tooltip per
+// point, the numbers in a table for screen readers (the SVG is hidden from
+// them) and `summary` saying what it shows. One series, so no legend: the
+// tile names it. Sky, the first series colour; a level is the tile's
+// badge, never the line's colour.
+export type SparkPoint = { label: string; value: number };
+export function Sparkline({
+  label,
+  summary,
+  points,
+  format = (value) => value.toLocaleString("en-US"),
+  className,
+}: {
+  label: string;
+  summary: string;
+  points: SparkPoint[];
+  format?: (value: number) => string;
+  className?: string;
+}) {
+  const reducedMotion = useReducedMotion() ?? false;
+  const gradient = useId();
+  return (
+    <figure className={cx(className)}>
+      <figcaption className="sr-only">
+        {label}. {summary}
+      </figcaption>
+      <div aria-hidden="true" className="h-10 text-sky-600 dark:text-sky-500">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart
+            data={points}
+            margin={{ top: 2, right: 0, bottom: 0, left: 0 }}
+            accessibilityLayer={false}
+          >
+            <defs>
+              <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="currentColor" stopOpacity={0.25} />
+                <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Tooltip
+              content={({ active, payload }) => {
+                const point = payload?.[0]?.payload as SparkPoint | undefined;
+                if (!active || !point) return null;
+                return (
+                  <div className="rounded-lg bg-white/95 px-2 py-1 text-xs shadow-lg ring-1 ring-zinc-950/10 dark:bg-zinc-800/95 dark:ring-white/10">
+                    <span className="font-semibold text-zinc-950 tabular-nums dark:text-white">
+                      {format(point.value)}
+                    </span>{" "}
+                    <span className="text-zinc-500 dark:text-zinc-400">
+                      {point.label}
+                    </span>
+                  </div>
+                );
+              }}
+              cursor={{ stroke: "currentColor", strokeOpacity: 0.3 }}
+              isAnimationActive={false}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke="currentColor"
+              strokeWidth={2}
+              fill={`url(#${gradient})`}
+              isAnimationActive={!reducedMotion}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <table className="sr-only">
+        <caption>{label}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Time</th>
+            <th scope="col">{label}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {points.map((p) => (
+            <tr key={p.label}>
+              <th scope="row">{p.label}</th>
+              <td>{format(p.value)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </figure>
+  );
+}
+const meterLevels: Record<Level, string> = {
+  ok: "bg-sky-600 dark:bg-sky-500",
+  warn: "bg-amber-500",
+  critical: "bg-red-600 dark:bg-red-500",
+};
+// How full something capped is: a bar to `max`, filled in sky, or in a
+// level's colour once it has one (the page writes the level's word beside
+// it, never colour alone). A native meter for assistive technology, its
+// value text written out.
+export function Meter({
+  label,
+  value,
+  max,
+  level = "ok",
+  valueText,
+  className,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  level?: Level;
+  valueText: string;
+  className?: string;
+}) {
+  const share = max > 0 ? Math.min(1, value / max) : 0;
+  return (
+    <div
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={Math.min(value, max)}
+      aria-valuetext={valueText}
+      className={cx(
+        className,
+        "h-2 overflow-hidden rounded-full bg-zinc-950/5 dark:bg-white/10",
+      )}
+    >
+      <div
+        style={{ "--share": `${share * 100}%` } as object}
+        className={cx("h-full w-(--share) rounded-full", meterLevels[level])}
+      />
+    </div>
+  );
 }
