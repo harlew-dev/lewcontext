@@ -27,8 +27,9 @@ func (b *lockedBuffer) Write(p []byte) (int, error) {
 
 // Every audit event (events.Audit) is also written as one JSON log line,
 // msg "audit", with its evt_ ID, name, the actor's, user's and
-// workspace's public IDs, the IP, when, and the request's ID; never its
-// payload, so no email or name. Other events write none.
+// workspace's public IDs, the IP cut to its /24 or /48 (the lines are
+// kept a year, past the 30 days a full IP is), when, and the request's
+// ID; never its payload, so no email or name. Other events write none.
 func TestAuditEventsAreLogged(t *testing.T) {
 	s, ctx := queueStore(t, nil)
 	out := &lockedBuffer{}
@@ -85,7 +86,7 @@ func TestAuditEventsAreLogged(t *testing.T) {
 	for i, line := range lines {
 		event, _ := line["event"].(string)
 		if line["name"] != audited[i].EventName() || !strings.HasPrefix(event, "evt_") || line["actor"] != users[0].PublicID ||
-			line["user"] != users[1].PublicID || line["workspace"] != workspace.PublicID || line["ip"] != "198.51.100.7" ||
+			line["user"] != users[1].PublicID || line["workspace"] != workspace.PublicID || line["ip"] != "198.51.100.0/24" ||
 			line["requestId"] != "req_00000000000007" || line["createdAt"] == "" {
 			t.Errorf("line %d: %v", i, line)
 		}
@@ -96,5 +97,22 @@ func TestAuditEventsAreLogged(t *testing.T) {
 	}
 	if strings.Contains(text, "secret") {
 		t.Fatalf("an email or a name reached the log: %s", text)
+	}
+	if strings.Contains(text, "198.51.100.7") {
+		t.Fatalf("the full IP reached the log: %s", text)
+	}
+	// An IPv6 address is cut to its /48.
+	out.mu.Lock()
+	out.buf.Reset()
+	out.mu.Unlock()
+	v6 := events.WithRequest(ctx, "2001:db8:1:2::7", "req_00000000000008")
+	if err := s.Record(v6, events.LoggedOut{User: users[0].PublicID}, EventScope{}); err != nil {
+		t.Fatal(err)
+	}
+	out.mu.Lock()
+	text = out.buf.String()
+	out.mu.Unlock()
+	if !strings.Contains(text, `"ip":"2001:db8:1::/48"`) || strings.Contains(text, "2001:db8:1:2::7") {
+		t.Fatalf("an IPv6 audit line: %s", text)
 	}
 }

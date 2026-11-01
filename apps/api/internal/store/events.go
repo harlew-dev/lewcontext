@@ -88,8 +88,9 @@ func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope 
 
 // insertAudited inserts an audit event (events.Audit) and writes it as a
 // log line too (docs/compliance.md#audit-lines), msg "audit": the event's
-// evt_ ID, name, the actor's, user's and workspace's public IDs, the IP and
-// when, with the request's ID; never the payload, so no email or name. The
+// evt_ ID, name, the actor's, user's and workspace's public IDs, the IP cut
+// to its network (auditIP) and when, with the request's ID; never the
+// payload, so no email or name. The
 // operator ships these lines off the server, where a row altered or deleted
 // later disagrees with them. The line is written as the row is inserted, in
 // its transaction: a line whose event isn't in the table was rolled back
@@ -111,7 +112,7 @@ func insertAudited(ctx context.Context, db bun.IDB, row *eventRecord) error {
 		"actor", actor.String,
 		"user", user.String,
 		"workspace", workspace.String,
-		"ip", row.IP,
+		"ip", auditIP(row.IP),
 		"createdAt", row.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 	// Outside a request's own context (a background worker recording for
@@ -121,6 +122,18 @@ func insertAudited(ctx context.Context, db bun.IDB, row *eventRecord) error {
 	}
 	slog.InfoContext(ctx, "audit", attrs...)
 	return nil
+}
+
+// auditIP is an audit line's IP: cut to its IPv4 /24 or IPv6 /48 as
+// minimising cuts an old event's (minimiseIP), because the lines are kept
+// a year, past the 30 days an event keeps the full address; "" for none.
+// The line's evt_ leads back to the row, which holds the full address
+// while it's kept.
+func auditIP(ip string) string {
+	if ip == "" {
+		return ""
+	}
+	return minimiseIP(ip)
 }
 
 // Record writes an event that has no data change of its own, such as a login

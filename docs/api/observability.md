@@ -21,7 +21,7 @@ Every command installs one handler (`observe.NewLogger`) with `slog.SetDefault` 
 
 ### Audit lines
 
-Every audit event (`events.Audit`: `auth.*`, `admin.*`, `server.*`, `prune.*`) is also logged at `info` as its row is inserted (`store.insertAudited`, in the event's transaction): `msg: "audit"`, `event` (`evt_…`), `name`, `actor`, `user` and `workspace` (public IDs, read back by the insert's `RETURNING`, empty when none), `ip`, `createdAt` and the request's `requestId` (from the context, or the event's own when a background worker records for a request). **Never the payload**, so no email or name reaches the log. The operator ships these lines off the host as tamper evidence for the `events` table ([compliance.md](../compliance.md#audit-lines)). A line whose event was rolled back stays: its request's access line shows the error.
+Every audit event (`events.Audit`: `auth.*`, `admin.*`, `server.*`, `prune.*`) is also logged at `info` as its row is inserted (`store.insertAudited`, in the event's transaction): `msg: "audit"`, `event` (`evt_…`), `name`, `actor`, `user` and `workspace` (public IDs, read back by the insert's `RETURNING`, empty when none), `ip` **cut to its IPv4 /24 or IPv6 /48** (`store.auditIP`, as `pseudonymise` cuts an old event's: the lines are kept a year, the full address only 30 days; the `evt_` leads to the row, which holds the full address while it's kept), `createdAt` and the request's `requestId` (from the context, or the event's own when a background worker records for a request). **Never the payload**, so no email or name reaches the log. The operator ships these lines off the host as tamper evidence for the `events` table, and keeps them **a year**, as long as the audit events they stand for; every other line 30 days ([compliance.md](../compliance.md#audit-lines)). A line whose event was rolled back stays: its request's access line shows the error.
 
 ### The access line
 
@@ -43,7 +43,7 @@ One line per request (`msg: "request"`), logged by `ClientAddress` once the answ
 - **net/http's own refusals have no line and no ID.** A request line or headers it can't read (400) or too large (431, over 16 KiB) is answered by `net/http` before any handler runs, so it has no access line and no `X-Request-ID`.
 - **The route is set as the request goes:** the API's `unknownRoutesAsJSON` names the pattern `ServeMux` matched (a `CONNECT` stays `unmatched`, since `ServeMux` hands back a path it sent for one), the page routes name their label (`pageRoute` in `router/routes.go`), and `internal/web` names what it served (`observe.SetRoute`). `RequireSession` and `RequireAdminSession` name the user (`observe.SetUser`).
 - **Health checks** (`GET /api/health`, `/api/health/live`) log at `debug`, so probes don't fill the log at the default level.
-- **Volume:** `ACCESS_LOG=errors` for a log store that charges by size. The client's IP is personal data: keep logs 30 days at most ([deployment.md](../deployment.md#logs-and-health-checks)).
+- **Volume:** `ACCESS_LOG=errors` for a log store that charges by size. The client's IP is personal data: keep logs 30 days at most, apart from the audit lines, kept a year ([deployment.md](../deployment.md#logs-and-health-checks)).
 
 ### Redaction, the backstop
 
