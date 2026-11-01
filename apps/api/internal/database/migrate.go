@@ -128,3 +128,18 @@ func withLock(ctx context.Context, db *bun.DB, run func() error) error {
 	defer conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock(?)", migrationLockID)
 	return run()
 }
+
+// CountMigrations counts the migrations the database has applied and those
+// built into this binary, for the server's configuration summary. It reads
+// bun_migrations without the migration lock or creating anything: 0
+// applied when the table doesn't exist yet.
+func CountMigrations(ctx context.Context, db bun.IDB) (applied, embedded int, err error) {
+	embedded = len(migrations.Migrations.Sorted())
+	var exists bool
+	err = db.NewSelect().ColumnExpr("to_regclass('bun_migrations') IS NOT NULL").Scan(ctx, &exists)
+	if err != nil || !exists {
+		return 0, embedded, err
+	}
+	n, err := db.NewSelect().TableExpr("bun_migrations").Count(ctx)
+	return int(n), embedded, err
+}

@@ -154,3 +154,42 @@ func TestPruneAppErrors(t *testing.T) {
 		t.Fatalf("confirmed: %+v %v, %d left", r, err, count(t, s, "app_errors"))
 	}
 }
+
+// The hour tables go after 90 days; the minute tables need no target (the
+// rollup keeps them to 48 hours).
+func TestPruneMetricHours(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	f := factory.TestFaker(t)
+	now := time.Now().UTC().Truncate(time.Hour)
+	if _, err := factory.RequestHours.Sequence(func(i int, h *factory.RequestHour) {
+		h.Hour = now.Add(-time.Duration(24*(80+5*i)) * time.Hour) // 80, 85, 90, 95 and 100 days: the last three go
+	}).Create(ctx, db, f, 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := factory.MetricHours.Sequence(func(i int, h *factory.MetricHour) {
+		h.Hour = now.Add(-time.Duration(24*(89+2*i)) * time.Hour) // 89, 91 days
+	}).Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	s := &store.Store{DB: db}
+	for _, c := range []struct {
+		target string
+		want   int
+	}{{"request_hours", 3}, {"metric_hours", 1}} {
+		target, ok := Find(c.target)
+		if !ok || target.DefaultAge != 90*day {
+			t.Fatalf("%s target: %+v", c.target, target)
+		}
+		r, err := Run(ctx, s, target, Options{Now: now.Add(time.Minute), Confirm: true})
+		if err != nil || r.Deleted != c.want {
+			t.Fatalf("%s: %+v %v", c.target, r, err)
+		}
+	}
+	if count(t, s, "request_hours") != 2 || count(t, s, "metric_hours") != 1 {
+		t.Fatal("pruned the wrong hours")
+	}
+}

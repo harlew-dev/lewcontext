@@ -50,6 +50,10 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+	// Every query is timed, and a slow one logged without its values
+	// (SLOW_QUERY_MS); the pool's gauges are read at each collection.
+	db.AddQueryHook(database.QueryHook{Slow: c.SlowQuery})
+	observe.WatchDB(db.DB)
 	bus := events.NewBus()
 	repository := &store.Store{DB: db, Listeners: bus}
 	// Grouped errors (app_errors): every problem reported from here on is
@@ -66,6 +70,31 @@ func run() error {
 	defer flushErrors(collector, stopCollecting, collected)
 	// Listeners register on the bus here, before anything records an event.
 	if err := listen(bus, repository, c); err != nil {
+		return err
+	}
+	// This server's row and server.started; then each minute's metrics
+	// with its heartbeat, and the hourly rollup. On the way out
+	// server.stopped and the last minute go first, the error groups last
+	// (deferred in that order), within finalBudget.
+	instance, err := newServerInstance(startup, db, c)
+	if err != nil {
+		return err
+	}
+	if err := repository.RecordServerStart(startup, instance); err != nil {
+		slog.Warn("recording server.started failed; the heartbeat will add the server", observe.ErrorAttr(err))
+	}
+	slog.Info("server started", "server", instance.ID, "version", instance.Version, "metricsStore", c.MetricsStore)
+	minutes := minuteFlush(repository, instance, c)
+	stopMinutes := runMinutes(minutes)
+	// Failed, unless the server stops because it was asked to.
+	stopReason := events.ServerFailed
+	defer func() {
+		stopMinutes()
+		stopServer(repository, instance, stopReason, minutes)
+	}()
+	go summarizeMetrics(ctx, repository)
+	metricsServer, err := serveMetrics(c)
+	if err != nil {
 		return err
 	}
 	api, err := httpapi.New(repository, c)
@@ -111,6 +140,7 @@ func run() error {
 				observe.Report(ctx, observe.Problem{Source: observe.SourceBackground, Route: "cleanup", Err: err})
 			}
 		case <-ctx.Done():
+			stopReason = events.ServerSignal
 			// Readiness answers 503 from here on, while the server keeps
 			// answering for SHUTDOWN_DELAY, so a load balancer polling it
 			// takes it out before it stops taking connections.
@@ -122,6 +152,10 @@ func run() error {
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err := server.Shutdown(shutdown)
+			// /metrics answers through the drain, and stops with it.
+			if metricsServer != nil {
+				_ = metricsServer.Shutdown(shutdown)
+			}
 			// Record the refused admin addresses still queued.
 			api.StopAdminRefusals(shutdown)
 			// Let the worker finish its batch; anything unfinished is
@@ -135,19 +169,23 @@ func run() error {
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
 			}
+			if metricsServer != nil {
+				_ = metricsServer.Close()
+			}
 			return err
 		}
 	}
 }
 
 // flushErrors stops reporting and stores the groups collected since the
-// last flush, once the requests, the worker and the loop have finished:
-// the last failures before a shutdown are the ones worth keeping.
+// last flush, once the requests, the worker, server.stopped and the last
+// minute's metrics are done: the last failures before a shutdown are the
+// ones worth keeping. It has what's left of finalBudget (2 s at least).
 func flushErrors(collector *observe.Collector, stop context.CancelFunc, stopped <-chan struct{}) {
 	stop()
 	<-stopped
 	observe.SetReporter(nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), finalBudget-stopEventBudget-lastMinuteBudget)
 	defer cancel()
 	if err := collector.Flush(ctx); err != nil {
 		slog.Warn("storing the last error groups failed", observe.ErrorAttr(err), "groups", collector.Len())

@@ -39,6 +39,7 @@ var groupLabels = map[string]string{
 	"workspace.invitation.*":    "Invitations",
 	"project.*":                 "Projects",
 	"rate_limit.*":              "Rate limits",
+	"server.*":                  "Servers",
 	"email.*":                   "Email addresses",
 	"admin.*":                   "Admin",
 	"admin.session.*":           "Admin sessions",
