@@ -86,6 +86,20 @@ var notPublic = []netip.Prefix{
 	netip.MustParsePrefix("64:ff9b::/96"),
 	netip.MustParsePrefix("64:ff9b:1::/48"),
 	netip.MustParsePrefix("2002::/16"),
+	// IPv4-compatible and IPv4-translated addresses (::127.0.0.1,
+	// ::ffff:0:127.0.0.1) can carry any IPv4 address; site-local, IETF
+	// protocol assignments, 6to4 relays, and the documentation ranges
+	// (never a real receiver, and often a lab's own network).
+	netip.MustParsePrefix("::/96"),
+	netip.MustParsePrefix("::ffff:0:0/96"),
+	netip.MustParsePrefix("::ffff:0:0:0/96"),
+	netip.MustParsePrefix("fec0::/10"),
+	netip.MustParsePrefix("2001::/32"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
 }
 
 // PublicAddress reports whether addr is a public unicast address: not
