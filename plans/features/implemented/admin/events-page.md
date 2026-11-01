@@ -378,5 +378,5 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 - **Counts beside each name in the picker**, distinct accounts or IPs in the tiles: more aggregates, mostly reading rows.
 - **Drag to zoom** on a chart: clicking a column does it.
 - **Live tail or auto-refresh:** every load is a recorded read.
-- **CSV export:** [compliance](../../admin/compliance.md).
+- **CSV export:** [compliance](compliance.md).
 - **Monitoring's signals and thresholds:** [monitoring](../../admin/monitoring.md) links here instead.

@@ -38,13 +38,15 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 
 - [naming.md](naming.md): how routes, controllers (and the `httpapi/endpoints` layout), store methods, permissions, events, rate limits, client methods, page routes and components are named, and how lists of declarations are grouped and commented. Read it before adding any of them.
 - [checks.md](checks.md): the tests and script that enforce [naming.md](naming.md) and the docs' links (store methods, routes, permissions, events, the API client, page routes, page exports, file names, links), how to read a failure, and what to do when a name is new, for people and AI agents.
+- [compliance.md](compliance.md): the data map (every table's personal data, why, how long, who sees it), retention and minimising old events, erasure, Download my data and `admin export`, audit lines, the Events CSV, database roles, the control mapping for GDPR, SOC 2 and ISO 27001, and the known gaps. Read it before adding a table or personal data.
+- [incident-response.md](incident-response.md): the runbook for whoever is on call: detect, triage, contain, scope, notify (GDPR's 72 hours, with templates), record and review.
 - [deployment.md](deployment.md): deploying to production: the image and commands, required configuration, migrating and releasing, several servers, proxies and client IPs, Cloudflare, email, and a security checklist.
 - [testing.md](testing.md): local environment setup, running the dev server (`make dev`), building and running the production binary (`make build`, `make serve`), manual demo and failure checks.
 - [`plans/`](../plans): feature plans and the decisions behind them.
 
 ## Adding a resource end to end
 
-1. Migration (`make migration name=create_tasks`) → [api/database.md](api/database.md)
+1. Migration (`make migration name=create_tasks`), and a row in the data map → [api/database.md](api/database.md), [compliance.md](compliance.md#data-map)
 2. Store model (public ID if users open or search its records) and queries scoped by `workspace_id` → [api/database.md](api/database.md)
 3. Factory (required for every table) and seeder if useful → [api/seeding.md](api/seeding.md)
 4. Record `<resource>.created` / `.updated` events in the store methods, in their transaction → [api/events.md](api/events.md)

@@ -167,7 +167,7 @@ Product numbers, from the data the app already has (decision 6 adds one column):
 | Tables | per table: total, table and index size, live and dead rows, dead share, last autovacuum and analyze, sequential vs index scans (a table read by scans is missing an index) | `pg_stat_user_tables`, `pg_total_relation_size` |
 | **Growth** | rows and bytes per table per day over 30 days, and a projection ("events: +120k rows a day, 2.1 GB; at this rate 10 GB in 64 days") | a daily snapshot, `table_stats_daily` (below) |
 | What fills the log | events per day by name; the top few names' share | events |
-| **Retention** | the oldest event's age against prune's 90 days, and the last `prune.completed` per target | events. Warn when the oldest event is over 97 days: prune isn't scheduled ([compliance](compliance.md) depends on it) |
+| **Retention** | the oldest event's age against prune's 90 days, and the last `prune.completed` per target | events. Warn when the oldest event is over 97 days: prune isn't scheduled ([compliance](../implemented/admin/compliance.md) depends on it) |
 
 ```sql
 -- create_table_stats_daily (a new migration)
@@ -246,7 +246,7 @@ From `request_minutes`, `metric_minutes` and their hourly sums, all servers summ
 
 | Change | Why |
 | --- | --- |
-| `users.last_seen_at timestamptz` (edited into `002`), set by `requireSession` **only when it's over an hour old** (one conditional `UPDATE … WHERE last_seen_at < now() - interval '1 hour'`), never recording an event | active accounts, for Usage; inactive accounts, for [compliance](compliance.md) (decision 6) |
+| `users.last_seen_at timestamptz` (edited into `002`), set by `requireSession` **only when it's over an hour old** (one conditional `UPDATE … WHERE last_seen_at < now() - interval '1 hour'`), never recording an event | active accounts, for Usage; inactive accounts, for [compliance](../implemented/admin/compliance.md) (decision 6) |
 | `table_stats_daily` | growth over time |
 | `app_errors.public_id` | the error page's URL |
 | `prune.completed` event | retention evidence |
@@ -271,7 +271,7 @@ Each new table gets a factory (`TestEveryTableHasAFactory`).
 | Risk | Mitigation |
 | --- | --- |
 | The pages concentrate personal data (emails, IPs) | Admin only; counts wherever a count will do; emails and IPs only in the review lists and detail pages; every page and lookup recorded with what was looked at |
-| An admin using IP or account lookups to follow someone | `admin.ip.viewed`, `admin.monitoring.viewed` and the other reads are in the trail an auditor reviews ([compliance](compliance.md)) |
+| An admin using IP or account lookups to follow someone | `admin.ip.viewed`, `admin.monitoring.viewed` and the other reads are in the trail an auditor reviews ([compliance](../implemented/admin/compliance.md)) |
 | A heavy page slowing the app's database | Bounded windows, indexes per query, a 5 s deadline, the admin read budget, rollups for anything slow |
 | SQL in signal and check queries | Bun's builder and `?` placeholders only; pages and windows from fixed lists |
 | Wrong conclusions from wrong IPs (behind a proxy) | The shared-address banner and the Configuration warning |

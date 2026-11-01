@@ -11,13 +11,17 @@ Every command installs one handler (`observe.NewLogger`) with `slog.SetDefault` 
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `LOG_FORMAT` | `json` in production, `text` otherwise | `json`: one object per line (`time`, `level`, `msg`, then the attributes), for any log collector. `text`: slog's `key=value` lines |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`: the least severe level written |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`: the least severe level written. Above `info`, the [audit lines](#audit-lines) aren't written, and the server warns at startup |
 | `ACCESS_LOG` | `all` | `all`: a line per request; `errors`: only 4xx and 5xx answers, requests over a second and requests aborted before any answer; `off`: none. Anything else refuses to start |
 
 - **Where:** the server writes to stdout, and sends `net/http`'s own complaints (a broken connection) through the same handler as warnings. The commands run by hand (`migrate`, `seed`, `prune`, `admin`) log through it to stderr, but keep their own output (previews, results, the reason they stopped) as plain lines (`observe.UseForCommand`), so `LOG_LEVEL=warn` can't hide why a command failed.
 - **The request's ID on every line logged during a request:** request code logs with the context's functions, `slog.ErrorContext(r.Context(), …)`, and the handler adds `requestId` from the context. A line logged without the context has no ID. A logger made with `WithGroup` puts it inside the group.
 - **Never log what a request carried:** its path, query string, headers, cookies or body. Paths hold reset, invitation and block-link tokens and the admin key; query strings hold searches and email addresses; headers hold `X-Admin-Key`, the CSRF token and cookies. Name the route, the record's public ID, or the error.
 - **An error's text is scrubbed before it's logged** ([below](#scrubbing)). A PostgreSQL type error echoes the value it couldn't read (Bun writes values into the query), a `database/sql` scan error quotes one, and an SMTP refusal names the recipient's address, so request and background code logs an error as `observe.ErrorAttr(err)` (its message through `observe.Scrub`, under `error`), never `"error", err`: `InternalError`, the page gates, the event worker, the cleanup loop and the error collector do. The log keeps the request's ID, which leads to everything else. Startup and the commands run by hand still log their own errors as they are: they come from configuration, not from a request.
+
+### Audit lines
+
+Every audit event (`events.Audit`: `auth.*`, `admin.*`, `server.*`, `prune.*`) is also logged at `info` as its row is inserted (`store.insertAudited`, in the event's transaction): `msg: "audit"`, `event` (`evt_…`), `name`, `actor`, `user` and `workspace` (public IDs, read back by the insert's `RETURNING`, empty when none), `ip`, `createdAt` and the request's `requestId` (from the context, or the event's own when a background worker records for a request). **Never the payload**, so no email or name reaches the log. The operator ships these lines off the host as tamper evidence for the `events` table ([compliance.md](../compliance.md#audit-lines)). A line whose event was rolled back stays: its request's access line shows the error.
 
 ### The access line
 

@@ -10,9 +10,9 @@ One image (the root `Dockerfile`) holding four binaries:
 | --- | --- | --- |
 | `api` (the default `CMD`) | The Go server: the JSON API under `/api`, the web app built into the binary (and the admin dashboard's own build, served only behind its key), the event delivery worker, a 15-minute cleanup loop, each minute's metrics and the hourly rollup, and `/metrics` on its own listener when `METRICS_ADDR` is set | as a long-running service |
 | `migrate` | Applies database migrations, inside a transaction each, under an advisory lock | once per release, **before** starting the new `api` |
-| `prune` | Deletes old rows from log tables (`events`, `app_errors`, `request_hours`, `metric_hours`) | from cron |
+| `prune` | Deletes old rows from log tables (`events`, `audit_events`, `app_errors`, `request_hours`, `metric_hours`) and minimises events over 30 days old (`pseudonymise`), recording `prune.completed` ([compliance.md](compliance.md#retention)) | from cron, daily |
 | `seed` | Demo data | never: it refuses to run with `APP_ENV=production` |
-| `admin` | The operator's commands, previewing without `-confirm`: `admin grant` (with `-role viewer|operator`), `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin suspend -email … -reason … -confirm` and `unsuspend` suspend an account (not an admin's: `revoke` first) or lift it; `admin sessions revoke-all -confirm` signs every account out, app and admin sessions alike (a suspected leak of the session tables); `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
+| `admin` | The operator's commands, previewing without `-confirm`: `admin grant` (with `-role viewer|operator`), `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin suspend -email … -reason … -confirm` and `unsuspend` suspend an account (not an admin's: `revoke` first) or lift it; `admin sessions revoke-all -confirm` signs every account out, app and admin sessions alike (a suspected leak of the session tables); `admin erase -email … -confirm` deletes an account for someone who can't (an erasure request: not an admin's, nor the only owner of a workspace with other members), and `admin export -email … > file.json` writes an account's data as Download my data gives it ([compliance.md](compliance.md)); `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa`, `erase` and `export` |
 
 There is one process and one origin: the same server sends pages and API responses, so there is no CORS and no separate frontend host. The server does **not** migrate on startup.
 
@@ -23,7 +23,7 @@ make build                                                     # or, without Doc
 
 ## Requirements
 
-- **PostgreSQL 15+** reachable over TLS with a verifiable certificate. Use a dedicated role that owns the app's tables, not a superuser.
+- **PostgreSQL 15+** reachable over TLS with a verifiable certificate. Use dedicated roles, never a superuser: one that owns the tables for `migrate`, one with data access only for everything else ([Database roles](#database-roles)).
 - **Something that terminates HTTPS in front of the server.** The server only speaks plain HTTP, and production refuses an `http://` origin. That can be a reverse proxy (nginx, Caddy), a cloud load balancer, or Cloudflare. See [Behind a proxy](#behind-a-proxy-or-load-balancer).
 - **An SMTP provider** (Resend, Postmark, Amazon SES, Mailgun, …) and **outbound SMTP** from the server to it, on 587 or 465. Some hosts block outgoing SMTP ports on new accounts; ask them to open it. Or run with `MAIL_DRIVER=off` and no password reset or invitations. See [Email](#email).
 - **Outbound HTTPS** from the server to `challenges.cloudflare.com`, once CAPTCHA challenges are built (**Planned**).
@@ -68,11 +68,11 @@ make build                                                     # or, without Doc
 ## First deploy
 
 1. **Freeze the migrations.** While the project is in development, migrations are squashed: tables are changed by editing their create migration, followed by `make migrate-fresh`. Before the first production database holds data, that stops. From then on, migrations are append-only and an applied migration is never edited ([api/database.md](api/database.md)). `migrate fresh` is refused with `APP_ENV=production`, but editing an applied migration isn't detected, so this step is on you.
-2. **Create the database and role**, with TLS.
+2. **Create the database and roles**, with TLS: a migration role that owns the tables and a runtime role for the servers ([Database roles](#database-roles)).
 3. **Migrate:** `docker run --rm --env-file prod.env lewcontext migrate`. `migrate status` shows what's applied. It is safe to run from several machines at once, because of the advisory lock.
 4. **Start the server:** `docker run -d --env-file prod.env -p 10.0.0.5:3000:3000 lewcontext`.
 5. **Check it:** `GET /api/health` returns `{"status":"ok"}`, or 503 when the database is unreachable or the server is shutting down: use it for the load balancer's health check (readiness). `GET /api/health/live` answers without the database: use it for an orchestrator's liveness probe, so a database outage doesn't restart every server ([Logs and health checks](#logs-and-health-checks)). Then open `APP_ORIGIN` and register an account. New accounts start with no workspace and go to onboarding.
-6. **Schedule pruning:** for example, daily `prune events -confirm`, `prune app_errors -confirm`, `prune request_hours -confirm` and `prune metric_hours -confirm`. The first deletes events older than 90 days, keeping any with a pending delivery; the second, grouped errors not seen for 30 days; the last two, hourly metric sums older than 90 days ([api/database.md](api/database.md#pruning)). All are allowed in production. Sessions, rate-limit windows, reset links, minute metrics (48 hours) and stopped servers' rows (a day) are cleaned up by the server itself.
+6. **Schedule pruning:** daily, every target ([Retention and erasure](#retention-and-erasure)): `prune pseudonymise -confirm`, `prune events -confirm`, `prune audit_events -confirm`, `prune app_errors -confirm`, `prune request_hours -confirm` and `prune metric_hours -confirm`. `pseudonymise` cuts events' IPs to their network and replaces their emails with keyed pseudonyms at 30 days; `events` deletes events other than audit events at 90 days and `audit_events` audit events at a year, both keeping any with a pending delivery; then grouped errors not seen for 30 days, and hourly metric sums older than 90 days ([api/database.md](api/database.md#pruning)). All are allowed in production. Sessions, rate-limit windows, reset links, minute metrics (48 hours) and stopped servers' rows (a day) are cleaned up by the server itself.
 
 ## Admin dashboard
 
@@ -123,6 +123,48 @@ The server logs to stdout through one handler ([api/observability.md](api/observ
 - **Health checks:** `GET /api/health` for the load balancer (503 when the database is down, and from the moment a shutdown begins); `GET /api/health/live` for liveness (no database). Both log at `debug`, so probes don't fill the log.
 - **Slow queries** (over `SLOW_QUERY_MS`, 500 ms by default) are logged at warn with their operation, table, duration and store method, never their text or values ([api/observability.md](api/observability.md#slow-queries)).
 - **External uptime checks.** Nothing inside the app can say the app is down. Set up a check from outside your network (your monitoring provider's, from two or more regions) on `GET /api/health` and `/` every minute, paging someone after two failures, and one on the TLS certificate's expiry.
+
+## Retention and erasure
+
+The retention schedule is in [compliance.md](compliance.md#retention). Every age is a `prune` target; run each daily from cron, with the image's environment, so `APP_KEY` (which `pseudonymise` needs) is the servers':
+
+```cron
+15 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune pseudonymise -confirm
+20 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune events -confirm
+25 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune audit_events -confirm
+30 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune app_errors -confirm
+35 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune request_hours -confirm
+40 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune metric_hours -confirm
+```
+
+- **Evidence:** each confirmed run records `prune.completed` (its target, how many rows, the cutoff), an audit event kept a year: filter Events by **Retention** to show an auditor it runs. A run that fails exits non-zero; have cron mail or page on it.
+- **Logs:** keep the server's log **30 days**, and ship it off the host to storage the servers can't change (S3 Object Lock, a SIEM, your provider's immutable archive): the **audit lines** in it (`msg: "audit"`, one per audit event, never an email or name) are the evidence that the `events` table hasn't been altered ([compliance.md](compliance.md#audit-lines)). Keep `LOG_LEVEL` at `info` or below, or they aren't written (the server warns at startup).
+- **Backups:** 30 days' rotation is recommended. Erased accounts leave them as they expire; say so in the privacy notice.
+- **Requests from people** ([compliance.md](compliance.md)): someone who can't sign in asks for their data (`admin export -email … > file.json`) or for their account to be erased (`admin erase -email …`, then `-confirm`). Confirm who is asking outside the app first; both are recorded. Self-service: Account & security's **Download your data** and **Delete account**.
+
+## Database roles
+
+Use two PostgreSQL roles, so a compromised server can't drop the audit trail or change the schema:
+
+- **`lewcontext_owner`**, the migration role: owns the database's tables, sequences and functions; used only by `migrate`.
+- **`lewcontext_app`**, the runtime role: what `api`, `prune` and `admin` connect as. Only `SELECT, INSERT, UPDATE, DELETE` on the tables, `USAGE, SELECT` on the sequences, `EXECUTE` on the functions; no DDL, no `TRUNCATE`, no ownership, not a superuser.
+
+```sql
+CREATE ROLE lewcontext_owner LOGIN PASSWORD '…';
+CREATE ROLE lewcontext_app LOGIN PASSWORD '…';
+CREATE DATABASE lewcontext OWNER lewcontext_owner;
+\c lewcontext
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO lewcontext_app;
+-- After the first migrate (as lewcontext_owner), and so tables later
+-- migrations add get the same:
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO lewcontext_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO lewcontext_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE lewcontext_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO lewcontext_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE lewcontext_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO lewcontext_app;
+```
+
+`migrate` then runs with `DATABASE_URL` naming `lewcontext_owner` (a separate env file, used only for releases), and everything else with `lewcontext_app`. The advisory locks need no grant. `events` can't be insert-only (erasure and `pseudonymise` update it, `prune` deletes from it), so the shipped audit lines are the tamper evidence ([compliance.md](compliance.md#database-roles)).
 
 ## Metrics
 
@@ -230,10 +272,10 @@ Check each provider's own docs for current values.
 ## Security checklist
 
 - [ ] `APP_ENV=production`, an HTTPS `APP_ORIGIN`, and `DATABASE_URL` with `sslmode=verify-full`.
-- [ ] The database role isn't a superuser, and the database isn't reachable from the internet.
+- [ ] The database roles aren't superusers: `migrate` as the owner, the servers, `prune` and `admin` as a runtime role without DDL ([Database roles](#database-roles)); the database isn't reachable from the internet.
 - [ ] The server's port is reachable only by the proxy (private interface, firewall, or Tunnel).
 - [ ] Migrations frozen (append-only) before the first real data.
-- [ ] `prune` scheduled (`events`, `app_errors`, `request_hours`, `metric_hours`).
+- [ ] `prune` scheduled daily for every target (`pseudonymise`, `events`, `audit_events`, `app_errors`, `request_hours`, `metric_hours`), its failures reported, and `prune.completed` showing on Events ([Retention and erasure](#retention-and-erasure)).
 - [ ] `METRICS_ADDR` unset, or on a private address the public can't reach, with `METRICS_TOKEN` (32+ random characters) in the secret store; `/metrics` never routed through the public proxy.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
 - [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `ADMIN_ROUTE_KEY_PREVIOUS` unset outside a rotation; `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; `ADMIN_ALLOWED_IPS` set to your own addresses where possible (with `CLIENT_IP_HEADER` behind a proxy), or Cloudflare Access or a VPN in front of `/admin/`; admins granted only to people who need it, as viewers unless they must act (`admin list`, the Admins page), and reviewed quarterly.
@@ -242,7 +284,8 @@ Check each provider's own docs for current values.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
 - [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off` deliberately.
 - [ ] Every server on the database has the same `APP_KEY`.
-- [ ] Logs shipped off the server, kept 30 days at most and readable only by those who need them; an external uptime check on `/api/health` and `/`, and one on the certificate's expiry.
+- [ ] Logs shipped off the server to storage the servers can't change, at `LOG_LEVEL=info` (the audit lines), kept 30 days at most and readable only by those who need them; an external uptime check on `/api/health` and `/`, and one on the certificate's expiry.
+- [ ] A privacy notice naming the processors (hosting, SMTP, Cloudflare), the retention schedule and how to ask for data or erasure; a breach register; the [incident runbook](incident-response.md) known to whoever is on call.
 - [ ] Turnstile keys are real (not Cloudflare's test keys), once built.
 - [ ] No secrets in the image or the repository: pass them as environment variables or through your platform's secret store.
 - [ ] The server's own security headers aren't stripped or overridden by the proxy: CSP with script hashes, `X-Frame-Options: DENY`, HSTS, `no-store` caching on the app shell and API.

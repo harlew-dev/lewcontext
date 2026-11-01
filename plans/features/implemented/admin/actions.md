@@ -165,7 +165,7 @@ Silencing hides alerts that might be security alerts, so it's an account-and-acc
 
 | Command | Does |
 | --- | --- |
-| `admin sessions revoke-all -confirm` | **Signs every account out**, app and admin sessions alike, recording `auth.sessions_revoked_all` (`count`). For a suspected session-table leak; part of the [incident runbook](../../admin/compliance.md) |
+| `admin sessions revoke-all -confirm` | **Signs every account out**, app and admin sessions alike, recording `auth.sessions_revoked_all` (`count`). For a suspected session-table leak; part of the [incident runbook](compliance.md) |
 | `admin suspend -email … -reason … -confirm`, `admin unsuspend …` | Suspending from the CLI, including admins (after `revoke`) |
 
 ## Web app
@@ -220,7 +220,7 @@ Silencing hides alerts that might be security alerts, so it's an account-and-acc
 ## Not included
 
 - **Impersonation** (decision 10).
-- **Editing** anyone's name, email or workspace roles; **transferring ownership**; **deleting** accounts or workspaces from the dashboard. Account deletion stays self-service; an erasure request handled by staff is in [compliance](../../admin/compliance.md).
+- **Editing** anyone's name, email or workspace roles; **transferring ownership**; **deleting** accounts or workspaces from the dashboard. Account deletion stays self-service; an erasure request handled by staff is in [compliance](compliance.md).
 - **Four-eyes approval** (a second admin confirming an action). Worth adding for destructive actions if the team grows.
 - **Bulk suspension**, and suspending workspaces.
 - **Granting or revoking admin** in the dashboard: CLI only, permanently.

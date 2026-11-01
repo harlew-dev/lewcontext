@@ -51,7 +51,7 @@ CREATE INDEX alerts_opened_idx ON alerts(opened_at DESC);
 
 `admins` gains `alert_email text NOT NULL DEFAULT 'critical' CHECK (alert_email IN ('all', 'critical', 'none'))` (decision 4).
 
-Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when did we detect it and how fast did we respond" is evidence an auditor asks for ([compliance](compliance.md)).
+Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when did we detect it and how fast did we respond" is evidence an auditor asks for ([compliance](../implemented/admin/compliance.md)).
 
 ## What alerts, at first
 
