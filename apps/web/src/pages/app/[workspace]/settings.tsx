@@ -4,7 +4,7 @@ import { PasswordField } from "@/components/app/account/password-fields";
 import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
-import { CopyButton } from "@/components/ui/copy-button";
+import { CopyButton, CopyFailure, useCopy } from "@/components/ui/copy-button";
 import { Divider } from "@/components/ui/divider";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import {
@@ -114,24 +114,26 @@ function CopyField({
   value: string;
   lock: string;
 }) {
+  const copy = useCopy(value);
   return (
-    <Field locked={lock}>
-      <Label className="sr-only">{label}</Label>
-      <InputGroup>
-        <Input
-          value={value}
-          className="font-mono"
-          onFocus={(e) => e.currentTarget.select()}
-        />
-        <InputActions>
-          <CopyButton
+    <div className="space-y-2">
+      <Field locked={lock}>
+        <Label className="sr-only">{label}</Label>
+        <InputGroup>
+          <Input
             value={value}
-            label={`Copy ${label}`}
-            failed="Couldn’t copy. Select the ID and copy it instead."
+            className="font-mono"
+            onFocus={(e) => e.currentTarget.select()}
           />
-        </InputActions>
-      </InputGroup>
-    </Field>
+          <InputActions>
+            <CopyButton copy={copy} label={`Copy ${label}`} />
+          </InputActions>
+        </InputGroup>
+      </Field>
+      <CopyFailure copy={copy}>
+        Couldn’t copy. Select the ID and copy it instead.
+      </CopyFailure>
+    </div>
   );
 }
 // Leaving, for every member but the only owner, and deleting, for owners.

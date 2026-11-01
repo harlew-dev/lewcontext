@@ -130,7 +130,7 @@ describe("workspace settings", () => {
     vi.stubGlobal("navigator", {});
     renderAs("owner");
     fireEvent.click(screen.getByRole("button", { name: "Copy Workspace ID" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn’t copy. Select the ID and copy it instead.",
     );
   });

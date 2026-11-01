@@ -5,7 +5,7 @@ import {
   EyeSlashIcon,
 } from "@heroicons/react/16/solid";
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/ui/copy-button";
+import { CopyButton, CopyFailure, useCopy } from "@/components/ui/copy-button";
 import {
   Description,
   ErrorMessage,
@@ -95,6 +95,7 @@ function SetupKey({ secret }: { secret: string }) {
   const [visible, setVisible] = useState(false);
   const show = useRef<HTMLElement>(null);
   const groups = secret.match(/.{1,4}/g) ?? [secret];
+  const copy = useCopy(secret);
   function hide() {
     setShown(false);
     setVisible(false);
@@ -126,11 +127,7 @@ function SetupKey({ secret }: { secret: string }) {
             onFocus={(e) => visible && e.currentTarget.select()}
           />
           <InputActions>
-            <CopyButton
-              value={secret}
-              label="Copy setup key"
-              failed="Couldn’t copy. Show the key and copy it by hand instead."
-            />
+            <CopyButton copy={copy} label="Copy setup key" />
             <Tooltip content={visible ? "Mask" : "Show"}>
               <InputButton
                 aria-label={visible ? "Mask the key" : "Show the key"}
@@ -143,6 +140,9 @@ function SetupKey({ secret }: { secret: string }) {
           </InputActions>
         </InputGroup>
       </Field>
+      <CopyFailure copy={copy}>
+        Couldn’t copy. Show the key and copy it by hand instead.
+      </CopyFailure>
       <Text className="text-center">
         <TextButton onClick={hide}>Hide setup key</TextButton>
       </Text>
@@ -268,6 +268,7 @@ export function RecoveryCodeList({
   account: string;
   onSaved: () => void;
 }) {
+  const copy = useCopy(codes.join("\n"), { onCopied: onSaved });
   function download() {
     const text = [
       `${appName} recovery codes for ${account}`,
@@ -301,18 +302,15 @@ export function RecoveryCodeList({
         <CodeGrid codes={codes} />
       </Reveal>
       <div className="flex flex-wrap justify-center gap-3">
-        <CopyButton
-          variant="button"
-          value={codes.join("\n")}
-          label="Copy codes"
-          failed="Couldn’t copy. Reveal the codes and copy them by hand instead."
-          onCopied={onSaved}
-        />
+        <CopyButton variant="button" copy={copy} label="Copy codes" />
         <Button outline onClick={download}>
           <ArrowDownTrayIcon />
           Download
         </Button>
       </div>
+      <CopyFailure copy={copy} className="text-center">
+        Couldn’t copy. Reveal the codes and copy them by hand instead.
+      </CopyFailure>
     </div>
   );
 }

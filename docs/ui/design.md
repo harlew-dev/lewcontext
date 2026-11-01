@@ -52,7 +52,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled locked` ([Locked fields](#locked-fields)), `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors; a `Label className="sr-only"` adds no space above the control, so a field beside a `SettingsSection` title lines up with it) |
 | `input.tsx` / `textarea.tsx` | `Input blurred onReveal` (a sensitive value drawn blurred over the input, `data-blurred`; with `onReveal`, a click anywhere on it, or on its "Click to reveal" tooltip, reveals it; [Secrets and sensitive values](#secrets-and-sensitive-values)), `InputGroup` (leading icon, or `InputActions` at the end: `InputButton aria-label onClick` for an icon action (Copy is `CopyButton`), then a locked `Field`'s lock; at most two) · `Textarea` |
 | `otp-input.tsx` | `OtpInput value onChange invalid autoSubmit autoFocus name`: a 6-digit code (an authenticator app's) drawn as six boxes, 3 + 3, over **one** invisible BaseUI input, so a pasted "123 456", a password manager's fill (`autocomplete="one-time-code"`), the `Field` label and screen readers see one field. Keeps only digits, at most six; the caret stays after the last digit unless everything is selected. `autoSubmit` submits the form (`requestSubmit`, in an effect so the handler sees the new value) whenever a complete code goes in, never for one shown already full. Not BaseUI's `PinCode`: six inputs with one label, and a paste with a space is dropped |
-| `copy-button.tsx` | `CopyButton value label failed onCopied variant` (`icon`: an `InputButton` for an `InputGroup`'s `InputActions`, with a "Copy" tooltip on hover; `button`: an outline `Button` reading `label`). Every Copy in the app is one ([Copying](#copying)) |
+| `copy-button.tsx` | `useCopy(value, { onCopied })` → `copy` · `CopyButton copy label variant` (`icon`: an `InputButton` for an `InputGroup`'s `InputActions`, with a "Copy" tooltip on hover; `button`: an outline `Button` reading `label`) · `CopyFailure copy` (what to do instead, under the field or button). Every Copy in the app is these ([Copying](#copying)) |
 | `tooltip.tsx` | `Tooltip content placement onClick disabled open` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref. `onClick` makes the tooltip itself a pointer shortcut (it stays open while hovered), never the only way to do something; `disabled` keeps it closed without remounting the child; `open` holds it open whatever the pointer and focus do (a locked field's lock after a try at typing) |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
@@ -106,12 +106,18 @@ Two kinds of value stay unreadable until asked for, in case the screen is shared
 
 ## Copying
 
-Every Copy button is a `CopyButton` (`components/ui/copy-button.tsx`): the workspace ID in workspace settings, the setup key and the recovery codes in two-factor setup (account settings and the admin sign-in). Don't write a clipboard call or a "Copied" message by hand.
+Every Copy button is a `CopyButton` (`components/ui/copy-button.tsx`) driven by `useCopy`: the workspace ID in workspace settings, the setup key and the recovery codes in two-factor setup (account settings and the admin sign-in). Don't write a clipboard call or a "Copied" message by hand.
 
-- **The answer is a tooltip on the button, never text on the page.** After a click it shows "Copied" for 3 seconds and hides itself (the icon turns to a check meanwhile); hovering or focusing the icon variant shows "Copy" as usual. It's `Tooltip open` held for that time, as a locked field's lock does.
-- **Where the clipboard isn't available** (an insecure origin, a refused permission), the tooltip says what to do instead, `failed` ("Couldn’t copy. Select the ID and copy it instead."), for 6 seconds, long enough to read.
-- **Screen readers** hear the same from a `sr-only` `role="status"` region beside the button, emptied before each copy so a second one is announced again.
-- `onCopied` runs after each copy that worked (the recovery codes count as saved).
+```tsx
+const copy = useCopy(value, { onCopied });
+<CopyButton copy={copy} label="Copy Workspace ID" />                 // in InputActions
+<CopyFailure copy={copy}>Couldn’t copy. Select the ID and copy it instead.</CopyFailure>
+```
+
+- **"Copied" is a tooltip on the button, never text on the page.** After a click it shows for 3 seconds and hides itself (the icon turns to a check meanwhile); hovering or focusing the icon variant shows "Copy" as usual. It's `Tooltip open` held for that time, as a locked field's lock does.
+- **Screen readers hear "Copied" once**, from a `sr-only` `role="status"` region beside the button, emptied before each copy so a second one is announced again. The tooltip's own text is `aria-hidden`, so it isn't read a second time as the button's description.
+- **Where the clipboard isn't available** (an insecure origin, a refused permission), `CopyFailure` shows what to do instead under the field or button, as an alert, and keeps it there until the next try: an instruction mustn't vanish before it's read.
+- `onCopied` runs after each copy that worked (the recovery codes count as saved), never after the component has unmounted, however late the clipboard answers.
 
 ## Confirmations
 
