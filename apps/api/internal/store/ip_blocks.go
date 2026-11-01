@@ -18,10 +18,12 @@ import (
 // wider ones and ranges holding the admin's own address or a trusted
 // proxy). The cleanup deletes expired rows.
 
-// MaxIPBlockLifetime is how long a block may last: addresses are
+// MaxIPBlockLifetime is how long a block may last, 30 days: addresses are
 // reassigned and shared, so a permanent block eventually hits the wrong
-// people.
-const MaxIPBlockLifetime = 30 * 24 * time.Hour
+// people. Counted in hours, as the table's CHECK is (interval '720 hours'),
+// never calendar days, which are 23 or 25 hours across a DST change in the
+// database session's TimeZone. CreateIPBlock adds it in seconds.
+const MaxIPBlockLifetime = 720 * time.Hour
 
 // MaxIPBlocks is how many blocks may be live at once, so the list every
 // server holds and checks stays small; for more, block at the edge
