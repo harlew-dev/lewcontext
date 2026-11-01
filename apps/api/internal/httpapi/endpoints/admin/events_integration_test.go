@@ -302,8 +302,8 @@ func TestAdminCatalogue(t *testing.T) {
 		!slices.Equal(c.Listeners, []string{"mail.password_reset", "mail.workspace_invitation"}) {
 		t.Fatalf("catalogue: %+v", c)
 	}
-	if len(c.EventGroups) != 7 || c.EventGroups[0].ID != "auth.*" || c.EventGroups[0].Label != "Accounts and sign-in" ||
-		c.EventGroups[6].ID != "admin-reads" || len(c.EventGroups[6].Names) != 11 || c.EventGroups[0].Groups[0].ID != "auth.password_reset.*" {
+	if len(c.EventGroups) != 8 || c.EventGroups[0].ID != "auth.*" || c.EventGroups[0].Label != "Accounts and sign-in" ||
+		c.EventGroups[7].ID != "admin-reads" || len(c.EventGroups[7].Names) != 11 || c.EventGroups[0].Groups[0].ID != "auth.password_reset.*" {
 		t.Fatalf("event groups: %+v", c.EventGroups)
 	}
 	if after := apitest.Must(db.NewSelect().TableExpr("events").Count(context.Background()))(t); after != before {
