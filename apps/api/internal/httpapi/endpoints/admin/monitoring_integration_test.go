@@ -735,7 +735,7 @@ func TestAdminMonitoringOverview(t *testing.T) {
 	tiles := sections[struct {
 		Tiles []monitor.Tile `json:"tiles"`
 	}](t, v).Tiles
-	if len(tiles) != 10 || tiles[0].ID != "servers" || tiles[0].Series != nil {
+	if len(tiles) != 12 || tiles[0].ID != "servers" || tiles[0].Series != nil || tiles[4].ID != "database" || tiles[7].ID != "integrity" {
 		t.Fatalf("tiles: %+v", tiles)
 	}
 	total := func(id string, tiles []monitor.Tile) float64 {

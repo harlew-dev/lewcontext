@@ -17,6 +17,13 @@ const PageIPs = "ips"
 // in a day is a spam farm, not a shared office.
 const signUpClusterCritical = 20
 
+// The shared-address warning: this share of the day's events (from this
+// many) from one address. The Configuration page warns at the same.
+const (
+	busiestShare  = 80
+	busiestSample = 50
+)
+
 // IPsSignals are the IP addresses page's signals.
 var IPsSignals = []Signal{
 	{
@@ -33,7 +40,7 @@ var IPsSignals = []Signal{
 		// probably isn't configured (CLIENT_IP_HEADER, TRUSTED_PROXIES),
 		// so every number by address is wrong.
 		Name: "ips.busiest_share", Page: PageIPs, Label: "Events from the busiest address", Unit: UnitPercent,
-		Window: 24 * time.Hour, Warn: 80, MinSample: 50,
+		Window: 24 * time.Hour, Warn: busiestShare, MinSample: busiestSample,
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
 			b, err := env.Store.FindBusiestAddress(ctx, sp.From, sp.To)
 			return share(b.Busiest, b.Events), err

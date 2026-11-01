@@ -146,6 +146,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	mail := admin.Mail{Server: s}
 	monitoring := admin.Monitoring{Server: s}
 	ipAddresses := admin.IPAddresses{Server: s}
+	appErrors := admin.Errors{Server: s}
 	deliveries := admin.Deliveries{Server: s}
 	admins := admin.Admins{Server: s}
 	emailBlocks := admin.EmailBlocks{Server: s}
@@ -183,6 +184,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	// One address's page, from the IP addresses page: bounded the same
 	// way, and recorded with the address looked at.
 	signedIn.HandleFunc("GET", "/ips/{ip}", ipAddresses.Show)
+	// One grouped error's page, from the Errors page: bounded the same way,
+	// and recorded with the group looked at.
+	signedIn.HandleFunc("GET", "/errors/{error}", appErrors.Show)
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
 	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
 	// A fresh code opens the session's 5-minute step-up window. Only the

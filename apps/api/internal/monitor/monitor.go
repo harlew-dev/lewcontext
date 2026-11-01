@@ -44,6 +44,13 @@ type Env struct {
 	// Budget is how long a page's signal or section may take before it's
 	// shown as not loaded (sections.go); zero: no budget of its own.
 	Budget time.Duration
+	// AdminKeys are the digests of the admin keys this server takes
+	// (httpapi.Server.AdminKeys), for the Configuration page's count of
+	// sessions under the key being retired.
+	AdminKeys store.AdminKeys
+	// checks keeps the integrity checks run while one page is read
+	// (integrity.go); Show sets it.
+	checks *checkMemo
 }
 
 // Span is what a signal is counted over: [From, To). From is its window

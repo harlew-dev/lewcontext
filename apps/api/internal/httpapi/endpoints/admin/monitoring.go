@@ -38,7 +38,7 @@ func (h Monitoring) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	admin := httpapi.Admin(r).User.PublicID
-	env := monitor.Env{Store: h.Repo, Limits: httpapi.RateLimits, Now: now, Budget: h.Summaries.Section}
+	env := monitor.Env{Store: h.Repo, Limits: httpapi.RateLimits, Now: now, Budget: h.Summaries.Section, AdminKeys: h.AdminKeys()}
 	view, err := bounded(r.Context(), h.Server, admin, func(ctx context.Context) (monitor.View, error) {
 		return monitor.Show(ctx, env, page, window)
 	})
