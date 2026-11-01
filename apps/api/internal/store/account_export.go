@@ -207,9 +207,12 @@ func exportOwnedWorkspaces(ctx context.Context, tx bun.Tx, userID int64) ([]Expo
 
 // exportEvents are the events about the account (user_id), and those it
 // caused (actor_id) apart from its admin dashboard's: an admin's reads and
-// actions hold other people's data and the dashboard's searches, and are
-// the admin trail's, not the account's. Newest first, at most
-// MaxExportedEvents.
+// actions hold other people's data (a stranger's invitations it revoked,
+// an address it unblocked, an account it suspended) and the dashboard's
+// searches, and are the admin trail's, not the account's. Those are every
+// event recorded in an admin request (admin_request, set from the context
+// whatever the event's name, so a new action is covered) and every admin.*
+// name. Newest first, at most MaxExportedEvents.
 func exportEvents(ctx context.Context, tx bun.Tx, userID int64) ([]ExportedEvent, bool, error) {
 	var rows []struct {
 		ExportedEvent
@@ -219,7 +222,7 @@ func exportEvents(ctx context.Context, tx bun.Tx, userID int64) ([]ExportedEvent
 		ColumnExpr("e.public_id AS id, e.name, e.created_at, e.payload").
 		ColumnExpr("coalesce(?, '') AS ip, e.user_agent", eventIPText).
 		ColumnExpr("e.actor_id IS NOT DISTINCT FROM ? AS own", userID).
-		Where("e.user_id = ? OR (e.actor_id = ? AND split_part(e.name, '.', 1) <> 'admin')", userID, userID).
+		Where("e.user_id = ? OR (e.actor_id = ? AND NOT e.admin_request AND split_part(e.name, '.', 1) <> 'admin')", userID, userID).
 		OrderExpr(newestFirst).
 		Limit(MaxExportedEvents+1).
 		Scan(ctx, &rows)

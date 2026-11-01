@@ -21,7 +21,9 @@ type Event struct {
 	// MinimisedAt is when the pseudonymise target minimised it; zero for
 	// one it hasn't (Minimised sets it).
 	MinimisedAt time.Time `bun:",nullzero"`
-	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	// AdminRequest marks an event recorded in an admin dashboard request.
+	AdminRequest bool
+	CreatedAt    time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
 // Events builds rate_limit.reached events from the last 90 days, which need

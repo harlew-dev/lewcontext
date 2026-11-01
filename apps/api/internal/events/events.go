@@ -74,10 +74,11 @@ const maxUserAgent = 256
 // carried in the request context so store methods can record it without
 // extra arguments.
 type meta struct {
-	actorID   int64
-	ip        string
-	requestID string
-	userAgent string
+	actorID      int64
+	ip           string
+	requestID    string
+	userAgent    string
+	adminRequest bool
 }
 type metaKey struct{}
 
@@ -90,6 +91,18 @@ func current(ctx context.Context) meta {
 func WithActor(ctx context.Context, actorID int64) context.Context {
 	m := current(ctx)
 	m.actorID = actorID
+	return context.WithValue(ctx, metaKey{}, m)
+}
+
+// WithAdminRequest records that the request is the admin dashboard's
+// (behind its key): every event it records is marked events.admin_request,
+// so an account's Download my data leaves out what it did as an admin,
+// which holds other people's data and belongs to the admin trail
+// (docs/compliance.md#download-my-data). Set once, by the admin key's
+// middleware, so every dashboard route and action is covered.
+func WithAdminRequest(ctx context.Context) context.Context {
+	m := current(ctx)
+	m.adminRequest = true
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
@@ -132,3 +145,7 @@ func RequestID(ctx context.Context) string { return current(ctx).requestID }
 
 // UserAgent is the request's User-Agent, or "" outside a request.
 func UserAgent(ctx context.Context) string { return current(ctx).userAgent }
+
+// AdminRequest says the event is recorded in an admin dashboard request
+// (WithAdminRequest).
+func AdminRequest(ctx context.Context) bool { return current(ctx).adminRequest }

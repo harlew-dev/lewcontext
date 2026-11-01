@@ -24,6 +24,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithRequest`, set by `ClientAddress` from `httpapi.ClientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
 | `request_id` | The ID of the request it was recorded in (`req_…`, always the server's own, never a client's or a proxy's), the `requestId` on that request's log lines and in its `X-Request-ID` (`events.WithRequest`, with the IP); empty for the CLI and listeners. `CHECK`ed to be empty or `req_` and 14 base62 ([observability.md](observability.md#request-ids)) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
+| `admin_request` | Recorded in an admin dashboard request (`events.WithAdminRequest`, set by the admin key's middleware for every `/api/admin/` route, sign-in steps included): an admin's reads and actions, whatever their name (`workspace.invitation.revoked`, `email.unblocked`, `auth.suspended` from the dashboard too). The admin's own Download my data leaves them out ([compliance.md](../compliance.md#download-my-data)) |
 | `minimised_at` | When `prune pseudonymise` cut its IP and replaced its emails with pseudonyms (30 days after `created_at`, [compliance.md](../compliance.md#retention)); null until then |
 | `created_at` | When |
 

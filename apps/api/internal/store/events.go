@@ -35,7 +35,11 @@ type eventRecord struct {
 	// (events.WithRequest), its log lines' requestId; "" outside one.
 	RequestID string
 	UserAgent string
-	CreatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	// AdminRequest marks an event recorded in an admin dashboard request
+	// (events.WithAdminRequest): an admin's reads and actions, left out
+	// of the admin's own Download my data.
+	AdminRequest bool
+	CreatedAt    time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
 // record writes e, and queues a delivery to each of its listeners. Store
@@ -65,6 +69,9 @@ func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope 
 		IP:          events.IP(ctx),
 		RequestID:   events.RequestID(ctx),
 		UserAgent:   events.UserAgent(ctx),
+		// Marked from the context alone, so a dashboard action added later
+		// is marked too.
+		AdminRequest: events.AdminRequest(ctx),
 	}
 	if events.Audit(row.Name) {
 		err = insertAudited(ctx, db, &row)

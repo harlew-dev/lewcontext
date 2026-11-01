@@ -5,11 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/brianvoe/gofakeit/v7"
+	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +58,8 @@ func secretKeys(value any, path string) []string {
 // secret, internal ID or anyone else's data appears anywhere in it, by
 // key or by value: not another member's name or email, an invitation a
 // co-owner sent, someone else's IP on an event about the account, nor the
-// account's own admin searches. The sixth export in a day is 429.
+// account's own admin searches, nor what it did to strangers from the
+// dashboard. The sixth export in a day is 429.
 func TestDownloadMyData(t *testing.T) {
 	s, db := server(t)
 	h := router.New(s)
@@ -82,6 +87,9 @@ func TestDownloadMyData(t *testing.T) {
 	event("auth.login_attempted", 0, user.ID, "203.0.113.98", map[string]any{"email": user.Email, "user": user.PublicID, "result": "wrong_password"})
 	event("admin.user.listed", user.ID, 0, "198.51.100.10", map[string]any{"admin": user.PublicID, "q": "someone-searched@example.test", "sort": "name", "page": 1})
 	event("project.created", coOwner.ID, 0, "203.0.113.97", map[string]any{"project": projects[1].PublicID, "workspace": mine.PublicID, "name": "by the co-owner"})
+	// The account is an operator too, and acts on strangers from the
+	// dashboard: what that records holds their data, and stays out.
+	stranger := strangerActedOnByAdmin(t, h, db, f, user.ID)
 
 	apitest.Call(t, h, "POST", "/api/auth/export", exportBody(factory.DefaultPassword), "", session.Cookie(), 403)
 	apitest.Call(t, h, "POST", "/api/auth/export", exportBody(factory.DefaultPassword), session.CSRFToken, nil, 401)
@@ -123,6 +131,11 @@ func TestDownloadMyData(t *testing.T) {
 		"an attacker's IP":             "203.0.113.98",
 		"the co-owner's event's IP":    "203.0.113.97",
 		"the account's admin searches": "someone-searched@example.test",
+		"a stranger's invitee":         stranger.invitee,
+		"an address it unblocked":      stranger.unblocked,
+		"a stranger's workspace":       stranger.workspace,
+		"a stranger it suspended":      stranger.user,
+		"its reason as an admin":       adminReason,
 	} {
 		if value != "" && strings.Contains(body, value) {
 			t.Errorf("the export holds %s", name)
@@ -152,8 +165,10 @@ func TestDownloadMyData(t *testing.T) {
 			t.Errorf("%s, about it by someone else: %+v", name, about)
 		}
 	}
-	if len(byName["admin.user.listed"]) != 0 {
-		t.Error("its admin reads were exported")
+	for _, name := range []string{"admin.user.listed", "workspace.invitation.revoked", "email.unblocked", "auth.suspended"} {
+		if len(byName[name]) != 0 {
+			t.Errorf("its admin reads and actions were exported: %s", name)
+		}
 	}
 	e := apitest.OnlyEvent(t, db, "auth.data_exported")
 	if !apitest.Is(e.UserID, user.ID) || !apitest.Is(e.ActorID, user.ID) || e.Raw != `{"user": "`+user.PublicID+`"}` {
@@ -174,6 +189,59 @@ func TestDownloadMyData(t *testing.T) {
 	if n := len(apitest.EventsNamed(t, db, "auth.data_exported")); n != 5 {
 		t.Fatalf("%d exports recorded", n)
 	}
+}
+
+// adminReason is the reason the account gives for its dashboard actions.
+const adminReason = "Spam reported by several people, see ticket 4521."
+
+// actedOn is what the account's dashboard actions touched, none of it its
+// own data.
+type actedOn struct{ invitee, unblocked, workspace, user string }
+
+// strangerActedOnByAdmin makes adminID an operator with a fresh code and,
+// through the dashboard's routes, revokes a stranger's workspace's
+// invitation, unblocks an address and suspends the stranger: each records
+// an event with the admin as actor that isn't an admin.* name
+// (workspace.invitation.revoked, email.unblocked, auth.suspended).
+func strangerActedOnByAdmin(t *testing.T, h http.Handler, db bun.IDB, f *gofakeit.Faker, adminID int64) actedOn {
+	t.Helper()
+	ctx := context.Background()
+	apitest.Must(factory.Admins.State(factory.AdminFor(adminID)).State(factory.AdminRole(auth.AdminOperator)).CreateOne(ctx, db, f))(t)
+	session := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(adminID)).State(factory.SteppedUp).CreateOne(ctx, db, f))(t)
+	stranger := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	spam := apitest.Must(factory.WorkspaceFor(ctx, db, f, stranger.ID, factory.Named("Spam")))(t)
+	done := actedOn{invitee: "third-party-invitee@example.test", unblocked: "blocked-person@example.test", workspace: spam.PublicID, user: stranger.PublicID}
+	apitest.Must(factory.InvitationsTo(spam.ID).State(func(i *factory.WorkspaceInvitation) { i.InvitedBy, i.Email = stranger.ID, done.invitee }).CreateOne(ctx, db, f))(t)
+	apitest.Must(factory.EmailBlocks.State(factory.Blocked(done.unblocked)).CreateOne(ctx, db, f))(t)
+	for _, action := range []struct{ method, path, body string }{
+		{"DELETE", "/api/admin/workspaces/" + spam.PublicID + "/invitations", jsonBody(map[string]any{"reason": adminReason})},
+		{"DELETE", "/api/admin/email-blocks", jsonBody(map[string]any{"email": done.unblocked, "reason": adminReason})},
+		{"POST", "/api/admin/users/" + stranger.PublicID + "/suspension", jsonBody(map[string]any{"reason": adminReason})},
+	} {
+		r := httptest.NewRequest(action.method, action.path, strings.NewReader(action.body))
+		r.Header.Set("Origin", "http://localhost:3000")
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Admin-Key", factory.AdminRouteKey)
+		r.Header.Set("X-CSRF-Token", session.CSRFToken)
+		r.AddCookie(session.Cookie())
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code >= 300 {
+			t.Fatalf("%s %s: %d %s", action.method, action.path, w.Code, w.Body.String())
+		}
+	}
+	for _, name := range []string{"workspace.invitation.revoked", "email.unblocked", "auth.suspended"} {
+		if e := apitest.OnlyEvent(t, db, name); !apitest.Is(e.ActorID, adminID) {
+			t.Fatalf("%s isn't the admin's: %s", name, e.Raw)
+		}
+	}
+	return done
+}
+
+// jsonBody is a request body as JSON.
+func jsonBody(body map[string]any) string {
+	raw, _ := json.Marshal(body)
+	return string(raw)
 }
 
 // A suspended account has no session, so it can't export: the usual 401.
