@@ -17,7 +17,8 @@ import (
 // working), a password guessed from many addresses, an account signed in
 // after a run of failures, failed codes, a password reset flood, a shared
 // limit reached, failures and a refusal at the admin door, and an account
-// taken over. Addresses are from the documentation ranges (192.0.2.0/24,
+// taken over; then part 2's patterns (monitoring_abuse.go). Addresses are
+// from the documentation ranges (192.0.2.0/24,
 // 198.51.100.0/24, 203.0.113.0/24), every email is @example.test, and every
 // payload holds "seeded": true. It never touches rate_limits: a counter
 // there would really refuse requests. Insert-only; refused in production.
@@ -112,9 +113,15 @@ func seedMonitoring(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options
 	add("auth.logged_in", minutes(40), seedTakeoverIP, map[string]any{"user": victim.PublicID}, ofVictim)
 	add("auth.password_changed", minutes(25), seedTakeoverIP, map[string]any{"user": victim.PublicID, "otherSessionsRevoked": 2}, ofVictim)
 
+	// Part 2: the IP addresses, Accounts, Workspaces and Usage pages.
+	abused, err := seedAbuse(abuse{ctx: ctx, tx: tx, f: f, now: now, add: add})
+	if err != nil {
+		return "", err
+	}
+
 	if _, err := factory.Events.Sequence(func(i int, e *factory.Event) { *e = planted[i] }).Create(ctx, tx, f, len(planted)); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Planted %d fake events: credential stuffing from %s, a guessed password, a reset flood from %s, register:global reached, admin door failures from %s, and %s taken over from %s",
-		len(planted), SeedStuffingIP, seedResetIP, seedDoorIP, victim.Email, seedTakeoverIP), nil
+	return fmt.Sprintf("Planted %d fake events: credential stuffing from %s, a guessed password, a reset flood from %s, register:global reached, admin door failures from %s, %s taken over from %s; %s",
+		len(planted), SeedStuffingIP, seedResetIP, seedDoorIP, victim.Email, seedTakeoverIP, abused), nil
 }

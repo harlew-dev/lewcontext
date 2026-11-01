@@ -181,7 +181,7 @@ func TestMonitoringSeeder(t *testing.T) {
 		t.Fatalf("summary: %s", summary)
 	}
 	env := monitor.Env{Store: &store.Store{DB: db}, Limits: httpapi.RateLimits, Now: time.Now()}
-	results, err := monitor.ReadAll(context.Background(), env, append(append([]monitor.Signal{}, monitor.SecuritySignals...), monitor.LimitsSignals...))
+	results, err := monitor.ReadAll(context.Background(), env, monitor.Signals())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,10 +197,25 @@ func TestMonitoringSeeder(t *testing.T) {
 		"limits.shared_reached":          monitor.LevelCritical,
 		"auth.unknown_account_share":     monitor.LevelOK,
 		"auth.reauthentication_failures": monitor.LevelOK,
+		// Part 2.
+		"ips.sign_up_cluster":           monitor.LevelWarn,
+		"ips.busiest_share":             monitor.LevelOK,
+		"accounts.workspace_sprees":     monitor.LevelWarn,
+		"accounts.invitation_sprees":    monitor.LevelWarn,
+		"accounts.low_acceptance":       monitor.LevelWarn,
+		"accounts.project_sprees":       monitor.LevelWarn,
+		"accounts.links_in_names":       monitor.LevelWarn,
+		"accounts.new_and_busy":         monitor.LevelWarn,
+		"workspaces.quota_used":         monitor.LevelWarn,
+		"workspaces.throwaway_accounts": monitor.LevelWarn,
 	}
+	values := map[string]float64{"usage.inactive_accounts": 2, "workspaces.quota_used": 90, "ips.sign_up_cluster": 9}
 	for _, r := range results {
 		if level, ok := want[r.Name]; ok && r.Level != level {
 			t.Errorf("%s: %v (%v), want %v", r.Name, r.Level, r.Value, level)
+		}
+		if value, ok := values[r.Name]; ok && r.Value != value {
+			t.Errorf("%s: %v, want %v", r.Name, r.Value, value)
 		}
 	}
 	var unseeded int
