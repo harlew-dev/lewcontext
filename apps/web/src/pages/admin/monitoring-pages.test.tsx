@@ -84,10 +84,9 @@ const ips = view<IpsSections>(
   "ips",
   {
     addresses: [
-      row("10.0.0.1", true, { events: 100 }),
-      row("203.0.113.5", true, { events: 4, failedSignIns: 3 }),
       row("2001:db8:5:5::/64", true, { events: 20, signUps: 20 }),
       row("10.0.0.1", false, { events: 100 }),
+      row("203.0.113.5", false, { events: 4, failedSignIns: 3 }),
       row("2001:db8:5:5::1", false, { events: 1, signUps: 1 }),
     ],
     clusters: [

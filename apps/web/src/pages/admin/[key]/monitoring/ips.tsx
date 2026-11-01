@@ -116,7 +116,8 @@ function useTopState(view: View) {
 function TopAddresses({ view }: { view: View }) {
   const { sort, each, href, setEach } = useTopState(view);
   const rows = view.sections.addresses
-    .filter((r) => r.network !== each)
+    // By /64: the /64s and the IPv4 addresses; each: every address.
+    .filter((r) => (each ? !r.network : r.network || !r.ip.includes(":")))
     .sort((a, b) => b[sort] - a[sort] || a.ip.localeCompare(b.ip))
     .slice(0, shown);
   return (

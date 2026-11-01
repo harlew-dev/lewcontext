@@ -451,8 +451,9 @@ export type LimitsSections = {
   }[];
 };
 // The IP addresses page: the top addresses both ways (`network`: an IPv6
-// address grouped by its /64, as the signals count; otherwise each address
-// on its own; IPv4 rows are the same either way), and sign-up clusters.
+// /64, as the signals count; otherwise one address: listed by /64, the
+// /64s and the IPv4 addresses; each on its own, every address), and
+// sign-up clusters.
 export type AddressRow = {
   ip: string;
   network: boolean;

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"lewcontext/api/internal/events"
-	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -35,9 +34,10 @@ const hostAddress = "host(e.ip)"
 
 // AddressRow is an address's activity in a window: the events recorded
 // from it, its failed sign-ins, accounts made and limit windows reached,
-// and how many accounts acted or signed in from it. Network: grouped as
-// the signals count (an IPv6 address by its /64), or each address on its
-// own; the IPv4 rows are the same either way.
+// and how many accounts acted or signed in from it. Network: an IPv6 /64
+// (as the signals count); otherwise one address, IPv4 or IPv6. The list
+// grouped as the signals count is the IPv4 addresses and the /64s; each
+// address on its own, every address.
 type AddressRow struct {
 	IP            string `json:"ip" bun:"ip"`
 	Network       bool   `json:"network" bun:"network"`
@@ -51,14 +51,22 @@ type AddressRow struct {
 // addressColumns are a top list's columns, each ranked on its own.
 var addressColumns = []string{"events", "failed_sign_ins", "sign_ups", "limits_reached", "accounts"}
 
+// ipv6Network is an IPv6 address's /64, and null for IPv4: the second
+// grouping set, so an IPv4 address is grouped once.
+const ipv6Network = "CASE WHEN family(e.ip) = 6 THEN text(network(set_masklen(e.ip, 64))) END"
+
 // IndexAddressActivity lists the addresses events came from in [from, to),
-// both ways at once (grouped as the signals count, and each address on its
-// own: one scan, two grouping sets), keeping the top maxTopAddressRows of
-// each grouping by each column. Admin reads are left out.
+// both ways at once (one scan, two grouping sets: each address, and each
+// IPv6 /64), keeping the top maxTopAddressRows by each column of each
+// list: the IPv4 addresses with the /64s, and every address on its own.
+// Admin reads are left out. The groups are counted once (a CTE read by
+// each top list), each top list a top-N sort of them.
 func (s *Store) IndexAddressActivity(ctx context.Context, from, to time.Time) ([]AddressRow, error) {
 	grouped := s.DB.NewSelect().Model((*eventRecord)(nil)).
-		ColumnExpr("CASE WHEN grouping("+hostAddress+") = 0 THEN "+hostAddress+" ELSE "+ipNetwork+" END AS ip").
+		ColumnExpr("CASE WHEN grouping("+hostAddress+") = 0 THEN "+hostAddress+" ELSE ("+ipv6Network+") END AS ip").
 		ColumnExpr("grouping("+hostAddress+") = 1 AS network").
+		// In the list grouped as the signals count: a /64, or an IPv4 address.
+		ColumnExpr("grouping("+hostAddress+") = 1 OR family(min(e.ip)) = 4 AS counted").
 		ColumnExpr("count(*) AS events").
 		ColumnExpr("count(*) FILTER (WHERE e.name = 'auth.login_attempted' AND e.payload->>'result' IN (?)) AS failed_sign_ins", bun.In(signInFailed)).
 		ColumnExpr("count(*) FILTER (WHERE e.name = 'auth.registered') AS sign_ups").
@@ -68,22 +76,28 @@ func (s *Store) IndexAddressActivity(ctx context.Context, from, to time.Time) ([
 		Where("e.created_at < ?", to).
 		Where("e.ip IS NOT NULL").
 		Where("e.name NOT IN (?)", bun.In(events.AdminReadNames())).
-		GroupExpr("GROUPING SETS ((" + hostAddress + "), (" + ipNetwork + "))")
-	// Each column ranked within its grouping (fixed names, never input).
-	ranked := s.DB.NewSelect().TableExpr("(?) AS g", grouped).ColumnExpr("g.*")
-	top := make([]string, len(addressColumns))
-	for i, c := range addressColumns {
-		ranked = ranked.ColumnExpr("row_number() OVER (PARTITION BY g.network ORDER BY g." + c + " DESC, g.ip) AS rank_" + c)
-		top[i] = "r.rank_" + c + " <= ?"
-	}
-	args := make([]any, len(addressColumns))
-	for i := range args {
-		args[i] = maxTopAddressRows
+		GroupExpr("GROUPING SETS ((" + hostAddress + "), (" + ipv6Network + "))").
+		// The second set's IPv4 rows fall in one null group: not a network.
+		Having("grouping(" + hostAddress + ") = 0 OR (" + ipv6Network + ") IS NOT NULL")
+	// A top list per list and column (fixed names, never input).
+	var tops *bun.SelectQuery
+	for _, list := range []string{"g.counted", "NOT g.network"} {
+		for _, c := range addressColumns {
+			top := s.DB.NewSelect().TableExpr("g").ColumnExpr("g.*").
+				Where(list).
+				OrderExpr("g." + c + " DESC, g.ip").
+				Limit(maxTopAddressRows)
+			part := s.DB.NewSelect().TableExpr("(?) AS t", top).ColumnExpr("t.*")
+			if tops == nil {
+				tops = part
+			} else {
+				tops = tops.Union(part)
+			}
+		}
 	}
 	rows := []AddressRow{}
-	err := s.DB.NewSelect().TableExpr("(?) AS r", ranked).
+	err := s.DB.NewSelect().With("g", grouped).TableExpr("(?) AS r", tops).
 		Column("r.ip", "r.network", "r.events", "r.failed_sign_ins", "r.sign_ups", "r.limits_reached", "r.accounts").
-		Where(strings.Join(top, " OR "), args...).
 		OrderExpr("r.network DESC, r.events DESC, r.ip").
 		Scan(ctx, &rows)
 	return rows, err

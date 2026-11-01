@@ -60,7 +60,8 @@ func TestAdminMonitoringIPs(t *testing.T) {
 	if len(page.Clusters) != 2 || page.Clusters[0].IP != "2001:db8:5:5::/64" || page.Clusters[0].Accounts != 20 || page.Clusters[1].Accounts != 5 {
 		t.Fatalf("clusters: %+v", page.Clusters)
 	}
-	// Both ways: the /64 as one row, and each of its addresses.
+	// Both ways: the /64 as one row, and each of its addresses; an IPv4
+	// address is one row, in both lists.
 	var network, single int
 	for _, a := range page.Addresses {
 		if a.Network && a.IP == "2001:db8:5:5::/64" && a.SignUps == 20 && a.Events == 20 {
@@ -88,12 +89,21 @@ func TestAdminMonitoringIPs(t *testing.T) {
 	m.make("rate_limit.reached", map[string]any{"limit": "auth:per-ip:block", "window": 900}, "203.0.113.5", 5*time.Minute)
 	page = sections[ipsSections](t, ips())
 	for _, a := range page.Addresses {
-		if a.IP == "203.0.113.5" && a.Network && (a.FailedSignIns != 3 || a.LimitsReached != 1 || a.Events != 4) {
+		if a.IP == "203.0.113.5" && (a.Network || a.FailedSignIns != 3 || a.LimitsReached != 1 || a.Events != 4) {
 			t.Fatalf("203.0.113.5: %+v", a)
 		}
 	}
-	if page.Addresses[0].IP != "10.0.0.1" || !page.Addresses[0].Network {
-		t.Fatalf("busiest first: %+v", page.Addresses[0])
+	// Networks first, then the addresses, busiest first; each once.
+	seen := map[string]bool{}
+	for _, a := range page.Addresses {
+		key := fmt.Sprint(a.IP, a.Network)
+		if seen[key] {
+			t.Fatalf("%s listed twice", key)
+		}
+		seen[key] = true
+	}
+	if page.Addresses[0].IP != "2001:db8:5:5::/64" || page.Addresses[1].IP != "10.0.0.1" || page.Addresses[1].Network {
+		t.Fatalf("order: %+v", page.Addresses[:2])
 	}
 }
 
