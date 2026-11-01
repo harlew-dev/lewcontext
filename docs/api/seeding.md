@@ -9,6 +9,7 @@ make seed                                   # demo account test@example.com, its
 make seed only=volume count=500             # projects in the demo account's newest workspace
 make seed only=volume email=you@example.com # …or another existing account's (it needs a workspace)
 make seed only=users count=25 projects=20   # 25 fake accounts, each owning a workspace with 0–20 projects
+make seed only=monitoring                   # fake attacks for the admin Monitoring pages (stuffing, a takeover, the admin door, …)
 make seed only=events count=1000000         # fake audit trail events, to check the admin Events page at volume
 ```
 
@@ -17,6 +18,7 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 | `demo` | The "Acme" workspace, 6 named projects, and 4 fake members (admin, two members, viewer) who can't sign in | Yes |
 | `volume` | 120 projects | No (insert-only; refuses unknown accounts and accounts without a workspace) |
 | `users` | 10 users, each owning a workspace with up to 60 projects; every third never verified its email (as if made while `EMAIL_VERIFICATION` was off), to try the Not verified badge and `EMAIL_VERIFICATION_EXISTING=required` | No (insert-only) |
+| `monitoring` | A few hundred fake events planting what the Security and Rate limits pages look for: a day of ordinary sign-ins, then in the last hour credential stuffing from `203.0.113.66`, a password guessed from six addresses, a sign-in after six wrong passwords, failed codes, a reset flood, `register:global` reached, the admin door, and one fake account (an unusable password) taken over ([monitoring.md](monitoring.md#demo-data-make-seed-onlymonitoring)). Documentation-range addresses, `@example.test` emails, every payload `"seeded": true`; never `rate_limits`, metrics or errors. `count` is ignored | No (insert-only) |
 | `events` | 10,000 fake events (at most 2,000,000): most in the last 7 days, a thin tail back 90, sign-ins weighted heaviest, and bursts of failed sign-ins from three addresses. Payloads look like the store's but name accounts and workspaces that don't exist, and every one holds `"seeded": true`, so fake events can be told apart (`payload->>'seeded'`). For `EXPLAIN` at volume ([testing.md](../testing.md#volume-check-for-the-events-page)), not for demos | No (insert-only) |
 
 - Accounts created by `demo` and `users` sign in with `DEMO_PASSWORD` from `.env` (`password` in `.env.example`). It may be 1–128 bytes: sign-up's 12-character minimum doesn't apply to seeded development accounts.

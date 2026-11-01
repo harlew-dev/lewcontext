@@ -82,6 +82,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's). For Events: `names` (the name tokens as sent), `outcome`, `account`, `workspace`, `email`, `ip`, `window`, `from` and `to` as resolved, `before`, and `summary`, the charts' status when they were asked for with the list (`ok`, `busy`, `too_slow`, `too_wide`) (older rows have a `name` string and `adminReads` instead); actor only | every Events and deliveries list read, once per request, charts included |
 | `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
 | `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
+| `admin.monitoring.viewed` | `admin`, `page` (`overview`, `security`, `limits`), `window` (`1h`, `24h`, `7d`); actor only | a Monitoring page served, once for its signals, charts and lists ([monitoring.md](monitoring.md)) |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
 | `admin.admin.listed` | `admin`; actor only | the Admins page |
 | `admin.email_block.listed` | `admin`, `q`, `sort`, `page`; actor only | every read of the Email blocks page |
