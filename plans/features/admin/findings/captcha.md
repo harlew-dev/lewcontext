@@ -57,4 +57,25 @@ All passed:
 
 ## Security review
 
-_Filled in after the independent review._
+The independent reviewer found these sound:
+- **Siteverify calls:** the secret travels only in the POST body; the siteverify URL is constant and TLS defaults are kept; tokens and answers are bounded; the check fails closed.
+- **Block before challenge:** a valid token never gets past a block level.
+- **Same answers:** a 428 depends only on per-IP or global counts, never on whether an email has an account, with no row, mail or password hashing before it.
+- **Challenge actions** are constants, never taken from the request.
+- **CSP:** exact origins, app pages only, never `unsafe-inline`.
+- **The web client** resends at most once, and never puts the token in a URL or storage.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **Bots could lock everyone out without solving anything.** A 428'd request still counted against the shared limits (`register:global`, `password-reset:global`, `invitation:global`). The probe needed about 21 addresses to make every real password-reset request answer 503 for the hour, even with a valid token. This wasn't a regression (the block level already existed), but the feature's goal wasn't met | Above a challenge level, a request counts against a **shared** limit only once it has passed the challenge. Per-IP limits still count every hit |
+| 2 | **Medium** (likely) | **The `idempotency_key` sent to Cloudflare wasn't a UUID.** With a real secret, Cloudflare may refuse every check, which would break sign-in for anyone challenged in production. The e2e test only uses test keys | Field dropped (it added nothing) |
+| 3 | Low | Cloudflare's "test key" answers skipped the hostname and action checks even with a real secret | Honoured only when the configured secret is a test key |
+| 4 | Low | A redirect from siteverify would have re-sent the secret to the new location | Redirects aren't followed |
+| 5 | Low | Cloudflare's error codes were ignored and nothing was logged, so a wrong secret would show only as users looping on "check failed" | Configuration and outage codes answer 503 and are logged (never the secret or token) |
+| 6 | Low | `PER_IP_LIMITS=off` was accepted with `CLIENT_IP_HEADER` set, silently removing the login challenge | Refused in production, warned elsewhere |
+| 7 | Low | Two challenges at once could leave a request hanging | Challenges removed by id |
+| 8–10 | Nits | Wording ("never on a token page"), a plain-object provider lookup, docs on the shared `auth:per-ip` budget | Fixed |
+
+**For the merge:** A3's server config summary needs the captcha settings: the provider, whether the secret is set (never its value), whether test keys are in use, and `PER_IP_LIMITS`. A non-production server using test keys now says so at startup.
+
+_Fix results: filled in once the fixes are committed._
