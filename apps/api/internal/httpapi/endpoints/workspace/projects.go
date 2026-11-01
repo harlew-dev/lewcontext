@@ -9,20 +9,73 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
 var projectColors = []string{"violet", "blue", "amber", "emerald", "rose"}
 
-const invalidProject = "Check the project name, description, status, and color."
+const (
+	invalidProject            = "Check the project name, description, status, and color."
+	invalidProjectName        = "Use a project name of 1–100 characters, without control characters."
+	invalidProjectDescription = "Use a description of up to 500 characters, without control characters other than line breaks and tabs."
+)
 
-func validProject(in *store.ProjectInput) bool {
+// validProject trims the name and description and checks them, the status
+// and the colour. When something is wrong it returns the field to blame
+// ("name" or "description") with why, or no field for a status or colour
+// the API doesn't offer. A name is 1–100 characters with no control
+// character, as a workspace name; a description is up to 500, where line
+// breaks and tabs are fine but no other control character (NUL among them,
+// which PostgreSQL can't store), format character or line separator is
+// (hiddenInDescription).
+func validProject(in *store.ProjectInput) (field, message string, ok bool) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Description = strings.TrimSpace(in.Description)
-	if utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 100 || utf8.RuneCountInString(in.Description) > 500 {
-		return false
+	n := utf8.RuneCountInString(in.Name)
+	switch {
+	case n < 1 || n > 100 || strings.ContainsFunc(in.Name, unicode.IsControl):
+		return "name", invalidProjectName, false
+	case utf8.RuneCountInString(in.Description) > 500 || strings.ContainsFunc(in.Description, hiddenInDescription):
+		return "description", invalidProjectDescription, false
+	case !slices.Contains(input.ProjectStatuses, in.Status) || !slices.Contains(projectColors, in.Color):
+		return "", invalidProject, false
 	}
-	return slices.Contains(input.ProjectStatuses, in.Status) && slices.Contains(projectColors, in.Color)
+	return "", "", true
+}
+
+// hiddenInDescription reports whether c may not appear in a description:
+// any control character but a line break or tab, a format character (bidi
+// overrides such as U+202E, zero-width characters, U+FEFF), and the Unicode
+// line and paragraph separators. The admin dashboard's reasons follow the
+// same rule.
+func hiddenInDescription(c rune) bool {
+	switch {
+	case c == '\n' || c == '\r' || c == '\t':
+		return false
+	case c == '\u2028' || c == '\u2029':
+		return true
+	}
+	return unicode.IsControl(c) || unicode.Is(unicode.Cf, c)
+}
+
+// decodeProject reads a project from the body: 400 for a body that isn't
+// one, 422 (on the field when there is one) for one validProject refuses.
+func decodeProject(w http.ResponseWriter, r *http.Request) (store.ProjectInput, bool) {
+	var in store.ProjectInput
+	if !httpapi.Decode(w, r, &in) {
+		return in, false
+	}
+	field, message, ok := validProject(&in)
+	switch {
+	case ok:
+		return in, true
+	case field == "":
+		httpapi.Fail(w, 422, message)
+	default:
+		httpapi.FailField(w, 422, field, message)
+	}
+	return in, false
 }
 
 // projectID reads the {project} path value, a prj_ public ID.
@@ -75,7 +128,7 @@ func (h Projects) Show(w http.ResponseWriter, r *http.Request) {
 	httpapi.JSON(w, 200, p)
 }
 func (h Projects) Store(w http.ResponseWriter, r *http.Request) {
-	in, ok := httpapi.DecodeValid(w, r, validProject, invalidProject)
+	in, ok := decodeProject(w, r)
 	if !ok {
 		return
 	}
@@ -97,7 +150,7 @@ func (h Projects) Update(w http.ResponseWriter, r *http.Request) {
 		httpapi.Fail(w, 404, "Project not found.")
 		return
 	}
-	in, ok := httpapi.DecodeValid(w, r, validProject, invalidProject)
+	in, ok := decodeProject(w, r)
 	if !ok {
 		return
 	}

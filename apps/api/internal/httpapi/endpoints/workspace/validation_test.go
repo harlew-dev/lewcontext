@@ -11,13 +11,30 @@ import (
 )
 
 func TestProjectValidation(t *testing.T) {
-	good := store.ProjectInput{Name: " A project ", Status: "Planned", Color: "violet"}
-	if !validProject(&good) || good.Name != "A project" {
+	good := store.ProjectInput{Name: " A project ", Description: "Line one\r\n\tline two", Status: "Planned", Color: "violet"}
+	if _, _, ok := validProject(&good); !ok || good.Name != "A project" {
 		t.Fatal("valid project rejected")
 	}
-	for _, in := range []store.ProjectInput{{Name: "", Status: "Planned", Color: "violet"}, {Name: "Test", Status: "Unknown", Color: "violet"}, {Name: "Test", Status: "Planned", Color: "red"}, {Name: strings.Repeat("x", 101), Status: "Planned", Color: "violet"}} {
-		if validProject(&in) {
-			t.Fatal("invalid project accepted")
+	for _, c := range []struct {
+		in    store.ProjectInput
+		field string
+	}{
+		{store.ProjectInput{Name: "", Status: "Planned", Color: "violet"}, "name"},
+		{store.ProjectInput{Name: strings.Repeat("x", 101), Status: "Planned", Color: "violet"}, "name"},
+		{store.ProjectInput{Name: "nul\x00here", Status: "Planned", Color: "violet"}, "name"},
+		{store.ProjectInput{Name: "tab\there", Status: "Planned", Color: "violet"}, "name"},
+		{store.ProjectInput{Name: "Test", Description: strings.Repeat("x", 501), Status: "Planned", Color: "violet"}, "description"},
+		{store.ProjectInput{Name: "Test", Description: "nul\x00here", Status: "Planned", Color: "violet"}, "description"},
+		{store.ProjectInput{Name: "Test", Description: "escape\x1b[2J", Status: "Planned", Color: "violet"}, "description"},
+		{store.ProjectInput{Name: "Test", Description: "bidi\u202eevil", Status: "Planned", Color: "violet"}, "description"},
+		{store.ProjectInput{Name: "Test", Description: "zero\u200bwidth", Status: "Planned", Color: "violet"}, "description"},
+		{store.ProjectInput{Name: "Test", Description: "line\u2028separator", Status: "Planned", Color: "violet"}, "description"},
+		{store.ProjectInput{Name: "Test", Status: "Unknown", Color: "violet"}, ""},
+		{store.ProjectInput{Name: "Test", Status: "Planned", Color: "red"}, ""},
+	} {
+		field, message, ok := validProject(&c.in)
+		if ok || field != c.field || message == "" {
+			t.Fatalf("%+v: want refused on %q, got ok=%v field=%q", c.in, c.field, ok, field)
 		}
 	}
 }
@@ -44,7 +61,7 @@ func TestFactoriesMatchValidation(t *testing.T) {
 	f := factory.TestFaker(t)
 	for _, p := range factory.Projects.Make(f, 500) {
 		in := store.ProjectInput{Name: p.Name, Description: p.Description, Status: p.Status, Color: p.Color}
-		if !validProject(&in) || in.Name != p.Name || in.Description != p.Description {
+		if _, _, ok := validProject(&in); !ok || in.Name != p.Name || in.Description != p.Description {
 			t.Fatalf("fake project rejected or changed by validation: %+v", p)
 		}
 	}
