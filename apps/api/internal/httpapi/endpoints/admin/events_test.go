@@ -3,6 +3,7 @@ package admin
 import (
 	"fmt"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/monitor"
 	"slices"
 	"strings"
 	"testing"
@@ -154,5 +155,18 @@ func TestTimeFilter(t *testing.T) {
 	}
 	if _, ok := windowQuery(map[string]string{"from": from.Format(time.RFC3339), "to": to.Add(time.Second).Format(time.RFC3339)}, to); ok {
 		t.Error("over a year and a day accepted")
+	}
+}
+
+// The Monitoring pages' windows are the Events page's: the same start and
+// buckets, so a drill-down shows the same columns.
+func TestMonitorWindowsMatchEvents(t *testing.T) {
+	now := at("2026-11-01T14:47:31Z")
+	for _, name := range []string{monitor.WindowHour, monitor.WindowDay, monitor.WindowWeek} {
+		page, ok := monitor.ResolveWindow(name, now)
+		events, ok2 := resolveWindow(now, name)
+		if !ok || !ok2 || !page.From.Equal(*events.From) || page.Bucket != events.Bucket || !page.To.Equal(*events.To) {
+			t.Errorf("%s: monitoring %+v, events %+v", name, page, events)
+		}
 	}
 }

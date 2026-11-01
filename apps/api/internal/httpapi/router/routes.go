@@ -142,6 +142,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	workspaceProjects := admin.WorkspaceProjects{Server: s}
 	adminEvents := admin.Events{Server: s}
 	mail := admin.Mail{Server: s}
+	monitoring := admin.Monitoring{Server: s}
 	deliveries := admin.Deliveries{Server: s}
 	admins := admin.Admins{Server: s}
 	emailBlocks := admin.EmailBlocks{Server: s}
@@ -173,6 +174,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/catalogue", adminEvents.Catalogue)
 	signedIn.HandleFunc("GET", "/mail", mail.Show)
 	signedIn.HandleFunc("GET", "/deliveries", deliveries.Index)
+	// A Monitoring page, read whole and recorded once; bounded like the
+	// Events charts (httpapi.Summaries).
+	signedIn.HandleFunc("GET", "/monitoring/{page}", monitoring.Show)
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
 	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
 	// A fresh code opens the session's 5-minute step-up window. Only the
