@@ -111,7 +111,7 @@ Each row: `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `em
 
 Stat tiles for the queue, a bar chart of volume per hour, the asked-for-vs-sent pair, the top recipients table (each address links to Events `?email=`), the driver box, then the deliveries table with status tabs (Failed first when there are any).
 
-Retrying a failed delivery is an action ([actions](../../admin/actions.md)). When [email blocks](../email-blocks.md) ships, Mail gets a Blocked addresses tab listing `email_blocks`.
+Retrying a failed delivery is an action ([actions](actions.md)). When [email blocks](../email-blocks.md) ships, Mail gets a Blocked addresses tab listing `email_blocks`.
 
 ## Charts (decision 12)
 
@@ -190,7 +190,7 @@ Actor only, as the other admin reads.
 - **Bounces and complaints** from the SMTP provider. They need a public webhook endpoint per provider, with its signature check. Worth a plan before volume grows, since sender reputation depends on acting on them.
 - **CSV export** of events: [compliance](../../admin/compliance.md) covers exports.
 - **Live tail / auto-refresh**: every refresh is a recorded read.
-- **Retrying a delivery**, and any other write: [actions](../../admin/actions.md).
+- **Retrying a delivery**, and any other write: [actions](actions.md).
 
 ## How the build differs
 

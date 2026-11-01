@@ -137,7 +137,7 @@ A **review list** of accounts with one or more abuse signals in the window, each
 | **New and busy** | registered in the last 24 h and tripped any of the above | |
 | Failed password or MFA checks | 3+ | a stolen session |
 
-Also: top accounts by writes (events as actor), and accounts owning the most workspaces. Each row links to the account and its activity. Acting on one (suspending) is in [actions](actions.md).
+Also: top accounts by writes (events as actor), and accounts owning the most workspaces. Each row links to the account and its activity. Acting on one (suspending) is in [actions](../implemented/admin/actions.md).
 
 ### 6. Workspaces
 
@@ -233,7 +233,7 @@ From `request_minutes`, `metric_minutes` and their hourly sums, all servers summ
 ### 11. Errors
 
 - **Open groups** from `app_errors`, newest occurrence first: message, source, route, count in the window (from the `errors_total` metric), first and last seen. **New since the current release** (first seen after the newest version's first `server.started`) is highlighted, which answers "did the deploy break something?"
-- **One group:** `/admin/:key/monitoring/errors/:error` (`GET /api/admin/errors/{error}`, recorded as `admin.error.viewed`): the scrubbed message, stack, route, counts per hour, versions seen, and the last request ID to search the logs with. Resolving a group is an [action](actions.md).
+- **One group:** `/admin/:key/monitoring/errors/:error` (`GET /api/admin/errors/{error}`, recorded as `admin.error.viewed`): the scrubbed message, stack, route, counts per hour, versions seen, and the last request ID to search the logs with. Resolving a group is an [action](../implemented/admin/actions.md).
 - `app_errors` gains `public_id … DEFAULT public_id('err')` for the URL.
 
 ### 12. Configuration
@@ -313,5 +313,5 @@ Each new table gets a factory (`TestEveryTableHasAFactory`).
 - **An `Idempotency-Key`** for creates: a separate plan, if the Integrity numbers call for it.
 - **A public status page.**
 - **Synthetic transactions** (a robot signing in every minute): the external check covers "up".
-- **Acting** on anything here: [actions](actions.md).
+- **Acting** on anything here: [actions](../implemented/admin/actions.md).
 - **Alerts:** [alerts](alerts.md).

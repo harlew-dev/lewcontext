@@ -39,7 +39,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.email_verification.requested` | `user` | `POST /api/auth/email-verification`: a signed-in account asked for a code |
 | `auth.email_verification.sent` | `user`, `request` | the `mail.email_verification` listener, after sending the code |
 | `auth.email_verified` | `user`, `via`: `code` / `password_reset` (completing a reset link, which went only to that inbox) | `VerifyEmail`, `ResetPassword` (only when the email wasn't verified yet) |
-| `auth.login_attempted` | `email`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` | `login`, for every attempt that reaches the password check |
+| `auth.login_attempted` | `email`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` / `suspended` (a [suspended](auth.md#suspended-accounts) account's right password, or right code: refused 403) | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions` |
@@ -49,10 +49,13 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.password_reset.sent` | `user`, `email`, `request` (the requested event's `evt_` ID) | the `mail.password_reset` listener, after writing the link |
 | `auth.password_reset.completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
 | `auth.mfa.enabled` | `user`, `otherSessionsRevoked` | `EnableMFA`: the first code from the app turned two-factor authentication on (the first recovery codes come with it) |
-| `auth.mfa.disabled` | `user`, `reason`: `user` / `reset` (the operator's `admin reset-mfa`, with no actor) | `DisableMFA`, `ResetMFA` |
+| `auth.mfa.disabled` | `user`, `reason`: `user` / `reset` (the operator's `admin reset-mfa`, with no actor, or the dashboard's Reset two-factor authentication, with the admin as actor beside `admin.user.mfa_reset`) | `DisableMFA`, `ResetMFA`, `ResetUserMFA` |
 | `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `admin_login` / `admin_step_up` (opening an admin session's step-up window) / `enable` (also the admin door's setup) / `disable` / `recovery_codes` / `password_update` (changing the password with MFA on), and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
 | `auth.recovery_codes.created` | `user`, `count` | `CreateRecoveryCodes`: a new set replaced the old |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
+| `auth.suspended` | `user`, `by`: `admin` (beside `admin.user.suspended`, which holds the reason; the admin is the actor) / `cli` (`admin suspend`, no actor, `reason` here), `sessionsRevoked` (app and admin), `invitationsRevoked`; `user_id` set | `SuspendUser` |
+| `auth.unsuspended` | `user`, `by` (as `auth.suspended`), `reason` from the command line; `user_id` set | `UnsuspendUser` |
+| `auth.sessions_revoked_all` | `sessions`, `adminSessions` (how many were signed out); no scope or actor | `RevokeAllSessions` (`admin sessions revoke-all`) |
 | `auth.account_deleted` | `user` only: no name or email, since that's what's being erased. No `user_id` (it would be deleted with the account), and its actor becomes null | `DeleteAccount` |
 | `workspace.created` | `workspace`, `name` (the owner is the actor) | `CreateWorkspace` |
 | `workspace.renamed` | `workspace`, `changes.name` (`from`, `to`) | `RenameWorkspace`, only when the name changed |
@@ -62,7 +65,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `workspace.member.left` | `workspace`, `role`; the member is both actor and `user_id` | `LeaveWorkspace` |
 | `workspace.invitation.created` | `invitation`, `workspace`, `email`, `role` (the inviter is the actor) | `CreateInvitation`; queues `mail.workspace_invitation` |
 | `workspace.invitation.sent` | `invitation`, `workspace`, `request` (the created event's `evt_` ID) | the `mail.workspace_invitation` listener, after writing the link |
-| `workspace.invitation.revoked` | `invitation`, `workspace`, `email` | `RevokeInvitation` |
+| `workspace.invitation.revoked` | `invitation`, `workspace`, `email` | `RevokeInvitation`; the admin actions revoking a workspace's invitations or a suspended account's (the admin as actor) |
 | `workspace.invitation.accepted` | `invitation`, `workspace`, `role` (the role they now have); the new member is actor and `user_id` | `AcceptInvitation` |
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
 | `project.updated` | `project`, `workspace`, `changes` per changed field (`from`, `to`) | `UpdateProject`, only when something changed |
@@ -86,6 +89,16 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `admin.admin.listed` | `admin`; actor only | the Admins page |
 | `admin.email_block.listed` | `admin`, `q`, `sort`, `page`; actor only | every read of the Email blocks page |
 | `admin.email.unblocked` | `admin`, `email`, `reason` (10 to 500 characters, as the admin wrote it); actor only | `UnblockEmailAddress` with an admin: the dashboard's Unblock, behind a fresh code, in one transaction with the delete and `email.unblocked` (`by: "admin"`) |
+| `admin.user.signed_out` | `admin`, `user`, `reason`, `sessionsRevoked`; actor only | `RevokeUserSessions`: Sign out everywhere ([admin.md](admin.md#actions)) |
+| `admin.user.mfa_reset` | `admin`, `user`, `reason`, `sessionsRevoked`; actor only | `ResetUserMFA`, beside `auth.mfa.disabled` (`reset`) |
+| `admin.user.suspended` | `admin`, `user`, `reason`, `sessionsRevoked`, `invitationsRevoked`; actor only | `SuspendUser` with an admin, beside `auth.suspended` |
+| `admin.user.unsuspended` | `admin`, `user`, `reason`; actor only | `UnsuspendUser` with an admin, beside `auth.unsuspended` |
+| `admin.workspace.invitations_revoked` | `admin`, `workspace`, `reason`, `count`; actor only | `RevokeWorkspaceInvitations`, beside a `workspace.invitation.revoked` each |
+| `admin.delivery.retried` | `admin`, `reason`, `listener`, `count`, and `event` (one delivery) or `failedSince` (a listener's failures); actor only | `RequeueDelivery`, `RequeueFailedDeliveries` |
+| `admin.ip.blocked` | `admin`, `block` (`ipb_…`), `network` (CIDR), `expiresAt`, `reason`; actor only | `CreateIPBlock` ([admin.md](admin.md#ip-blocks)) |
+| `admin.ip.unblocked` | `admin`, `block`, `network`, `reason`; actor only | `DeleteIPBlock` |
+| `admin.ip_block.listed` | `admin`; actor only | the IP blocks page |
+| `admin.admin.signed_out` | `admin`, `user` (the admin signed out), `reason`, `adminSessionsRevoked`, `sessionsRevoked`; actor only | `RevokeAdminSessions` |
 | `email.blocked` | `email` (the address, without an account); no user, workspace or actor. The `ip` column is the request's | `BlockEmail`, from a block link, only when the address wasn't blocked already ([auth.md](auth.md#blocking-an-email-address)) |
 | `email.unblocked` | `email`, `by`: `link` (its block link, with the request's `ip`) / `cli` (`admin unblock`, no `ip`) / `admin` (the dashboard's Unblock: the admin as actor, the request's `ip`, beside `admin.email.unblocked`) | `UnblockEmail`, `UnblockEmailAddress`, only when the address was blocked |
 | `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |
@@ -99,7 +112,7 @@ The admin dashboard's Events page picks names in groups (`internal/events/groups
 | `auth.*` | Accounts and sign-in | every `auth.` name: sub-groups `auth.password_reset.*`, `auth.registration.*`, `auth.email_verification.*`, `auth.mfa.*`, then the single names |
 | `workspace.*` | Workspaces | sub-groups `workspace.member.*`, `workspace.invitation.*`, then `workspace.created`, `.renamed`, `.deleted` |
 | `project.*`, `rate_limit.*`, `email.*` | Projects, Rate limits, Email addresses | their names |
-| `admin.*` | Admin | every `admin.` name **except the reads**; sub-group `admin.session.*` |
+| `admin.*` | Admin | every `admin.` name **except the reads**; sub-groups `admin.session.*` (Admin sessions), `admin.user.*` (Actions on accounts) and `admin.ip.*` (IP blocks) |
 | `admin-reads` | Admin reads | the `admin.<resource>.listed` and `.viewed` names (`events.AdminRead`) |
 
 - **A sub-group** is a three-segment prefix with two or more names; a prefix with one name (`auth.recovery_codes.created`) is just that name. Every name is in exactly one group (`TestEventGroups`). Groups come in catalogue order, sub-groups before single names.
@@ -108,7 +121,7 @@ The admin dashboard's Events page picks names in groups (`internal/events/groups
 ## What's stored, and what never is
 
 - **Never:** passwords (old, new or attempted), password hashes, session tokens or their digests, CSRF tokens, MFA secrets, codes and recovery codes (or their digests), challenge tokens, internal IDs. `TestPayloadsHoldNothingSensitive` checks the event structs' field names and types.
-- **Personal data, on purpose:** the client IP of every event recorded during a request (the `ip` column), the email typed on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), the address on `email.blocked` and `.unblocked` and on `admin.email.unblocked` (who asked us not to email them), an admin's free-text `reason` on `admin.email.unblocked` (which may name someone: admins are told it's kept in the audit trail), what admins searched for (`q` on `admin.*.listed`, `filters` on the Events and deliveries reads: on `admin.email_block.listed` it is often the address of someone who asked not to be contacted), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `httpapi.ClientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
+- **Personal data, on purpose:** the client IP of every event recorded during a request (the `ip` column), the email typed on `auth.login_attempted`, `auth.password_reset.requested`, `auth.registration.requested` and `.checked`, the invited address on `workspace.invitation.created` and `.revoked` (someone who may have no account), the address on `email.blocked` and `.unblocked` and on `admin.email.unblocked` (who asked us not to email them), an admin's free-text `reason` on `admin.email.unblocked` and every other admin action, and on `auth.suspended` and `.unsuspended` from the command line (which may name someone: admins are told it's kept in the audit trail; it never reaches a log line), what admins searched for (`q` on `admin.*.listed`, `filters` on the Events and deliveries reads: on `admin.email_block.listed` it is often the address of someone who asked not to be contacted), and the account's name and email on `auth.registered`. The email is only recorded once it parses as an address (people sometimes type a password into the email field), but it can still be someone else's address or a typo. The IP is `httpapi.ClientIP(r)`: the connection's, or behind a proxy configured with `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` the client's ([auth.md](auth.md#rate-limits)); without them, and under Vite's dev proxy, every attempt shows the proxy's IP. It is the full address, even where a limit counts an IPv6 /64.
 - **Timing:** `auth.login_attempted` is written whether or not the account exists, so the write doesn't reveal which emails are registered; so are `auth.registration.requested` and `.checked`. Only the listener's `auth.registration.sent`, after the response, says whether the email had an account.
 - **Volume:** refused requests aren't recorded one by one. Only the first refusal of a rate-limit window writes `rate_limit.reached`, so a flood writes one row per limit.
 - Account, project and workspace names and project descriptions stay in the log after they change. `make prune target=events` deletes them after 90 days by default, keeping any with a pending delivery ([database.md](database.md#pruning)). Deleting an event deletes its deliveries (`ON DELETE CASCADE`).

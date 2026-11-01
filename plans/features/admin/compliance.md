@@ -1,6 +1,6 @@
 # Compliance: retention, erasure, export, audit evidence
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A7 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md), [observability](observability.md) and [actions](actions.md). Docs it will change: [database.md](../../../docs/api/database.md) (pruning), [events.md](../../../docs/api/events.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [deployment.md](../../../docs/deployment.md), [admin.md](../../../docs/api/admin.md); new `docs/compliance.md` (the data map and control mapping) and `docs/incident-response.md` (the runbook).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A7 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md), [observability](observability.md) and [actions](../implemented/admin/actions.md). Docs it will change: [database.md](../../../docs/api/database.md) (pruning), [events.md](../../../docs/api/events.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [deployment.md](../../../docs/deployment.md), [admin.md](../../../docs/api/admin.md); new `docs/compliance.md` (the data map and control mapping) and `docs/incident-response.md` (the runbook).
 
 ## Why, and what this can't do
 
@@ -76,7 +76,7 @@ Written for the person on call, using what A1–A6 built:
 
 1. **Detect:** an alert, the external uptime check, or a report.
 2. **Triage:** Monitoring's Overview and Security; Events filtered by IP, account and time; the error group's request ID in the logs.
-3. **Contain:** suspend accounts, block addresses, revoke a workspace's invitations ([actions](actions.md)); `admin sessions revoke-all` if sessions may have leaked; rotate `ADMIN_ROUTE_KEY`, the SMTP password and `METRICS_TOKEN` if exposed. (`APP_KEY` can't be rotated yet; see Known gaps.)
+3. **Contain:** suspend accounts, block addresses, revoke a workspace's invitations ([actions](../implemented/admin/actions.md)); `admin sessions revoke-all` if sessions may have leaked; rotate `ADMIN_ROUTE_KEY`, the SMTP password and `METRICS_TOKEN` if exposed. (`APP_KEY` can't be rotated yet; see Known gaps.)
 4. **Scope:** who was affected, from Events exports for the window and addresses involved.
 5. **Notify:** under GDPR, the supervisory authority within 72 hours of becoming aware of a personal-data breach that's a risk to people (article 33), and the people affected when the risk is high (article 34). Wording templates in the runbook.
 6. **Record:** every breach goes in a breach register (article 33(5)) kept by the organisation, with facts, effects and remedial action, even when not notified.

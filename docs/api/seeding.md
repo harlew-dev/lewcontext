@@ -47,6 +47,8 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 | `EmailBlockLinks` | `EmailBlockLink` | A live block link (a year) to a unique `example.test` address; `Token` keeps the raw token. `BlockLinkFor(email)`, `ExpiredBlockLink` |
 | `EmailBlocks` | `EmailBlock` | A blocked `example.test` address. `Blocked(email)` for a given one. Seeders block nothing |
 | `EventDeliveries` | `EventDelivery` | A pending delivery, due now. Needs `EventID`; use `DeliveryOf(eventID, listener)` |
+| `UserSuspensions` | `UserSuspension` | A suspension with a fake reason and no admin named (the command line's). Use `SuspensionOf(userID)`; `SuspendedBy(adminID)`. Seeders suspend nobody |
+| `IPBlocks` | `IPBlock` | A day's block of one address in `198.51.100.0/24` (documentation addresses), no admin named. `BlockOf(cidr)`, `BlockedBy(adminID)`, `ExpiredBlock`. Seeders block nothing |
 
 ```go
 f := factory.TestFaker(t) // or factory.NewFaker() outside tests

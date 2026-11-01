@@ -113,7 +113,7 @@ A dead-man's switch: services such as Healthchecks.io, Better Stack or Cronitor 
 - `GET /api/admin/alerts` (`state`: `open` (default), `resolved`, `all`; cursor pagination as Events) and `GET /api/admin/alerts/{alert}`, recorded as `admin.alert.listed` and `admin.alert.viewed`.
 - Open alerts first, critical before warn; each with its signal, value, peak, how long it's been open, acknowledged by whom, and a link to the monitoring page and the Events filter behind it.
 - **The sidebar's Alerts item shows a count** of open alerts, from `/api/admin/me` (which gains `openAlerts`), so it's visible from any page without another recorded read.
-- Acknowledging and silencing are [actions](actions.md).
+- Acknowledging and silencing are [actions](../implemented/admin/actions.md).
 
 ## Events
 
