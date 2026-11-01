@@ -59,4 +59,28 @@ These are recorded in [observability](observability.md#security-review).
 
 ### Security review
 
-_Running._
+The independent reviewer confirmed these sound:
+- **Access:** every route is behind the key and an admin session.
+- **Recording:** exactly one recorded read per page served, and nothing recorded when nothing was served.
+- **Data shown:**
+  - emails appear only in the guessing list;
+  - full IPs appear only in review and top lists;
+  - the admin door list never shows the typed email or key;
+  - "Blocked right now" is counts only.
+- **Queries:** builder-only SQL; queries are bounded and indexed; the takeover lookback is tied to one account.
+- **Hourly sums:** minute and hour tables never double count; two servers can't sum an hour twice.
+- **The seeder** is refused in production.
+- **The page:** everything renders as text, levels are always in words, and charts have text alternatives.
+- **Privacy:** `last_seen_at` isn't in any response.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **Any signed-in account could make the Security page time out.** "Sign out my other sessions" had no limit and recorded an event even when nothing was revoked; each such event made the possible-takeover query slower. Measured: 1M events (about 12 requests a second for a day) took the query to 5.4 s, past the page's 5 s limit, which hid the whole page during an attack | No event when nothing was revoked; the route gets its own per-account limit; the takeover query is driven by sign-ins, not by changes; each section of the page fails on its own |
+| 2 | Low | **A deadlock** between the hourly last-seen update and a password change or a new sign-in (reproduced; about once an hour per account, and only during one of those) | The last-seen update never waits: it skips the hour instead |
+| 3 | Low | The admin door's drill-down links listed every failure kind, not just what they counted | Exact drills where cheap, otherwise the docs say which are broader |
+| 4 | Low | `/metrics` without a token accepted the name `localhost`, which a container may resolve elsewhere | Literal addresses only |
+| 5 | Nits | Silent-server cleanup on the server's clock; a minute could arrive after its hour was summed; totals and latency read the cutoff twice; an admin disconnecting caused a 500; doc drift; seeder IPs | Fixed |
+
+**Worth knowing for alerts (A5):** any account can raise a Critical level on purpose, with a few wrong passwords on its own account or a handful of junk emails. That's fine for pages, but alerts must allow for it.
+
+_These fixes are being made by the A4 part 2 builder first._
