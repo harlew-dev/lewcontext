@@ -267,7 +267,7 @@ function Growth({ view }: { view: View }) {
       : ` At this rate, ${formatBytes(g.projectedBytes)} in ${g.projectionDays} days.`;
   return (
     <MonitoringSection title="Growth" description={description}>
-      <div className="grid gap-8 lg:grid-cols-3">
+      <div className="grid gap-8 lg:grid-cols-3 [&>*]:min-w-0">
         <Stat title="Known tables now" value={formatBytes(latest.totalBytes)}>
           <span className="text-zinc-500 dark:text-zinc-400">
             {signedBytes(g.bytesPerDay)} a day.{projection}

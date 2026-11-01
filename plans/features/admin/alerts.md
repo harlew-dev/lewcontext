@@ -1,6 +1,6 @@
 # Admin: Alerts
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A5 of the [admin plans](README.md). Needs [monitoring](monitoring.md) (its signals and integrity checks) and [observability](../implemented/admin/observability.md). Docs it will change: [admin.md](../../../docs/api/admin.md), `docs/api/monitoring.md`, [events.md](../../../docs/api/events.md), [mail.md](../../../docs/api/mail.md), [database.md](../../../docs/api/database.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A5 of the [admin plans](README.md). Needs [monitoring](../implemented/admin/monitoring.md) (its signals and integrity checks) and [observability](../implemented/admin/observability.md). Docs it will change: [admin.md](../../../docs/api/admin.md), `docs/api/monitoring.md`, [events.md](../../../docs/api/events.md), [mail.md](../../../docs/api/mail.md), [database.md](../../../docs/api/database.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md).
 
 ## Why
 
@@ -55,7 +55,7 @@ Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when d
 
 ## What alerts, at first
 
-| Signal (from [monitoring](monitoring.md)) | Level | For |
+| Signal (from [monitoring](../implemented/admin/monitoring.md)) | Level | For |
 | --- | --- | --- |
 | 5xx share over 1% / 5% | warn / critical | 5 min |
 | p95 latency over 1 s / 3 s | warn / critical | 10 min |

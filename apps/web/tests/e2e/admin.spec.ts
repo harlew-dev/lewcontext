@@ -489,6 +489,21 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   ).toBeVisible();
   expect(errors).toEqual([]);
 
+  // The Data page: retention per prune target, linking to every run.
+  await page.getByRole("link", { name: "Data", exact: true }).last().click();
+  await expect(
+    page.getByRole("heading", { name: "Retention", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "every run on Events" }),
+  ).toBeVisible();
+  expect(
+    sql(
+      `SELECT payload->>'page' FROM events WHERE name = 'admin.monitoring.viewed' ORDER BY id DESC LIMIT 1`,
+    ),
+  ).toBe("data");
+  expect(errors).toEqual([]);
+
   // Part 3: Integrity, Performance, Errors and Configuration load; a
   // group a browser reported is labelled user-reported, its text never a
   // link, and its own page is a read recorded with the group.

@@ -6,7 +6,7 @@ Status: **implemented 2026-11-01**, in three phases: logs, request IDs, panic re
 
 Today the server writes `slog`'s default text to stderr, a handful of lines at startup and on failures. There's no line per request, no way to tie a user's "something went wrong" to a log line, no count of errors or of slow routes, and a panic in a handler is caught only by `net/http`'s default (a stack on stderr, the connection dropped). The events table answers *who did what*; nothing answers *is the server healthy and fast*.
 
-This plan adds the signals every production service needs, kept on our own servers and in our own database, so that the [monitoring](../../admin/monitoring.md) pages can show them and [alerts](../../admin/alerts.md) can watch them. Everything is also exposed in standard forms (JSON logs, Prometheus text) so an operator can send it to whatever they already use.
+This plan adds the signals every production service needs, kept on our own servers and in our own database, so that the [monitoring](monitoring.md) pages can show them and [alerts](../../admin/alerts.md) can watch them. Everything is also exposed in standard forms (JSON logs, Prometheus text) so an operator can send it to whatever they already use.
 
 ## Two rules: fast, and bounded
 
@@ -177,7 +177,7 @@ CREATE TABLE server_instances (
 
 ## 7. Slow queries
 
-A Bun `QueryHook` times every query. Over `SLOW_QUERY_MS` (default 500) it logs at `warn`: `requestId`, `operation`, `table`, `durationMs`, and the calling store method (from the stack, only when slow). **It never logs `event.Query`,** which Bun formats with the values inlined (emails, digests). `pg_stat_statements`, where the database has it, is read by the [monitoring](../../admin/monitoring.md) Performance page instead.
+A Bun `QueryHook` times every query. Over `SLOW_QUERY_MS` (default 500) it logs at `warn`: `requestId`, `operation`, `table`, `durationMs`, and the calling store method (from the stack, only when slow). **It never logs `event.Query`,** which Bun formats with the values inlined (emails, digests). `pg_stat_statements`, where the database has it, is read by the [monitoring](monitoring.md) Performance page instead.
 
 ## 8. Health
 

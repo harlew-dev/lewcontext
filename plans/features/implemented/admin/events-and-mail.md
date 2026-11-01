@@ -6,7 +6,7 @@ Status: **implemented 2026-10-31**, with the confirmed decisions below; see [How
 
 The `events` table already records every sign-in attempt, password reset, limit reached, workspace change and admin read, and `event_deliveries` already holds every email's status. Today an operator reads them with SQL against production. These two pages make them readable, filterable and linked to Users and Workspaces, without SQL and with every look recorded.
 
-They are also the base the [monitoring](../../admin/monitoring.md) pages build on: each monitoring chart links to the Events page, filtered to the rows behind it.
+They are also the base the [monitoring](monitoring.md) pages build on: each monitoring chart links to the Events page, filtered to the rows behind it.
 
 ## Data changes
 
@@ -115,7 +115,7 @@ Retrying a failed delivery is an action ([actions](actions.md)). When [email blo
 
 ## Charts (decision 12)
 
-The volume chart is the dashboard's first; [monitoring](../../admin/monitoring.md) adds many more (stacked time buckets, sparklines, meters). Rather than hand-drawing each, they use one library behind one wrapper.
+The volume chart is the dashboard's first; [monitoring](monitoring.md) adds many more (stacked time buckets, sparklines, meters). Rather than hand-drawing each, they use one library behind one wrapper.
 
 - **Recharts 3.10.1** (MIT; released 2026-07-25), pinned exactly, with its peer `react-is` 18.3.1 to match React. SVG, declarative React components, React 18 supported.
 - **Why Recharts:** SVG rather than canvas, so marks take Tailwind classes (`fill-zinc-900 dark:fill-zinc-100`) and follow dark mode without a second set of colours; keyboard navigation of the tooltip (`accessibilityLayer`, on by default in v3); bar, stacked bar, line, area and pie cover every chart monitoring plans. Alternatives considered: **visx** (smaller pieces, but far more code per chart and a `@react-spring/web` peer), **Chart.js** (canvas: no Tailwind classes or `dark:`, weaker screen-reader support), **Nivo** (heavier, its own theming system).

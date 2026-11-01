@@ -1,6 +1,6 @@
 # Admin: the Events page, redesigned
 
-Status: **implemented 2026-11-01**, with every recommendation in the Decisions table confirmed as written (the user's go-ahead of 2026-11-01); see [How the build differs](#how-the-build-differs). Plan A10 of the [admin plans](../../admin/README.md). Builds on [events and mail](events-and-mail.md) (the page as it was), keeps the [rules every admin plan keeps](../../admin/README.md#rules-every-admin-plan-keeps), and draws its charts the way [monitoring](../../admin/monitoring.md) and [events and mail decision 12](events-and-mail.md#charts-decision-12) do. Docs updated: [admin.md](../../../../docs/api/admin.md), [events.md](../../../../docs/api/events.md), [endpoints.md](../../../../docs/api/endpoints.md), [database.md](../../../../docs/api/database.md), [pagination.md](../../../../docs/api/pagination.md), [seeding.md](../../../../docs/api/seeding.md), [api/testing.md](../../../../docs/api/testing.md), [testing.md](../../../../docs/testing.md), [ui/design.md](../../../../docs/ui/design.md), [ui/base-ui.md](../../../../docs/ui/base-ui.md), [ui/forms-and-actions.md](../../../../docs/ui/forms-and-actions.md), [ui/pages.md](../../../../docs/ui/pages.md), [ui/pagination.md](../../../../docs/ui/pagination.md), [ui/README.md](../../../../docs/ui/README.md), [ui/testing.md](../../../../docs/ui/testing.md).
+Status: **implemented 2026-11-01**, with every recommendation in the Decisions table confirmed as written (the user's go-ahead of 2026-11-01); see [How the build differs](#how-the-build-differs). Plan A10 of the [admin plans](../../admin/README.md). Builds on [events and mail](events-and-mail.md) (the page as it was), keeps the [rules every admin plan keeps](../../admin/README.md#rules-every-admin-plan-keeps), and draws its charts the way [monitoring](monitoring.md) and [events and mail decision 12](events-and-mail.md#charts-decision-12) do. Docs updated: [admin.md](../../../../docs/api/admin.md), [events.md](../../../../docs/api/events.md), [endpoints.md](../../../../docs/api/endpoints.md), [database.md](../../../../docs/api/database.md), [pagination.md](../../../../docs/api/pagination.md), [seeding.md](../../../../docs/api/seeding.md), [api/testing.md](../../../../docs/api/testing.md), [testing.md](../../../../docs/testing.md), [ui/design.md](../../../../docs/ui/design.md), [ui/base-ui.md](../../../../docs/ui/base-ui.md), [ui/forms-and-actions.md](../../../../docs/ui/forms-and-actions.md), [ui/pages.md](../../../../docs/ui/pages.md), [ui/pagination.md](../../../../docs/ui/pagination.md), [ui/README.md](../../../../docs/ui/README.md), [ui/testing.md](../../../../docs/ui/testing.md).
 
 ## Why
 
@@ -321,7 +321,7 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 - `docs/ui/design.md`: `Combobox`, `Calendar`, `Badge onRemove`, `BarChart onSelect`, `BarList` in the component table and Charts. `docs/ui/base-ui.md`: `Select` (`multi`, searchable) → `Combobox`, `Calendar` (datepicker) → `Calendar`, and the local-midnight pitfall under known issues.
 - `docs/ui/forms-and-actions.md`: a row for **List filters** (a Filters button in the page header opening a dialog with Clear all · Cancel · **Apply filters**, applied filters as removable badges under the heading).
 - `docs/ui/pages.md`, `docs/ui/pagination.md` (the kept summary), `docs/ui/README.md` (`event-filters.ts` in `components/app/admin`), `docs/ui/testing.md`.
-- This plan, when it ships: status, how the build differs, moved to `implemented/admin/`. [monitoring](../../admin/monitoring.md)'s `Drill` builds these parameters (`name` tokens, `window` or `from`/`to`, `outcome`) when A4 is built.
+- This plan, when it ships: status, how the build differs, moved to `implemented/admin/`. [monitoring](monitoring.md)'s `Drill` builds these parameters (`name` tokens, `window` or `from`/`to`, `outcome`) when A4 is built.
 
 ## Decisions (confirmed 2026-11-01, as recommended)
 
@@ -379,4 +379,4 @@ Both run on the request's context with a **5 s deadline** (monitoring's), after 
 - **Drag to zoom** on a chart: clicking a column does it.
 - **Live tail or auto-refresh:** every load is a recorded read.
 - **CSV export:** [compliance](compliance.md).
-- **Monitoring's signals and thresholds:** [monitoring](../../admin/monitoring.md) links here instead.
+- **Monitoring's signals and thresholds:** [monitoring](monitoring.md) links here instead.
