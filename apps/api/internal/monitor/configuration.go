@@ -126,8 +126,11 @@ func configurationPage(ctx context.Context, env Env, w Window) (Sections, error)
 				return nil
 			}
 			n, err := s.CountAdminSessionsUnder(ctx, env.AdminKeys.Previous)
+			if err != nil {
+				return err
+			}
 			out.Warnings = append(out.Warnings, Warning{ID: WarnPreviousKey, Count: float64(n)})
-			return err
+			return nil
 		}},
 		{"warnings", func(ctx context.Context) error {
 			n, err := s.CountAdminsWithMFA(ctx)
