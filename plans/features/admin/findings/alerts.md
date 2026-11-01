@@ -36,4 +36,8 @@ All optional: `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_FORMAT` (`json` or `slack`), `
 | 5 | Low | The address check treated some unusual ranges as public (documentation ranges, `fec0::/10`, Teredo, IPv4-compatible forms) | Added to the refused list |
 | 6–7 | Info | Webhooks have no delivery ID for replay dedupe; acknowledging needs no code (as planned) | A delivery header added; documented |
 
-_Fix results: filled in once committed._
+**Fix results:** all made (`d41bd87`..`b834ba5`, plus a factory fix). Each mail kind now counts against the burst window and a cap of 3 emails an hour per signal; a test runs warn → critical → OK four times and gets exactly 3 emails. The leader's lock check times out after 5 s and lets go; an undefined signal gets the title "An alert"; the outbound guard refuses more ranges; webhooks carry an `X-Lewcontext-Delivery` header.
+
+**Verified on the merged tree (now in main, `ea93e33`):** `make check`; `make test` (all Go packages with the race detector; Vitest 65 files, 456 tests); `make build`; e2e 32 of 32, including the new Alerts spec.
+
+**Screenshots:** [the Alerts list](alerts/alerts-list.png), [one alert](alerts/alert-page.png), [the silence dialog](alerts/silence-dialog.png), [Resolve on an error group](alerts/error-resolve.png).
