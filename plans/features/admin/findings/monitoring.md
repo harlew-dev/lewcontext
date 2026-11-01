@@ -199,4 +199,28 @@ The independent reviewer found **no data exposure or injection**. It confirmed s
 
 ### Security review (part 3)
 
-_Running._
+The independent reviewer found **nothing high-severity**. It confirmed sound:
+- **Configuration:** only listed fields reach the answer; secrets are shown as set or not set; the test plants secrets and unknown keys.
+- **Errors:**
+  - everything is rendered as text;
+  - browser groups are labelled and never linked;
+  - releases are shape-checked;
+  - stacks are scrubbed and capped;
+  - `err_` IDs are regex-checked;
+  - one read is recorded per view.
+- **`pg_stat_statements`:** read through the builder; this database and role only; quotes, comments and dollar quotes rejected.
+- **Integrity:** capped samples of public IDs only; duplicates shown as counts and `evt_` IDs, never emails.
+- **The part 2 fixes:** the per-session limit key can't collide with others; the takeover check's limit of 50 opens no new way to hide.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **During credential stuffing, the Overview could hide the security tiles.** The Integrity tile was read first and could use up the page's time on a day with a million sign-in attempts, so Failed sign-ins and Admin door showed "not loaded" during the attack | The Integrity tile is read last; checks run cheapest first and report partially; the active-workspace list is computed once |
+| 2 | Medium/low | An unexpected error from the optional `pg_stat_statements` extension (a revoked grant, an old version) gave the whole Performance page a 500 | Any such error shows "not available" with a reason |
+| 3 | Low | The statement filter let through numbers and double-quoted names (`WHERE id = 42`, `AS "ada@example.test"`, `SELECT … INTO`), so a statement PostgreSQL didn't normalise could show an internal ID | Rejected |
+| 4 | Low | The takeover signal can be dodged by waiting over an hour after the new-network sign-in; enrolling MFA isn't counted as a change | `auth.mfa.enabled` added; the timing gap documented for alerts |
+| 5–6 | Low | The "New" badge compared timestamps as strings; a timed-out count still showed its warning with 0 | Fixed |
+| — | Nits | An unencoded ID in one page link; duplicate React keys; a comment; `SMTP_HOST` accepting `user:pass@` | Fixed |
+
+**For the ui branch's merge:** the captcha settings need rows on the Configuration page (provider, whether the secret is set, never its value) and a place in the no-secrets test. The ui integration agent has been told.
+
+_These fixes are being made by the Data page builder first._
