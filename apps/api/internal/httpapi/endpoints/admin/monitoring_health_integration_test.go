@@ -457,6 +457,11 @@ func TestAdminMonitoringErrors(t *testing.T) {
 	if client.Source != "client" || client.LastVersion != "" {
 		t.Fatalf("a browser's group: %+v", client)
 	}
+	// New since the release started (2 hours ago), by time: the first
+	// group, 30 minutes old, not the browser's, 3 hours old.
+	if !first.New || client.New {
+		t.Fatalf("new in the release: %v %v", first.New, client.New)
+	}
 	var occurrences int
 	for _, b := range page.Occurrences.Buckets {
 		for _, n := range b.Counts {
@@ -473,7 +478,7 @@ func TestAdminMonitoringErrors(t *testing.T) {
 	// One group: its stack and its route's occurrences, recorded.
 	w := adminCall(t, h, "GET", "/api/admin/errors/"+id+"?window=1h", "", "", 200, session.Cookie())
 	one := decodeAdmin[monitor.ErrorView](t, w.Body.Bytes())
-	if one.Group.ID != id || !strings.Contains(one.Group.Stack, "projects.go") || one.Release == nil || one.Window.Name != "1h" {
+	if one.Group.ID != id || !strings.Contains(one.Group.Stack, "projects.go") || one.Release == nil || one.Window.Name != "1h" || !one.Group.New {
 		t.Fatalf("one group: %+v", one)
 	}
 	if len(one.Occurrences.Series) != 1 || one.Occurrences.Series[0] != "request" {

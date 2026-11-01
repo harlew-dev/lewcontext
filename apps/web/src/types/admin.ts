@@ -722,6 +722,9 @@ export type ErrorGroup = {
   // Only in a release's shape (a revision, or dev); empty otherwise.
   lastVersion: string;
   resolvedAt: string | null;
+  // First seen since the current release started (the server compares
+  // the times).
+  new: boolean;
 };
 export type Release = { version: string; startedAt: string };
 export type ErrorsSections = {

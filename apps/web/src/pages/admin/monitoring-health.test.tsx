@@ -314,6 +314,7 @@ const group = (over: Partial<ErrorGroup>): ErrorGroup => ({
   lastRequestId: "req_00000000000042",
   lastVersion: "abc1234def56",
   resolvedAt: null,
+  new: false,
   ...over,
 });
 const userText = "Claim your prize at evil.example/login";
@@ -322,7 +323,9 @@ const errors = view<ErrorsSections>(
   {
     release: { version: "abc1234def56", startedAt: "2026-11-01T13:00:00Z" },
     groups: [
-      group({}),
+      // New by the server's flag: as text, 12:30-02:00 sorts before the
+      // release's 13:00Z, though it's 14:30 UTC, after it.
+      group({ firstSeenAt: "2026-11-01T12:30:00-02:00", new: true }),
       group({
         id: "err_00000000000002",
         source: "client",
