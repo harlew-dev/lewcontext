@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"lewcontext/api/internal/observe"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -287,14 +289,26 @@ type Statement struct {
 }
 
 // StatementStats are the statements taking the most time in all, or
-// Available false when the database doesn't have pg_stat_statements
-// (installed and loaded). Hidden counts those read but not shown
-// (SafeStatement).
+// Available false, with Unavailable saying why, when they can't be read
+// (StatementsNotInstalled, StatementsNotLoaded, StatementsUnreadable).
+// Hidden counts those read but not shown: past the first statementsShown,
+// or refused by SafeStatement.
 type StatementStats struct {
-	Available  bool        `json:"available"`
-	Statements []Statement `json:"statements"`
-	Hidden     int         `json:"hidden"`
+	Available   bool        `json:"available"`
+	Unavailable string      `json:"unavailable,omitempty"`
+	Statements  []Statement `json:"statements"`
+	Hidden      int         `json:"hidden"`
 }
+
+// Why the statements aren't available: the extension isn't installed in
+// this database, it's installed but not loaded (shared_preload_libraries),
+// or reading it failed otherwise (a revoked grant, an older version's
+// columns; logged with its SQLSTATE).
+const (
+	StatementsNotInstalled = "not_installed"
+	StatementsNotLoaded    = "not_loaded"
+	StatementsUnreadable   = "unreadable"
+)
 
 // Bounds of the statements read and shown.
 const (
@@ -308,7 +322,9 @@ const (
 // with the most total time from pg_stat_statements, when the extension is
 // installed (in whichever schema) and loaded; other databases' and roles'
 // statements are never read. Only statements SafeStatement passes are
-// shown, the first statementsShown of them.
+// shown, the first statementsShown of them. Reading it is never the
+// page's failure: any error but ctx's own (its budget, a client gone)
+// answers Available false with the reason, the error logged.
 func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error) {
 	out := StatementStats{Statements: []Statement{}}
 	var schema string
@@ -318,10 +334,11 @@ func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error)
 		Where("x.extname = 'pg_stat_statements'").
 		Scan(ctx, &schema)
 	if errors.Is(err, sql.ErrNoRows) {
+		out.Unavailable = StatementsNotInstalled
 		return out, nil
 	}
 	if err != nil {
-		return out, err
+		return statementsFailed(ctx, out, err)
 	}
 	var rows []Statement
 	err = s.DB.NewSelect().TableExpr("?.pg_stat_statements AS st", bun.Ident(schema)).
@@ -332,10 +349,11 @@ func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error)
 		Limit(statementsRead).
 		Scan(ctx, &rows)
 	if notLoaded(err) {
+		out.Unavailable = StatementsNotLoaded
 		return out, nil
 	}
 	if err != nil {
-		return out, err
+		return statementsFailed(ctx, out, err)
 	}
 	out.Available = true
 	for _, r := range rows {
@@ -347,6 +365,23 @@ func (s *Store) SummarizeStatements(ctx context.Context) (StatementStats, error)
 		r.Query = query
 		out.Statements = append(out.Statements, r)
 	}
+	return out, nil
+}
+
+// statementsFailed answers a failed read of pg_stat_statements: ctx's
+// own end is returned (the part's budget, or the request gone), anything
+// else logged and answered as unreadable.
+func statementsFailed(ctx context.Context, out StatementStats, err error) (StatementStats, error) {
+	if ctx.Err() != nil {
+		return out, err
+	}
+	code := ""
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		code = pgErr.Code
+	}
+	slog.WarnContext(ctx, "reading pg_stat_statements failed; the Performance page shows it as unavailable", "sqlstate", code, observe.ErrorAttr(err))
+	out.Unavailable = StatementsUnreadable
 	return out, nil
 }
 

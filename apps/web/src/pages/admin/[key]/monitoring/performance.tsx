@@ -374,8 +374,9 @@ function Statements({ view }: { view: View }) {
     >
       {!stats || !stats.available ? (
         <NoneFound>
-          This database doesn&rsquo;t have pg_stat_statements (installed with
-          CREATE EXTENSION and loaded through shared_preload_libraries).
+          {stats?.unavailable === "unreadable"
+            ? "pg_stat_statements couldn’t be read as this server’s role (a revoked grant, or an older version of the extension). The server’s log has the error."
+            : "This database doesn’t have pg_stat_statements (installed with CREATE EXTENSION and loaded through shared_preload_libraries)."}
         </NoneFound>
       ) : (
         <>

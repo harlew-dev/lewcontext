@@ -670,9 +670,10 @@ export type ServerRow = {
   measuredAt: string | null;
 };
 // pg_stat_statements' statements, as PostgreSQL normalised them ($1 for
-// every constant); available false when the database doesn't have it.
+// every constant); available false when they can't be read, and why.
 export type StatementStats = {
   available: boolean;
+  unavailable?: "not_installed" | "not_loaded" | "unreadable";
   statements: {
     query: string;
     calls: number;

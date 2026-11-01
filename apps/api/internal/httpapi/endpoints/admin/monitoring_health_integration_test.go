@@ -336,6 +336,10 @@ func TestAdminMonitoringPerformance(t *testing.T) {
 	if db1.Waits.Waits != 18 || db1.Waits.Minutes != 6 || db1.Statements == nil {
 		t.Fatalf("waits: %+v", db1)
 	}
+	// The test database hasn't pg_stat_statements: unavailable, saying why.
+	if st := db1.Statements; st.Available == (st.Unavailable != "") {
+		t.Fatalf("statements: %+v", st)
+	}
 	if len(page.Worker.Lag) != 1 || page.Worker.Deliveries.Series[0] != "delivered" || page.SlotsBusy != 2 {
 		t.Fatalf("worker: %+v", page.Worker)
 	}

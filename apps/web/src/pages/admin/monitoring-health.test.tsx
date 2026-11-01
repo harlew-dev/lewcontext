@@ -276,6 +276,32 @@ describe("the Performance page", () => {
       screen.getByText(/This database doesn.t have pg_stat_statements/),
     ).toBeVisible();
   });
+  it("says when pg_stat_statements couldn't be read", async () => {
+    stubApi({
+      "GET /api/admin/me": { body: me },
+      "GET /api/admin/monitoring/performance": {
+        body: {
+          ...performance,
+          sections: {
+            ...performance.sections,
+            database: {
+              ...performance.sections.database,
+              statements: {
+                available: false,
+                unavailable: "unreadable",
+                statements: [],
+                hidden: 0,
+              },
+            },
+          },
+        },
+      },
+    });
+    renderAdmin(`/admin/${key}/monitoring/performance`);
+    expect(
+      await screen.findByText(/pg_stat_statements couldn.t be read/),
+    ).toBeVisible();
+  });
 });
 const group = (over: Partial<ErrorGroup>): ErrorGroup => ({
   id: "err_00000000000001",
