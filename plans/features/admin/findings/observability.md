@@ -126,3 +126,19 @@ The reviewer confirmed sound:
 ### Security review
 
 _Filled in after the independent review._
+
+The reviewer probed the scrubber with adversarial inputs in throwaway tests.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **High** | **One signed-in user could stop every `app_errors` write on a server.** A browser stack line shaped like a Go location (`\t… x.go:1`) skipped the scrubber, NUL byte included. The NUL broke the one-statement flush, the failed group was put back, every later flush failed, and resending every 2 minutes kept it alive until real errors were dropped | Go-location lines are accepted only in their exact shape; nothing stored can hold control characters; rows are checked before the insert, and a batch failing on data is retried row by row, dropping the bad row |
+| 2 | Medium | **Client stacks skipped the scrubber through the same path,** storing free text, emails and tokens, and could replace a real group's stack | As 1; Go-format lines are dropped from browser stacks entirely |
+| 3 | Medium | **Chrome's `JSON.parse` message** (`"{"name":"Ada Lovelace",…}" is not valid JSON`) leaked the values, because the nested quotes paired the wrong way | A specific rule for that message plus a general backstop; the web reporter strips the snippet too |
+| 4 | Low–medium | **Missed secret shapes:** every TOTP secret (base32) survived; about 2.4% of recovery codes, and every one without its dash; about 1 in 2,000 session, reset and invitation tokens; hex next to a word character | Base32, recovery-code and long-token rules; the docs' coverage table corrected |
+| 5 | Low | Smaller leaks: IPv6 followed by punctuation, zero-width and bidi characters (which can split a token), curly quotes, `%40` and full-width `＠`, `Failing row contains (…)` | Each handled |
+| 6 | Low | **Users can write text admins will read** ("visit evil.com/login"), and `release` was stored as sent | `release` accepted only as a revision or `dev`; hostnames scrubbed from browser text; A4 told to label browser groups as user-reported and never link them |
+| 7 | Low | No global bound on stored browser rows | A `client-error:global` limit; browser messages fingerprinted on their first 120 characters |
+| 8 | Low | A page stuck in an error loop could use up the user's whole write budget (`api:per-user`) | Reports metered only by their own limit; the web app stops reporting after a 429 |
+| 9–10 | Nits | The shutdown budget equalled Docker's stop timeout; a flush that commits but errors is counted twice | The final flush gets its share; the double count documented |
+
+_Fix results: filled in once the fixes pass the checks._
