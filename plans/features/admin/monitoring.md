@@ -360,7 +360,7 @@ Docs: [monitoring.md](../../../docs/api/monitoring.md) (the four pages, one grou
 - **Overview:** a **Database** tile (round trip, minutes with pool waits; a sparkline of connections in use) and an **Integrity** tile; every tile now links to its page. With metric storage off on every live server, the Requests, Server errors and Latency tiles say "Metric storage is off.", and the Performance page says so above everything.
 - **Seeder:** a delivery 25 minutes overdue and one failed with no listener (both for a listener no server has, so nothing is ever sent: with a server running, its worker fails the first at once, and the no-listener check shows it), a project created twice, a reset sent twice, and three error groups (one user-reported).
 - **TODO(A6, housekeeping), at merge:** "Resolve" on one group's page (marked in `errors/[error].tsx` and `errors.tsx`).
-- **Not measured:** the volume check at a million events for these four pages.
+- **Volume:** at a million events, Integrity answers in about 0.5 s, Configuration 0.6 s, Performance and Errors well under 0.1 s; the Overview, which now runs every integrity check for its tile, 0.7 to 1.2 s (it was under 0.5 s). Performance wasn't measured with a full day of metric minutes (none are seeded); those tables are bounded by routes and series, not traffic.
 
 ## Not included
 
