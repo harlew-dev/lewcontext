@@ -107,6 +107,10 @@ test("an operator suspends an account, which is signed out and told why at sign-
   await admin
     .getByRole("searchbox", { name: "Search users" })
     .fill(targetEmail);
+  // The search applies 300 ms after typing, as a navigation: clicking the
+  // row before it would let it cancel the click's navigation to the
+  // account (the page's chunk still loading), leaving the list.
+  await expect(admin).toHaveURL(/\/users\?q=/);
   await admin.getByRole("row").filter({ hasText: "Tess Target" }).click();
   await expect(
     admin.getByRole("heading", { name: "Tess Target" }),
