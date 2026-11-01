@@ -11,7 +11,7 @@ import (
 
 // eventName is <resource>.<fact> in a known area: two or three snake_case
 // segments, like the events.name CHECK (migration 007).
-var eventName = regexp.MustCompile(`^(auth|workspace|project|rate_limit|admin|email|server)(\.[a-z][a-z_]*){1,2}$`)
+var eventName = regexp.MustCompile(`^(auth|workspace|project|rate_limit|admin|email|server|prune)(\.[a-z][a-z_]*){1,2}$`)
 
 func TestEventNamePattern(t *testing.T) {
 	for _, name := range []string{"workspace.member.removed", "auth.logged_in", "auth.password_reset.requested", "project.updated", "rate_limit.reached", "admin.user.viewed", "email.blocked"} {
@@ -88,5 +88,20 @@ func TestRequestMeta(t *testing.T) {
 	agent := UserAgent(ctx)
 	if !utf8.ValidString(agent) || utf8.RuneCountInString(agent) != maxUserAgent {
 		t.Fatalf("user agent not cut to %d valid characters: %d", maxUserAgent, utf8.RuneCountInString(agent))
+	}
+}
+
+// Audit events (kept a year, and logged) are the access and admin record;
+// the rest of the trail is kept 90 days.
+func TestAuditEvents(t *testing.T) {
+	for _, name := range []string{"auth.logged_in", "auth.mfa.checked", "admin.user.viewed", "admin.event.exported", "server.started", "prune.completed", "auth.data_exported"} {
+		if !Audit(name) {
+			t.Errorf("%s isn't audit", name)
+		}
+	}
+	for _, name := range []string{"workspace.created", "workspace.invitation.created", "project.updated", "rate_limit.reached", "email.blocked", "authx.thing", ""} {
+		if Audit(name) {
+			t.Errorf("%s is audit", name)
+		}
 	}
 }

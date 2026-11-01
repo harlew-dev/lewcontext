@@ -242,7 +242,29 @@ func TestEventsCarryTheRequestID(t *testing.T) {
 	if len(attempts) != 3 {
 		t.Fatalf("events: %+v", attempts)
 	}
-	for i, line := range logs.lines(t) {
+	// Each attempt is an audit event, so it writes an audit line too
+	// (docs/compliance.md#audit-lines), with the same ID and no email.
+	var access, audits []map[string]any
+	for _, line := range logs.lines(t) {
+		switch line["msg"] {
+		case "request":
+			access = append(access, line)
+		case "audit":
+			audits = append(audits, line)
+		}
+	}
+	if len(access) != 3 || len(audits) != 3 {
+		t.Fatalf("%d access lines, %d audit lines", len(access), len(audits))
+	}
+	for i, line := range audits {
+		if line["requestId"] != ids[i] || line["name"] != "auth.login_attempted" || !strings.HasPrefix(line["event"].(string), "evt_") {
+			t.Errorf("audit line %d: %v", i, line)
+		}
+	}
+	if strings.Contains(logs.text(), "nobody-") {
+		t.Error("an email typed reached a log line")
+	}
+	for i, line := range access {
 		if line["requestId"] != ids[i] || attempts[i].RequestID != ids[i] {
 			t.Errorf("request %d: line %v, event %q, want %s", i, line, attempts[i].RequestID, ids[i])
 		}

@@ -94,6 +94,7 @@ var adminRoutesList = []struct{ method, path string }{
 	{"GET", "/api/admin/workspaces/wsp_2yEHYLwiwPVhLW/projects"},
 	{"GET", "/api/admin/events"},
 	{"GET", "/api/admin/events/evt_2yEHYLwiwPVhLW"},
+	{"GET", "/api/admin/events/export"},
 	{"GET", "/api/admin/catalogue"},
 	{"GET", "/api/admin/mail"},
 	{"GET", "/api/admin/deliveries"},
@@ -458,7 +459,7 @@ func TestLosingAdminEndsAdminSessions(t *testing.T) {
 		},
 		"an MFA reset": func(a apitest.MFAAccount) { apitest.Must(s.Repo.ResetMFA(ctx, a.User.Email))(t) },
 		"deleting the account": func(a apitest.MFAAccount) {
-			apitest.Must(0, s.Repo.DeleteAccount(ctx, store.User{ID: a.User.ID, PublicID: a.User.PublicID}))(t)
+			apitest.Must(0, s.Repo.DeleteAccount(ctx, store.User{ID: a.User.ID, PublicID: a.User.PublicID}, s.EmailPseudonym))(t)
 		},
 	}
 	for name, end := range ends {

@@ -65,7 +65,7 @@ func (h Me) Destroy(w http.ResponseWriter, r *http.Request) {
 	if !h.PasswordConfirmed(w, r, in.Password, events.PasswordStepDestroyAccount) {
 		return
 	}
-	err := h.Repo.DeleteAccount(r.Context(), httpapi.Session(r).User)
+	err := h.Repo.DeleteAccount(r.Context(), httpapi.Session(r).User, h.EmailPseudonym)
 	var lastOwner store.LastOwnerError
 	if errors.As(err, &lastOwner) {
 		httpapi.JSON(w, 409, map[string]any{

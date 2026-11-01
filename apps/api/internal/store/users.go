@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"github.com/uptrace/bun"
-	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 )
 
@@ -153,51 +152,29 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 
 // DeleteAccount deletes the user, with their sessions, memberships, reset
 // link, admin row and admin sessions, and the events about them (ON DELETE
-// CASCADE), and records auth.account_deleted. It locks the user's row
-// first, as everything that locks both a user and a workspace does
+// CASCADE), records auth.account_deleted, and erases the account's email
+// (and the name beside it) from the events that remain
+// (docs/compliance.md#erasure): pseudonym is auth.Keys.EmailPseudonym, so
+// events already minimised are found too. It locks the user's row first,
+// as everything that locks both a user and a workspace does
 // (CreateInvitation's lockInviter, SuspendUser), so the two orders never
 // meet in a deadlock; then every workspace they own, in id order, then
 // refuses with a LastOwnerError if any of them would be left without an
 // owner. Every membership change takes the same workspace lock, so two
 // co-owners deleting their accounts at once can't both leave; and taking the
 // locks in id order means two such deletions can't deadlock.
-func (s *Store) DeleteAccount(ctx context.Context, u User) error {
+func (s *Store) DeleteAccount(ctx context.Context, u User, pseudonym func(string) string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", u.ID).For("UPDATE").Exec(ctx); err != nil {
-			return err
-		}
-		var owned []int64
-		err := tx.NewSelect().Model((*Workspace)(nil)).Column("w.id").
-			Join("JOIN workspace_user AS m ON m.workspace_id = w.id").
-			Where("m.user_id = ? AND m.role = ?", u.ID, auth.RoleOwner).
-			OrderExpr("w.id").
-			For("UPDATE OF w").
-			Scan(ctx, &owned)
+		target, err := lockAccount(ctx, tx, "u.id = ?", u.ID)
 		if err != nil {
 			return err
 		}
-		if len(owned) > 0 {
-			var stuck []WorkspaceSummary
-			err = tx.NewSelect().Model((*Workspace)(nil)).Column("w.public_id", "w.name").
-				Join("JOIN workspace_user AS m ON m.workspace_id = w.id").
-				Where("m.user_id = ?", u.ID).
-				Where("NOT ?", canLeave(tx)).
-				OrderExpr("w.id").
-				Limit(maxLastOwnerWorkspaces).
-				Scan(ctx, &stuck)
-			if err != nil {
-				return err
-			}
-			if len(stuck) > 0 {
-				return LastOwnerError{Workspaces: stuck}
-			}
-		}
-		// No user scope, or the event would be deleted with the account; its
-		// actor, the account, becomes null when the account is deleted.
-		if err := s.record(ctx, tx, events.AccountDeleted{User: u.PublicID}, EventScope{}); err != nil {
+		if _, err := lockOwnedWorkspaces(ctx, tx, u.ID); err != nil {
 			return err
 		}
-		_, err = tx.NewDelete().Model((*account)(nil)).Where("id = ?", u.ID).Exec(ctx)
-		return err
+		if err := refuseLastOwner(ctx, tx, u.ID); err != nil {
+			return err
+		}
+		return s.eraseAccount(ctx, tx, target, pseudonym)
 	})
 }

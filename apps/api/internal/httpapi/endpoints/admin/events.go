@@ -124,8 +124,9 @@ type eventQuery struct {
 }
 
 // adminEventQuery parses the Events list's query string at now. Anything
-// it doesn't accept is false (400).
-func adminEventQuery(r *http.Request, now time.Time) (eventQuery, bool) {
+// it doesn't accept is false (400). pseudonym is the server's
+// EmailPseudonym, so an email search finds events over 30 days old too.
+func adminEventQuery(r *http.Request, now time.Time, pseudonym func(string) string) (eventQuery, bool) {
 	var q eventQuery
 	params, ok := input.Query(r, "name", "outcome", "account", "workspace", "email", "ip", "window", "from", "to", "summary", "before", "perPage")
 	if !ok {
@@ -160,6 +161,7 @@ func adminEventQuery(r *http.Request, now time.Time) (eventQuery, bool) {
 		f.Email = used.Email
 		valid = valid && httpapi.ValidEmail(&f.Email)
 		used.Email = f.Email
+		f.EmailPseudonym = pseudonym(f.Email)
 	}
 	if used.IP != "" {
 		f.IP, ok = ipFilter(used.IP)
@@ -205,7 +207,7 @@ func utc(t *time.Time) *time.Time {
 
 func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
-	q, ok := adminEventQuery(r, now)
+	q, ok := adminEventQuery(r, now, h.EmailPseudonym)
 	if !ok {
 		httpapi.Fail(w, 400, "Check the filters.")
 		return

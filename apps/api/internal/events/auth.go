@@ -12,8 +12,9 @@ const (
 )
 
 // Steps that check the current password: the two of a password change,
-// deleting a workspace or the account, and setting up, turning off or
-// renewing the recovery codes of two-factor authentication.
+// deleting a workspace or the account, setting up, turning off or
+// renewing the recovery codes of two-factor authentication, and
+// downloading the account's data.
 const (
 	PasswordStepVerify           = "verify"
 	PasswordStepUpdate           = "update"
@@ -22,6 +23,7 @@ const (
 	PasswordStepMFASetup         = "mfa_setup"
 	PasswordStepMFADisable       = "mfa_disable"
 	PasswordStepRecoveryCodes    = "recovery_codes"
+	PasswordStepExportData       = "export_data"
 )
 
 // How a new account's email was verified (Registered.VerifiedBy), and how an
@@ -95,14 +97,23 @@ type PasswordChanged struct {
 
 func (PasswordChanged) EventName() string { return "auth.password_changed" }
 
-// AccountDeleted: a user deleted their account. It holds no name or email,
-// since the account's personal data is what's being erased, and has no user
-// or actor: both would be the deleted account.
+// AccountDeleted: a user deleted their account, or the operator erased it
+// (admin erase, with admin.user.erased beside it). It holds no name or
+// email, since the account's personal data is what's being erased, and has
+// no user or actor: both would be the deleted account.
 type AccountDeleted struct {
 	User string `json:"user"`
 }
 
 func (AccountDeleted) EventName() string { return "auth.account_deleted" }
+
+// DataExported: a user downloaded their data ("Download my data",
+// docs/compliance.md#download-my-data), after their password.
+type DataExported struct {
+	User string `json:"user"`
+}
+
+func (DataExported) EventName() string { return "auth.data_exported" }
 
 // ProfileUpdated: a user changed their account's name.
 type ProfileUpdated struct {

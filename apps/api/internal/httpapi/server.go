@@ -75,3 +75,10 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 func (s *Server) DummyHash() string {
 	return s.dummyHash
 }
+
+// EmailPseudonym is what events keep in place of email once they're 30
+// days old (auth.Keys.EmailPseudonym, keyed by APP_KEY): erasure and the
+// admin Events search match old events by it.
+func (s *Server) EmailPseudonym(email string) string {
+	return s.keys.EmailPseudonym(email)
+}

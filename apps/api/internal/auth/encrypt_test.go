@@ -3,7 +3,9 @@ package auth
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"slices"
 	"strings"
@@ -126,5 +128,27 @@ func TestGenerateAppKey(t *testing.T) {
 	}
 	if _, err := NewKeys(key); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An email's pseudonym matches itself (any case or spacing) and nothing
+// else, depends on APP_KEY (so it can't be checked against guessed
+// addresses without it), isn't a plain hash, and is never an address.
+func TestEmailPseudonym(t *testing.T) {
+	keys, other := testKeys(t), testKeys(t)
+	p := keys.EmailPseudonym("ada@example.test")
+	if p != keys.EmailPseudonym("  ADA@Example.TEST ") || !strings.HasPrefix(p, EmailPseudonymPrefix) || len(p) != len(EmailPseudonymPrefix)+32 || strings.Contains(p, "@") {
+		t.Fatalf("pseudonym %q isn't stable, or isn't hmac: and 32 hex", p)
+	}
+	if p == keys.EmailPseudonym("bo@example.test") || p == other.EmailPseudonym("ada@example.test") {
+		t.Fatal("the pseudonym doesn't depend on the address and the key")
+	}
+	plain := sha256.Sum256([]byte("ada@example.test"))
+	if strings.Contains(p, hex.EncodeToString(plain[:16])) {
+		t.Fatal("the pseudonym is a plain hash")
+	}
+	// Its own key: no other derived key's digest of the address.
+	if strings.TrimPrefix(p, EmailPseudonymPrefix) == keys.EmailCodeDigest("ada@example.test")[:32] || strings.TrimPrefix(p, EmailPseudonymPrefix) == keys.RecoveryCodeDigest("ada@example.test")[:32] {
+		t.Fatal("the pseudonym shares a key")
 	}
 }

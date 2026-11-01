@@ -1,6 +1,7 @@
 package prune
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -62,8 +63,11 @@ func TestRegister(t *testing.T) {
 	// The list is sorted by name.
 	register(Pruner{Name: "aaa", DefaultAge: day, Table: events.Table})
 	t.Cleanup(func() { delete(pruners, "aaa") })
-	if list := Pruners(); len(list) != 5 || list[0].Name != "aaa" || list[1].Name != "app_errors" || list[2].Name != "events" ||
-		list[3].Name != "metric_hours" || list[4].Name != "request_hours" {
-		t.Fatalf("Pruners(): %+v", list)
+	names := []string{}
+	for _, p := range Pruners() {
+		names = append(names, p.Name)
+	}
+	if !slices.Equal(names, []string{"aaa", "app_errors", "audit_events", "events", "metric_hours", "pseudonymise", "request_hours"}) {
+		t.Fatalf("Pruners(): %v", names)
 	}
 }

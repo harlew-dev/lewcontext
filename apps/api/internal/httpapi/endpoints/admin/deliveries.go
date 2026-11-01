@@ -95,6 +95,8 @@ func (h Deliveries) Retry(w http.ResponseWriter, r *http.Request) {
 		httpapi.Fail(w, 404, "Delivery not found.")
 	case errors.Is(err, store.ErrDeliveryNotFailed):
 		httpapi.Fail(w, 409, "This delivery hasn’t failed.")
+	case errors.Is(err, store.ErrDeliveryMinimised):
+		httpapi.Fail(w, 409, "This delivery’s event is over 30 days old: its email address has been replaced, so it can’t be sent.")
 	case err != nil:
 		httpapi.InternalError(w, r, err)
 	default:

@@ -56,6 +56,10 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux.Handle("PATCH /api/auth/me", s.RequireSession(http.HandlerFunc(me.Update)))
 	// Deleting the account checks the password, like the routes below.
 	mux.Handle("DELETE /api/auth/me", s.RequireSession(s.LimitAuth(http.HandlerFunc(me.Destroy))))
+	// Downloading the account's data checks the password too; then
+	// export:per-user, in the handler, so typos don't count against it.
+	dataExport := account.DataExport{Server: s}
+	mux.Handle("POST /api/auth/export", s.RequireSession(s.LimitAuth(http.HandlerFunc(dataExport.Store))))
 	// The recovery routes skip the signed-in budget, so a stolen session can't
 	// use it up to keep the owner from signing it out (limits.go).
 	mux.Handle("POST /api/auth/logout", httpapi.AllowUnverified(s.RequireSessionUnmetered(http.HandlerFunc(sessions.Logout))))
@@ -143,6 +147,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	workspaces := admin.Workspaces{Server: s}
 	workspaceProjects := admin.WorkspaceProjects{Server: s}
 	adminEvents := admin.Events{Server: s}
+	eventExport := admin.EventExport{Server: s}
 	mail := admin.Mail{Server: s}
 	monitoring := admin.Monitoring{Server: s}
 	deliveries := admin.Deliveries{Server: s}
@@ -179,6 +184,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/workspaces/{workspace}/projects", workspaceProjects.Index)
 	signedIn.HandleFunc("GET", "/events", adminEvents.Index)
 	signedIn.HandleFunc("GET", "/events/{event}", adminEvents.Show)
+	// The list as CSV, at most 10,000 rows, recorded with its filters
+	// (admin.event.exported); bounded like the Events charts.
+	signedIn.HandleFunc("GET", "/events/export", eventExport.Show)
 	// The filters' names: no user data, so the one read not recorded.
 	signedIn.HandleFunc("GET", "/catalogue", adminEvents.Catalogue)
 	signedIn.HandleFunc("GET", "/mail", mail.Show)

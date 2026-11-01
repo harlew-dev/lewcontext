@@ -28,6 +28,7 @@ var storedResources = map[string]string{
 	"admin.delivery":          "an admin's action names what it acted on: a delivery (event_deliveries) queued again",
 	"admin.ip":                "an admin's action names what it acted on: a client address or range (ip_blocks)",
 	"admin.admin":             "an admin's action names what it acted on: another admin (signed out)",
+	"admin.event":             "an admin's action names what it acted on: the audit trail (events), exported as CSV",
 }
 
 // permissionResources are the resources the permissions name: a permission

@@ -61,7 +61,7 @@ func TestEventGroups(t *testing.T) {
 	if !slices.Contains(all["admin.*"], "admin.email.unblocked") || !slices.Equal(all["admin.session.*"], []string{"admin.session.moved", "admin.session.ended"}) {
 		t.Errorf("admin.*: %v", all["admin.*"])
 	}
-	if !slices.Equal(all["admin.user.*"], []string{"admin.user.signed_out", "admin.user.mfa_reset", "admin.user.suspended", "admin.user.unsuspended"}) || !slices.Equal(all["admin.ip.*"], []string{"admin.ip.blocked", "admin.ip.unblocked"}) {
+	if !slices.Equal(all["admin.user.*"], []string{"admin.user.signed_out", "admin.user.mfa_reset", "admin.user.suspended", "admin.user.unsuspended", "admin.user.erased", "admin.user.exported"}) || !slices.Equal(all["admin.ip.*"], []string{"admin.ip.blocked", "admin.ip.unblocked"}) {
 		t.Errorf("the actions' groups: %v %v", all["admin.user.*"], all["admin.ip.*"])
 	}
 	if !slices.Equal(all["auth.mfa.*"], []string{"auth.mfa.enabled", "auth.mfa.disabled", "auth.mfa.checked"}) {

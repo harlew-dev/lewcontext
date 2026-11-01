@@ -18,7 +18,10 @@ type Event struct {
 	IP            string         `bun:"ip,type:inet,nullzero"`
 	RequestID     string
 	UserAgent     string
-	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	// MinimisedAt is when the pseudonymise target minimised it; zero for
+	// one it hasn't (Minimised sets it).
+	MinimisedAt time.Time `bun:",nullzero"`
+	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
 // Events builds rate_limit.reached events from the last 90 days, which need

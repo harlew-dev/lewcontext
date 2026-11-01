@@ -407,3 +407,35 @@ type AdminAdminSignedOut struct {
 }
 
 func (AdminAdminSignedOut) EventName() string { return "admin.admin.signed_out" }
+
+// AdminUserErased: the operator erased an account for someone who couldn't
+// (admin erase, docs/compliance.md#erasure): the same deletion as the
+// account's own, recorded beside auth.account_deleted. Workspaces is how
+// many workspaces only the account belonged to, deleted with it (each also
+// workspace.deleted). No actor or user scope: the CLI acts, and the
+// account is gone.
+type AdminUserErased struct {
+	User       string `json:"user"`
+	Workspaces int    `json:"workspaces"`
+}
+
+func (AdminUserErased) EventName() string { return "admin.user.erased" }
+
+// AdminUserExported: the operator exported an account's data for someone
+// who couldn't sign in (admin export), after verifying who was asking. No
+// actor; user_id is the account.
+type AdminUserExported struct {
+	User string `json:"user"`
+}
+
+func (AdminUserExported) EventName() string { return "admin.user.exported" }
+
+// AdminEventExported: an admin downloaded the Events list as CSV, with the
+// filters used and how many rows it held (at most 10,000).
+type AdminEventExported struct {
+	Admin   string       `json:"admin"`
+	Filters EventFilters `json:"filters"`
+	Rows    int          `json:"rows"`
+}
+
+func (AdminEventExported) EventName() string { return "admin.event.exported" }

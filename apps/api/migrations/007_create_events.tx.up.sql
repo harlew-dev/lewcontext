@@ -14,6 +14,10 @@ CREATE TABLE events (
  -- Empty for the CLI and listeners.
  request_id text NOT NULL DEFAULT '' CHECK (request_id = '' OR request_id ~ '^req_[0-9A-Za-z]{14}$'),
  user_agent text NOT NULL DEFAULT '' CHECK (length(user_agent) <= 256),
+ -- When its IP was cut to a network and its emails replaced by pseudonyms
+ -- (the pseudonymise prune target, docs/compliance.md#retention); null
+ -- until then.
+ minimised_at timestamptz,
  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX events_user_created_idx ON events(user_id, created_at DESC);
@@ -35,3 +39,6 @@ CREATE INDEX events_payload_workspace_idx ON events((payload->>'workspace'), cre
 CREATE INDEX events_actor_created_idx ON events(actor_id, created_at DESC) WHERE actor_id IS NOT NULL;
 -- An event's detail lists the events naming it in their request field.
 CREATE INDEX events_request_idx ON events((payload->>'request')) WHERE payload ? 'request';
+-- What the pseudonymise target has still to minimise: the last 30 days,
+-- and nothing more once it runs daily.
+CREATE INDEX events_unminimised_idx ON events(created_at) WHERE minimised_at IS NULL;

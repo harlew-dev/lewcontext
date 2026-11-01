@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/observe"
@@ -52,10 +53,15 @@ func main() {
 	}
 	defer db.Close()
 	repository := &store.Store{DB: db}
+	keys, err := auth.NewKeys(c.AppKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	options := prune.Options{Pseudonym: keys.EmailPseudonym}
 
 	if target == "" {
 		for _, p := range prune.Pruners() {
-			report, err := prune.Run(ctx, repository, p, prune.Options{})
+			report, err := prune.Run(ctx, repository, p, options)
 			if err != nil {
 				log.Fatalf("prune %s: %v", p.Name, err)
 			}
@@ -71,7 +77,8 @@ func main() {
 	if !ok {
 		log.Fatalf("unknown target %q; choose %s", target, names())
 	}
-	report, err := prune.Run(ctx, repository, p, prune.Options{Age: age, Confirm: *confirm})
+	options.Age, options.Confirm = age, *confirm
+	report, err := prune.Run(ctx, repository, p, options)
 	fmt.Println(report)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		log.Fatalf("stopped early: %v (what's listed as deleted is gone)", err)

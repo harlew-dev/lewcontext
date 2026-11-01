@@ -130,6 +130,10 @@ var (
 	ErrDeliveryNotFailed = errors.New("the delivery hasn't failed")
 	// ErrNothingToRetry: no failed delivery matches a bulk retry.
 	ErrNothingToRetry = errors.New("no failed delivery to retry")
+	// ErrDeliveryMinimised: a retry of a delivery whose event has been
+	// minimised (docs/compliance.md#retention): its email is a pseudonym
+	// now, so its listener couldn't send anything.
+	ErrDeliveryMinimised = errors.New("the delivery's event has been minimised")
 )
 
 // requeue is what queuing a failed delivery again sets: not failed, no
@@ -157,6 +161,11 @@ func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, 
 		if d.FailedAt.IsZero() {
 			return ErrDeliveryNotFailed
 		}
+		if minimised, err := tx.NewSelect().Model((*eventRecord)(nil)).Where("e.id = ? AND e.minimised_at IS NOT NULL", d.EventID).Exists(ctx); err != nil {
+			return err
+		} else if minimised {
+			return ErrDeliveryMinimised
+		}
 		if _, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).Where("event_id = ? AND listener = ?", d.EventID, listener).Exec(ctx); err != nil {
 			return err
 		}
@@ -175,6 +184,7 @@ func (s *Store) RequeueFailedDeliveries(ctx context.Context, listener string, si
 		failed := tx.NewSelect().Model((*deliveryRecord)(nil)).
 			Column("event_id").
 			Where("listener = ? AND failed_at IS NOT NULL AND failed_at >= ?", listener, since).
+			Where("NOT EXISTS (?)", tx.NewSelect().Model((*eventRecord)(nil)).ColumnExpr("1").Where("e.id = d.event_id AND e.minimised_at IS NOT NULL")).
 			OrderExpr("failed_at DESC, event_id DESC").
 			Limit(MaxDeliveriesRetried).
 			For("UPDATE")

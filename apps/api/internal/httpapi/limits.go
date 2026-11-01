@@ -129,6 +129,12 @@ var (
 		Busy:   "Error reports are busy. Try again later.",
 	}
 
+	// ExportPerUser: one user's data downloads (POST /api/auth/export).
+	// Counted once the password is right, so typos don't use it up; each
+	// export reads everything the account holds, so a stolen session and
+	// password can't make it a load or a feed.
+	ExportPerUser = ratelimit.Limit{Name: "export:per-user", Max: 5, Window: 24 * time.Hour}
+
 	// AdminActionPerUser: the admin dashboard's account-and-access actions taken by one admin.
 	// Unblocking an address, and A6's actions to come. Every attempt past the
 	// step-up counts, refused or not (an address that isn't blocked too), so a
@@ -146,6 +152,7 @@ var RateLimits = []ratelimit.Limit{
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
 	ClientErrorPerUser, ClientErrorGlobal,
+	ExportPerUser,
 	AdminActionPerUser,
 }
 

@@ -31,6 +31,9 @@ func main() {
 		os.Exit(1)
 	}
 	slog.SetDefault(observe.NewLogger(os.Stdout, logging.LogFormat, logging.LogLevel))
+	if logging.LogLevel > slog.LevelInfo {
+		slog.Warn("LOG_LEVEL is above info, so audit lines (msg audit) aren't written: the audit trail has no copy off the server (docs/compliance.md#audit-lines)")
+	}
 	if err := run(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
