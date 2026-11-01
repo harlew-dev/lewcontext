@@ -8,9 +8,9 @@ One image (the root `Dockerfile`) holding four binaries:
 
 | Command | Does | Run it |
 | --- | --- | --- |
-| `api` (the default `CMD`) | The Go server: the JSON API under `/api`, the web app built into the binary (and the admin dashboard's own build, served only behind its key), the event delivery worker, and a 15-minute cleanup loop | as a long-running service |
+| `api` (the default `CMD`) | The Go server: the JSON API under `/api`, the web app built into the binary (and the admin dashboard's own build, served only behind its key), the event delivery worker, a 15-minute cleanup loop, each minute's metrics and the hourly rollup, and `/metrics` on its own listener when `METRICS_ADDR` is set | as a long-running service |
 | `migrate` | Applies database migrations, inside a transaction each, under an advisory lock | once per release, **before** starting the new `api` |
-| `prune` | Deletes old rows from log tables (`events`, `app_errors`) | from cron |
+| `prune` | Deletes old rows from log tables (`events`, `app_errors`, `request_hours`, `metric_hours`) | from cron |
 | `seed` | Demo data | never: it refuses to run with `APP_ENV=production` |
 | `admin` | The operator's commands, previewing without `-confirm`: `admin grant` (with `-role viewer|operator`), `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
 
@@ -50,6 +50,9 @@ make build                                                     # or, without Doc
 | `ADMIN_ALLOWED_IPS` | your office, VPN or bastion addresses, e.g. `203.0.113.10,198.51.100.0/24` | The only client addresses the admin dashboard answers; unset allows any. Needs `CLIENT_IP_HEADER` behind a proxy. See [Admin dashboard](#admin-dashboard) |
 | `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 | `SHUTDOWN_DELAY` | unset: `5s` | How long a stopping server keeps serving with readiness already 503, so the load balancer takes it out first; 0 to 60 s. See [Releasing](#releasing-a-new-version) |
+| `METRICS_STORE` | unset: `on` | Each server writes a minute's metrics to the database: a row per route with traffic, never a row per request. `off` stops it; `/metrics` and the logs still work. See [Metrics](#metrics) |
+| `METRICS_ADDR`, `METRICS_TOKEN` | unset (off), or for example `10.0.0.5:9090` and 32 random characters | `/metrics` for Prometheus or similar, on a listener of its own, never the public one. **A listener on every interface (`:9090`, `0.0.0.0`, `::`, a host name) is refused without `METRICS_TOKEN`.** The token is a secret. See [Metrics](#metrics) |
+| `SLOW_QUERY_MS` | unset: `500` | A query slower than this is logged at warn, without its values |
 | `LOG_FORMAT`, `LOG_LEVEL`, `ACCESS_LOG` | unset: `json`, `info`, `all` | The server's log on stdout: one JSON object per line, a line per request. `ACCESS_LOG=errors` keeps only failures and slow requests, for a log store that charges by size. See [Logs and health checks](#logs-and-health-checks) |
 
 `RATE_LIMITS` must stay unset (or `on`): `off`, for the end-to-end tests, is refused in production. The server refuses to start if any of these rules is broken, rather than starting insecurely. `DEMO_PASSWORD`, `MAIL_FILE` and `API_URL` are for development only. Tests use the committed `.env.testing`, never production settings.
@@ -69,7 +72,7 @@ make build                                                     # or, without Doc
 3. **Migrate:** `docker run --rm --env-file prod.env lewcontext migrate`. `migrate status` shows what's applied. It is safe to run from several machines at once, because of the advisory lock.
 4. **Start the server:** `docker run -d --env-file prod.env -p 10.0.0.5:3000:3000 lewcontext`.
 5. **Check it:** `GET /api/health` returns `{"status":"ok"}`, or 503 when the database is unreachable or the server is shutting down: use it for the load balancer's health check (readiness). `GET /api/health/live` answers without the database: use it for an orchestrator's liveness probe, so a database outage doesn't restart every server ([Logs and health checks](#logs-and-health-checks)). Then open `APP_ORIGIN` and register an account. New accounts start with no workspace and go to onboarding.
-6. **Schedule pruning:** for example, daily `prune events -confirm` and `prune app_errors -confirm`. The first deletes events older than 90 days, keeping any with a pending delivery; the second, grouped errors not seen for 30 days ([api/database.md](api/database.md#pruning)). Both are allowed in production. Sessions, rate-limit windows and reset links are cleaned up by the server itself.
+6. **Schedule pruning:** for example, daily `prune events -confirm`, `prune app_errors -confirm`, `prune request_hours -confirm` and `prune metric_hours -confirm`. The first deletes events older than 90 days, keeping any with a pending delivery; the second, grouped errors not seen for 30 days; the last two, hourly metric sums older than 90 days ([api/database.md](api/database.md#pruning)). All are allowed in production. Sessions, rate-limit windows, reset links, minute metrics (48 hours) and stopped servers' rows (a day) are cleaned up by the server itself.
 
 ## Admin dashboard
 
@@ -101,7 +104,7 @@ The image builds both web builds and fails if any admin code reached the app's. 
 
 1. Build the new image.
 2. Run `migrate` with the new image.
-3. Replace the running servers. On SIGTERM the server first answers readiness (`GET /api/health`) with 503 and keeps serving for `SHUTDOWN_DELAY` (5 s by default in production), so the load balancer takes it out; then it stops accepting connections and gives in-flight requests and the delivery worker's current batch up to 10 seconds. A delivery that doesn't finish is retried when its lease ends. Last, it stores the errors it grouped since its last flush (up to 5 seconds, [api/observability.md](api/observability.md#grouped-errors-app_errors)). Give the container the delay plus 20 seconds (10 to drain, 5 for that flush, 5 to spare) before it is killed: Docker's default of 10 s is too short, so use `--stop-timeout 25` with the default delay. On a platform with its own pre-stop wait (Kubernetes' `preStop`), set `SHUTDOWN_DELAY=0s` and use that instead.
+3. Replace the running servers. On SIGTERM the server first answers readiness (`GET /api/health`) with 503 and keeps serving for `SHUTDOWN_DELAY` (5 s by default in production), so the load balancer takes it out; then it stops accepting connections and gives in-flight requests and the delivery worker's current batch up to 10 seconds. A delivery that doesn't finish is retried when its lease ends. Last, within 5 seconds, it records `server.stopped`, writes the metrics counted since the last minute, and stores the errors it grouped since its last flush ([api/observability.md](api/observability.md#shutdown)). Give the container the delay plus 20 seconds (10 to drain, 5 for those writes, 5 to spare) before it is killed: Docker's default of 10 s is too short, so use `--stop-timeout 25` with the default delay. On a platform with its own pre-stop wait (Kubernetes' `preStop`), set `SHUTDOWN_DELAY=0s` and use that instead.
 
 Migrations run before the new code, so each migration must work with the old code still running until it is replaced. Add columns and tables first and use them later; never rename or drop in the same release that stops using something.
 
@@ -116,7 +119,17 @@ The server logs to stdout through one handler ([api/observability.md](api/observ
 - **Grouped errors:** each server groups its failures in memory and writes them to `app_errors` every 10 seconds, only when something failed: a row per distinct error, counted, scrubbed like the log, never a row per occurrence ([api/observability.md](api/observability.md#grouped-errors-app_errors)). Signed-in browsers report the web app's own crashes there too (`POST /api/client-errors`, 30 an hour per account, 500 an hour in all); that text comes from users, so treat it as such. Until the admin dashboard's Errors page, read it with SQL: `SELECT source, route, message, count, last_seen_at FROM app_errors WHERE resolved_at IS NULL ORDER BY last_seen_at DESC`. Schedule `prune app_errors` (above). A server that can't reach its database keeps at most 1,000 groups in memory and tries again every 10 seconds; the log is complete either way.
 - **Logging is synchronous.** Each line is written to stdout as the request ends, so a log driver that falls behind makes requests wait. Use a non-blocking one (Docker: `--log-opt mode=non-blocking --log-opt max-buffer-size=4m`, which drops lines rather than stall when the buffer is full).
 - **Health checks:** `GET /api/health` for the load balancer (503 when the database is down, and from the moment a shutdown begins); `GET /api/health/live` for liveness (no database). Both log at `debug`, so probes don't fill the log.
+- **Slow queries** (over `SLOW_QUERY_MS`, 500 ms by default) are logged at warn with their operation, table, duration and store method, never their text or values ([api/observability.md](api/observability.md#slow-queries)).
 - **External uptime checks.** Nothing inside the app can say the app is down. Set up a check from outside your network (your monitoring provider's, from two or more regions) on `GET /api/health` and `/` every minute, paging someone after two failures, and one on the TLS certificate's expiry.
+
+## Metrics
+
+Each server counts requests by route, errors, rate-limit refusals, queries, deliveries and its runtime in memory ([api/observability.md](api/observability.md#metrics)). Two ways to read them:
+
+- **In the database** (`METRICS_STORE=on`, the default): once a minute each server writes the minute just ended in one statement, a row per route with traffic and per series that changed, with its heartbeat in `server_instances`. **Ten requests a minute or ten million write the same rows**: about 90 a minute per server at most. One server an hour (whichever takes the advisory lock) sums the hours into `request_hours` and `metric_hours` and deletes minutes older than 48 hours, so the minute tables stay bounded without cron; prune the hour tables after 90 days. If the database is down a minute is dropped, never retried. The admin dashboard's Performance page (plan A4) reads them.
+- **`/metrics`** for Prometheus, Grafana Agent or similar: set `METRICS_ADDR` to a private address the scraper can reach (`10.0.0.5:9090`; in Docker publish it only on a private interface, `-p 10.0.0.5:9090:9090`), and `METRICS_TOKEN` to 32 or more random characters (`openssl rand -base64 32`), sent as `Authorization: Bearer <token>`. It's this process's view since it started: scrape every server. **Never route it through the public proxy.** Production refuses a listener on every interface without the token.
+
+`server_instances` lists the running servers, their version and a summary of their configuration (which settings are set, never a secret's value), and `server.started` and `server.stopped` events mark each start and graceful stop: a release shows as starts with a new version, a crash loop as starts without stops.
 
 ## Running several servers
 
@@ -217,7 +230,8 @@ Check each provider's own docs for current values.
 - [ ] The database role isn't a superuser, and the database isn't reachable from the internet.
 - [ ] The server's port is reachable only by the proxy (private interface, firewall, or Tunnel).
 - [ ] Migrations frozen (append-only) before the first real data.
-- [ ] `prune` scheduled.
+- [ ] `prune` scheduled (`events`, `app_errors`, `request_hours`, `metric_hours`).
+- [ ] `METRICS_ADDR` unset, or on a private address the public can't reach, with `METRICS_TOKEN` (32+ random characters) in the secret store; `/metrics` never routed through the public proxy.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
 - [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `ADMIN_ROUTE_KEY_PREVIOUS` unset outside a rotation; `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; `ADMIN_ALLOWED_IPS` set to your own addresses where possible (with `CLIENT_IP_HEADER` behind a proxy), or Cloudflare Access or a VPN in front of `/admin/`; admins granted only to people who need it, as viewers unless they must act (`admin list`, the Admins page), and reviewed quarterly.
 - [ ] `seed` never run (it refuses in production anyway).

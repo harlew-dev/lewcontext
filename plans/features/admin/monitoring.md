@@ -1,6 +1,6 @@
 # Admin: Monitoring pages
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A4 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md) (`events.ip`, the Events page to drill into) and [observability](observability.md) (metrics, errors, servers). Docs it will change: [admin.md](../../../docs/api/admin.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md); a new `docs/api/monitoring.md` (every signal, its query and thresholds).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A4 of the [admin plans](README.md). Needs [events-and-mail](../implemented/admin/events-and-mail.md) (`events.ip`, the Events page to drill into) and [observability](../implemented/admin/observability.md) (metrics, errors, servers). Docs it will change: [admin.md](../../../docs/api/admin.md), [endpoints.md](../../../docs/api/endpoints.md), [database.md](../../../docs/api/database.md), [events.md](../../../docs/api/events.md), [seeding.md](../../../docs/api/seeding.md), [ui/design.md](../../../docs/ui/design.md), [ui/pages.md](../../../docs/ui/pages.md); a new `docs/api/monitoring.md` (every signal, its query and thresholds).
 
 ## Why
 
@@ -35,7 +35,7 @@ These pages turn each of those into a **signal** with a threshold, a chart, and 
   ```
 
   Each page response carries its signals with `value`, `level` (`ok`, `warn`, `critical`) and `drill`, then the page's charts and tables. Thresholds are in code, changed by a reviewed commit, and listed in `docs/api/monitoring.md`.
-- **Computed when read** (decision 3), every query bounded by the window (7 days at most) and an index, under a 5 s deadline per page. A signal too slow at real volume moves to the hourly rollup job ([observability](observability.md)), not to a slower page.
+- **Computed when read** (decision 3), every query bounded by the window (7 days at most) and an index, under a 5 s deadline per page. A signal too slow at real volume moves to the hourly rollup job ([observability](../implemented/admin/observability.md)), not to a slower page.
 - **Everything drills down:** every number and bar links to the Events page filtered to its rows, or to a User, Workspace, IP or error page.
 - **Viewers can read every page** ([access hardening](../implemented/admin/access-hardening.md) roles); nothing here changes data.
 - Queries live in `internal/store/monitor_<page>.go`, written with Bun's builder like every other query, including those on PostgreSQL's statistics views (`TableExpr("pg_stat_user_tables")`).
@@ -105,7 +105,7 @@ From `auth.login_attempted`, `auth.mfa.checked`, `auth.password_checked`, `auth.
 | Section | Shows | From |
 | --- | --- | --- |
 | Windows reached | per limit, per hour | `rate_limit.reached` (one per limit per window) |
-| Requests refused | per limit, per hour: every 429 and 503, not just the first | `rate_limit_refused_total` ([observability](observability.md)) |
+| Requests refused | per limit, per hour: every 429 and 503, not just the first | `rate_limit_refused_total` ([observability](../implemented/admin/observability.md)) |
 | **Shared limits** | `register:global`, `password-reset:global`, `invitation:global`: this window's count against the cap, and every time one was reached. A shared limit reached is a feature switched off for everyone | `rate_limits` (their keys are the bare name), events. **Critical** when reached |
 | Blocked right now | per limit, how many subjects are at or over it this window. Keys are digests, so this shows how many, never who; the events show who | `rate_limits`, keys split on their name prefix, compared with the limits in Go |
 | Top subjects | accounts and IPs with the most windows reached in the window | events' `user` and `ip` |
@@ -180,7 +180,7 @@ CREATE TABLE table_stats_daily (
 );
 ```
 
-Written once a day by the hourly job ([observability](observability.md)), kept 400 days (a prune target). `cmd/prune` starts recording `prune.completed` (`target`, `deleted`, `kept`, `cutoff`) after a confirmed run (decision 10). Disk space on the database server isn't visible from SQL: the provider's own monitoring covers it, and the docs say so.
+Written once a day by the hourly job ([observability](../implemented/admin/observability.md)), kept 400 days (a prune target). `cmd/prune` starts recording `prune.completed` (`target`, `deleted`, `kept`, `cutoff`) after a confirmed run (decision 10). Disk space on the database server isn't visible from SQL: the provider's own monitoring covers it, and the docs say so.
 
 ### 9. Integrity
 

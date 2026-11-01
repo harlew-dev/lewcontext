@@ -1,6 +1,6 @@
 # Findings: A3, observability
 
-Plan: [observability](../observability.md), built in three phases. Each phase is built by a sub-agent, checked by the orchestrator, reviewed by a second agent that sees only the diff and the plan, then committed.
+Plan: [observability](../../implemented/admin/observability.md), built in three phases. Each phase is built by a sub-agent, checked by the orchestrator, reviewed by a second agent that sees only the diff and the plan, then committed.
 
 | Phase | Scope | State |
 | --- | --- | --- |

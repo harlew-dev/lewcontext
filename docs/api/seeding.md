@@ -48,6 +48,9 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 | `EmailBlocks` | `EmailBlock` | A blocked `example.test` address. `Blocked(email)` for a given one. Seeders block nothing |
 | `EventDeliveries` | `EventDelivery` | A pending delivery, due now. Needs `EventID`; use `DeliveryOf(eventID, listener)` |
 | `AppErrors` | `AppError` | An open, already-scrubbed `request` error group with a fingerprint of its own, first seen in the last 30 days and counted 1–500 times. `LastSeen(at)` sets when it last happened, `Resolved` marks it resolved. Seeders make none: fake failures would be misleading |
+| `RequestMinutes`, `MetricMinutes` | `RequestMinute`, `MetricMinute` | A server's minute in the last hour (`ServerID(f)`, a real route; a `rate_limit_refused_total` counter). Give several for one server their own minute or route (`Sequence`). Seeders make none: made-up traffic would be misleading |
+| `RequestHours`, `MetricHours` | `RequestHour`, `MetricHour` | An hour's sums in the last 90 days, each with a route or labels of its own |
+| `ServerInstances` | `ServerInstance` | A server started in the last day and seen in the last minute; `LastSeenAt(at)` |
 
 ```go
 f := factory.TestFaker(t) // or factory.NewFaker() outside tests

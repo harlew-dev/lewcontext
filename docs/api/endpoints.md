@@ -2,6 +2,8 @@
 
 All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The browser reaches them through the Next proxy at `/api/*`.
 
+`GET /metrics` isn't an API route and never answers on the public listener: with `METRICS_ADDR` set, a listener of its own serves it, in the Prometheus text format, behind `METRICS_TOKEN` when set ([observability.md](observability.md#metrics-for-an-external-system)).
+
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
 | GET | `/api/health` | Public | Readiness: `{"status":"ok"}`, or 503 if the database is down or the server is shutting down ([observability.md](observability.md#health)) |
