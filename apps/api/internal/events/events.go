@@ -100,16 +100,21 @@ func WithRequest(ctx context.Context, ip, requestID string) context.Context {
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
-// WithUserAgent records the request's User-Agent, made valid UTF-8 and cut
-// to 256 characters.
+// WithUserAgent records the request's User-Agent, as CutUserAgent leaves it.
 func WithUserAgent(ctx context.Context, userAgent string) context.Context {
+	m := current(ctx)
+	m.userAgent = CutUserAgent(userAgent)
+	return context.WithValue(ctx, metaKey{}, m)
+}
+
+// CutUserAgent is a User-Agent as an event stores it: valid UTF-8, cut to
+// 256 characters.
+func CutUserAgent(userAgent string) string {
 	userAgent = strings.ToValidUTF8(userAgent, "")
 	if utf8.RuneCountInString(userAgent) > maxUserAgent {
 		userAgent = string([]rune(userAgent)[:maxUserAgent])
 	}
-	m := current(ctx)
-	m.userAgent = userAgent
-	return context.WithValue(ctx, metaKey{}, m)
+	return userAgent
 }
 
 // Actor is the internal ID of the user acting, or 0 when nobody is signed in.

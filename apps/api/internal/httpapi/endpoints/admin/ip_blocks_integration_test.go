@@ -29,6 +29,7 @@ const blockedAPI = `{"error":"Access from your network has been blocked."}`
 func from(h http.Handler, ip, method, target, key string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, target, nil)
 	r.RemoteAddr = netip.AddrPortFrom(netip.MustParseAddr(ip), 1234).String()
+	r.Header.Set("User-Agent", apitest.UserAgent)
 	if key != "" {
 		r.Header.Set("X-Admin-Key", key)
 	}
@@ -233,8 +234,10 @@ func TestIPBlocksAreEnforced(t *testing.T) {
 	inside := "203.0.113.7"
 	guardedPass := passFrom(t, fromAddress(gh, inside), current)
 	sameAnswer(t, "a pass from outside the allowlist", from(gh, blocked, "GET", apitest.AdminAsset, "", guardedPass), from(gh, blocked, "GET", apitest.AdminAsset, ""))
-	if refused := eventually(t, db, "admin.access_refused", 1); len(refused) == 0 || refused[0].IP != blocked {
-		t.Fatalf("the refusal wasn't recorded: %+v", refused)
+	// Recorded by the block's check, before the API's security middleware:
+	// with the browser all the same.
+	if refused := eventually(t, db, "admin.access_refused", 1); len(refused) == 0 || refused[0].IP != blocked || refused[0].UserAgent != apitest.UserAgent {
+		t.Fatalf("the refusal wasn't recorded, or without its browser: %+v", refused)
 	}
 	// From a blocked address inside the allowlist, the current key and the
 	// pass still open the door; the previous key without a session doesn't.
