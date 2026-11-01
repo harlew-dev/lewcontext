@@ -120,7 +120,7 @@ func usage() {
 	fmt.Fprintln(out, "Previews unless -confirm; without a target previews every target at its default age and deletes nothing.")
 	fmt.Fprintln(out, "\nTargets:")
 	for _, p := range prune.Pruners() {
-		fmt.Fprintf(out, "  %-7s %s (default %s)\n", p.Name, p.Description, prune.FormatAge(p.DefaultAge))
+		fmt.Fprintf(out, "  %-10s %s (default %s)\n", p.Name, p.Description, prune.FormatAge(p.DefaultAge))
 	}
 	fmt.Fprintln(out, "\nFlags:")
 	flag.PrintDefaults()

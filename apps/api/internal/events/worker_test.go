@@ -228,3 +228,48 @@ func TestListenerPanicValuesAreRedacted(t *testing.T) {
 		t.Fatalf("stored %v, logged %s", cause, out.String())
 	}
 }
+
+// A listener's error is logged scrubbed (an SMTP refusal names the
+// recipient), and reported only once it has failed for good: a retry isn't
+// a failure yet. A panic, reported as it happens, isn't reported twice on
+// the last attempt; a listener nobody registered is reported too.
+func TestFinalListenerFailuresAreReported(t *testing.T) {
+	refusal := errors.New("gomail: could not send email 1: 550 5.1.1 <ada@example.com>: Recipient address rejected")
+	bus := NewBus()
+	Listen(bus, "test.fails", func(context.Context, ProjectCreated, Delivered) error { return refusal })
+	Listen(bus, "test.panics", func(context.Context, ProjectCreated, Delivered) error { panic("boom") })
+	var reported []observe.Problem
+	var mu sync.Mutex
+	observe.SetReporter(problems(func(p observe.Problem) { mu.Lock(); reported = append(reported, p); mu.Unlock() }))
+	defer observe.SetReporter(nil)
+	var out bytes.Buffer
+	run := func(deliveries ...Delivery) {
+		t.Helper()
+		w := worker(bus, queueOf(deliveries...))
+		w.Log = slog.New(slog.NewJSONHandler(&out, nil))
+		if _, err := w.RunOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(delivery("test.fails", 1))
+	if len(reported) != 0 {
+		t.Fatalf("a retry was reported: %+v", reported)
+	}
+	run(delivery("test.fails", len(Backoff)+1))
+	if len(reported) != 1 || reported[0].Source != observe.SourceWorker || reported[0].Route != "test.fails" || !errors.Is(reported[0].Err, refusal) {
+		t.Fatalf("the final failure: %+v", reported)
+	}
+	if strings.Contains(out.String(), "ada@example.com") || !strings.Contains(out.String(), "<email>: Recipient address rejected") {
+		t.Fatalf("the log isn't scrubbed: %s", out.String())
+	}
+	reported = nil
+	run(delivery("test.panics", len(Backoff)+1))
+	if len(reported) != 1 || len(reported[0].Stack) == 0 {
+		t.Fatalf("a final panic: %+v", reported)
+	}
+	reported = nil
+	run(delivery("test.nobody", 1))
+	if len(reported) != 1 || reported[0].Route != "test.nobody" {
+		t.Fatalf("an unregistered listener: %+v", reported)
+	}
+}

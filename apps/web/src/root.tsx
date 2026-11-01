@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -14,6 +14,7 @@ import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { RouteProgress } from "@/components/ui/route-progress";
 import { requestIdOf } from "@/lib/api";
 import { appName } from "@/lib/app";
+import { listenForClientErrors, reportClientError } from "@/lib/client-errors";
 import { swrConfig } from "@/lib/swr";
 import { theme } from "@/lib/theme";
 import type { Route } from "./+types/root";
@@ -62,6 +63,8 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 export default function App() {
+  // Errors nothing else caught are reported, signed in only.
+  useEffect(() => listenForClientErrors(), []);
   return (
     <Providers>
       <RouteProgress />
@@ -75,8 +78,10 @@ export function HydrateFallback() {
   return <main aria-busy="true" className="min-h-dvh" />;
 }
 // A loader that throws a 404 renders the not-found page; anything else
-// unexpected the outage page, which offers a reload.
+// unexpected the outage page, which offers a reload. A crash is reported
+// (signed in only, once per page load): a 404 or an API answer isn't.
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  useEffect(() => void reportClientError(error), [error]);
   return (
     <Providers>
       {isRouteErrorResponse(error) && error.status === 404 ? (

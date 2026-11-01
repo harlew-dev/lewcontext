@@ -8,7 +8,7 @@ React 18, strict TypeScript, a single-page app on React Router v7 (framework mod
 | --- | --- |
 | `routes.ts` | The page registry: each URL and its file under `pages/` ([pages.md](pages.md)), in two lists, the app's and the admin dashboard's, one per build |
 | `../web-build.ts` | `WEB_BUILD`: which build `react-router build` makes, `app` (the default) or `admin` ([../api/admin.md](../api/admin.md#the-admin-build)), read by `routes.ts`, `react-router.config.ts` and `vite.config.ts` |
-| `root.tsx` | The HTML document, providers, default title/description, error boundary |
+| `root.tsx` | The HTML document, providers, default title/description, error boundary (which reports crashes, as does the listener for uncaught errors it installs: `lib/client-errors.ts`) |
 | `entry.client.tsx`, `entry.server.tsx` | Hydration in the browser; build-time rendering of prerendered pages with Styletron collection |
 | `pages/home.tsx` | The public homepage (`/`, prerendered) |
 | `pages/auth/*` | Signed-out pages (`/auth/login`, `/auth/register`, `/auth/forgot-password` and its link page `forgot-password/[token]`), and the invitation link page `invitations/[token]`, which works signed in too |

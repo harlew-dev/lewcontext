@@ -24,7 +24,8 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `email_block_links` | One per blockable email sent (an invitation): the block link's `token_hash` (SHA-256), the `email` it went to (the page shows it and checks it against `users`), `expires_at` (a year), with an index on `(email, expires_at)` for the admin Email blocks page's newest live link; deleted by the cleanup once expired ([auth.md](auth.md#blocking-an-email-address)) | unexported `emailBlockLink` |
 | `email_blocks` | The block list: each blocked `email` (lower-case, `CHECK`ed), `created_at`. Kept while blocked (a suppression list, never pruned); a blocked address never has an account | unexported `emailBlock` (+ `EmailBlock`) |
 | `events` | What happened: name, actor, user, workspace, `jsonb` payload, the client's `ip` (`inet`, null outside a request), the request's `request_id` (`req_…`, its log lines' `requestId`, empty outside a request; unrelated to `pending_registrations.request_id`, an event's `evt_` ID), user agent ([events.md](events.md)). Deleting a user deletes the events about them (`user_id`, `CASCADE`) and nulls `actor_id`; deleting a workspace nulls `workspace_id` (`SET NULL`), so its history survives until pruned | unexported `eventRecord` |
-| `event_deliveries` | One row per event and listener: attempts, `next_attempt_at` (also the claim lease), `delivered_at`, `failed_at`, `last_error` | unexported `deliveryRecord` |
+| `event_deliveries` | One row per event and listener: attempts, `next_attempt_at` (also the claim lease), `delivered_at`, `failed_at`, `last_error` (scrubbed, [observability.md](observability.md#scrubbing)) | unexported `deliveryRecord` |
+| `app_errors` | Grouped errors, a row per distinct failure, never per occurrence: `fingerprint` (unique hex SHA-256 of source, route and scrubbed message), `source` (`request`, `panic`, `worker`, `background`, `client`), `route` (a pattern, label or job, never a path), the scrubbed `message` (≤ 1,000) and `stack` (≤ 8,000), `count`, `first_seen_at`, `last_seen_at`, `last_request_id` (ours only), `last_version`, `resolved_at`; an index on `last_seen_at`. Written only by the server's error collector, every 10 s when something failed (`ReportErrors`, one upsert); pruned 30 days after last seen ([observability.md](observability.md#grouped-errors-app_errors)) | unexported `appErrorRecord` |
 | `bun_migrations`, `bun_migration_locks` | Migration history | (Bun) |
 
 ## Public IDs
@@ -44,7 +45,7 @@ Store methods are named verb first ([../naming.md](../naming.md#store-methods-in
 | `Index<Resources>` | one page of a list, with its search and filters | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
 | `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindProject`, `FindSession`, `FindWorkspace` (through the user's membership), `FindUser` |
 | `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject`, `DeleteWorkspace`, `DeleteAccount` |
-| a domain verb | when it says more | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `IssueInvitationToken`, `AcceptInvitation`, `RevokeInvitation`, `Allow` (a hit against a rate limit) |
+| a domain verb | when it says more | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `IssueInvitationToken`, `AcceptInvitation`, `RevokeInvitation`, `Allow` (a hit against a rate limit), `ReportErrors` (the error collector's flush) |
 | `Check<Thing>` | a yes/no question, or what a link shows | `CheckPasswordReset`, `CheckInvitation`, `CheckEmailBlockLink`, `CheckEmailBlocked` |
 
 Methods implementing an interface from elsewhere keep its names (`Claim`, `Delivered`, `Fail`, `Retry` for `events.Queue`).
@@ -60,7 +61,7 @@ Methods implementing an interface from elsewhere keep its names (`Claim`, `Deliv
 
 ## Migrations
 
-- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_rate_limits`, `007_create_events`, `008_create_event_deliveries`, `009_create_password_resets`, `010_create_workspace_invitations`, `011_create_mfa_totp`, `012_create_mfa_recovery_codes`, `013_create_mfa_challenges`, `014_create_admins`, `015_create_admin_sessions`, `016_create_pending_registrations`, `017_create_email_verifications`, `018_create_email_block_links`, `019_create_email_blocks`. `events` has a partial index on each user's `auth.logged_in` events, for the admin dashboard's last sign-in, one on each admin's `admin.logged_in` (by actor), for the Admins page's, and one per Events filter ([admin.md](admin.md#events)): `ip`, the payload's lower-cased `email` and its `workspace`, `actor_id`, and the payload's `request` (an event's related events); `event_deliveries` a partial index on failed deliveries.
+- **Files:** `apps/api/migrations/<version>_<name>.tx.up.sql` plus `.tx.down.sql`, one create migration per table, in dependency order: `001_create_public_id_function`, `002_create_users`, `003_create_sessions`, `004_create_workspaces`, `005_create_projects`, `006_create_rate_limits`, `007_create_events`, `008_create_event_deliveries`, `009_create_password_resets`, `010_create_workspace_invitations`, `011_create_mfa_totp`, `012_create_mfa_recovery_codes`, `013_create_mfa_challenges`, `014_create_admins`, `015_create_admin_sessions`, `016_create_pending_registrations`, `017_create_email_verifications`, `018_create_email_block_links`, `019_create_email_blocks`, `020_create_app_errors`. `events` has a partial index on each user's `auth.logged_in` events, for the admin dashboard's last sign-in, one on each admin's `admin.logged_in` (by actor), for the Admins page's, and one per Events filter ([admin.md](admin.md#events)): `ip`, the payload's lower-cased `email` and its `workspace`, `actor_id`, and the payload's `request` (an event's related events); `event_deliveries` a partial index on failed deliveries.
 - **Squashed while in development.** There is no database whose data must be kept, so a table changes by **editing its create migration**, not by adding an alter migration. Then rebuild the local database: `make migrate-fresh CONFIRM=1 && make seed`. Once a database holds data that must be kept, migrations become append-only again.
 - **`make migrate-fresh`** lists the tables and row counts it would drop. `CONFIRM=1` drops the current schema (`DROP SCHEMA … CASCADE`), recreates it and migrates. It is refused when `APP_ENV=production`. Only run it on the local development database. Other checkouts sharing that database need it too after pulling a schema change: Bun only runs migrations it hasn't recorded, so an edited file won't re-run.
 - **Running:** `make migrate` applies pending files, each in its own transaction, as one group, holding a PostgreSQL advisory lock. `make migrate-status` lists them. The API never migrates on startup.
@@ -75,7 +76,7 @@ Methods implementing an interface from elsewhere keep its names (`Claim`, `Deliv
 
 ## Pruning
 
-Log tables grow without limit, so `make prune` deletes their old rows on demand (`cmd/prune`; one file per target in `internal/prune`, its queries in `internal/store/prune_<target>.go`, and the shared count and batched delete in `internal/store/prune.go`):
+Log tables grow without limit, so `make prune` deletes their old rows on demand (`events`, `app_errors`) (`cmd/prune`; one file per target in `internal/prune`, its queries in `internal/store/prune_<target>.go`, and the shared count and batched delete in `internal/store/prune.go`):
 
 ```sh
 make prune                                          # previews every target at its default age; deletes nothing
@@ -88,6 +89,7 @@ cd apps/api && go run ./cmd/prune -h                # lists targets and their de
 | Target | Default age | Deletes | Keeps |
 | --- | --- | --- | --- |
 | `events` | 90 days | events created before the cutoff, with their delivered or failed `event_deliveries` (cascade) | events with a pending delivery, counted as "kept" |
+| `app_errors` | 30 days | error groups last seen before the cutoff (however long ago they first happened); one that recurs later starts a new row | nothing |
 
 - **Previews unless confirmed**, like `migrate-rollback`. Without a target it previews every target and never deletes, even with `CONFIRM=1`.
 - **Ages are per target.** `older-than` overrides one only with a target (a run over every target uses each default), and takes whole days or hours (`90d`, `36h`), at least `1h`, so a typo like `0d` can't empty a table.

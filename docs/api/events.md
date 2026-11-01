@@ -125,8 +125,8 @@ events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.P
 The server runs one worker (`cmd/server`); every server process runs its own, sharing the queue.
 
 1. **Claim:** a single statement takes up to 10 due deliveries with `FOR UPDATE SKIP LOCKED` (other workers skip those rows instead of waiting), adds 1 to `attempts`, and pushes `next_attempt_at` 5 minutes ahead as a **lease**. The row locks end with the statement, so listeners run with no lock or transaction held.
-2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure, and is logged at error with its stack ([observability.md](observability.md#errors-and-panics)).
-3. **Record:** success sets `delivered_at`. A failure sets `last_error` (cut to 500 characters) and retries after 1 s, 10 s, 1 min, 10 min, then 1 h; the attempt after that marks it `failed_at` and logs an error. One listener failing doesn't affect others on the same event.
+2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure, and is logged at error with its stack and reported as a grouped error ([observability.md](observability.md#errors-and-panics)).
+3. **Record:** success sets `delivered_at`. A failure sets `last_error` (scrubbed, [observability.md](observability.md#scrubbing): an SMTP refusal's recipient is `<email>`; cut to 500 characters), logs it scrubbed, and retries after 1 s, 10 s, 1 min, 10 min, then 1 h; the attempt after that marks it `failed_at`, logs an error and reports it as a grouped error (`app_errors`, source `worker`, the listener's name as its route), once. One listener failing doesn't affect others on the same event. A claim or record that fails (the database) is logged and reported too (source `background`, route `event worker`).
 4. **Poll:** when a claim comes back empty, the worker waits 1 s. A full batch is followed straight away by the next.
 5. **Shutdown:** the worker stops claiming and finishes its batch within the server's 10 s grace period. A delivery cut off by a crash is claimed again when its lease ends.
 

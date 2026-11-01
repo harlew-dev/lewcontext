@@ -62,9 +62,13 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | `password-reset:per-ip` | 10 / hour | IP | database | reset requests: one IP can't mail many people | 429 |
 | `password-reset:per-email` | 3 / hour | email | database | reset requests, known email or not: caps mail to one inbox | 429 |
 | `password-reset:global` | 100 / hour | everyone | database | reset requests: caps mail in a distributed flood. Logs a warning | 503 "Password reset is busy. Try again later." |
+| `client-error:per-user` | 30 / hour | session user | database | `POST /api/client-errors`: errors one account's browsers report. The route skips the write budget (below), so this is its per-user limit. Each report is grouped in memory, never stored per report ([observability.md](observability.md#errors-from-the-browser)) | 429 |
+| `client-error:global` | 500 / hour | everyone | database | `POST /api/client-errors`, after `client-error:per-user`, once the body is valid: caps what all browsers together add to `app_errors`. Logs a warning | 503 "Error reports are busy. Try again later." |
 | `admin-action:per-user` | 60 / hour | admin user | database | the admin dashboard's account-and-access actions (`DELETE /api/admin/email-blocks`), after the role and the step-up (`LimitAdmin`). Every attempt that gets that far counts, refused or not (an address that isn't blocked too), so a stolen operator session can't act faster than the limit; `Action` in `router/routes.go` adds it to every action ([admin.md](admin.md#email-blocks)) | 429 |
 
-Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `register:per-email` (verification on) → `register:global`; a sign-up's code `auth:per-ip` → `email-code:per-email`; an invitation `invitation:per-user` → `invitation:per-email` → `invitation:global`; a reset request `auth:per-ip` → `password-reset:per-ip` → `password-reset:per-email` → `password-reset:global`. Each stops at the first refusal.
+Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `register:per-email` (verification on) → `register:global`; a sign-up's code `auth:per-ip` → `email-code:per-email`; an invitation `invitation:per-user` → `invitation:per-email` → `invitation:global`; an error report `client-error:per-user` → `client-error:global`; a reset request `auth:per-ip` → `password-reset:per-ip` → `password-reset:per-email` → `password-reset:global`. Each stops at the first refusal.
+
+**Unmetered error reports:** `POST /api/client-errors` uses `RequireSessionUnmetered` too, for another reason: a page stuck in an error loop would otherwise spend its user's write budget and leave them unable to save anything. It is bounded by `client-error:per-user` (counted after the CSRF check, so no other site can spend it) and `client-error:global` instead, and only updates memory.
 
 **Unmetered recovery routes:** `POST /api/auth/logout`, `DELETE /api/auth/sessions`, `POST /api/auth/password/verify`, `PATCH /api/auth/password`, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` use `RequireSessionUnmetered`, which skips the budget. Otherwise someone holding a stolen session could use up the owner's budget and stop them signing it out or changing the password. The two password routes and the two MFA routes keep `auth:*`, the hashing slots and (MFA) `mfa:per-account`; logout and revoking sessions only delete rows.
 
@@ -97,7 +101,7 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 
 ## Limiting a new endpoint
 
-1. **Signed in:** nothing to do for the budget; `RequireSession` meters it. Use `RequireSessionUnmetered` only for a route that must keep working when the budget is used up (recovery), and say why in `router/routes.go`.
+1. **Signed in:** nothing to do for the budget; `RequireSession` meters it. Use `RequireSessionUnmetered` only for a route that must keep working when the budget is used up (recovery), or one a page calls on its own that mustn't spend it (error reports), with limits of its own; say why in `router/routes.go`.
 2. **Creates rows or sends mail:** declare a `ratelimit.Limit` in `httpapi/limits.go` named `<feature>:per-user` (add it to `RateLimits`), and wrap the action with `s.Limit(httpapi.<Feature>PerUser, …)` in `router/routes.go`.
 3. **Grows without bound:** add a quota check in the store method's transaction, under a row lock, returning `QuotaError`; map it to 422 in the controller.
 4. **Signed out:** write the limits out in the controller with `h.Allow(w, r, limit, key)`, per IP first, then any shared (`global`) one with a `Busy` message. Count only once the body is valid if a shared limit is involved.

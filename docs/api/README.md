@@ -6,13 +6,13 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 
 | Package | Owns |
 | --- | --- |
-| `cmd/server` | Startup (the log handler first, then the embedded web build when there is one, and the admin build beside it when `ADMIN_ROUTE_KEY` is set), event listeners and the delivery worker, HTTP server timeouts, 15-minute cleanup of expired sessions, limits and reset links, graceful shutdown (readiness answers 503 first, `Server.Drain`, for `SHUTDOWN_DELAY`) |
+| `cmd/server` | Startup (the log handler first, then the embedded web build when there is one, and the admin build beside it when `ADMIN_ROUTE_KEY` is set), event listeners and the delivery worker, the error collector (`observe.SetReporter`, flushed to `app_errors` every 10 s), HTTP server timeouts, 15-minute cleanup of expired sessions, limits and reset links, graceful shutdown (readiness answers 503 first, `Server.Drain`, for `SHUTDOWN_DELAY`; the error collector's last flush once everything else has stopped) |
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
 | `cmd/admin` | The operator's commands, previewing unless confirmed: `grant` (with a role, `-role viewer|operator`), `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address); the dashboard's Email blocks page does both too); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
 | `internal/config` | Environment loading and validation; `LoadLogging` reads the log's settings on their own, which every command does first |
-| `internal/observe` | The one log handler every command installs (`observe.NewLogger`: JSON or text, the request's ID on each line, redaction), request IDs, what a request's access line reports (`observe.Request`), and the hook grouped errors will use (`observe.Report`) ([observability.md](observability.md)). It imports nothing else of the app's |
+| `internal/observe` | The one log handler every command installs (`observe.NewLogger`: JSON or text, the request's ID on each line, redaction), request IDs, what a request's access line reports (`observe.Request`), the scrubber every error's text goes through before it's logged or stored (`observe.Scrub`), and the error collector that groups what `observe.Report` is handed and flushes it to `app_errors` (`observe.Collector`) ([observability.md](observability.md)). It imports nothing else of the app's |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
 | `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), the request's ID, access line, panic recovery and readiness (`observability.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin keys, sessions, roles, step-up, page gate and assets pass (`admin.go`), and the admin address allowlist (`admin_access.go`) |
 | `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`, `/api/email-blocks/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
@@ -26,7 +26,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
-| `internal/prune` | `make prune`: one file per target (`events.go`) registering itself, plus the shared list, `-older-than` parsing and batched run |
+| `internal/prune` | `make prune`: one file per target (`events.go`, `app_errors.go`) registering itself, plus the shared list, `-older-than` parsing and batched run |
 | `migrations` | SQL migration pairs, embedded into the binaries |
 
 `cmd/server` never imports `factory`, `seed` or `httpapi/apitest`. Areas never import each other, and the core imports none of them (`TestHTTPLayout`).

@@ -128,7 +128,7 @@ func TestLeasesRetriesAndOutcomes(t *testing.T) {
 	long := errors.New(strings.Repeat("é", 600) + "\x00")
 	for _, err := range []error{
 		s.Delivered(ctx, byName["test.ok"]),
-		s.Retry(ctx, byName["test.retry"], time.Now().Add(time.Hour), errors.New("smtp down")),
+		s.Retry(ctx, byName["test.retry"], time.Now().Add(time.Hour), errors.New("550 5.1.1 <ada@example.com>: Recipient address rejected")),
 		s.Fail(ctx, byName["test.fail"], long),
 	} {
 		if err != nil {
@@ -152,5 +152,12 @@ func TestLeasesRetriesAndOutcomes(t *testing.T) {
 	}
 	if len([]rune(lastError)) != maxLastError {
 		t.Fatalf("last_error not cut to %d characters: %d", maxLastError, len([]rune(lastError)))
+	}
+	// Stored scrubbed: an SMTP refusal names its recipient.
+	if err := s.DB.NewSelect().Model((*deliveryRecord)(nil)).Column("last_error").Where("listener = ?", "test.retry").Scan(ctx, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if lastError != "<n> <n> <email>: Recipient address rejected" {
+		t.Fatalf("last_error: %q", lastError)
 	}
 }

@@ -112,3 +112,45 @@ func TestRunRefusesAgesUnderAnHourAndStopsWhenCancelled(t *testing.T) {
 		t.Fatalf("%d events left after refused runs, want all 9", n)
 	}
 }
+
+// app_errors goes by when a group was last seen (30 days by default),
+// whenever it first happened; only with a target and confirmation, and
+// never under an hour.
+func TestPruneAppErrors(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	f := factory.TestFaker(t)
+	now := time.Now()
+	seen := func(age time.Duration, n int) {
+		if _, err := factory.AppErrors.State(factory.LastSeen(now.Add(-age))).Create(ctx, db, f, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seen(40*24*time.Hour, 3) // stale
+	seen(10*24*time.Hour, 2) // recent
+	// First seen long ago, but seen again yesterday: kept.
+	if _, err := factory.AppErrors.State(func(e *factory.AppError) {
+		e.FirstSeenAt, e.LastSeenAt = now.AddDate(0, 0, -200), now.Add(-24*time.Hour)
+	}).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	s := &store.Store{DB: db}
+	target, ok := Find("app_errors")
+	if !ok || target.DefaultAge != 30*day {
+		t.Fatalf("app_errors target: %+v", target)
+	}
+	r, err := Run(ctx, s, target, Options{Now: now})
+	if err != nil || r.Deleted != 3 || count(t, s, "app_errors") != 6 {
+		t.Fatalf("preview: %+v %v", r, err)
+	}
+	if _, err := Run(ctx, s, target, Options{Now: now, Confirm: true, Age: 30 * time.Minute}); err == nil {
+		t.Fatal("pruned with a 30-minute age")
+	}
+	r, err = Run(ctx, s, target, Options{Now: now, Confirm: true, Batch: 2})
+	if err != nil || r.Deleted != 3 || count(t, s, "app_errors") != 3 || !strings.HasPrefix(r.String(), "app_errors: deleted 3 ") {
+		t.Fatalf("confirmed: %+v %v, %d left", r, err, count(t, s, "app_errors"))
+	}
+}

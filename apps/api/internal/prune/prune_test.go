@@ -62,7 +62,7 @@ func TestRegister(t *testing.T) {
 	// The list is sorted by name.
 	register(Pruner{Name: "aaa", DefaultAge: day, Table: events.Table})
 	t.Cleanup(func() { delete(pruners, "aaa") })
-	if list := Pruners(); len(list) != 2 || list[0].Name != "aaa" || list[1].Name != "events" {
+	if list := Pruners(); len(list) != 3 || list[0].Name != "aaa" || list[1].Name != "app_errors" || list[2].Name != "events" {
 		t.Fatalf("Pruners(): %+v", list)
 	}
 }

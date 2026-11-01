@@ -5,12 +5,12 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
-	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -64,6 +64,8 @@ func (s *Server) RequireSession(next http.Handler) http.Handler {
 // recovery routes: signing out, revoking other sessions and changing the
 // password. Someone holding a stolen session then can't use up the owner's
 // budget to stop them. They only delete rows, or keep sign-in's limits.
+// The one other is POST /api/client-errors, which a page stuck in an error
+// loop would otherwise spend the budget on; it has limits of its own.
 func (s *Server) RequireSessionUnmetered(next http.Handler) http.Handler {
 	return s.signedIn(next, false)
 }
@@ -136,7 +138,11 @@ func (s *Server) RequirePageSession(next http.Handler) http.Handler {
 			return
 		}
 		if err != nil {
-			slog.ErrorContext(r.Context(), "page session check failed", "error", err)
+			if ClientGone(r, err) {
+				abortedByClient(r, err)
+				return
+			}
+			reportFailure(r, "page session check failed", fmt.Errorf("page session check: %w", err))
 		}
 		next.ServeHTTP(w, r)
 	})

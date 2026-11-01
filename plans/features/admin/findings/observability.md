@@ -5,7 +5,7 @@ Plan: [observability](../observability.md), built in three phases. Each phase is
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Structured logs, request IDs, panic recovery, the health split | **committed** (see below) |
-| 2 | Grouped errors (`app_errors`), errors from the browser | next |
+| 2 | Grouped errors (`app_errors`), errors from the browser | **committed** (see below) |
 | 3 | Metrics, `request_minutes`/`metric_minutes`, server heartbeats, slow queries, `/metrics` | after phase 2 |
 
 ## Phase 1
@@ -141,4 +141,22 @@ The reviewer probed the scrubber with adversarial inputs in throwaway tests.
 | 8 | Low | A page stuck in an error loop could use up the user's whole write budget (`api:per-user`) | Reports metered only by their own limit; the web app stops reporting after a 429 |
 | 9–10 | Nits | The shutdown budget equalled Docker's stop timeout; a flush that commits but errors is counted twice | The final flush gets its share; the double count documented |
 
-_Fix results: filled in once the fixes pass the checks._
+**Fix results (phase 2).** All ten are fixed. Rerunning the reviewer's probes:
+- **Secrets:** none survive. That covers 200,000 session and reset tokens, 10,000 base32 TOTP secrets, 100,000 recovery codes and 100,000 `APP_KEY`-like keys.
+- **The poison report** is stored safely next to a real error, with nothing left pending.
+- **Chrome's JSON message** comes out as `"…" is not valid JSON`.
+
+**New things to know from the fixes:**
+- **`client-error:global`**: 500 browser error reports an hour across everyone, then 503.
+- **Error reports skip the general write budget** (`api:per-user`) and count only against their own limits, so a broken page can't lock a user out of saving. This is a documented exception to "budgets in `RequireSession`" (AGENTS.md and `rate-limits.md` updated).
+- **Docker's stop timeout** should be `SHUTDOWN_DELAY` + 20 s (`--stop-timeout 25` by default).
+- **Long CamelCase names** (32+ characters, e.g. long test names in stacks) now show as `<token>`.
+
+**Gaps accepted and documented:** emails written as `ada @ example.com` or `ada(at)example.com`; ordinary words that happen to be someone's data, such as names; and a recovery code typed without its dash that has no digit, about 2.4% of codes.
+
+All checks passed:
+- `make check`;
+- `make test`: 21 Go packages, 310 Vitest tests;
+- `make build`;
+- e2e: 23 of 23, with no ERROR lines and an empty `app_errors`;
+- benchmark: still 4.2 µs and 8 allocations.

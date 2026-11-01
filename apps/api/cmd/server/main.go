@@ -52,6 +52,18 @@ func run() error {
 	defer db.Close()
 	bus := events.NewBus()
 	repository := &store.Store{DB: db, Listeners: bus}
+	// Grouped errors (app_errors): every problem reported from here on is
+	// grouped in memory and stored every 10 seconds, only when there are any,
+	// through the shutdown's drain too, until flushErrors stops it last.
+	collector := observe.NewCollector(repository.ReportErrors, observe.Version())
+	observe.SetReporter(collector)
+	collecting, stopCollecting := context.WithCancel(context.Background())
+	collected := make(chan struct{})
+	go func() {
+		defer close(collected)
+		collector.Run(collecting, observe.ErrorFlushInterval)
+	}()
+	defer flushErrors(collector, stopCollecting, collected)
 	// Listeners register on the bus here, before anything records an event.
 	if err := listen(bus, repository, c); err != nil {
 		return err
@@ -95,7 +107,8 @@ func run() error {
 			err := repository.Cleanup(cleanup)
 			cancel()
 			if err != nil {
-				slog.Error("session cleanup failed", "error", err)
+				slog.Error("session cleanup failed", observe.ErrorAttr(err))
+				observe.Report(ctx, observe.Problem{Source: observe.SourceBackground, Route: "cleanup", Err: err})
 			}
 		case <-ctx.Done():
 			// Readiness answers 503 from here on, while the server keeps
@@ -124,6 +137,20 @@ func run() error {
 			}
 			return err
 		}
+	}
+}
+
+// flushErrors stops reporting and stores the groups collected since the
+// last flush, once the requests, the worker and the loop have finished:
+// the last failures before a shutdown are the ones worth keeping.
+func flushErrors(collector *observe.Collector, stop context.CancelFunc, stopped <-chan struct{}) {
+	stop()
+	<-stopped
+	observe.SetReporter(nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := collector.Flush(ctx); err != nil {
+		slog.Warn("storing the last error groups failed", observe.ErrorAttr(err), "groups", collector.Len())
 	}
 }
 

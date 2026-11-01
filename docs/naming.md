@@ -14,7 +14,7 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 | `update` | PATCH | `/things/{thing}` | change, 200 with the record | `Things.Update` |
 | `destroy` | DELETE | `/things/{thing}` | delete, 204 | `Things.Destroy` |
 
-- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes.
+- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes, and so does `/api/client-errors` (`account.ClientErrors`, the signed-in browser's own errors), one route.
 - **One controller per file, named after its resource:** `type Projects struct{ *httpapi.Server }` in `endpoints/workspace/projects.go`, `WorkspaceProjects` in `workspace_projects.go`. The file holds the controller, its input types and its validation. An area exports only its controllers.
 - **Its methods are the actions, exported**, each a `func(http.ResponseWriter, *http.Request)`. Helpers stay unexported:
 

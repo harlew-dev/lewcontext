@@ -247,7 +247,7 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 | `topRecipients` | Addresses asked for 3 or more times in the window (at most 20), with `resets`, `invitations` and `registrations`: enough to spot an inbox being flooded, not a log of who got mail | `email` on `auth.password_reset.requested`, `workspace.invitation.created`, `auth.registration.requested` |
 | `driver`, `lastDeliveredAt`, `lastFailure` | `MAIL_DRIVER`, SMTP host, port and TLS mode, the sender (never the credentials); the newest delivery done and the newest failure's listener, time and error, in the window | config, `event_deliveries` |
 
-`GET /api/admin/deliveries` lists `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `email`, if any), `status` (`pending`, `retrying`, `failed`, `delivered`), `attempts`, `nextAttemptAt` (while waiting), `deliveredAt`, `failedAt`, `lastError`. A failure's `last_error` may name the recipient (an SMTP reply), never the password.
+`GET /api/admin/deliveries` lists `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `email`, if any), `status` (`pending`, `retrying`, `failed`, `delivered`), `attempts`, `nextAttemptAt` (while waiting), `deliveredAt`, `failedAt`, `lastError`. A failure's `last_error` is scrubbed before it's stored (an SMTP reply's recipient is `<email>`, [observability.md](observability.md#scrubbing)), never the password.
 
 ## Email blocks
 

@@ -5,6 +5,7 @@ package httpapi
 // server shuts down. ClientAddress (client_ip.go) runs the first two.
 
 import (
+	"context"
 	"errors"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/httpapi/clientip"
@@ -176,14 +177,47 @@ func answerPanic(w http.ResponseWriter, r *http.Request, request *observe.Reques
 
 // logPanic logs a panic at error with its stack and reports it. Its value
 // is logged only as observe.PanicValue allows (a request, headers or a URL
-// redacted; a message cut to 512 bytes; anything else by its type).
+// redacted; a message cut to 512 bytes; anything else by its type), then
+// scrubbed (observe.Scrub); the stack only as function names and lines
+// (observe.ScrubStack).
 func logPanic(r *http.Request, p any) {
 	ctx := r.Context()
 	stack := debug.Stack()
 	value := observe.PanicValue(p)
 	route := observe.Route(ctx)
-	slog.ErrorContext(ctx, "request panicked", "route", route, "panic", value, "stack", string(stack))
+	slog.ErrorContext(ctx, "request panicked", "route", route, "panic", observe.Scrub(value), "stack", observe.ScrubStack(string(stack)))
 	observe.Report(ctx, observe.Problem{Source: observe.SourcePanic, Route: route, RequestID: observe.RequestID(ctx), Err: errors.New(value), Stack: stack})
+}
+
+// reportFailure logs err at error as msg, scrubbed (observe.ErrorAttr), with
+// the request's ID and route, and hands it to observe.Report as the
+// request's problem. InternalError answers it with a 500; the page gates
+// serve the page anyway.
+func reportFailure(r *http.Request, msg string, err error) {
+	ctx := r.Context()
+	route := observe.Route(ctx)
+	slog.ErrorContext(ctx, msg, "route", route, observe.ErrorAttr(err))
+	observe.Report(ctx, observe.Problem{Source: observe.SourceRequest, Route: route, RequestID: observe.RequestID(ctx), Err: err})
+}
+
+// ClientGone reports whether err is only the request's context ending
+// because the client went away (closed the tab, navigated, timed out on its
+// side): context.Canceled, with the request's own context canceled. Nothing
+// failed on our side, and nobody is there to answer, so it's no 500 and no
+// grouped error. A deadline (the 10 s request timeout) isn't this: that is
+// a failure.
+func ClientGone(r *http.Request, err error) bool {
+	return errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled)
+}
+
+// abortedByClient records a request ClientGone ended: logged at debug, and
+// its access line says aborted (status 0 when nothing was written).
+func abortedByClient(r *http.Request, err error) {
+	ctx := r.Context()
+	if request := observe.FromContext(ctx); request != nil {
+		request.Aborted = true
+	}
+	slog.DebugContext(ctx, "request aborted by the client", "route", observe.Route(ctx), observe.ErrorAttr(err))
 }
 
 // somethingWentWrong is every 500's message: what failed is in the log, under
