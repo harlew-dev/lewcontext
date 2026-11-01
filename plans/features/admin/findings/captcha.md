@@ -99,3 +99,19 @@ A non-production server on test keys now says so at startup. All checks passed:
 - e2e: 28 of 28.
 
 Because the first fix is new counting logic in security code, a short focused second review is checking it before the ui branch merges.
+
+### Second review of the shared-limit fix
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **High** | **The fix had a bypass.** `POST /api/auth/register/resend` uses `register:global` but couldn't ask for a captcha, and the new logic counted any request on such a route as passed. A bot with about 400 free pending sign-ups (200 per hour window, across a window boundary) could resend codes up to the block level without solving anything, closing sign-up for everyone and sending 800 emails. Confirmed by a probe, with 0 calls to Cloudflare | Resend asks for a captcha; only a verified token counts as passed; a structural check stops any route using a challenge-level limit without being able to ask for one; a test floods resends with no token |
+| 2 | Low | A request counted just after a window rolled over could report the old window's end, so its Retry-After was about 1 s | The stored window end is used |
+
+Confirmed sound:
+- **Exactly the block level:** solved requests are capped precisely (one atomic upsert per request).
+- **The passed counter's key:** it can't be guessed or collided with.
+- **Windows reset cleanly,** with no clock-skew effect.
+- **Events:** each is recorded once.
+- **Shared limits:** `Shared()` covers exactly the four `:global` limits.
+
+_Fix results: filled in once committed._
