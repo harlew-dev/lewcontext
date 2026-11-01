@@ -47,6 +47,12 @@ func (l Limit) PerIP() bool {
 	return strings.HasSuffix(l.Name, ":per-ip")
 }
 
+// Shared reports whether the limit is shared by everyone (its name ends in
+// ":global"), so one requester can push it up for all.
+func (l Limit) Shared() bool {
+	return strings.HasSuffix(l.Name, ":global")
+}
+
 // WithoutPerIP is l with both levels Never when it counts client IPs, for
 // PER_IP_LIMITS=off (a proxy that can't send the client's address), and l
 // unchanged otherwise.
@@ -70,6 +76,13 @@ func (l Limit) IPKey(ip string) string {
 // Everyone is the rate_limits key of a limit shared by all requests.
 func (l Limit) Everyone() string {
 	return l.Name
+}
+
+// PassedKey is the counter, beside key's, of a shared limit's requests
+// that got past its challenge level (Shared): its block level counts those,
+// not the requests nobody solved.
+func PassedKey(key string) string {
+	return key + ":passed"
 }
 
 // Refusal is the 429 message for a window that ends in left.

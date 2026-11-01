@@ -13,7 +13,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 | `workspaces` | Workspaces (name) | `Workspace` (+ the member's `Role`, read from `workspace_user`) |
 | `workspace_user` | Memberships: user, workspace, `role` (`owner`, `admin`, `member`, `viewer`; `auth.Role`); unique per pair | unexported `membership` |
 | `projects` | Projects in a workspace (`ON DELETE CASCADE`) | `Project` |
-| `rate_limits` | Rate-limit counters: `key` (`<limit name>:<digest>`), `hits`, `resets_at` ([rate-limits.md](rate-limits.md)). Reads are counted in memory instead | unexported `rateLimitRecord` |
+| `rate_limits` | Rate-limit counters: `key` (`<limit name>:<digest>`, the bare name for a limit shared by everyone, and `<limit name>:passed` for its requests past the challenge level), `hits`, `resets_at` ([rate-limits.md](rate-limits.md)). Reads are counted in memory instead | unexported `rateLimitRecord` |
 | `workspace_invitations` | Invitations: `public_id` (`inv_`), workspace, invited `email`, `role` (never owner), `invited_by` (`SET NULL`), the link's `token_hash` and `sent_at` once emailed, `expires_at`; unique per workspace and email ([auth.md](auth.md#invitations)) | unexported `invitationRecord` (+ `Invitation` as listed) |
 | `password_resets` | One live reset link per user: the token's SHA-256 digest and `expires_at`; deleted when used, replaced, or the password changes | unexported `passwordReset` |
 | `mfa_totp` | One authenticator per user: the secret sealed with `APP_KEY` (never plain), `last_used_step` (a code works once), `confirmed_at` (null while setup is pending) ([auth.md](auth.md#two-factor-authentication)) | unexported `mfaTOTP` |

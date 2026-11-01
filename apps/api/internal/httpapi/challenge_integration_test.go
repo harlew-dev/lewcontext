@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/captcha"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi"
@@ -184,9 +185,11 @@ func TestRegisterChallenge(t *testing.T) {
 	if fake.calls() != before+1 {
 		t.Fatalf("the token was verified %d times", fake.calls()-before)
 	}
-	// Above register:global's block level: 503, whatever the token.
+	// Above register:global's block level, counting the requests that got
+	// through: 503, whatever the token.
 	s2, _ := challengeServer(t)
 	spend(t, s2, "register:global", "", 1000)
+	spend(t, s2, "register:global:passed", "", 800)
 	if w := sendFrom(router.New(s2), "203.0.113.32", "POST", "/api/auth/register", body, "good"); w.Code != 503 || !strings.Contains(w.Body.String(), "Sign-up is busy") {
 		t.Fatalf("above the block level: %d %s", w.Code, w.Body)
 	}
@@ -296,5 +299,109 @@ func TestInvitationChallenge(t *testing.T) {
 	e := reachedOnce(t, s, "invitation:global:challenge")
 	if e.Payload["workspace"] != workspace.PublicID {
 		t.Fatalf("event %+v", e.Payload)
+	}
+}
+
+// limitEvents counts rate_limit.reached by limit and level.
+func limitEvents(t *testing.T, s *httpapi.Server) map[string]int {
+	t.Helper()
+	counts := map[string]int{}
+	for _, e := range apitest.EventsNamed(t, s.Repo.DB, "rate_limit.reached") {
+		counts[e.Payload["limit"].(string)]++
+	}
+	return counts
+}
+
+// Requests nobody solves, from any number of addresses, never push a
+// limit shared by everyone to its block level: only the requests that got
+// through count there, so a real person with a solved check still gets in.
+func TestUnsolvedRequestsNeverBlockASharedLimit(t *testing.T) {
+	s, _ := challengeServer(t)
+	h := router.New(s)
+	// register:global is 10 short of its block level by raw count.
+	spend(t, s, "register:global", "", 990)
+	for i := range 30 {
+		body := fmt.Sprintf(`{"name":"Bot","email":"bot%d@example.com","password":"correct horse battery staple"}`, i)
+		challenged(t, sendFrom(h, fmt.Sprintf("198.51.100.%d", i+1), "POST", "/api/auth/register", body, ""), "register", "Complete the check to continue.")
+	}
+	if w := sendFrom(h, "203.0.113.99", "POST", "/api/auth/register", `{"name":"Ada","email":"ada@example.com","password":"correct horse battery staple"}`, "good"); w.Code != 201 {
+		t.Fatalf("a solved sign-up after a flood of unsolved ones: %d %s", w.Code, w.Body)
+	}
+	// password-reset:global: 101 unsolved requests from 21 addresses, 5 each
+	// (under auth:per-ip's challenge level), the probe that blocked everyone.
+	codes := map[int]int{}
+	for i := range 101 {
+		w := sendFrom(h, fmt.Sprintf("198.51.101.%d", i/5+1), "POST", "/api/auth/password-reset", fmt.Sprintf(`{"email":"x%d@example.com"}`, i), "")
+		codes[w.Code]++
+	}
+	if codes[202] != 50 || codes[428] != 51 {
+		t.Fatalf("101 unsolved reset requests: %v", codes)
+	}
+	if w := sendFrom(h, "203.0.113.98", "POST", "/api/auth/password-reset", `{"email":"real@example.com"}`, "good"); w.Code != 202 {
+		t.Fatalf("a solved reset request after the flood: %d %s", w.Code, w.Body)
+	}
+	// The reset challenge level was recorded once, by the request (a 428)
+	// that crossed it (register:global's was crossed before the test); no
+	// block level was reached.
+	if got := limitEvents(t, s); got["password-reset:global:challenge"] != 1 || len(got) != 1 {
+		t.Fatalf("events %v", got)
+	}
+}
+
+// The requests that got through still reach a shared limit's block level,
+// once, exactly, under concurrency; past it, an unsolved request is told
+// at once instead of being asked for a check it couldn't use.
+func TestSolvedRequestsReachASharedLimitsBlock(t *testing.T) {
+	s, fake := challengeServer(t)
+	h := router.New(s)
+	// At the challenge level: 50 more may pass before the block level.
+	spend(t, s, "password-reset:global", "", 50)
+	var mu sync.Mutex
+	codes := map[int]int{}
+	var wg sync.WaitGroup
+	for i := range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			token := "good"
+			if i%5 == 0 {
+				token = "" // 20 never solved
+			}
+			w := sendFrom(h, fmt.Sprintf("198.51.102.%d", i+1), "POST", "/api/auth/password-reset", fmt.Sprintf(`{"email":"c%d@example.com"}`, i), token)
+			mu.Lock()
+			codes[w.Code]++
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	// 80 solved: 50 through, 30 refused; the 20 unsolved get 428, or 503
+	// once the level is reached.
+	if codes[202] != 50 || codes[202]+codes[503]+codes[428] != 100 || codes[503] < 30 {
+		t.Fatalf("100 concurrent reset requests: %v", codes)
+	}
+	if got := limitEvents(t, s); got["password-reset:global:challenge"] != 1 || got["password-reset:global:block"] != 1 {
+		t.Fatalf("events %v", got)
+	}
+	before := fake.calls()
+	if w := sendFrom(h, "203.0.113.97", "POST", "/api/auth/password-reset", `{"email":"late@example.com"}`, ""); w.Code != 503 || fake.calls() != before {
+		t.Fatalf("an unsolved request past the block level: %d, %d checks", w.Code, fake.calls()-before)
+	}
+}
+
+// Per-IP limits keep counting unsolved requests: a flood from one address
+// still reaches its own block level, and hurts only that address.
+func TestUnsolvedRequestsCountPerIP(t *testing.T) {
+	s, _ := challengeServer(t)
+	h := router.New(s)
+	spend(t, s, "auth:per-ip", "203.0.113.80", 58)
+	for range 2 {
+		challenged(t, sendFrom(h, "203.0.113.80", "POST", "/api/auth/login", loginUnknown, ""), "login", "Complete the check to continue.")
+	}
+	if w := sendFrom(h, "203.0.113.80", "POST", "/api/auth/login", loginUnknown, ""); w.Code != 429 {
+		t.Fatalf("the 61st, unsolved: %d", w.Code)
+	}
+	var hits int
+	if err := s.Repo.DB.NewSelect().TableExpr("rate_limits").Column("hits").Where("key = ?", "auth:per-ip:"+auth.Digest("203.0.113.80")).Scan(context.Background(), &hits); err != nil || hits != 61 {
+		t.Fatalf("auth:per-ip counted %d (%v)", hits, err)
 	}
 }

@@ -73,3 +73,22 @@ func TestMemoryLimiterConcurrentUse(t *testing.T) {
 		}
 	}
 }
+
+// A passed counter keeps another key's window: it starts again when that
+// window is new, and a late hit from an earlier one counts in the later.
+func TestMemoryCountUntil(t *testing.T) {
+	c := &clock{now: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
+	m := NewMemory()
+	m.now = c.Now
+	first := c.now.Add(time.Hour)
+	if m.Peek("k", first) != 0 || m.CountUntil("k", first) != 1 || m.CountUntil("k", first) != 2 || m.Peek("k", first) != 2 {
+		t.Fatal("counting in one window")
+	}
+	second := first.Add(time.Hour)
+	if m.Peek("k", second) != 0 || m.CountUntil("k", second) != 1 {
+		t.Fatal("a new window didn't start again")
+	}
+	if m.CountUntil("k", first) != 2 || m.Peek("k", first) != 2 {
+		t.Fatal("a late hit from the earlier window")
+	}
+}

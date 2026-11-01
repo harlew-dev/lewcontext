@@ -89,4 +89,7 @@ func TestWithoutPerIP(t *testing.T) {
 	if got := global.WithoutPerIP(); got != global {
 		t.Fatalf("a global limit changed: %+v", got)
 	}
+	if !global.Shared() || perIP.Shared() || PassedKey(global.Everyone()) != "register:global:passed" {
+		t.Fatal("Shared or PassedKey")
+	}
 }

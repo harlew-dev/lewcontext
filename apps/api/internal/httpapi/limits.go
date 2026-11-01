@@ -144,7 +144,9 @@ var RateLimits = []ratelimit.Limit{
 // Retry-After set to the time left in the window. Above the challenge level,
 // on a route that names a challenge action (Challengeable) and with a
 // CAPTCHA provider, the request needs a solved CAPTCHA (passChallenge: 428
-// without one). The request that first crosses a level records
+// without one). A shared limit's block level counts only the requests that
+// got past its challenge level (admit), so requests nobody solved can't
+// refuse everyone else. The request that first crosses a level records
 // rate_limit.reached for it (challenge levels too with no provider), so a
 // flood writes one event per level per window. With RATE_LIMITS=off it
 // allows everything and counts nothing; with PER_IP_LIMITS=off every level
@@ -157,32 +159,83 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 		l = l.WithoutPerIP()
 	}
 	hits, resetsAt, err := s.count(r, l, key)
-	for _, level := range []struct {
-		name string
-		at   ratelimit.Threshold
-	}{{"challenge", l.Challenge}, {"block", l.Block}} {
-		if err == nil && level.at.Crossed(hits) {
-			err = s.recordLimitReached(r, l, level.name, resetsAt)
-		}
+	if err == nil && l.Challenge.Crossed(hits) {
+		err = s.recordLimitReached(r, l, "challenge", resetsAt)
 	}
 	if err != nil {
 		InternalError(w, err)
 		return false
 	}
-	if l.Block.Exceeds(hits) {
-		left := time.Until(resetsAt)
-		w.Header().Set("Retry-After", ratelimit.RetryAfter(left))
-		if l.Busy != "" {
-			Fail(w, 503, l.Busy)
-		} else {
-			Fail(w, 429, l.Refusal(left))
+	if l.Shared() && l.Challenge.Exceeds(hits) && s.Captcha != nil {
+		return s.admit(w, r, l, key, resetsAt)
+	}
+	if l.Block.Crossed(hits) {
+		if err := s.recordLimitReached(r, l, "block", resetsAt); err != nil {
+			InternalError(w, err)
+			return false
 		}
+	}
+	if l.Block.Exceeds(hits) {
+		refuse(w, l, resetsAt)
 		return false
 	}
 	if l.Challenge.Exceeds(hits) {
 		return s.passChallenge(w, r)
 	}
 	return true
+}
+
+// admit decides a request to a limit shared by everyone (register:global)
+// above its challenge level. Its block level counts what got through: the
+// challenge level's worth of requests, plus each one since that passed the
+// challenge (solved, or on a route without an action), in a counter beside
+// the limit's that ends with its window (ratelimit.PassedKey). Requests
+// nobody solved, from any number of addresses, are counted only by the
+// limit itself, so they can't push it to its block level. Per-subject
+// limits don't need this: their unsolved requests only hurt the requester.
+// With no provider every request passes, both counts are the same, and
+// Allow keeps the first.
+func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit, key string, resetsAt time.Time) bool {
+	passedKey := ratelimit.PassedKey(key)
+	// Already refused: say so without asking for a CAPTCHA first.
+	passed, err := s.peekPassed(r, l, passedKey, resetsAt)
+	if err != nil {
+		InternalError(w, err)
+		return false
+	}
+	if l.Block.Exceeds(l.Challenge.At() + passed) {
+		refuse(w, l, resetsAt)
+		return false
+	}
+	if !s.passChallenge(w, r) {
+		return false
+	}
+	passed, err = s.countPassed(r, l, passedKey, resetsAt)
+	through := l.Challenge.At() + passed
+	if err == nil && l.Block.Crossed(through) {
+		err = s.recordLimitReached(r, l, "block", resetsAt)
+	}
+	if err != nil {
+		InternalError(w, err)
+		return false
+	}
+	if l.Block.Exceeds(through) {
+		refuse(w, l, resetsAt)
+		return false
+	}
+	return true
+}
+
+// refuse answers a request above l's block level: 503 with Busy for a
+// limit shared by everyone, 429 otherwise, with Retry-After.
+func refuse(w http.ResponseWriter, l ratelimit.Limit, resetsAt time.Time) {
+	left := time.Until(resetsAt)
+	w.Header().Set("Retry-After", ratelimit.RetryAfter(left))
+	if l.Busy != "" {
+		Fail(w, 503, l.Busy)
+	} else {
+		Fail(w, 429, l.Refusal(left))
+	}
 }
 
 // count adds a hit to key's window, in memory or in the database, and
@@ -193,6 +246,24 @@ func (s *Server) count(r *http.Request, l ratelimit.Limit, key string) (hits int
 		return hits, resetsAt, nil
 	}
 	return s.Repo.CountHit(r.Context(), key, l.Window)
+}
+
+// countPassed adds a hit to a shared limit's passed counter, in the
+// limit's window (ending at resetsAt), and returns its hits so far.
+func (s *Server) countPassed(r *http.Request, l ratelimit.Limit, passedKey string, resetsAt time.Time) (int, error) {
+	if l.InMemory {
+		return s.memoryLimits.CountUntil(passedKey, resetsAt), nil
+	}
+	return s.Repo.CountHitUntil(r.Context(), passedKey, resetsAt)
+}
+
+// peekPassed is a shared limit's passed counter in the limit's window,
+// without adding a hit.
+func (s *Server) peekPassed(r *http.Request, l ratelimit.Limit, passedKey string, resetsAt time.Time) (int, error) {
+	if l.InMemory {
+		return s.memoryLimits.Peek(passedKey, resetsAt), nil
+	}
+	return s.Repo.PeekHits(r.Context(), passedKey, resetsAt)
 }
 
 // recordLimitReached records rate_limit.reached for l's level ("challenge"

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"github.com/uptrace/bun"
 	"time"
 )
@@ -29,4 +31,35 @@ func (s *Store) CountHit(ctx context.Context, key string, window time.Duration) 
 		Returning("hits, resets_at").
 		Scan(ctx)
 	return hit.Hits, hit.ResetsAt, err
+}
+
+// CountHitUntil adds a hit to key's counter in the window that ends at
+// resetsAt, another counter's (CountHit's), so the two windows end
+// together, and returns its hits so far. A counter left from an earlier
+// window starts again at 1; a late hit from an earlier window counts in
+// the later one.
+func (s *Store) CountHitUntil(ctx context.Context, key string, resetsAt time.Time) (hits int, err error) {
+	hit := rateLimitRecord{Key: key, Hits: 1, ResetsAt: resetsAt}
+	err = s.DB.NewInsert().Model(&hit).
+		On("CONFLICT (key) DO UPDATE").
+		Set("hits = CASE WHEN l.resets_at < EXCLUDED.resets_at THEN 1 ELSE l.hits + 1 END").
+		Set("resets_at = GREATEST(l.resets_at, EXCLUDED.resets_at)").
+		Returning("hits").
+		Scan(ctx)
+	return hit.Hits, err
+}
+
+// PeekHits is key's hits in the window that ends at resetsAt (or a later
+// one), without counting a hit: 0 when there's no counter, or only an
+// earlier window's.
+func (s *Store) PeekHits(ctx context.Context, key string, resetsAt time.Time) (int, error) {
+	var hits int
+	err := s.DB.NewSelect().Model((*rateLimitRecord)(nil)).Column("hits").
+		Where("key = ?", key).
+		Where("resets_at >= ?", resetsAt).
+		Scan(ctx, &hits)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return hits, err
 }
