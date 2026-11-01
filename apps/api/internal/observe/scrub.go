@@ -117,6 +117,26 @@ var identifierKeywords = []string{
 	"function", "trigger", "type", "database", "role", "view", "extension", "operator",
 }
 
+// How much of a text is read at all: the result is cut to MaxMessage (or
+// MaxStack) characters, so the rest of a huge text, which someone may have
+// made hostile to the patterns, is never matched. The cap is several times
+// the result's, as replacing shrinks a text.
+const (
+	maxScrubInput      = 4 * MaxMessage
+	maxScrubStackInput = 2 * MaxStack
+)
+
+// capInput is s cut to at most n bytes, on a character boundary.
+func capInput(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
 // ScrubError is err's message as Scrub leaves it, "" for nil.
 func ScrubError(err error) string {
 	if err == nil {
@@ -142,7 +162,7 @@ func ErrorAttr(err error) slog.Attr {
 // The result is one line of valid UTF-8 without control or format
 // characters, at most MaxMessage characters.
 func Scrub(message string) string {
-	s := oneLine(message)
+	s := oneLine(capInput(message, maxScrubInput))
 	s = jsonSnippetPattern.ReplaceAllString(s, `"…"$1`)
 	s = keyValuePattern.ReplaceAllString(s, ")=(…)")
 	s = failingRowPattern.ReplaceAllString(s, "${1}(…)")
@@ -474,7 +494,7 @@ func ScrubClientStack(stack string) string {
 }
 
 func scrubStack(stack string, client bool) string {
-	stack = strings.ToValidUTF8(stack, "�")
+	stack = strings.ToValidUTF8(capInput(stack, maxScrubStackInput), "�")
 	lines := strings.Split(strings.ReplaceAll(stack, "\r\n", "\n"), "\n")
 	out := make([]string, 0, len(lines))
 	size := 0
