@@ -84,4 +84,17 @@ The independent reviewer found **no secret in the export, no SQL built from inpu
 | 6–7 | Low | The export's scope didn't match erasure's (undocumented); a delivery retry could race the minimiser | Scope documented; the event row locked on retry |
 | 8–11 | Nits | The CSV held a chart slot too long; "truncated" was guessed from the row count; unlisted gaps (names in searches, user agents, co-members' IDs in one's own events); the runbook didn't say to pause the minimiser while investigating | Fixed or documented |
 
-_Fix results: filled in once committed._
+**Fix results:** eleven commits, `5b8a526`..`8d65702`.
+- **Admin exports:** events recorded during any admin request now carry an `admin_request` marker, set by the admin key's middleware, and the export leaves them out. This covers future dashboard actions automatically. The test drives real dashboard actions and fails against the old filter.
+- **Audit lines** carry the IP cut to /24 or /48. Audit lines are kept a year, other log lines 30 days, consistently across the docs.
+- **Erasure uses two new partial indexes,** proved by the repo's first EXPLAIN-based test (`dbtest.Explain`).
+- **The export:**
+  - drops operators' notes;
+  - its scope is documented, including what isn't exported and why;
+  - the CSV has a deadline and reads the truncation header.
+- **A delivery retry locks its event first,** so it waits for the minimiser.
+- **The runbook** says to pause the minimising and prune jobs during an investigation.
+
+**Checks:**
+- `make check`, `make test` (366 Vitest tests) and `make build` passed.
+- e2e: 24 of 26. One failure is the Security chart crash main has fixed; the other is a click flake that passed when run alone. Both are being looked at in the integration with main.
