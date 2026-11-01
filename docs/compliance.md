@@ -31,12 +31,13 @@ Every table, what personal data it holds, why, for how long and who can see it. 
 | `admin_sessions` | an admin session's digests, CSRF token, IP, user agent | admin sign-in (legitimate interest) | 15 minutes idle, 8 hours at most | admins (their own, the Admins page) |
 | `user_suspensions` | a suspended account, the admin's reason, who suspended | stopping abuse (legitimate interest) | until unsuspended or the account is deleted | admins |
 | `ip_blocks` | a blocked address or range, the reason, who blocked it | stopping abuse (legitimate interest) | at most 30 days; the cleanup deletes expired ones | admins |
-| `app_errors` | error groups, scrubbed of emails, IPs, IDs and tokens; the last request ID | running the service (legitimate interest) | 30 days after last seen (`prune app_errors`) | admins (SQL until the Errors page) |
+| `app_errors` | error groups, scrubbed of emails, IPs, IDs and tokens; the last request ID | running the service (legitimate interest) | 30 days after last seen (`prune app_errors`) | admins (the Monitoring Errors page) |
 | `request_minutes` | requests per route and minute, never a path, IP or account | running the service | 48 hours, by the hourly rollup | admins |
 | `request_hours` | the same, per hour | running the service | 90 days (`prune request_hours`) | admins |
 | `metric_minutes` | other counters per minute (limit, listener, event names) | running the service | 48 hours | admins |
 | `metric_hours` | the same, per hour | running the service | 90 days (`prune metric_hours`) | admins |
 | `server_instances` | each server's host name, version and settings summary (never a secret) | running the service | a day after it stops | admins |
+| `table_stats_daily` | each table's live rows and size once a day, never a row's contents | running the service (capacity) | 400 days (`prune table_stats_daily`) | admins (the Monitoring Data page) |
 
 **Processors** (the organisation lists them in its records and contracts): the hosting provider (the servers, the database and its backups, the logs), the SMTP provider (every email's recipient and contents) and Cloudflare when it's in front ([deployment.md](deployment.md#cloudflare)). Nothing else receives data: there are **no third-party scripts, analytics or trackers** in either web build, and the CSP allows only the app's own scripts.
 
@@ -48,7 +49,7 @@ Every table, what personal data it holds, why, for how long and who can see it. 
 
 ## Retention
 
-Every age is a registered prune target, so `make prune` (no target) lists the whole schedule, and every confirmed run records `prune.completed` (`target`, `deleted`, `kept`, `cutoff`): the evidence that retention runs ([api/database.md](api/database.md#pruning)). Schedule each target daily from cron ([deployment.md](deployment.md#retention-and-erasure)).
+Every age is a registered prune target, so `make prune` (no target) lists the whole schedule, and every confirmed run records `prune.completed` (`target`, `deleted`, `kept`, `cutoff`): the evidence that retention runs ([api/database.md](api/database.md#pruning)). Schedule each target daily from cron ([deployment.md](deployment.md#retention-and-erasure)). The admin Monitoring **Data** page shows each target's oldest row against its age and its last confirmed run, and warns when a target is a week past its age or hasn't run in two days ([api/monitoring.md](api/monitoring.md#data)); Configuration warns too.
 
 | Data | Kept | How |
 | --- | --- | --- |
@@ -58,6 +59,7 @@ Every age is a registered prune target, so `make prune` (no target) lists the wh
 | **Emails in events** (sign-in and sign-up attempts, reset requests, invitations, the admin door, admins' searches) | readable for 30 days, then replaced by a keyed pseudonym | `prune pseudonymise` |
 | `app_errors` | 30 days after last seen | `prune app_errors` |
 | `request_minutes`, `metric_minutes` / `request_hours`, `metric_hours` | 48 hours / 90 days | the server's rollup / `prune request_hours`, `metric_hours` |
+| `table_stats_daily` (each table's size once a day) | 400 days | `prune table_stats_daily` |
 | Sessions, limits, links, codes, challenges, sign-ups, IP blocks | until they end | the server's 15-minute cleanup |
 | Accounts, workspaces, projects | until deleted by their owner ([Erasure](#erasure)) | self-service, or `admin erase` |
 | Server logs | **30 days** recommended | the operator's log store |

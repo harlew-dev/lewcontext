@@ -80,6 +80,7 @@ const (
 	WarnSharedAddress   = "shared_address"
 	WarnMetricsTokenOff = "metrics_without_token"
 	WarnNotProduction   = "not_production"
+	WarnPruneNotRunning = "prune_not_running"
 )
 
 // configurationSections are the Configuration page's tables.
@@ -132,6 +133,14 @@ func configurationPage(ctx context.Context, env Env, w Window) (Sections, error)
 			n, err := s.CountAdminsWithMFA(ctx)
 			if err == nil && n == 0 {
 				out.Warnings = append(out.Warnings, Warning{ID: WarnNoAdminMFA})
+			}
+			return err
+		}},
+		{"warnings", func(ctx context.Context) error {
+			// data.prune_not_running's measure: the Data page lists which.
+			targets, err := readRetention(ctx, env)
+			if n := countTargets(targets, func(t RetentionTarget) bool { return t.NotRunning }); err == nil && n > 0 {
+				out.Warnings = append(out.Warnings, Warning{ID: WarnPruneNotRunning, Count: float64(n)})
 			}
 			return err
 		}},

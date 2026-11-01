@@ -173,6 +173,9 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := MetricHours.Create(ctx, db, f, 2); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := TableStats.Sequence(func(i int, s *TableStat) { s.Day = Today().AddDate(0, 0, -1-i) }).Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
 }
 func TestCreateInsertsInBatches(t *testing.T) {
 	db := dbtest.Open(t)

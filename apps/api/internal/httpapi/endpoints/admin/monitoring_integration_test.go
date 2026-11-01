@@ -158,7 +158,7 @@ func TestAdminMonitoringPages(t *testing.T) {
 		}
 	}
 	before := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed"))
-	adminCall(t, h, "GET", "/api/admin/monitoring/data", "", "", 404, cookie)
+	adminCall(t, h, "GET", "/api/admin/monitoring/alerts", "", "", 404, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=30d", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?window=all", "", "", 400, cookie)
 	adminCall(t, h, "GET", "/api/admin/monitoring/security?page=2", "", "", 400, cookie)
@@ -735,7 +735,7 @@ func TestAdminMonitoringOverview(t *testing.T) {
 	tiles := sections[struct {
 		Tiles []monitor.Tile `json:"tiles"`
 	}](t, v).Tiles
-	if len(tiles) != 12 || tiles[0].ID != "servers" || tiles[0].Series != nil || tiles[4].ID != "database" || tiles[7].ID != "integrity" {
+	if len(tiles) != 13 || tiles[0].ID != "servers" || tiles[0].Series != nil || tiles[4].ID != "database" || tiles[5].ID != "data" || tiles[8].ID != "integrity" {
 		t.Fatalf("tiles: %+v", tiles)
 	}
 	total := func(id string, tiles []monitor.Tile) float64 {

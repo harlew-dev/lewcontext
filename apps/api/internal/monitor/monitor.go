@@ -32,6 +32,7 @@ const (
 	UnitMs      = "ms"
 	UnitMinutes = "minutes"
 	UnitPerMin  = "per_minute"
+	UnitBytes   = "bytes"
 )
 
 // Env is what signals and pages read: the store, the rate limits as

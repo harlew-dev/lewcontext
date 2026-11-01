@@ -38,7 +38,7 @@ var domainVerbs = map[string]string{
 	"Leave":        "a member leaving a workspace",
 	"Prune":        "deleting old rows from log tables",
 	"Pseudonymise": "minimising old events: IPs cut to a network, emails replaced by keyed pseudonyms",
-	"Record":       "recording what happened without changing app data: an event, the error collector's groups, a minute's metrics, a server's start and stop",
+	"Record":       "recording what happened without changing app data: an event, the error collector's groups, a minute's metrics, a server's start and stop, a day's table sizes",
 	"Remove":       "removing a member from a workspace",
 	"Rename":       "renaming a workspace",
 	"Resend":       "sending a pending sign-up's code again",

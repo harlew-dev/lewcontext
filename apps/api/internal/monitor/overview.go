@@ -116,6 +116,7 @@ var overviewTiles = []Tile{
 	{ID: "server_errors", Label: "Server errors", Page: PagePerformance, Signals: []string{"http.server_error_share"}},
 	{ID: "latency", Label: "Latency", Page: PagePerformance, Signals: []string{"http.latency_p95"}},
 	{ID: "database", Label: "Database", Page: PagePerformance, Signals: []string{"db.round_trip", "db.pool_wait_minutes"}},
+	{ID: "data", Label: "Data", Page: PageData, Signals: []string{"data.database_size", "data.prune_not_running", "data.retention_overdue"}},
 	{ID: "mail", Label: "Mail", Page: pageMail, Signals: []string{"mail.oldest_pending", "mail.failed_deliveries"}},
 	{ID: "errors", Label: "Errors", Page: PageErrors, Signals: []string{"errors.new", "errors.new_panics", "errors.open"}},
 	{ID: "integrity", Label: "Integrity", Page: PageIntegrity, Signals: []string{integrityCritical, integrityWarning}},
@@ -172,6 +173,11 @@ func overviewPage(ctx context.Context, env Env, w Window) (Sections, error) {
 				points[i] = Point{Start: p.Start, Value: p.Value}
 			}
 			series["database"] = &TileSeries{Label: "Connections in use", Unit: UnitCount, Points: points}
+			return err
+		}},
+		{"data", func(ctx context.Context) error {
+			recorded, err := s.SummarizeEventsRecorded(ctx, w.SummaryWindow)
+			series["data"] = eventSeries("Events recorded", recorded, "events")
 			return err
 		}},
 		{"failed_sign_ins", func(ctx context.Context) error {

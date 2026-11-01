@@ -223,3 +223,32 @@ func TestPruneMetricHours(t *testing.T) {
 		t.Fatal("pruned the wrong hours")
 	}
 }
+
+// The daily table sizes go after 400 days: a day 399 days old stays, one
+// 401 days old goes.
+func TestPruneTableStats(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	f := factory.TestFaker(t)
+	today := factory.Today()
+	if _, err := factory.TableStats.Sequence(func(i int, s *factory.TableStat) {
+		s.TableName, s.Day = "events", today.AddDate(0, 0, -[]int{399, 401}[i])
+	}).Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	target, ok := Find("table_stats_daily")
+	if !ok || target.DefaultAge != 400*day {
+		t.Fatalf("table_stats_daily target: %+v", target)
+	}
+	s := &store.Store{DB: db}
+	r, err := Run(ctx, s, target, Options{Now: today.Add(12 * time.Hour), Confirm: true})
+	if err != nil || r.Deleted != 1 {
+		t.Fatalf("table_stats_daily: %+v %v", r, err)
+	}
+	if count(t, s, "table_stats_daily") != 1 {
+		t.Fatal("pruned the wrong day")
+	}
+}
