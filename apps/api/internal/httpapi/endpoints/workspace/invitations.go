@@ -103,6 +103,9 @@ func (h Invitations) Store(w http.ResponseWriter, r *http.Request) {
 func failInvitation(w http.ResponseWriter, r *http.Request, err error) {
 	var quota store.QuotaError
 	switch {
+	case errors.Is(err, store.ErrSuspended):
+		// Suspended after its session was checked: as a dead session.
+		httpapi.Fail(w, 401, httpapi.SessionExpired)
 	case errors.Is(err, store.ErrAlreadyMember):
 		httpapi.FailField(w, 422, "email", "Already a member of this workspace.")
 	case errors.Is(err, store.ErrAlreadyInvited):

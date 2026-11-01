@@ -43,7 +43,7 @@ Built on the events worktree (branch `admin-run/events`) with every recommendati
 - **Migrations 060 and 061**, numbered apart from the other lines' work.
 
 **Known gaps:**
-- An invitation the account creates in the instant it's suspended can survive: `CreateInvitation` doesn't lock the inviter's row. Its session is gone right after; revoke the workspace's invitations if it matters.
+- ~~An invitation the account creates in the instant it's suspended can survive~~ (fixed after the security review): `CreateInvitation` now holds the inviter's user row `FOR SHARE` before the workspace's and refuses a suspended inviter (401, as a dead session), so an invitation made in flight is either revoked with the rest or never made, and never mailed. `DeleteAccount` now locks the user's row before its workspaces, so the user-then-workspace order holds everywhere and the new lock can't deadlock with it. Other writes a request already past its session check can make in that instant (a project, a rename, a member change, a new workspace) aren't locked: they stay within the account's own workspaces, email nobody, and its sessions are gone right after; only invitations reach a third party.
 - "You already have an account" can still reach a suspended account's own inbox when someone signs up with its address (rate-limited per account); the plan asked only for reset emails.
 
 ## Why

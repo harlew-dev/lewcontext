@@ -153,14 +153,19 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 
 // DeleteAccount deletes the user, with their sessions, memberships, reset
 // link, admin row and admin sessions, and the events about them (ON DELETE
-// CASCADE), and records
-// auth.account_deleted. It first locks every workspace they own, in id order,
-// then refuses with a LastOwnerError if any of them would be left without an
+// CASCADE), and records auth.account_deleted. It locks the user's row
+// first, as everything that locks both a user and a workspace does
+// (CreateInvitation's lockInviter, SuspendUser), so the two orders never
+// meet in a deadlock; then every workspace they own, in id order, then
+// refuses with a LastOwnerError if any of them would be left without an
 // owner. Every membership change takes the same workspace lock, so two
 // co-owners deleting their accounts at once can't both leave; and taking the
 // locks in id order means two such deletions can't deadlock.
 func (s *Store) DeleteAccount(ctx context.Context, u User) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", u.ID).For("UPDATE").Exec(ctx); err != nil {
+			return err
+		}
 		var owned []int64
 		err := tx.NewSelect().Model((*Workspace)(nil)).Column("w.id").
 			Join("JOIN workspace_user AS m ON m.workspace_id = w.id").

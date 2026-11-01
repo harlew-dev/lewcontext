@@ -3,6 +3,7 @@ package admin_test
 import (
 	"context"
 	"fmt"
+	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
@@ -11,7 +12,9 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // suspendedAnswer is the sign-in's answer to a suspended account whose
@@ -129,6 +132,72 @@ func TestAdminSuspend(t *testing.T) {
 	adminCall(t, h, "POST", "/api/admin/users/"+admin.User.PublicID+"/suspension", reasonBody(reason), session.CSRFToken, 403, session.Cookie())
 	adminCall(t, h, "POST", "/api/admin/users/usr_2yEHYLwiwPVhLW/suspension", reasonBody(reason), session.CSRFToken, 404, session.Cookie())
 	apitest.CheckPayloadIDs(t, db)
+}
+
+// An invitation the account sends while it's being suspended doesn't
+// outlive the suspension, nor reach anyone's inbox: a request whose session
+// was checked just before waits for the account's row (CreateInvitation's
+// lockInviter, under SuspendUser's lock) and answers 401 as a dead session
+// would, or finishes first and is revoked with the others.
+func TestSuspendingStopsAnInvitationInFlight(t *testing.T) {
+	_, db := server(t)
+	s := serverWith(t, db, func(*config.Config) {})
+	box, deliver := apitest.Mail(t, s.Repo, s.Config.Origin)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	_, session := operatorSignedIn(t, db, f, factory.SteppedUp)
+	invite := func(inviter factory.Session, workspace factory.Workspace, email string) *httptest.ResponseRecorder {
+		body := fmt.Sprintf(`{"email":%q,"role":"member"}`, email)
+		return apitest.Send(h, "POST", apitest.WorkspacePath(workspace.PublicID, "/invitations"), body, inviter.CSRFToken, inviter.Cookie())
+	}
+	var inviters []int64
+
+	// A suspension holding the account's row, not yet committed (as
+	// SuspendUser does), while the request is past its session check.
+	held := apitest.SignedIn(t, db, f)
+	heldWorkspace := apitest.OwnedWorkspace(t, db, f, held.UserID)
+	inviters = append(inviters, held.UserID)
+	tx := apitest.Must(db.BeginTx(ctx, nil))(t)
+	defer func() { _ = tx.Rollback() }()
+	apitest.Must(tx.NewSelect().TableExpr("users").Column("id").Where("id = ?", held.UserID).For("UPDATE").Exec(ctx))(t)
+	apitest.Must(factory.UserSuspensions.State(factory.SuspensionOf(held.UserID)).CreateOne(ctx, tx, f))(t)
+	answer := make(chan *httptest.ResponseRecorder)
+	go func() { answer <- invite(held, heldWorkspace, "held@example.test") }()
+	time.Sleep(200 * time.Millisecond)
+	apitest.Must(0, tx.Commit())(t)
+	if w := <-answer; w.Code != 401 || !strings.Contains(w.Body.String(), "Your session has expired.") {
+		t.Fatalf("an invitation under a suspension being made: %d %s", w.Code, w.Body.String())
+	}
+
+	// The real thing, at the same moment, a few times: whichever wins, no
+	// invitation is left.
+	for i := range 5 {
+		target := apitest.SignedIn(t, db, f)
+		workspace := apitest.OwnedWorkspace(t, db, f, target.UserID)
+		inviters = append(inviters, target.UserID)
+		path := "/api/admin/users/" + apitest.PublicIDOf(t, db, target.UserID) + "/suspension"
+		var invited, suspended *httptest.ResponseRecorder
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			invited = invite(target, workspace, fmt.Sprintf("raced-%d@example.test", i))
+		}()
+		go func() {
+			defer wg.Done()
+			suspended = adminSend(h, "POST", path, reasonBody(reason), factory.AdminRouteKey, session.CSRFToken, session.Cookie())
+		}()
+		wg.Wait()
+		if suspended.Code != 201 || (invited.Code != 201 && invited.Code != 401) {
+			t.Fatalf("round %d: suspend %d %s, invite %d %s", i, suspended.Code, suspended.Body.String(), invited.Code, invited.Body.String())
+		}
+	}
+	left := apitest.Must(db.NewSelect().TableExpr("workspace_invitations").Where("invited_by IN (?)", bun.In(inviters)).Count(ctx))(t)
+	deliver()
+	if left != 0 || len(box.Sent) != 0 {
+		t.Fatalf("invitations left %d, emails sent %d", left, len(box.Sent))
+	}
 }
 
 // A suspended account learns it's suspended only from its right password
