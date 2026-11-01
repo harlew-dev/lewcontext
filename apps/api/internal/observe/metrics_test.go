@@ -241,3 +241,13 @@ func BenchmarkObserveRequest(b *testing.B) {
 		q.Observe("GET /api/workspaces/{workspace}/projects", 200, 3*time.Millisecond, false, false)
 	}
 }
+
+// A label value that isn't valid UTF-8, or holds a control character, is
+// never a label: it counts as unmatched.
+func TestLabelValuesAreValidUTF8(t *testing.T) {
+	for v, want := range map[string]bool{"auth:per-ip:block": true, "": true, "é": true, "\xff": false, "a\xc3": false, "a\nb": false} {
+		if got := validLabelValue(v); got != want {
+			t.Errorf("validLabelValue(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

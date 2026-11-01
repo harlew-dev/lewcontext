@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 // The metric registry (docs/api/observability.md#metrics): counters, gauges
@@ -139,6 +140,9 @@ const maxLabelValue = 200
 func validLabelValue(v string) bool {
 	if v == "" || len(v) > maxLabelValue {
 		return v == ""
+	}
+	if !utf8.ValidString(v) {
+		return false
 	}
 	for i := 0; i < len(v); i++ {
 		if c := v[i]; c < 0x20 || c == 0x7f {
