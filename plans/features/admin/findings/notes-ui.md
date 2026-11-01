@@ -62,4 +62,22 @@ The full suite passed after the seven commits:
 
 ## Security review
 
-_Filled in after the independent review of these seven commits._
+The independent reviewer found **no security leaks**:
+- **The resend dialog** says the same thing, with the same status and timing, for every address.
+- **Back's links** are fixed routes or go through `returnPath` validation, so there's no open redirect.
+- **The email and the invitation** travel in navigation state, never a URL.
+- **The reset page's Back** drops the token.
+- **`CopyButton`** never puts a secret in the DOM, an attribute or a log.
+- **Retry stays** on every admin load that lost its Refresh button.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **Ordinary text was refused.** The new invisible-character rule (`unicode.Cf`) also refuses the joiner and soft hyphen that emoji like 👩‍💻, 🏳️‍🌈 and 👨‍👩‍👧, and Persian or Indic text, depend on. A9's unblock reason had the same rule | One shared helper in `internal/httpapi/input` refuses only the risky characters (bidi overrides, zero-width spaces, BOM, line separators, control characters), used by project, workspace, account and sign-up names, descriptions, and the unblock reason |
+| 2 | **Medium** (older) | **Sign-up names weren't checked:** NUL answered 500, and ESC or a right-to-left override could be stored in `users.name`, where profile edits would refuse it | Same rule as the profile; sign-up still answers the same for every address |
+| 3 | Low | Names refused control characters but let bidi overrides through ("‮gnp.exe" shows reversed) | Covered by 1 |
+| 4 | Low | A failed copy's instruction ("copy them by hand") vanished after 6 s | Stays visible until the next click |
+| 5 | Low | Register lost its "Sign in" link, leaving only Back | Link restored beside Back |
+| 6 | Low | Docs and plan drift: the email-blocks plan's decision 3 wording, and Back on pages opened from an email | Updated; the email-blocks plan notes the change |
+| 7–10 | Nits | Timers after unmount in `CopyButton`; "Copied" announced twice; the blocked text in an unnamed fieldset; `CodeStep`'s Back enabled for the first 200 ms of a verify | Fixed |
+
+_Fix results: filled in once the fixes pass the checks._
