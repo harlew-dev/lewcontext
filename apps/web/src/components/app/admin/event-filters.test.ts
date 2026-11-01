@@ -117,6 +117,12 @@ describe("event filters", () => {
       }),
     ).toBe("Oct 31, 14:30 – Nov 1, 14:47 UTC");
     expect(windowCaption(null)).toBe("All time, newest first");
+    expect(
+      windowCaption({
+        from: "2026-10-31T00:00:00Z",
+        to: "2026-11-01T00:00:00Z",
+      }),
+    ).toBe("Oct 31 UTC");
   });
   it("turns a calendar's local dates into UTC days, east and west of UTC", () => {
     const tz = process.env.TZ;

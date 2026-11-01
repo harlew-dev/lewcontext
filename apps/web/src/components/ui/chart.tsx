@@ -9,6 +9,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type BarRectangleItem,
   type BarShapeProps,
   type TooltipContentProps,
 } from "recharts";
@@ -38,8 +39,8 @@ export type ChartRow<K extends string> = {
 // A column per row (a time bucket), its series stacked: a legend above, a
 // tooltip per column, and the numbers as a table for screen readers (the
 // SVG is hidden from them). `label` names the chart; `summary` says in a
-// sentence what it shows. With `onSelect`, clicking a column picks its row
-// (a pointer shortcut: the page offers the same another way), and the
+// sentence what it shows. With `onSelect`, clicking a column's bar picks its
+// row (a pointer shortcut: the page offers the same another way), and the
 // tooltip ends with `selectHint`.
 export function BarChart<
   K extends string,
@@ -91,13 +92,6 @@ export function BarChart<
             data={rows}
             margin={{ top: 4, right: 0, bottom: 0, left: -16 }}
             accessibilityLayer={false}
-            onClick={
-              onSelect &&
-              ((state) => {
-                const row = rows[Number(state.activeTooltipIndex)];
-                if (row) onSelect(row);
-              })
-            }
           >
             <CartesianGrid
               vertical={false}
@@ -139,6 +133,12 @@ export function BarChart<
                 fill="currentColor"
                 className={seriesColors[i]}
                 isAnimationActive={!reducedMotion}
+                // The bar's own row: the chart's hover index can lag a
+                // quick pointer.
+                onClick={
+                  onSelect &&
+                  ((bar: BarRectangleItem) => onSelect(bar.payload as R))
+                }
                 shape={(props: BarShapeProps) => (
                   <Segment
                     {...props}

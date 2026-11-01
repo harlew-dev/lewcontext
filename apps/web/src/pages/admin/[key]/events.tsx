@@ -444,7 +444,12 @@ function Charts({
     );
   if (summary.total === 0) return null;
   return (
-    <div aria-busy={dim} className={cx("mt-8", dim && "opacity-60")}>
+    // Kept from other filters while these load: shown, but not clickable,
+    // so a column can't zoom by a bucket that's about to change.
+    <div
+      aria-busy={dim}
+      className={cx("mt-8", dim && "pointer-events-none opacity-60")}
+    >
       <SummaryCharts
         summary={summary}
         filters={filters}

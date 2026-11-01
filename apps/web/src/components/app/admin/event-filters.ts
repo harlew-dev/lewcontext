@@ -201,6 +201,13 @@ export function windowCaption(
   window: { from: string | null; to: string } | null,
 ): string {
   if (!window) return "All time, newest first";
+  // Whole days read as days ("Oct 20 – Oct 23 UTC").
+  if (
+    window.from &&
+    isMidnight(new Date(window.from)) &&
+    isMidnight(new Date(window.to))
+  )
+    return rangeLabel(window.from, window.to);
   const to = new Date(window.to);
   if (!window.from) return `Up to ${formatMoment(to)} UTC`;
   const from = new Date(window.from);
