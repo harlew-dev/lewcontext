@@ -32,6 +32,10 @@ type User struct {
 	// while it's off. Read only where a query selects it (mfaEnabledAt);
 	// only ever sent in the user's own session responses.
 	MFAEnabledAt *time.Time `bun:"mfa_enabled_at,scanonly" json:"mfaEnabledAt"`
+	// LastSeenAt is when the account last used a session, to the hour
+	// (FindSession), or nil before its first signed-in request. Read by the
+	// monitoring pages; never in an app response.
+	LastSeenAt *time.Time `bun:"last_seen_at" json:"-"`
 }
 
 // account carries the password hash so it never travels inside a User response.

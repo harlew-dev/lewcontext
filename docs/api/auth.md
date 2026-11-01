@@ -95,6 +95,7 @@ Optional for every account (Account settings → Two-factor authentication → *
 - A session token is 32 random bytes (base64url, 43 characters). Only its SHA-256 digest is stored in `sessions`.
 - **Cookie:** `lewcontext_session` locally, `__Host-lewcontext_session` in production. HttpOnly, SameSite=Lax, Path=/, Secure in production.
 - **Expiry:** 30 minutes idle (every request refreshes it) and 24 hours absolute. Expired sessions answer 401.
+- **Last seen:** the same session check moves the account's `users.last_seen_at`, in the same statement, only when it's over an hour old, and records no event, so an active account costs one row write an hour. The monitoring pages count active accounts from it ([monitoring.md](monitoring.md)).
 - **Login, register (or a sign-up's right code) and a password change rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
 - Logout deletes the session. `DELETE /api/auth/sessions` deletes all others.
 - Session tokens never go in localStorage or URLs.

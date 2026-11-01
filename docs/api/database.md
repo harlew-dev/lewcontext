@@ -6,7 +6,7 @@ PostgreSQL 15+ through Bun (`uptrace/bun`, pgdialect) over the pgx `database/sql
 
 | Table | Purpose | Store model |
 | --- | --- | --- |
-| `users` | Accounts (`password_hash` never leaves the store); `email_verified_at`, null for an account that never verified its email (made while `EMAIL_VERIFICATION` was off) | `User` (+ unexported `account` with the hash) |
+| `users` | Accounts (`password_hash` never leaves the store); `email_verified_at`, null for an account that never verified its email (made while `EMAIL_VERIFICATION` was off); `last_seen_at`, its last signed-in request to the hour (moved by the session check only when over an hour old, never with an event; null before the first), indexed for counting active accounts ([monitoring.md](monitoring.md)) | `User` (+ unexported `account` with the hash) |
 | `pending_registrations` | Sign-ups waiting for their emailed code (`EMAIL_VERIFICATION=on`): `email`, `name`, `password_hash`, the browser cookie's `token_hash`, `request_id` (the `evt_` ID of the latest `auth.registration.requested`, by which the listener finds the row; not a request's `req_` ID, which is `events.request_id`), `code_hash` (an HMAC under `APP_KEY`; for a taken email, of a code nobody is sent), `attempts`, `expires_at` (15 minutes). Several per email; completing one creates the user and deletes them all ([auth.md](auth.md#email-verification)) | unexported `pendingRegistration` |
 | `email_verifications` | One live code per signed-in account verifying its email: `code_hash` (HMAC), `attempts`, `expires_at` (15 minutes); deleted when used, replaced or after 5 wrong codes | unexported `emailVerification` |
 | `sessions` | Session token digests, CSRF tokens, expiry | unexported `sessionRecord` |

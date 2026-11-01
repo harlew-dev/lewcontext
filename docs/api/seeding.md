@@ -29,7 +29,7 @@ make seed only=events count=1000000         # fake audit trail events, to check 
 
 | Factory | Model | Notes |
 | --- | --- | --- |
-| `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process); email verified (`Unverified` for one that never was) |
+| `Users` | `User` | Unique lowercase emails at `example.test`; password `factory.DefaultPassword` (one shared hash per process); email verified (`Unverified` for one that never was); never seen (`LastSeenAt` nil) unless a test sets it |
 | `Sessions` | `Session` | Real random token, only the digest stored; `Cookie()`, `CSRFToken`. Needs `UserID`; use `SessionFor` |
 | `Workspaces` | `Workspace` | Fake company names (≤ 80 characters), created in the last year. Use `WorkspaceFor` to add an owner |
 | `WorkspaceUsers` | `WorkspaceUser` | A membership with a random role (any of `auth.Roles`, viewers included). Needs `UserID` and `WorkspaceID`; use `MemberOf` |

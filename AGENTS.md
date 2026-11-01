@@ -35,6 +35,7 @@ Short summaries of how each part works live in `docs/`, indexed in [`docs/README
 | `docs/api/rate-limits.md` | Budgets on every signed-in request, per-feature and sign-in limits, quotas, `RATE_LIMITS`, limiting a new endpoint |
 | `docs/api/events.md` | The `events` audit trail, the event catalogue, listeners and the delivery worker |
 | `docs/api/observability.md` | Logs (`LOG_FORMAT`, `LOG_LEVEL`, `ACCESS_LOG`), the access line and its route labels, redaction, request IDs (`X-Request-ID`, `requestId` in 500s, `events.request_id`), panic recovery, grouped errors (`app_errors`), metrics (`request_minutes`, the rollup, `METRICS_STORE`, `/metrics` on `METRICS_ADDR`), `server_instances`, slow queries (`SLOW_QUERY_MS`), health checks, the shutdown order, the per-request budget |
+| `docs/api/monitoring.md` | The admin Monitoring pages: every signal with its query and warn/critical thresholds (`internal/monitor`), the page endpoint and its bounds, `users.last_seen_at`, the `monitoring` seeder |
 | `docs/api/mail.md` | `mailer.Send`, mail templates and their safety rules, the development mailbox |
 | `docs/api/pagination.md` | Listing, searching and sorting a resource |
 | `docs/api/database.md` | Tables, queries, migrations, adding a table, pruning |

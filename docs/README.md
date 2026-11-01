@@ -13,6 +13,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [api/rate-limits.md](api/rate-limits.md) | add an endpoint, a limit or a quota, or touch `RequireSession` |
 | [api/events.md](api/events.md) | record something that happened (the `events` audit trail), or add an event type |
 | [api/observability.md](api/observability.md) | log anything, or touch the access line, request IDs, a 500, panic recovery, grouped errors, metrics or their labels, `/metrics`, server instances, slow queries, the shutdown order or the health checks (`LOG_FORMAT`, `LOG_LEVEL`, `ACCESS_LOG`, `METRICS_*`, `SLOW_QUERY_MS`) |
+| [api/monitoring.md](api/monitoring.md) | touch the admin dashboard's Monitoring pages: their signals and thresholds (`internal/monitor`), the queries behind them, `users.last_seen_at`, or the `monitoring` seeder |
 | [api/mail.md](api/mail.md) | send an email, add a mail template, or read the development mailbox |
 | [api/pagination.md](api/pagination.md) | list, search or sort a resource |
 | [api/database.md](api/database.md) | write a query, add a migration or a table, or prune old rows (`make prune`) |
