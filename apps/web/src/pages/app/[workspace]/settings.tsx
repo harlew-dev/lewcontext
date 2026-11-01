@@ -18,7 +18,6 @@ import {
   InputActions,
   InputButton,
   InputGroup,
-  InputLock,
 } from "@/components/ui/input";
 import {
   DangerAction,
@@ -48,14 +47,9 @@ export default function WorkspaceEdit() {
         {canRename ? (
           <RenameForm key={workspace.id} />
         ) : (
-          <Field>
+          <Field locked="Only owners and admins can rename this">
             <Label>Name</Label>
-            <InputGroup>
-              <Input readOnly value={workspace.name} />
-              <InputActions>
-                <InputLock label="Only owners and admins can rename this" />
-              </InputActions>
-            </InputGroup>
+            <Input value={workspace.name} />
           </Field>
         )}
       </SettingsSection>
@@ -139,11 +133,10 @@ function CopyField({
   }
   return (
     <div className="space-y-2">
-      <Field>
+      <Field locked={lock}>
         <Label className="sr-only">{label}</Label>
         <InputGroup>
           <Input
-            readOnly
             value={value}
             className="font-mono"
             onFocus={(e) => e.currentTarget.select()}
@@ -154,7 +147,6 @@ function CopyField({
                 {copied ? <CheckIcon /> : <DocumentDuplicateIcon />}
               </InputButton>
             </Tooltip>
-            <InputLock label={lock} />
           </InputActions>
         </InputGroup>
       </Field>

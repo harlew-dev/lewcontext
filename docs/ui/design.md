@@ -49,10 +49,10 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `feedback.tsx` | `Notice variant` (`error` alert, `success` status, `info` status in blue: the invitation callout, `warning` note in amber: what a confirmation will do, read with the dialog rather than announced), `onRetry`, `onDismiss` · `ErrorNotice error` (a `useAction` failure, or nothing) · `EmptyState title description action` · `ListSkeleton label rows` |
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |
 | `highlight.tsx` | `Highlight className slide` (the sliding background; `slide={false}` draws it in place) · `useHighlightGroup`, `HighlightProvider`, `useHighlight` ([Sliding highlight](#sliding-highlight)) |
-| `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled`, `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors; a `Label className="sr-only"` adds no space above the control, so a field beside a `SettingsSection` title lines up with it) |
-| `input.tsx` / `textarea.tsx` | `Input blurred onReveal` (a sensitive value drawn blurred over the input, `data-blurred`; with `onReveal`, a click anywhere on it, or on its "Click to reveal" tooltip, reveals it; [Secrets and sensitive values](#secrets-and-sensitive-values)), `InputGroup` (leading icon, or `InputActions` at the end: `InputLock label` for a read-only value that can't change (`label` says why; default "Can’t be changed"), `InputButton aria-label onClick` for an icon action such as Copy; at most two) · `Textarea` |
+| `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled locked` ([Locked fields](#locked-fields)), `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors; a `Label className="sr-only"` adds no space above the control, so a field beside a `SettingsSection` title lines up with it) |
+| `input.tsx` / `textarea.tsx` | `Input blurred onReveal` (a sensitive value drawn blurred over the input, `data-blurred`; with `onReveal`, a click anywhere on it, or on its "Click to reveal" tooltip, reveals it; [Secrets and sensitive values](#secrets-and-sensitive-values)), `InputGroup` (leading icon, or `InputActions` at the end: `InputButton aria-label onClick` for an icon action such as Copy, then a locked `Field`'s lock; at most two) · `Textarea` |
 | `otp-input.tsx` | `OtpInput value onChange invalid autoSubmit autoFocus name`: a 6-digit code (an authenticator app's) drawn as six boxes, 3 + 3, over **one** invisible BaseUI input, so a pasted "123 456", a password manager's fill (`autocomplete="one-time-code"`), the `Field` label and screen readers see one field. Keeps only digits, at most six; the caret stays after the last digit unless everything is selected. `autoSubmit` submits the form (`requestSubmit`, in an effect so the handler sees the new value) whenever a complete code goes in, never for one shown already full. Not BaseUI's `PinCode`: six inputs with one label, and a paste with a space is dropped |
-| `tooltip.tsx` | `Tooltip content placement onClick disabled` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref. `onClick` makes the tooltip itself a pointer shortcut (it stays open while hovered), never the only way to do something; `disabled` keeps it closed without remounting the child |
+| `tooltip.tsx` | `Tooltip content placement onClick disabled open` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref. `onClick` makes the tooltip itself a pointer shortcut (it stays open while hovered), never the only way to do something; `disabled` keeps it closed without remounting the child; `open` holds it open whatever the pointer and focus do (a locked field's lock after a try at typing) |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
 | `confirmation-dialog.tsx` | `ConfirmationDialog open onClose title description confirm variant disabled onConfirm onConfirmed onError` ([Confirmations](#confirmations)) |
@@ -85,7 +85,15 @@ A title doesn't need a description under it. Add one only when it tells the read
 
 - **Leave it out** for settings sections whose fields, buttons and lock tooltips explain themselves: General, Workspace ID, Profile, Password, Two-factor authentication, Sign-in sessions.
 - **Keep it** where it carries consequences or rules the reader can't infer: the danger zone (`SettingsSection variant="danger"` and every `DangerAction`), confirmation dialogs, and empty states.
-- A reason something can't be changed goes in its `InputLock` tooltip, not in a description.
+- A reason something can't be changed goes in its `Field locked`, not in a description ([Locked fields](#locked-fields)).
+
+## Locked fields
+
+A value someone can see but not change (your email, a workspace ID, the workspace name for a member) is a `Field locked`: `true`, or better the reason ("Your email can’t be changed"; `true` says "Can’t be changed").
+
+- **The `Input` turns read-only** (never `disabled`: it stays focusable, selectable and copyable) and **ends with a lock**: the last of its `InputGroup`'s `InputActions`, after an eye or Copy button, or in a group of its own when the `Input` has none. A locked `InputGroup` needs `InputActions` for the lock to go in, even empty.
+- **The reason is the lock's tooltip** (on hover and keyboard focus, its accessible name) **and the input's description**, so a screen reader reads it with the field.
+- **Trying to edit it answers.** A character, Backspace or Delete, Ctrl/⌘+V or X, a paste or a drop opens the lock's tooltip (`Tooltip open`) for 3 seconds after the last try. Escape or leaving the input closes it; Tab, arrows and Ctrl/⌘+C don't count.
 
 ## Secrets and sensitive values
 

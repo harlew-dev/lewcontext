@@ -108,7 +108,7 @@ describe("profile", () => {
     expect(email).toHaveAttribute("readonly");
     expect(email).not.toBeDisabled();
     expect(screen.queryByText("Member since")).toBeNull();
-    const reason = "Your sign-in email can’t be changed";
+    const reason = "Your email can’t be changed";
     fireEvent.mouseEnter(screen.getByRole("img", { name: reason }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
   });

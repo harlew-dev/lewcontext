@@ -5,10 +5,20 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
 } from "react";
 import { cx } from "@/lib/cx";
+// A locked field's value can't be changed. `label` says why: the lock's tooltip
+// and the control's description. `open` while the tooltip answers an attempt to
+// edit the value (`show`), for a few seconds after the last one.
+export type FieldLock = {
+  label: string;
+  open: boolean;
+  show: () => void;
+  hide: () => void;
+};
 // Field wires its label, description and error message to the control inside it,
 // the way Headless UI's Field does.
 type FieldContextValue = {
@@ -16,6 +26,7 @@ type FieldContextValue = {
   labelId: string;
   describedBy: string | undefined;
   disabled: boolean;
+  lock: FieldLock | undefined;
   register: (part: "description" | "error", present: boolean) => void;
   descriptionId: string;
   errorId: string;
@@ -65,12 +76,41 @@ export function FieldGroup({
     />
   );
 }
+const lockShownFor = 3000;
+function useLock(locked: boolean | string): FieldLock | undefined {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  const hide = useCallback(() => {
+    window.clearTimeout(timer.current);
+    setOpen(false);
+  }, []);
+  const show = useCallback(() => {
+    window.clearTimeout(timer.current);
+    setOpen(true);
+    timer.current = window.setTimeout(() => setOpen(false), lockShownFor);
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return useMemo(() => {
+    if (locked === false) return undefined;
+    const label = locked === true ? "Can’t be changed" : locked;
+    return { label, open, show, hide };
+  }, [locked, open, show, hide]);
+}
+// `locked` (true, or why: "Your email can’t be changed") makes the
+// Input read-only, puts a lock at the end of it, and shows the lock's tooltip
+// when someone tries to type in it.
 export function Field({
   className,
   disabled = false,
+  locked = false,
+  children,
   ...props
-}: { disabled?: boolean } & ComponentPropsWithoutRef<"div">) {
+}: {
+  disabled?: boolean;
+  locked?: boolean | string;
+} & ComponentPropsWithoutRef<"div">) {
   const id = useId();
+  const lock = useLock(locked);
   const [parts, setParts] = useState({ description: false, error: false });
   // Stable, so Description/ErrorMessage register once rather than on every change.
   const register = useCallback(
@@ -86,6 +126,7 @@ export function Field({
     const describedBy = [
       parts.description && descriptionId,
       parts.error && errorId,
+      lock && `${id}-lock`,
     ]
       .filter(Boolean)
       .join(" ");
@@ -96,9 +137,10 @@ export function Field({
       errorId,
       describedBy: describedBy || undefined,
       disabled,
+      lock,
       register,
     };
-  }, [id, parts, disabled, register]);
+  }, [id, parts, disabled, lock, register]);
   return (
     <FieldContext.Provider value={value}>
       {/* A visually hidden label (sr-only) adds no space above the control. */}
@@ -109,7 +151,16 @@ export function Field({
           className,
           "[&>[data-slot=label]:not(.sr-only)+[data-slot=control]]:mt-3 [&>[data-slot=label]:not(.sr-only)+[data-slot=description]]:mt-1 [&>[data-slot=description]+[data-slot=control]]:mt-3 [&>[data-slot=control]+[data-slot=description]]:mt-3 [&>[data-slot=control]+[data-slot=error]]:mt-3 *:data-[slot=label]:font-medium",
         )}
-      />
+      >
+        {children}
+        {/* Why it's locked, read with the control. The lock icon itself
+            can't carry the id: BaseUI's Tooltip sets the id of its child. */}
+        {lock && (
+          <span id={`${id}-lock`} hidden>
+            {lock.label}
+          </span>
+        )}
+      </div>
     </FieldContext.Provider>
   );
 }

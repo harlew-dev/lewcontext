@@ -1,5 +1,7 @@
 import {
+  createContext,
   forwardRef,
+  useContext,
   type ComponentPropsWithoutRef,
   type FocusEventHandler,
   type ReactNode,
@@ -16,7 +18,7 @@ import {
 import { slot } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
 import { useInteractive } from "@/lib/interactive";
-import { useField } from "./fieldset";
+import { useField, type FieldLock } from "./fieldset";
 import { Tooltip } from "./tooltip";
 // The bordered control wrapper shared with Textarea (data-slot="control").
 export const controlClasses = [
@@ -83,8 +85,17 @@ export type InputProps = Omit<
   minLength?: number;
   className?: string;
 };
+// Keys that would change the value: a character, a deletion, paste or cut.
+function isEdit(event: { key: string; ctrlKey: boolean; metaKey: boolean }) {
+  if (event.key === "Backspace" || event.key === "Delete") return true;
+  if (event.ctrlKey || event.metaKey) return /^[vx]$/i.test(event.key);
+  return event.key.length === 1;
+}
 // Input on top of BaseUI's Input. Inside a <Field> it takes the field's
-// id, description and disabled state.
+// id, description, disabled state and lock: a locked field's input is
+// read-only, ends with the lock (in its InputGroup's InputActions, or its own
+// when it has no group), and a try at typing, deleting, pasting or dropping
+// shows the lock's tooltip. Escape or leaving the input hides it.
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   {
     invalid = false,
@@ -93,21 +104,36 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     minLength,
     className,
     type,
+    readOnly,
+    onKeyDown,
+    onBlur,
     ...props
   },
   ref,
 ) {
   const field = useField();
+  const lock = field?.lock;
+  const grouped = useContext(InputGroupContext);
   const overlay = blurred ? (
     <BlurredText value={String(props.value ?? "")} onReveal={onReveal} />
   ) : null;
-  return (
+  const input = (
     <BaseInput
       id={field?.id}
       aria-describedby={field?.describedBy}
       disabled={field?.disabled}
       {...props}
       type={type}
+      readOnly={readOnly || Boolean(lock)}
+      onKeyDown={(event) => {
+        if (lock && event.key === "Escape") lock.hide();
+        else if (lock && isEdit(event)) lock.show();
+        onKeyDown?.(event);
+      }}
+      onBlur={(event) => {
+        lock?.hide();
+        onBlur?.(event);
+      }}
       error={invalid}
       inputRef={ref as React.RefObject<HTMLInputElement>}
       overrides={{
@@ -117,6 +143,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           component: InputElement,
           props: {
             minLength,
+            onPaste: lock?.show,
+            onDrop: lock?.show,
             "data-blurred": blurred ? "" : undefined,
             className: type === "password" ? "pr-10 sm:pr-9" : undefined,
           },
@@ -126,6 +154,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         MaskToggleHideIcon: { component: HideIcon },
       }}
     />
+  );
+  if (!lock || grouped) return input;
+  return (
+    <InputGroup>
+      {input}
+      <InputActions />
+    </InputGroup>
   );
 });
 // The value drawn blurred over a blurred Input. It's outside the input, which
@@ -169,34 +204,43 @@ function BlurredText({
     </Tooltip>
   );
 }
+// Tells an Input it's in an InputGroup, whose InputActions show its lock.
+const InputGroupContext = createContext(false);
 // Positions a leading/trailing icon inside an Input, or InputActions at its
-// end. The input's right padding makes room for one or two actions.
+// end. The input's right padding makes room for one or two actions. In a
+// locked Field, the lock goes at the end of the InputActions, so a group with
+// a lock needs them.
 export function InputGroup({ children }: { children: ReactNode }) {
   return (
-    <span
-      data-slot="control"
-      className={cx(
-        "relative isolate block",
-        "has-[>[data-slot=icon]:first-child]:[&_:is(input,[data-slot=blurred])]:pl-10 has-[>[data-slot=icon]:last-child]:[&_:is(input,[data-slot=blurred])]:pr-10 sm:has-[>[data-slot=icon]:first-child]:[&_:is(input,[data-slot=blurred])]:pl-8 sm:has-[>[data-slot=icon]:last-child]:[&_:is(input,[data-slot=blurred])]:pr-8",
-        "has-[>[data-slot=actions]]:[&_:is(input,[data-slot=blurred])]:pr-10 sm:has-[>[data-slot=actions]]:[&_:is(input,[data-slot=blurred])]:pr-9",
-        "has-[>[data-slot=actions]>:nth-child(2)]:[&_:is(input,[data-slot=blurred])]:pr-18 sm:has-[>[data-slot=actions]>:nth-child(2)]:[&_:is(input,[data-slot=blurred])]:pr-16",
-        "*:data-[slot=icon]:pointer-events-none *:data-[slot=icon]:absolute *:data-[slot=icon]:top-3 *:data-[slot=icon]:z-10 *:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:top-2.5 sm:*:data-[slot=icon]:size-4",
-        "[&>[data-slot=icon]:first-child]:left-3 sm:[&>[data-slot=icon]:first-child]:left-2.5 [&>[data-slot=icon]:last-child]:right-3 sm:[&>[data-slot=icon]:last-child]:right-2.5",
-        "*:data-[slot=icon]:text-zinc-500 dark:*:data-[slot=icon]:text-zinc-400",
-      )}
-    >
-      {children}
-    </span>
+    <InputGroupContext.Provider value={true}>
+      <span
+        data-slot="control"
+        className={cx(
+          "relative isolate block",
+          "has-[>[data-slot=icon]:first-child]:[&_:is(input,[data-slot=blurred])]:pl-10 has-[>[data-slot=icon]:last-child]:[&_:is(input,[data-slot=blurred])]:pr-10 sm:has-[>[data-slot=icon]:first-child]:[&_:is(input,[data-slot=blurred])]:pl-8 sm:has-[>[data-slot=icon]:last-child]:[&_:is(input,[data-slot=blurred])]:pr-8",
+          "has-[>[data-slot=actions]]:[&_:is(input,[data-slot=blurred])]:pr-10 sm:has-[>[data-slot=actions]]:[&_:is(input,[data-slot=blurred])]:pr-9",
+          "has-[>[data-slot=actions]>:nth-child(2)]:[&_:is(input,[data-slot=blurred])]:pr-18 sm:has-[>[data-slot=actions]>:nth-child(2)]:[&_:is(input,[data-slot=blurred])]:pr-16",
+          "*:data-[slot=icon]:pointer-events-none *:data-[slot=icon]:absolute *:data-[slot=icon]:top-3 *:data-[slot=icon]:z-10 *:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:top-2.5 sm:*:data-[slot=icon]:size-4",
+          "[&>[data-slot=icon]:first-child]:left-3 sm:[&>[data-slot=icon]:first-child]:left-2.5 [&>[data-slot=icon]:last-child]:right-3 sm:[&>[data-slot=icon]:last-child]:right-2.5",
+          "*:data-[slot=icon]:text-zinc-500 dark:*:data-[slot=icon]:text-zinc-400",
+        )}
+      >
+        {children}
+      </span>
+    </InputGroupContext.Provider>
   );
 }
-// Controls at the end of an Input in an InputGroup: InputLock, InputButton.
-export function InputActions({ children }: { children: ReactNode }) {
+// Controls at the end of an Input in an InputGroup: InputButtons, then a
+// locked Field's lock.
+export function InputActions({ children }: { children?: ReactNode }) {
+  const lock = useField()?.lock;
   return (
     <span
       data-slot="actions"
       className="absolute inset-y-0 right-1 z-10 flex items-center"
     >
       {children}
+      {lock && <InputLock lock={lock} />}
     </span>
   );
 }
@@ -233,13 +277,12 @@ const LockIcon = forwardRef<
     </span>
   );
 });
-// Marks a read-only Input whose value can't be changed. `label` says why, in
-// the tooltip and as the icon's accessible name. Focusable, so the tooltip
-// also opens from the keyboard.
-export function InputLock({ label = "Can’t be changed" }: { label?: string }) {
+// A locked Field's lock. Its label says why, in the tooltip and as the icon's
+// accessible name. Focusable, so the tooltip also opens from the keyboard.
+function InputLock({ lock }: { lock: FieldLock }) {
   return (
-    <Tooltip content={label}>
-      <LockIcon label={label} />
+    <Tooltip content={lock.label} open={lock.open}>
+      <LockIcon label={lock.label} />
     </Tooltip>
   );
 }

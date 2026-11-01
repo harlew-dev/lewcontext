@@ -1,5 +1,9 @@
 import type { ReactElement, ReactNode } from "react";
-import { PLACEMENT, StatefulTooltip } from "baseui/tooltip";
+import {
+  PLACEMENT,
+  StatefulContainer,
+  Tooltip as BaseTooltip,
+} from "baseui/tooltip";
 import { useReducedMotion } from "motion/react";
 import { popoverExit, popoverOverrides, popoverPanel } from "@/lib/baseui";
 import { cx } from "@/lib/cx";
@@ -16,18 +20,22 @@ const placements = {
 // `onClick` the tooltip itself is clickable too, as a shortcut for the
 // pointer ("Click to reveal"); it stays open while the pointer is over it.
 // Keyboard users need the same action elsewhere. `disabled` keeps it closed
-// without changing the child's place in the tree.
+// without changing the child's place in the tree. `open` holds it open whatever
+// the pointer and focus do (a locked field's lock, after a try at typing). This
+// is StatefulTooltip with its container's open state widened by `open`.
 export function Tooltip({
   content,
   placement = "top",
   onClick,
   disabled = false,
+  open = false,
   children,
 }: {
   content: ReactNode;
   placement?: keyof typeof placements;
   onClick?: () => void;
   disabled?: boolean;
+  open?: boolean;
   children: ReactElement;
 }) {
   const reducedMotion = useReducedMotion();
@@ -39,7 +47,7 @@ export function Tooltip({
     disabled && "hidden",
   );
   return (
-    <StatefulTooltip
+    <StatefulContainer
       placement={placements[placement]}
       stateReducer={(_type, next) =>
         disabled ? { ...next, isOpen: false } : next
@@ -65,7 +73,11 @@ export function Tooltip({
         )
       }
     >
-      {children}
-    </StatefulTooltip>
+      {(props) => (
+        <BaseTooltip {...props} isOpen={!disabled && (props.isOpen || open)}>
+          {children}
+        </BaseTooltip>
+      )}
+    </StatefulContainer>
   );
 }

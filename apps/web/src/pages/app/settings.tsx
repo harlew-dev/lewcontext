@@ -40,7 +40,6 @@ import {
   InputActions,
   InputButton,
   InputGroup,
-  InputLock,
 } from "@/components/ui/input";
 import { Link } from "@/components/ui/link";
 import {
@@ -149,7 +148,7 @@ function ProfileForm() {
               onChange={(e) => setName(e.currentTarget.value)}
             />
           </Field>
-          <Field>
+          <Field locked="Your email can’t be changed">
             <Label>
               Email address
               {verification && <EmailStatusBadge verified={!unverified} />}
@@ -158,7 +157,6 @@ function ProfileForm() {
               <Input
                 type="email"
                 value={session.user.email}
-                readOnly
                 blurred={!emailVisible}
                 onReveal={() => setEmailVisible(true)}
               />
@@ -176,7 +174,6 @@ function ProfileForm() {
                     {emailVisible ? <EyeSlashIcon /> : <EyeIcon />}
                   </InputButton>
                 </Tooltip>
-                <InputLock label="Your sign-in email can’t be changed" />
               </InputActions>
             </InputGroup>
             {unverified && (
