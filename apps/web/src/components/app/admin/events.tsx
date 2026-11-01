@@ -10,7 +10,7 @@ import {
 import { Code, TextLink } from "@/components/ui/text";
 import { useAdminKey } from "@/lib/admin";
 import { formatDateTime } from "@/lib/format";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import type { AdminEvent, AdminRef } from "@/types/admin";
 // Shared by the admin dashboard's Events list and an event's page (its
 // related events): the events table, a row's one-line summary, and links to
@@ -58,7 +58,7 @@ export function AccountLink({ account }: { account: AdminRef }) {
   const key = useAdminKey();
   if (!account.name) return <DeletedRef id={account.id} />;
   return (
-    <TextLink href={routes.admin.users.show(key, account.id)}>
+    <TextLink href={adminRoutes.users.show(key, account.id)}>
       {account.name}
     </TextLink>
   );
@@ -68,7 +68,7 @@ export function WorkspaceLink({ workspace }: { workspace: AdminRef }) {
   const key = useAdminKey();
   if (!workspace.name) return <DeletedRef id={workspace.id} />;
   return (
-    <TextLink href={routes.admin.workspaces.show(key, workspace.id)}>
+    <TextLink href={adminRoutes.workspaces.show(key, workspace.id)}>
       {workspace.name}
     </TextLink>
   );
@@ -85,7 +85,7 @@ export function IpLink({ ip }: { ip: string }) {
   const key = useAdminKey();
   return (
     <TextLink
-      href={routes.admin.events.index(key, { ip })}
+      href={adminRoutes.events.index(key, { ip })}
       className="font-mono"
     >
       {ip}
@@ -126,7 +126,7 @@ function EventRow({ event }: { event: AdminEvent }) {
   return (
     <TableRow>
       <TableCell className="whitespace-nowrap">
-        <TextLink href={routes.admin.events.show(key, event.id)}>
+        <TextLink href={adminRoutes.events.show(key, event.id)}>
           {formatDateTime(event.createdAt)}
         </TextLink>
       </TableCell>

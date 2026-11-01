@@ -7,6 +7,8 @@ node_modules/
 apps/web/build/
 apps/api/internal/web/dist/*
 !apps/api/internal/web/dist/.gitkeep
+apps/api/internal/web/admin/*
+!apps/api/internal/web/admin/.gitkeep
 coverage/
 *.tsbuildinfo
 playwright-report/

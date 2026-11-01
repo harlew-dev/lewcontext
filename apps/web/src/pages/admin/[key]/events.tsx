@@ -9,11 +9,11 @@ import { ErrorMessage, Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { cx } from "@/lib/cx";
 import { parsePublicId } from "@/lib/ids";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import type { EventFilters } from "@/types/admin";
 // The audit trail: every event, newest first, filtered by name, account,
@@ -26,8 +26,8 @@ export default function AdminEventIndex() {
   const navigate = useNavigate();
   const [search] = useSearchParams();
   const filters = eventFilters(search);
-  const list = useAdminResource(paths.admin.events.index(filters));
-  const pathFor = (f: EventFilters) => routes.admin.events.index(key, f);
+  const list = useAdminResource(adminPaths.events.index(filters));
+  const pathFor = (f: EventFilters) => adminRoutes.events.index(key, f);
   // Admin reads stay hidden unless asked for, so they don't count as a filter.
   const filtered = Object.keys(filters).some(
     (k) => k !== "before" && k !== "adminReads",
@@ -275,7 +275,7 @@ function EventNameListbox({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const catalogue = useAdminResource(paths.admin.catalogue());
+  const catalogue = useAdminResource(adminPaths.catalogue());
   const names =
     catalogue.data?.events ?? (value && !value.endsWith(".") ? [value] : []);
   const areas = [...new Set(names.map((name) => name.split(".")[0]))];

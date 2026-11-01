@@ -9,9 +9,9 @@ endif
 # target runs from. Normally it goes to Mailpit (make db): http://localhost:8025.
 MAIL_FILE ?= $(CURDIR)/tmp/mail.log
 export MAIL_FILE
-.PHONY: help install app-key migrate migrate-status migrate-rollback migrate-fresh migration seed prune admin dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
+.PHONY: help install app-key migrate migrate-status migrate-rollback migrate-fresh migration seed prune admin dev api web web-admin web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down
 help:
-	@echo 'Targets: install app-key migrate migrate-status migrate-rollback migrate-fresh migration seed prune admin dev api web web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
+	@echo 'Targets: install app-key migrate migrate-status migrate-rollback migrate-fresh migration seed prune admin dev api web web-admin web-build build serve serve-test test test-e2e check db docker-dev docker-app docker-up docker-migrate docker-seed docker-down'
 install:
 	cd apps/api && go mod download
 	cd apps/web && npm ci
@@ -48,12 +48,16 @@ admin:
 # Development in one terminal: rebuilds the embedded web app, then runs the API and Vite together (scripts/dev.sh).
 dev:
 	./scripts/dev.sh
-# Or each in its own terminal: the API on API_ADDR, and Vite on :3000 proxying /api to it.
+# Or each in its own terminal: the API on API_ADDR, Vite on :3000 proxying /api to it, and the
+# admin build's Vite on 127.0.0.1:3002, which :3000 proxies /admin and /admin-assets to.
 api:
 	cd apps/api && go run ./cmd/server
 web:
 	cd apps/web && npm run dev
-# Builds the web app and copies it where the Go binary embeds it (internal/web/dist).
+web-admin:
+	cd apps/web && npm run dev:admin
+# Builds the web app twice and copies the builds where the Go binary embeds them
+# (internal/web/dist and internal/web/admin), failing if admin code reached the app build.
 web-build:
 	./scripts/build-web.sh
 # One binary serving the API and the web app.
@@ -107,5 +111,6 @@ test-e2e:
 	E2E_PORT='$(E2E_PORT)' E2E_REUSE='$(E2E_REUSE)' ./scripts/test-env.sh ./scripts/e2e-preflight.sh sh -c 'cd apps/web && npm run test:e2e'
 check:
 	@test -z "$$(gofmt -l apps/api)" || (echo 'Run gofmt -w apps/api'; exit 1)
+	./scripts/check-app-build.test.sh
 	cd apps/api && go vet ./...
 	cd apps/web && npm run typecheck && npm run lint && npm run format:check

@@ -1,24 +1,24 @@
 # Admin dashboard: the plans after admin access
 
-Status: **draft 2026-10-31**. A1 (events-and-mail) implemented 2026-10-31; the other plans' decisions to confirm. Builds on [admin access](../implemented/admin-access.md) (the secret door, CLI-granted admins with required MFA, admin sessions, read-only Users and Workspaces, every read recorded).
+Status: **draft 2026-10-31**. Each plan's state is in the table's Status column. Builds on [admin access](../implemented/admin-access.md) (the secret door, CLI-granted admins with required MFA, admin sessions, read-only Users and Workspaces, every read recorded).
 
 Admin access left out the Events, Mail and Monitoring pages, any write action, an IP allowlist and holding several keys at once. These plans cover all of them, plus the observability and compliance groundwork that production monitoring needs. Each is its own plan with its own decisions, so they can be confirmed and shipped one at a time.
 
 ## The plans, in build order
 
-| # | Plan | Adds | Needs |
-| --- | --- | --- | --- |
-| A1 | [events-and-mail](../implemented/admin/events-and-mail.md) | The **Events** page (the audit trail, filtered by name, account, workspace, email, IP and time) and the **Mail** page (the delivery queue, failures, volume per template and recipient). An `events.ip` column; project names and descriptions shown, with a projects list on the workspace page | admin access |
-| A2 | [access-hardening](access-hardening.md) | `ADMIN_ALLOWED_IPS` (an IP allowlist), `ADMIN_ROUTE_KEY_PREVIOUS` (rotating the key without signing everyone out), an Admins page, admin roles (`viewer`, `operator`) | admin access |
-| A3 | [observability](observability.md) | The groundwork: JSON logs with request IDs, panic recovery, grouped errors (`app_errors`), per-minute sums per route shared across servers (`request_minutes`, `metric_minutes`; never a row per request), server heartbeats (`server_instances`), slow-query logging, an optional Prometheus `/metrics` on a private port | none (A1 for the IP column it logs alongside) |
-| A4 | [monitoring](monitoring.md) | The **Monitoring** pages: Overview, Security, Rate limits, IP addresses, Accounts, Workspaces, Usage, Data, Integrity, Performance, Errors, Configuration | A1, A3 |
-| A5 | [alerts](alerts.md) | Alert rules checked every minute by one server, the Alerts page, email to admins and an optional webhook | A4 |
-| A6 | [actions](actions.md) | The first write actions, behind a fresh code (step-up), a written reason and the `operator` role: sign out everywhere, reset MFA, suspend an account, retry a delivery, block an IP, revoke a workspace's invitations, acknowledge an alert | A2 (roles), A1 (retry), A5 (acknowledge) |
-| A7 | [compliance](compliance.md) | Retention per kind of data, scrubbing a deleted account's email from the log, "Download my data", audit events shipped to the log, a data map (`docs/compliance.md`) and an incident runbook | A1, A3, A6 |
-| A8 | [separate-build](separate-build.md) | The admin pages as their own build (`WEB_BUILD=admin`), out of the public bundle and served only behind the key: its scripts at `/admin-assets/` need an "assets pass" cookie that only the admin page gate sets. A build check that no admin code is left in the app build | admin access |
-| A9 | [email-blocks](email-blocks.md) | The **Email blocks** page (the block list, from [email blocks](../implemented/email-blocks.md)) and Unblock, the first write: it builds A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` early, and waits for A2 only for the `operator` role | admin access, A1 |
+| # | Plan | Adds | Needs | Status |
+| --- | --- | --- | --- | --- |
+| A1 | [events-and-mail](../implemented/admin/events-and-mail.md) | The **Events** page (the audit trail, filtered by name, account, workspace, email, IP and time) and the **Mail** page (the delivery queue, failures, volume per template and recipient). An `events.ip` column; project names and descriptions shown, with a projects list on the workspace page | admin access | **implemented 2026-10-31** |
+| A2 | [access-hardening](access-hardening.md) | `ADMIN_ALLOWED_IPS` (an IP allowlist), `ADMIN_ROUTE_KEY_PREVIOUS` (rotating the key without signing everyone out), an Admins page, admin roles (`viewer`, `operator`) | admin access | decisions to confirm |
+| A3 | [observability](observability.md) | The groundwork: JSON logs with request IDs, panic recovery, grouped errors (`app_errors`), per-minute sums per route shared across servers (`request_minutes`, `metric_minutes`; never a row per request), server heartbeats (`server_instances`), slow-query logging, an optional Prometheus `/metrics` on a private port | none (A1 for the IP column it logs alongside) | decisions to confirm |
+| A4 | [monitoring](monitoring.md) | The **Monitoring** pages: Overview, Security, Rate limits, IP addresses, Accounts, Workspaces, Usage, Data, Integrity, Performance, Errors, Configuration | A1, A3 | decisions to confirm |
+| A5 | [alerts](alerts.md) | Alert rules checked every minute by one server, the Alerts page, email to admins and an optional webhook | A4 | decisions to confirm |
+| A6 | [actions](actions.md) | The first write actions, behind a fresh code (step-up), a written reason and the `operator` role: sign out everywhere, reset MFA, suspend an account, retry a delivery, block an IP, revoke a workspace's invitations, acknowledge an alert | A2 (roles), A1 (retry), A5 (acknowledge) | decisions to confirm |
+| A7 | [compliance](compliance.md) | Retention per kind of data, scrubbing a deleted account's email from the log, "Download my data", audit events shipped to the log, a data map (`docs/compliance.md`) and an incident runbook | A1, A3, A6 | decisions to confirm |
+| A8 | [separate-build](../implemented/admin/separate-build.md) | The admin pages as their own build (`WEB_BUILD=admin`), out of the public bundle and served only behind the key: its scripts at `/admin-assets/` need an "assets pass" cookie that only the admin page gate sets. A build check that no admin code is left in the app build | admin access | **implemented 2026-11-01** |
+| A9 | [email-blocks](email-blocks.md) | The **Email blocks** page (the block list, from [email blocks](../implemented/email-blocks.md)) and Unblock, the first write: it builds A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` early, and waits for A2 only for the `operator` role | admin access, A1 | decisions to confirm |
 
-A2 and A8 can each go at any point after admin access; both are small and stand alone. A8 should land before A4, whose pages (rate-limit thresholds, abuse checks, alert rules) are the code most worth keeping out of public view. A4 is large and can ship page by page in the order listed in it.
+**What can start now:** A1 and A8 are done, so A2, A3 and A9 have everything they need. A2 and A9 are small and stand alone; A9 works without A2, and gains A2's `operator` role whenever A2 ships. A3 is the groundwork A4, A5 and A7 wait for. A8 keeps A4's pages (rate-limit thresholds, abuse checks, alert rules) out of public view, as rule 7 says. A4 is large and can ship page by page in the order listed in it.
 
 ## What the dashboard answers, and what it can't
 

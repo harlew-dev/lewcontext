@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"lewcontext/api/internal/auth"
 	"net/http"
 	"path"
 	"strconv"
@@ -14,15 +15,26 @@ import (
 // the browser. React Router writes it when "/" is prerendered.
 const fallbackFile = "__spa-fallback.html"
 
+// adminShellFile is the admin build's one HTML file (it prerenders nothing).
+const adminShellFile = "index.html"
+
 // ErrNotBuilt means the embedded files have no web build (no `make build`).
 var ErrNotBuilt = errors.New("web app not built: run make build")
+
+// ErrAdminNotBuilt means ADMIN_ROUTE_KEY is set but the admin build isn't
+// embedded beside the app's.
+var ErrAdminNotBuilt = errors.New("admin dashboard not built (ADMIN_ROUTE_KEY is set): run make build")
 
 // Pages serves the web build. Every HTML file's CSP is computed once, in New.
 type Pages struct {
 	files       fs.FS
 	prerendered map[string]page // by URL path, e.g. "/" for index.html
 	fallback    page
-	production  bool
+	// adminFiles and adminShell are the admin build, when admin is on: never
+	// served from files, only by ServeAdmin and ServeAdminFile.
+	adminFiles fs.FS
+	adminShell page
+	production bool
 }
 
 type page struct {
@@ -32,8 +44,10 @@ type page struct {
 
 // New reads the build's HTML files and hashes their inline scripts. It fails
 // if the fallback page is missing or an HTML file can't be read, so a broken
-// build never serves a policy that blocks the app.
-func New(files fs.FS, production bool) (*Pages, error) {
+// build never serves a policy that blocks the app. admin is the admin build
+// when admin is on (ADMIN_ROUTE_KEY set), or nil; without its shell New
+// fails with ErrAdminNotBuilt.
+func New(files, admin fs.FS, production bool) (*Pages, error) {
 	p := &Pages{files: files, prerendered: map[string]page{}, production: production}
 	err := fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() || path.Ext(name) != ".html" {
@@ -55,6 +69,16 @@ func New(files fs.FS, production bool) (*Pages, error) {
 	}
 	if p.fallback.body == nil {
 		return nil, ErrNotBuilt
+	}
+	if admin != nil {
+		shell, err := load(admin, adminShellFile)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, ErrAdminNotBuilt
+		}
+		if err != nil {
+			return nil, err
+		}
+		p.adminFiles, p.adminShell = admin, shell
 	}
 	return p, nil
 }
@@ -105,15 +129,63 @@ func (p *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.serveHTML(w, p.fallback, status, "no-store")
 }
 
+// AdminBuilt reports whether the admin build is loaded (admin on, and New
+// found its shell), so ServeAdmin serves it rather than the 404.
+func (p *Pages) AdminBuilt() bool {
+	return p.adminFiles != nil
+}
+
 // ServeAdmin answers an admin page (/admin/<key>/…), once the server has
-// checked the key: the app shell with status 200, which renders the admin
-// pages. The key is in the path, so no Referer leaves with it, and nothing is
-// cached or indexed.
+// checked the key: the admin build's shell with status 200, which renders the
+// admin pages, never the app's fallback. The key is in the path, so no
+// Referer leaves with it, and nothing is cached or indexed. Without an admin
+// build it is the ordinary 404.
 func (p *Pages) ServeAdmin(w http.ResponseWriter, r *http.Request) {
+	if p.adminFiles == nil {
+		p.ServeHTTP(w, r)
+		return
+	}
 	p.securityHeaders(w)
+	adminHeaders(w)
+	p.serveHTML(w, p.adminShell, http.StatusOK, "no-store")
+}
+
+// ServeAdminFile serves one of the admin build's files (name, as under
+// /admin-assets/), once the server has checked the assets pass, and reports
+// whether it did. HTML, dot-files, directories and unknown names aren't
+// served: the caller answers those as any unknown URL. The names are
+// content-hashed, so they never change, but browsers keep them only as long
+// as the pass that opened them lasts, and only browsers: `private`, never
+// `public`, or a shared cache (Cloudflare, a proxy) would hand them to anyone
+// without a pass.
+func (p *Pages) ServeAdminFile(w http.ResponseWriter, r *http.Request, name string) bool {
+	if p.adminFiles == nil {
+		return false
+	}
+	name = path.Clean(name)
+	if !fs.ValidPath(name) || name == "." || path.Ext(name) == ".html" || hidden(name) {
+		return false
+	}
+	info, err := fs.Stat(p.adminFiles, name)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	p.securityHeaders(w)
+	adminHeaders(w)
+	w.Header().Set("Cache-Control", adminFileCaching)
+	http.ServeFileFS(w, r, p.adminFiles, name)
+	return true
+}
+
+// adminFileCaching keeps an admin file in the browser for the assets pass's
+// lifetime, no longer.
+var adminFileCaching = "private, max-age=" + strconv.Itoa(int(auth.AdminAssetsPassLifetime.Seconds())) + ", immutable"
+
+// adminHeaders go with every admin page and file: nothing sends a Referer
+// from them, and nothing is indexed.
+func adminHeaders(w http.ResponseWriter) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
-	p.serveHTML(w, p.fallback, http.StatusOK, "no-store")
 }
 
 // appPath reports whether a URL may be one of the app's pages; the browser

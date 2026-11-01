@@ -65,12 +65,26 @@ func Get(h http.Handler, method, target string, cookie *http.Cookie) *httptest.R
 	return w
 }
 
-// Pages is a minimal web build: the homepage and the SPA fallback.
+// AdminAsset is the one script in Pages' admin build, as served under
+// /admin-assets/, and AdminAssetBody what it holds.
+const (
+	AdminAsset     = "/admin-assets/assets/admin-abc.js"
+	AdminAssetBody = "console.log('admin')"
+)
+
+// Pages is a minimal web build: the homepage and the SPA fallback, and an
+// admin build with its shell, a hashed script, a dot-file and the build's
+// favicon.
 func Pages(t *testing.T) *web.Pages {
 	t.Helper()
 	pages, err := web.New(fstest.MapFS{
 		"index.html":          {Data: []byte("<html><body>home</body></html>")},
 		"__spa-fallback.html": {Data: []byte("<html><body>app shell</body></html>")},
+	}, fstest.MapFS{
+		"index.html":          {Data: []byte("<html><body>admin shell</body></html>")},
+		"assets/admin-abc.js": {Data: []byte(AdminAssetBody)},
+		".vite/manifest.json": {Data: []byte("{}")},
+		"favicon.svg":         {Data: []byte("<svg></svg>")},
 	}, false)
 	if err != nil {
 		t.Fatal(err)

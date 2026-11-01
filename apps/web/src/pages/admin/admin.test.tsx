@@ -10,7 +10,7 @@ import {
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
 import { NotFound } from "@/components/layout/status-page";
-import { adminLoader, adminLoginLoader } from "@/lib/loaders";
+import { adminLoader, adminLoginLoader } from "@/lib/admin";
 import { gate, stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 import {

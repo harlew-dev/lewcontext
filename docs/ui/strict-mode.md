@@ -37,7 +37,7 @@ Without StrictMode the missing cleanup might never be noticed. With it the liste
 
 | Where | StrictMode? |
 | --- | --- |
-| `make dev` / `make web` (Vite on :3000) | **Yes** |
+| `make dev` / `make web` / `make web-admin` (Vite on :3000, the admin pages' on :3002) | **Yes** |
 | `make build`, `make serve`, production | No (React drops it from production builds) |
 | Vitest (React Testing Library's `render`) | No (it isn't configured to wrap tests in StrictMode) |
 | Playwright e2e (`make test-e2e`, against `make serve`) | No |

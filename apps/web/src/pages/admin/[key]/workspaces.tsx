@@ -10,10 +10,10 @@ import { Heading } from "@/components/ui/heading";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { formatDate } from "@/lib/format";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import {
   adminWorkspaceSortable,
@@ -45,10 +45,10 @@ export default function AdminWorkspaceIndex() {
     adminWorkspaceSortable,
     defaultAdminWorkspaceSort,
   );
-  const list = useAdminResource(paths.admin.workspaces.index(query));
+  const list = useAdminResource(adminPaths.workspaces.index(query));
   const pathFor = (q: AdminListQuery<AdminWorkspaceSort>) =>
     adminListPath(
-      routes.admin.workspaces.index(key),
+      adminRoutes.workspaces.index(key),
       q,
       defaultAdminWorkspaceSort,
     );
@@ -105,7 +105,7 @@ function WorkspaceRow({ workspace }: { workspace: AdminWorkspace }) {
   const key = useAdminKey();
   return (
     <TableRow
-      href={routes.admin.workspaces.show(key, workspace.id)}
+      href={adminRoutes.workspaces.show(key, workspace.id)}
       title={`Open ${workspace.name}`}
     >
       <TableCell className="font-medium">{workspace.name}</TableCell>

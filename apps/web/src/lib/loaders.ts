@@ -1,9 +1,7 @@
-import { data, redirect } from "react-router";
-import type { AdminSession } from "@/types/admin";
+import { redirect } from "react-router";
 import type { Workspace } from "@/types/workspaces";
 import {
   ApiError,
-  loaderAdminApi,
   loaderApi,
   verificationRequired,
   type PendingRegistration,
@@ -19,8 +17,8 @@ import type { Session } from "./types";
 // HTML; the 401 handling here covers a session that expires afterwards, and
 // the Vite dev server, which has no such gate.
 export type Unavailable = { unavailable: true };
-const unavailable: Unavailable = { unavailable: true };
-const unauthorized = (error: unknown) =>
+export const unavailable: Unavailable = { unavailable: true };
+export const unauthorized = (error: unknown) =>
   error instanceof ApiError && error.status === 401;
 // The path and query of a loader's request, to return to after signing in.
 function here(request: Request): string {
@@ -132,38 +130,4 @@ export async function verifyEmailLoader(
     throw redirect(returnPath(next) ?? routes.app);
   }
   return { session };
-}
-// The admin pages first ask the API whether the key in the URL is right
-// (GET /api/admin/me with it). A wrong key is the API's 404, and the page is
-// the ordinary not-found page, so the admin pages never show for it; the
-// server already answered the HTML with 404 too.
-async function adminProbe(
-  key: string,
-): Promise<AdminSession | "signed-out" | Unavailable> {
-  try {
-    return await loaderAdminApi(key).me();
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404)
-      throw data(null, { status: 404 });
-    if (unauthorized(error)) return "signed-out";
-    return unavailable;
-  }
-}
-// The admin sign-in page: a signed-in admin goes on to Users.
-export async function adminLoginLoader(
-  key: string,
-): Promise<{ signedOut: true } | Unavailable> {
-  const probe = await adminProbe(key);
-  if (probe === "signed-out") return { signedOut: true };
-  if ("unavailable" in probe) return probe;
-  throw redirect(routes.admin.users.index(key));
-}
-// The admin layout: the admin session, or back to the admin sign-in page.
-export async function adminLoader(
-  key: string,
-): Promise<{ session: AdminSession } | Unavailable> {
-  const probe = await adminProbe(key);
-  if (probe === "signed-out") throw redirect(routes.admin.login(key));
-  if ("unavailable" in probe) return probe;
-  return { session: probe };
 }

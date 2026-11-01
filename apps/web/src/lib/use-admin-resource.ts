@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import useSWR from "swr";
-import { ApiError, errorMessage, useAdminApi, type ApiPath } from "./api";
+import { ApiError, errorMessage, type ApiPath } from "./api";
+import { useAdminApi } from "./api/admin";
 import { useAdminKey, useAdminSession } from "./admin";
-import { routes } from "./routes";
-// useResource for the admin pages: a typed path from paths.admin, loaded with
+import { adminRoutes } from "./admin-routes";
+// useResource for the admin pages: a typed path from adminPaths, loaded with
 // the admin API. The SWR key is ["admin", the admin's user ID, path], apart
 // from the app's, and never holds the key. An ended admin session goes back
 // to the admin sign-in page. Every load is recorded in the audit trail, so
@@ -23,7 +24,7 @@ export function useAdminResource<T>(path: ApiPath<T> | null) {
       revalidateOnReconnect: false,
       onError(error) {
         if (error instanceof ApiError && error.status === 401)
-          void navigate(routes.admin.login(key), { replace: true });
+          void navigate(adminRoutes.login(key), { replace: true });
       },
     },
   );

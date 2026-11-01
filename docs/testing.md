@@ -20,24 +20,25 @@ How to set up a local environment, run and build the app, and check it by hand. 
 make dev            # or ./scripts/dev.sh
 ```
 
-`scripts/dev.sh` first rebuilds the web app the Go server embeds (`scripts/build-web.sh`, the same step as `make build`, about 10 seconds), so the API never serves an old build. Then it runs both halves of the app in one terminal:
+`scripts/dev.sh` first rebuilds the web app the Go server embeds (`scripts/build-web.sh`, the same step as `make build`: both builds, about 20 seconds), so the API never serves an old build. Then it runs the app in one terminal:
 
 | Prefix | Process | Address |
 | --- | --- | --- |
-| `[build]` | The web build, before the servers start | |
+| `[build]` | The web builds, before the servers start | |
 | `[api]` | The Go API (`go run ./cmd/server`) | `API_ADDR`, `127.0.0.1:8080` |
-| `[web]` | Vite (`react-router dev`): serves the pages, reloads on save, forwards `/api` to the API | `http://localhost:3000` |
+| `[web]` | Vite (`react-router dev`): serves the pages, reloads on save, forwards `/api` to the API and `/admin`, `/admin-assets` to the admin Vite (websockets too, for reloading) | `http://localhost:3000` |
+| `[admin]` | The admin dashboard's Vite (`WEB_BUILD=admin`): its pages, with their files under `/admin-assets/` as in production. Reached only through `:3000`, which checks neither the admin key nor the assets pass: **in development, anyone who can reach `:3000` (it listens on every interface, so other machines can browse it) can load the admin code**, never its data, since the API still checks the key. Before the separate build, the same code was in the app's dev bundle anyway | `127.0.0.1:3002` |
 
 - **Open `http://localhost:3000`**, not `127.0.0.1`: the API only accepts mutations from `APP_ORIGIN`.
-- **Ctrl-C stops both.** If either one exits (for example the API fails to start because PostgreSQL is down), the script stops the other and says so.
+- **Ctrl-C stops all three.** If any one exits (for example the API fails to start because PostgreSQL is down), the script stops the others and says so.
 - If the build fails, nothing starts; fix the error shown under `[build]`.
-- It refuses to start if :8080 or :3000 is already taken. Stop the other server first (`make api`, `make web`, `make serve`, or another `make dev`).
+- It refuses to start if :8080, :3000 or :3002 is already taken. Stop the other server first (`make api`, `make web`, `make web-admin`, `make serve`, or another `make dev`).
 - **Front-end changes** reload in the browser. **Go changes** need a restart: Ctrl-C, then `make dev` again. So do changes to `.env`.
 - The script reads `.env` itself, so it works without `make`. It needs `.env` and `make install` first.
 
-To run them in separate terminals instead (separate logs, or restarting only the API): `make api` in one and `make web` in the other.
+To run them in separate terminals instead (separate logs, or restarting only the API): `make api`, `make web` and, for the admin pages, `make web-admin`.
 
-In development there is no Go check before the HTML: signed-out visits to `/app/*` reach the page, whose loader then sends them to login. The CSP and the 404 status for unknown URLs also only come from the Go server. Use `make serve` to check those.
+In development there is no Go check before the HTML: signed-out visits to `/app/*` reach the page, whose loader then sends them to login. The CSP and the 404 status for unknown URLs also only come from the Go server, and so do the admin key check on pages and the assets pass (the API still checks the key). Use `make serve` to check those. Each dev server also knows the other's pages, because React Router's type generation, which each runs, writes one set of types for every page; the split into two builds happens only in `react-router build`, which the output check and the e2e suite cover.
 
 ## Build and run the production binary
 
@@ -46,7 +47,7 @@ make build          # bin/api: the Go server with the web app embedded
 make serve          # make build, then run bin/api on http://localhost:3000
 ```
 
-`make build` runs `make web-build` (`scripts/build-web.sh`): `react-router build` (prerendering `/`), then copies `apps/web/build/client` into `apps/api/internal/web/dist/`, where `go build` embeds it. `make serve` runs the result on `127.0.0.1:3000`, serving the API, the pages and the assets from one process, as in production. Stop `make dev` first; both use :3000.
+`make build` runs `make web-build` (`scripts/build-web.sh`): `react-router build` (prerendering `/`) and `WEB_BUILD=admin react-router build` (the admin dashboard), checks that no admin code reached the app build (the app build fails on any admin module, and `scripts/check-app-build.sh` reads its output for admin strings; either fails the build), then copies `apps/web/build/client` into `apps/api/internal/web/dist/` and `apps/web/build/admin/client` into `apps/api/internal/web/admin/`, where `go build` embeds them. `make serve` runs the result on `127.0.0.1:3000`, serving the API, the pages and the assets from one process, as in production. Stop `make dev` first; both use :3000.
 
 To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGIN`, `API_ADDR`, `APP_ENV`) and start `./bin/api`. `APP_ORIGIN` must be the address browsers use. With `APP_ENV=production`, it also needs HTTPS and a database URL with `sslmode=verify-full`, and it refuses to start without the web build embedded.
 
@@ -78,11 +79,11 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 11. At a 390px viewport, navigation, search, paging (Previous/Next) and editing remain usable; the slide-over sidebar closes from the button beside the workspace menu.
 
 12. Blocking an address: invite a new address from Members, open the invitation in Mailpit and follow "Block this address" at its foot. Block it, then invite it again from another workspace: the invitation shows Sent, but nothing reaches Mailpit; signing up with it shows the code page but no code arrives. `make admin cmd=blocks` lists it; Unblock from the same link (or `make admin cmd=unblock email=… CONFIRM=1`) and the next invitation arrives ([api/auth.md](api/auth.md#blocking-an-email-address)).
-13. The admin dashboard: `make admin cmd=grant email=test@example.com CONFIRM=1`, then open `http://localhost:3000/admin/<ADMIN_ROUTE_KEY from .env>`. Sign in with the demo account's password; without two-factor authentication it asks you to set it up (the QR code hidden until revealed), then shows Users and Workspaces. `/admin/<anything else>` is the ordinary 404. Sign out from the account menu ([api/admin.md](api/admin.md)).
+13. The admin dashboard: `make admin cmd=grant email=test@example.com CONFIRM=1`, then open `http://localhost:3000/admin/<ADMIN_ROUTE_KEY from .env>`. Sign in with the demo account's password; without two-factor authentication it asks you to set it up (the QR code hidden until revealed), then shows Users and Workspaces. `/admin/<anything else>` is the ordinary 404. Sign out from the account menu ([api/admin.md](api/admin.md)). Under `make serve`, the admin pages' scripts load from `/admin-assets/`; opening one of those URLs in a private window (no assets pass) shows the 404 page.
 
 ## Failure checks
 
-Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops both together). A signed-in page reload should show the "A brief pause." retry screen. During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
+Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops them all together). A signed-in page reload should show the "A brief pause." retry screen. During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
 
 ## Migration reversal
 

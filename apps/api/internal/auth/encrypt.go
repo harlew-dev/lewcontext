@@ -32,14 +32,16 @@ const sealVersion = 1
 var ErrUnsealable = errors.New("sealed value can't be opened")
 
 // Keys are the keys derived from APP_KEY: one for AES-256-GCM, which
-// seals secrets the server must read back (TOTP secrets), and two for HMAC
+// seals secrets the server must read back (TOTP secrets), two for HMAC
 // digests of recovery codes and emailed codes, so they can't be guessed
-// offline from a database dump. Deriving each (HKDF) keeps any from being
+// offline from a database dump, and one for the admin build's assets pass
+// (admin_assets.go). Deriving each (HKDF, its own label) keeps any from being
 // another.
 type Keys struct {
-	aead      cipher.AEAD
-	recovery  []byte
-	emailCode []byte
+	aead        cipher.AEAD
+	recovery    []byte
+	emailCode   []byte
+	adminAssets []byte
 }
 
 // NewKeys derives the keys from the 32-byte APP_KEY.
@@ -59,6 +61,10 @@ func NewKeys(key []byte) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
+	adminAssets, err := hkdf.Key(sha256.New, key, nil, "lewcontext admin-assets-pass v1", 32)
+	if err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(sealKey)
 	if err != nil {
 		return nil, err
@@ -67,7 +73,7 @@ func NewKeys(key []byte) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Keys{aead: aead, recovery: recovery, emailCode: emailCode}, nil
+	return &Keys{aead: aead, recovery: recovery, emailCode: emailCode, adminAssets: adminAssets}, nil
 }
 
 // Seal encrypts plaintext for the row of owner (a user's internal ID): it

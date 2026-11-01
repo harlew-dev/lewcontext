@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
@@ -147,10 +148,16 @@ func mailDriver(c config.Config) (mail.Driver, error) {
 	})
 }
 
-// servePages adds the embedded web build. Production requires it; in
-// development the API can run alone while Vite serves the pages (make web).
+// servePages adds the embedded web build, and with ADMIN_ROUTE_KEY set the
+// admin build beside it. Production requires the web build; in development
+// the API can run alone while Vite serves the pages (make web). A web build
+// without its admin build, with admin on, never starts (ErrAdminNotBuilt).
 func servePages(api *httpapi.Server, c config.Config) error {
-	pages, err := web.New(web.Files(), c.Production)
+	var admin fs.FS
+	if c.AdminRouteKey != "" {
+		admin = web.AdminFiles()
+	}
+	pages, err := web.New(web.Files(), admin, c.Production)
 	if errors.Is(err, web.ErrNotBuilt) && !c.Production {
 		slog.Info("serving the API only; the web app isn't built into this binary (make serve)")
 		return nil

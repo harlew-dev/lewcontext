@@ -28,11 +28,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Code, Text } from "@/components/ui/text";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { formatDateTime } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import type { AdminDelivery, AdminEventDetail } from "@/types/admin";
 // One event: who, what and from where, its payload as stored, its
@@ -45,12 +45,12 @@ export default function AdminEventShow() {
 }
 function EventContent({ id }: { id: string }) {
   const key = useAdminKey();
-  const event = useAdminResource(paths.admin.events.show(id));
+  const event = useAdminResource(adminPaths.events.show(id));
   if (event.missing) return <EventNotFound />;
   return (
     <>
       <Link
-        href={routes.admin.events.index(key)}
+        href={adminRoutes.events.index(key)}
         className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
       >
         <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
@@ -174,7 +174,7 @@ function EventNotFound() {
       title="This event has wandered off."
       description="It was pruned after 90 days, or the link is mistyped."
       action={
-        <Button href={routes.admin.events.index(key)}>Back to events</Button>
+        <Button href={adminRoutes.events.index(key)}>Back to events</Button>
       }
     />
   );

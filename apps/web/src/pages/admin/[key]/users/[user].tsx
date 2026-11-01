@@ -24,11 +24,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Text } from "@/components/ui/text";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import type { AdminUserDetail } from "@/types/admin";
 // One account: its sign-in state and its workspaces. Opening it is recorded
@@ -40,12 +40,12 @@ export default function AdminUserShow() {
 }
 function UserContent({ id }: { id: string }) {
   const key = useAdminKey();
-  const user = useAdminResource(paths.admin.users.show(id));
+  const user = useAdminResource(adminPaths.users.show(id));
   if (user.missing) return <UserNotFound />;
   return (
     <>
       <Link
-        href={routes.admin.users.index(key)}
+        href={adminRoutes.users.index(key)}
         className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
       >
         <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
@@ -80,7 +80,7 @@ function UserDetails({ user }: { user: AdminUserDetail }) {
         </div>
         <Button
           outline
-          href={routes.admin.events.index(key, { account: user.id })}
+          href={adminRoutes.events.index(key, { account: user.id })}
         >
           Activity
         </Button>
@@ -134,7 +134,7 @@ function Memberships({ user }: { user: AdminUserDetail }) {
             {user.memberships.map(({ workspace, role, addedAt }) => (
               <TableRow
                 key={workspace.id}
-                href={routes.admin.workspaces.show(key, workspace.id)}
+                href={adminRoutes.workspaces.show(key, workspace.id)}
                 title={`Open ${workspace.name}`}
               >
                 <TableCell className="font-medium">{workspace.name}</TableCell>
@@ -159,7 +159,7 @@ function UserNotFound() {
       title="This user has wandered off."
       description="The account was deleted, or the link is mistyped."
       action={
-        <Button href={routes.admin.users.index(key)}>Back to users</Button>
+        <Button href={adminRoutes.users.index(key)}>Back to users</Button>
       }
     />
   );

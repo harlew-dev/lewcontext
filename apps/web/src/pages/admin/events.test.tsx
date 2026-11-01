@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { createRoutesStub, Outlet, useLocation } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
-import { adminLoader } from "@/lib/loaders";
+import { adminLoader } from "@/lib/admin";
 import { stubApi, type Sent } from "@/test/api";
 import { testSession } from "@/test/session";
 import type { AdminEvent, AdminMail } from "@/types/admin";

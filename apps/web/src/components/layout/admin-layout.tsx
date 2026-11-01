@@ -29,10 +29,12 @@ import {
   SidebarToggle,
 } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/toast";
-import { errorMessage, useAdminApi } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
+import { useAdminApi } from "@/lib/api/admin";
 import { useAdminKey, useAdminSession } from "@/lib/admin";
+import { adminNavigation, adminRoutes } from "@/lib/admin-routes";
 import { initials } from "@/lib/format";
-import { adminNavigation, routes } from "@/lib/routes";
+import { routes } from "@/lib/routes";
 import { useClearCache } from "@/lib/use-clear-cache";
 import { SidebarLayout } from "./sidebar-layout";
 // The app name with a red "Admin" badge, so the dashboard is never mistaken
@@ -62,7 +64,8 @@ function useCurrentPath() {
 // Signed-in chrome for the admin pages (pages/admin/layout.tsx): the sidebar
 // layout with Users and Workspaces, and an account menu leading back to the
 // app (or its Account & security) and Sign out. Signing out of the dashboard
-// leaves the app session alone.
+// leaves the app session alone. The app's pages are another build: following
+// those links loads them as a new page (pages/admin/not-found.tsx).
 export function AdminLayout({ children }: { children: ReactNode }) {
   const api = useAdminApi();
   const key = useAdminKey();
@@ -73,7 +76,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   async function signOut() {
     try {
       await api.logout();
-      await navigate(routes.admin.login(key));
+      await navigate(adminRoutes.login(key));
       clearCache();
     } catch (e) {
       toast.error(errorMessage(e));

@@ -5,7 +5,7 @@ import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Toaster } from "@/components/ui/toast";
 import { AdminProvider } from "@/lib/admin";
 import { appName } from "@/lib/app";
-import { adminLoader } from "@/lib/loaders";
+import { adminLoader } from "@/lib/admin";
 import type { Route } from "./+types/layout";
 // The admin dashboard's chrome around Users and Workspaces. Its loader asks
 // the API about the key in the URL first: a wrong one renders the ordinary

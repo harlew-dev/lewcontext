@@ -2,11 +2,13 @@
 
 The web app is a single-page app on React Router v7 (framework mode, `ssr: false`), built by Vite. Public pages listed in `react-router.config.ts` (`prerender`) are rendered to HTML at build time; every other URL gets one shell (`__spa-fallback.html`) and renders in the browser. In production the Go server serves both ([api/README.md](../api/README.md#serving-the-web-app)).
 
+It is built twice (`web-build.ts`): the app build has every page but the admin dashboard's; the admin build (`WEB_BUILD=admin`) has only the admin pages, its files under `/admin-assets/` and its one shell `index.html`, which Go serves only at the right key ([../api/admin.md](../api/admin.md#the-admin-build)).
+
 ## URLs
 
 Route constants are grouped by resource with the page actions (`routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`), and resource pages' default exports are `<Resource><Action>` (`ProjectIndex`); see [../naming.md](../naming.md#web-app).
 
-Every page is registered with its URL in `src/routes.ts`; there is no file-system routing.
+Every page is registered with its URL in `src/routes.ts`; there is no file-system routing. It holds two lists, `appRoutes` and `adminRoutes`: `react-router build` takes one (by `WEB_BUILD`) and its not-found page, while `react-router typegen` and the dev servers take both, since typegen writes one set of types for the whole program and every dev server runs it. A new admin page goes in `adminRoutes`, a new app page in `appRoutes`.
 
 | Path | Page | Notes |
 | --- | --- | --- |
@@ -26,7 +28,7 @@ Every page is registered with its URL in `src/routes.ts`; there is no file-syste
 | `/app/wsp_…/projects/prj_…` | `pages/app/[workspace]/projects/[project].tsx` | The ⋯ menu offers Edit project (`project.update`) and Delete project (`project.destroy`, returning to Projects); with neither, no menu. The details list shows the status as its badge |
 | `/app/wsp_…/settings` | `pages/app/[workspace]/settings.tsx` (index of `settings/layout.tsx`) | Rename (`workspace.update`), copy the ID, and a danger zone: Leave (hidden when `workspace.canLeave` is false: the only owner) and Delete workspace (`workspace.destroy`: type the name, plus your password, under a warning callout). After either, the next workspace's dashboard opens with a toast, or onboarding. It loads no member data; only the Members tab does |
 | `/app/wsp_…/settings/members` | `pages/app/[workspace]/settings/members.tsx` (in `settings/layout.tsx`) | Owners and admins (`workspace.member.index`): search members, change a role, remove; **Invite** (left of the search box) (`workspace.invitation.store`, an email and one of your `assignableRoles` but owner); and Pending invitations above the members while there are any ("Sending…", "Sent <date>" or Expired, polling while one is sending; Revoke invitation in the row's ⋯ menu). Anyone else sees a notice and nothing is fetched. Both settings pages share `SettingsTabs` (General / Members), shown only with that permission |
-| `/admin/<key>` | `pages/admin/[key]/index.tsx` | The admin sign-in (`AdminLogin`): password, then the code, or setting MFA up (QR code hidden until revealed, then the recovery codes). Its loader checks the key with the API first: a wrong one is the not-found page ([../api/admin.md](../api/admin.md#web-app)) |
+| `/admin/<key>` | `pages/admin/[key]/index.tsx` | The admin sign-in (`AdminLogin`), in the admin build: password, then the code, or setting MFA up (QR code hidden until revealed, then the recovery codes). Its loader checks the key with the API first: a wrong one is the not-found page ([../api/admin.md](../api/admin.md#web-app)). Links from the admin pages to the app (the logo, Back to app) land on the admin build's `pages/admin/not-found.tsx`, which loads them as a new page (`redirectDocument`) |
 | `/admin/<key>/users`, `users/usr_…`, `workspaces`, `workspaces/wsp_…` | `pages/admin/[key]/*` inside `pages/admin/layout.tsx` | The admin dashboard (`AdminUserIndex`, `AdminUserShow`, `AdminWorkspaceIndex`, `AdminWorkspaceShow`), read-only. Lists search and sort in the URL; rows open their page. A user's and a workspace's page link to their Activity (Events, filtered); a workspace's lists its projects. Not prerendered, never a `?next=` |
 | `/admin/<key>/events`, `events/evt_…`, `mail` | `pages/admin/[key]/events.tsx`, `events/[event].tsx`, `mail.tsx` | The audit trail (`AdminEventIndex`: filters in the URL, Older / Newer by cursor), one event (`AdminEventShow`), and the mail queue (`AdminDeliveryIndex`: `?window=7d`, `?status=`, `?before=`) ([../api/admin.md](../api/admin.md#web-app)) |
 | anything else | `pages/not-found.tsx` | Go answers it with status 404 |
@@ -69,7 +71,7 @@ Loaders run in the browser before a route renders. They only decide what a page 
 | `verifyEmailLoader` | `/app/verify-email` | Needs a session (401 → login); a verified account, or verification off, goes on to `?next=` or `/app` |
 
 `signedInLoader`, `workspaceHomeLoader` and `onboardingLoader` send an account that must verify its email (the API's 403 with `verificationRequired`) to `/app/verify-email`, with `?next=` from the layout's. The session carries `emailVerification` (`off`, `optional`, `required`) and the user `emailVerifiedAt`.
-| `adminLoginLoader`, `adminLoader` | the admin sign-in page, the admin layout | `GET /api/admin/me` with the URL's key: 404 → the not-found page (a wrong key); signed in → Users, or the session for the layout; 401 → the form, or back to it; API unreachable → `ServiceUnavailable` |
+| `adminLoginLoader`, `adminLoader` (in `lib/admin.tsx`, out of the app build) | the admin sign-in page, the admin layout | `GET /api/admin/me` with the URL's key: 404 → the not-found page (a wrong key); signed in → Users, or the session for the layout; 401 → the form, or back to it; API unreachable → `ServiceUnavailable` |
 
 While the first page's loader runs, the root `HydrateFallback` shows an empty page. Loaders use `loaderApi()`, a read-only client ([api.md](api.md)).
 

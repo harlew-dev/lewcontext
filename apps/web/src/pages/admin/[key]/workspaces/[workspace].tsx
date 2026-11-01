@@ -31,12 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { formatDate } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
 import { url } from "@/lib/pagination";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import type { AdminWorkspaceDetail } from "@/types/admin";
 import type { Project, ProjectQuery, ProjectSortField } from "@/types/projects";
@@ -50,12 +50,12 @@ export default function AdminWorkspaceShow() {
 }
 function WorkspaceContent({ id }: { id: string }) {
   const key = useAdminKey();
-  const workspace = useAdminResource(paths.admin.workspaces.show(id));
+  const workspace = useAdminResource(adminPaths.workspaces.show(id));
   if (workspace.missing) return <WorkspaceNotFound />;
   return (
     <>
       <Link
-        href={routes.admin.workspaces.index(key)}
+        href={adminRoutes.workspaces.index(key)}
         className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
       >
         <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
@@ -82,7 +82,7 @@ function WorkspaceDetails({ workspace }: { workspace: AdminWorkspaceDetail }) {
         <Heading className="min-w-0 truncate">{workspace.name}</Heading>
         <Button
           outline
-          href={routes.admin.events.index(key, { workspace: workspace.id })}
+          href={adminRoutes.events.index(key, { workspace: workspace.id })}
         >
           Activity
         </Button>
@@ -127,7 +127,7 @@ function Members({ workspace }: { workspace: AdminWorkspaceDetail }) {
           {workspace.members.map((member) => (
             <TableRow
               key={member.id}
-              href={routes.admin.users.show(key, member.id)}
+              href={adminRoutes.users.show(key, member.id)}
               title={`Open ${member.name}`}
             >
               <TableCell className="font-medium">{member.name}</TableCell>
@@ -168,10 +168,10 @@ function Projects({ workspace }: { workspace: AdminWorkspaceDetail }) {
   const [search] = useSearchParams();
   const query = projectQuery(search);
   const list = useAdminResource(
-    paths.admin.projects(workspace.id).index(indexQuery(query)),
+    adminPaths.projects(workspace.id).index(indexQuery(query)),
   );
   const pathFor = (q: ProjectQuery) =>
-    url(routes.admin.workspaces.show(key, workspace.id), projectParams(q));
+    url(adminRoutes.workspaces.show(key, workspace.id), projectParams(q));
   const go = (q: Partial<ProjectQuery>, replace = false) =>
     void navigate(pathFor({ ...query, page: 1, ...q }), {
       replace,
@@ -253,7 +253,7 @@ function WorkspaceNotFound() {
       title="This workspace has wandered off."
       description="It was deleted, or the link is mistyped."
       action={
-        <Button href={routes.admin.workspaces.index(key)}>
+        <Button href={adminRoutes.workspaces.index(key)}>
           Back to workspaces
         </Button>
       }

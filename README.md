@@ -263,7 +263,7 @@ Fake records come from the factories in `apps/api/internal/factory`, one per tab
 | Command | Does |
 | --- | --- |
 | `make db` | Start PostgreSQL (with pgvector) in Docker |
-| `make dev` | API and Vite together in one terminal (or `make api` and `make web` in two) |
+| `make dev` | API and Vite (the app's, and the admin dashboard's behind it) together in one terminal (or `make api`, `make web` and `make web-admin` apart) |
 | `make serve` | Build the production binary and run it on `:3000` |
 | `make migrate` | Apply pending migrations |
 | `make migrate-status` | List migrations and whether they are applied |
@@ -285,7 +285,7 @@ Migrations use Bun's migrator: explicit, versioned, transactional per file, grou
 make db       # PostgreSQL, and the tests' database (lewcontext_test)
 make test     # Go unit and PostgreSQL integration tests (race detector), React and API client tests
 make check    # gofmt, go vet, TypeScript, ESLint, Prettier
-make build    # web build, embedded into one Go executable (bin/api)
+make build    # both web builds (app and admin), embedded into one Go executable (bin/api)
 make test-e2e # end-to-end tests in Chromium, against the production binary
 ```
 
@@ -306,14 +306,14 @@ The app shell and API responses are never cached, while hashed assets are cached
 | `cmd` | Server, migration and seed entrypoints |
 | `internal/httpapi/router/routes.go` | Every API route and its authentication requirement, plus the web app's page routes (signed-out `/app/*` requests go to login before any HTML is served) |
 | `internal/{auth,config,database,httpapi,store}` | Cryptography, validated configuration, Bun connection and migrator, HTTP boundary (the core, with controllers in `httpapi/endpoints/<area>`), Bun models and queries |
-| `internal/web` | Serves the embedded web build: prerendered pages, the single-page-app fallback (404 for unknown URLs), cached assets, security headers, and a CSP with each HTML file's inline-script hashes |
+| `internal/web` | Serves the embedded web build: prerendered pages, the single-page-app fallback (404 for unknown URLs), cached assets, security headers, and a CSP with each HTML file's inline-script hashes; and the admin dashboard's own build, only behind its key and assets pass |
 | `migrations` | Embedded Bun SQL migrations (`.tx.up.sql` / `.tx.down.sql` pairs) |
 
 **Web (`apps/web`)**
 
 | Path | Contents |
 | --- | --- |
-| `src/routes.ts` | React Router page registry. `react-router.config.ts` prerenders `/` and builds everything else as a single-page app |
+| `src/routes.ts` | React Router page registry. `react-router.config.ts` prerenders `/` and builds everything else as a single-page app; the admin dashboard is a second build (`WEB_BUILD=admin`) |
 | `src/pages` | Pages, nested as `home.tsx` (`/`), `auth/` (`/auth/login`, `/auth/register`) and `app/` (`/app/onboarding`, `/app/settings`, `/app/wsp_…/dashboard`, `/app/wsp_…/projects`, …). Each page holds its own content; `app/layout.tsx` is the signed-in layout route |
 | `src/components/ui` | Tailwind components in kebab-case files (`button.tsx`, `input.tsx`, `fieldset.tsx`, `listbox.tsx`, `dialog.tsx`, `dropdown.tsx`, `sidebar.tsx`, `navbar.tsx`, `table.tsx`, …), with BaseUI underneath where there is behaviour |
 | `src/components/layout` | `sidebar-layout.tsx`, `auth-layout.tsx`, `application-layout.tsx` (the app's sidebar, navbar and account menu) and the status page |
@@ -332,7 +332,7 @@ See [security details and limits](docs/api/auth.md).
 
 ### Deployment
 
-For a production-like run locally, use `make serve` (or `make build`, then run `./bin/api` with the configuration exported). `bin/api` refuses to start in production without the web build embedded.
+For a production-like run locally, use `make serve` (or `make build`, then run `./bin/api` with the configuration exported). `bin/api` refuses to start in production without the web build embedded, and anywhere with `ADMIN_ROUTE_KEY` set but no admin build.
 
 Before deploying to production:
 

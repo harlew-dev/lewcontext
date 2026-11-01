@@ -1,9 +1,11 @@
+import { useMemo } from "react";
+import { useOptionalAdmin } from "@/lib/admin";
 import { url, type Page } from "@/lib/pagination";
 import type { Project, ProjectSort } from "@/types/projects";
 import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
 import type { MfaSetup, RecoveryCodes } from "./auth";
-import type { Http } from "./http";
+import { httpWith, type Http } from "./http";
 import { path } from "./paths";
 import {
   defaultAdminUserSort,
@@ -25,9 +27,11 @@ import {
   type EventFilters,
   type MailWindow,
 } from "@/types/admin";
-// The admin dashboard's API, under /api/admin. Every call carries the key
-// (adminHttp), never in a path. The lists take a page, a search and a sort;
-// the default sort is left out, so each query has one path.
+// The admin dashboard's API, under /api/admin. It lives only here, never in
+// lib/api/index.ts, which every app page loads: the admin build alone may
+// hold admin code (plans/features/admin/README.md, rule 7). Every call
+// carries the key (adminHttp), never in a path. The lists take a page, a
+// search and a sort; the default sort is left out, so each query has one path.
 export type AdminUserIndexQuery = {
   page?: number;
   perPage?: number;
@@ -66,8 +70,8 @@ export type AdminLoginStep = { mfaRequired: true } | { mfaSetupRequired: true };
 export type AdminSignedIn = Omit<SignedIn, "user"> & AdminSession;
 export type AdminSetupDone = AdminSignedIn & RecoveryCodes;
 const base = "/api/admin";
-// Typed paths (paths.admin).
-export const adminRoutes = {
+// Typed paths, for SWR keys: adminPaths.users.index({ page: 2 }).
+export const adminPaths = {
   me: () => path<AdminSession>(`${base}/me`),
   login: () => `${base}/login`,
   loginMfaSetup: () => `${base}/login/mfa/setup`,
@@ -130,49 +134,84 @@ export function adminClient(http: Http) {
   return {
     // Loads any typed admin path, for SWR.
     get: http.get,
-    me: () => http.get(adminRoutes.me()),
+    me: () => http.get(adminPaths.me()),
     login: ({ email, password }: { email: string; password: string }) =>
-      http.send<AdminLoginStep>("POST", adminRoutes.login(), {
+      http.send<AdminLoginStep>("POST", adminPaths.login(), {
         email,
         password,
       }),
     // A new authenticator secret, for an admin setting MFA up at the door.
     loginMfaSetup: () =>
-      http.send<MfaSetup>("POST", adminRoutes.loginMfaSetup(), {}),
+      http.send<MfaSetup>("POST", adminPaths.loginMfaSetup(), {}),
     // A code (MFA on), or the setup's first code (answering with the
     // recovery codes). A wrong code is an ApiError with field "code"; a 401
     // means the sign-in ended and the password is needed again.
     loginMfa: <T extends AdminSignedIn = AdminSignedIn>(code: string) =>
-      http.send<T>("POST", adminRoutes.loginMfa(), { code }),
-    logout: () => http.send<void>("POST", adminRoutes.logout(), {}),
+      http.send<T>("POST", adminPaths.loginMfa(), { code }),
+    logout: () => http.send<void>("POST", adminPaths.logout(), {}),
     users: () => ({
       index: (query: AdminUserIndexQuery = {}) =>
-        http.get(adminRoutes.users.index(query)),
-      show: (id: string) => http.get(adminRoutes.users.show(id)),
+        http.get(adminPaths.users.index(query)),
+      show: (id: string) => http.get(adminPaths.users.show(id)),
     }),
     workspaces: () => ({
       index: (query: AdminWorkspaceIndexQuery = {}) =>
-        http.get(adminRoutes.workspaces.index(query)),
-      show: (id: string) => http.get(adminRoutes.workspaces.show(id)),
+        http.get(adminPaths.workspaces.index(query)),
+      show: (id: string) => http.get(adminPaths.workspaces.show(id)),
     }),
     projects: (workspace: string) => ({
       index: (query: AdminProjectIndexQuery = {}) =>
-        http.get(adminRoutes.projects(workspace).index(query)),
+        http.get(adminPaths.projects(workspace).index(query)),
     }),
     events: () => ({
       index: (query: AdminEventIndexQuery = {}) =>
-        http.get(adminRoutes.events.index(query)),
-      show: (id: string) => http.get(adminRoutes.events.show(id)),
+        http.get(adminPaths.events.index(query)),
+      show: (id: string) => http.get(adminPaths.events.show(id)),
     }),
-    catalogue: () => http.get(adminRoutes.catalogue()),
-    mail: (window?: MailWindow) => http.get(adminRoutes.mail(window)),
+    catalogue: () => http.get(adminPaths.catalogue()),
+    mail: (window?: MailWindow) => http.get(adminPaths.mail(window)),
     deliveries: () => ({
       index: (query: AdminDeliveryIndexQuery = {}) =>
-        http.get(adminRoutes.deliveries.index(query)),
+        http.get(adminPaths.deliveries.index(query)),
     }),
   };
 }
 export type AdminApiClient = ReturnType<typeof adminClient>;
+// The admin dashboard's requests: the same-origin /api/admin with the admin
+// cookie, the ADMIN_ROUTE_KEY from the page's URL in X-Admin-Key on every
+// call (without it the API answers as an unknown route), and the admin
+// session's CSRF token on mutations when given.
+export function adminHttp(adminKey: string, csrfToken?: string): Http {
+  return httpWith({
+    base: "",
+    headers: {
+      "X-Admin-Key": adminKey,
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    credentials: "same-origin",
+    timeout: 12000,
+  });
+}
+// The admin dashboard's API, for components under the admin pages
+// (AdminProvider): every call sends the key from the page's URL, and
+// mutations the admin session's CSRF token. It never uses the app session.
+//   const api = useAdminApi();
+//   await api.logout();
+export function useAdminApi(): AdminApiClient {
+  const admin = useOptionalAdmin();
+  if (!admin) throw new Error("useAdminApi() needs an AdminProvider");
+  const { adminKey } = admin;
+  const csrfToken = admin.session?.csrfToken;
+  return useMemo(
+    () => adminClient(adminHttp(adminKey, csrfToken)),
+    [adminKey, csrfToken],
+  );
+}
+// The admin API for the admin pages' route loaders: reads only, with the key
+// from the route's params.
+export function loaderAdminApi(adminKey: string): AdminApiClient {
+  return adminClient(adminHttp(adminKey));
+}
 // Whether the door's password step asks for setting MFA up.
 export function needsMfaSetup(step: AdminLoginStep): boolean {
   return "mfaSetupRequired" in step;

@@ -1,16 +1,7 @@
-import {
-  BuildingOffice2Icon,
-  EnvelopeIcon,
-  HomeIcon,
-  QueueListIcon,
-  Square2StackIcon,
-  UsersIcon,
-} from "@heroicons/react/20/solid";
-import type { DeliveryPageQuery, EventFilters } from "@/types/admin";
+import { HomeIcon, Square2StackIcon } from "@heroicons/react/20/solid";
 import { publicIdPattern } from "./ids";
-import { url } from "./pagination";
 // Page URLs, registered with their page files in src/routes.ts (auth/* and
-// app/*). Workspace pages live under /app/<wsp_…>; /app itself opens the
+// app/*); the admin dashboard's are in lib/admin-routes.ts. Workspace pages live under /app/<wsp_…>; /app itself opens the
 // newest workspace (pages/app/index.tsx), and "/" is the public homepage. API
 // paths live with their resource in lib/api/*.
 export const routes = {
@@ -54,61 +45,7 @@ export const routes = {
   emailBlocks: {
     show: (token: string) => `/auth/email-blocks/${token}`,
   },
-  // The admin dashboard, at its secret key (ADMIN_ROUTE_KEY, from the URL;
-  // lib/admin.tsx). Never a ?next=: signing in always lands on Users.
-  admin: {
-    login: (key: string) => `/admin/${key}`,
-    users: {
-      index: (key: string) => `/admin/${key}/users`,
-      show: (key: string, user: string) => `/admin/${key}/users/${user}`,
-    },
-    workspaces: {
-      index: (key: string) => `/admin/${key}/workspaces`,
-      show: (key: string, workspace: string) =>
-        `/admin/${key}/workspaces/${workspace}`,
-    },
-    // Events, filtered: links from elsewhere open the rows behind them.
-    events: {
-      index: (key: string, filters: EventFilters = {}) =>
-        url(`/admin/${key}/events`, filters),
-      show: (key: string, event: string) => `/admin/${key}/events/${event}`,
-    },
-    // The Mail page lists deliveries (AdminDeliveryIndex), with the summary's
-    // window (24h is the default), a status tab and a cursor.
-    deliveries: {
-      index: (
-        key: string,
-        { window, status, before }: DeliveryPageQuery = {},
-      ) =>
-        url(`/admin/${key}/mail`, {
-          window: window === "24h" ? undefined : window,
-          status,
-          before,
-        }),
-    },
-  },
 } as const;
-// Sidebar items for the admin dashboard (Monitoring comes with its plan).
-export function adminNavigation(key: string) {
-  return [
-    { label: "Users", href: routes.admin.users.index(key), icon: UsersIcon },
-    {
-      label: "Workspaces",
-      href: routes.admin.workspaces.index(key),
-      icon: BuildingOffice2Icon,
-    },
-    {
-      label: "Events",
-      href: routes.admin.events.index(key),
-      icon: QueueListIcon,
-    },
-    {
-      label: "Mail",
-      href: routes.admin.deliveries.index(key),
-      icon: EnvelopeIcon,
-    },
-  ];
-}
 // Sidebar items for a workspace. Account & security is in the account menu
 // and workspace settings in the workspace menu instead.
 export function navigation(workspace: string) {

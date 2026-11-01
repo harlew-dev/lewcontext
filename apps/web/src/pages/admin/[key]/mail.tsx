@@ -30,11 +30,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Code, Text, TextLink } from "@/components/ui/text";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { cx } from "@/lib/cx";
 import { formatDateTime } from "@/lib/format";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import {
   deliveryStatuses,
@@ -58,9 +58,9 @@ export default function AdminDeliveryIndex() {
   const [search] = useSearchParams();
   const query = pageQuery(search);
   const period = query.window ?? "24h";
-  const summary = useAdminResource(paths.admin.mail(period));
+  const summary = useAdminResource(adminPaths.mail(period));
   const pathFor = (q: DeliveryPageQuery) =>
-    routes.admin.deliveries.index(key, q);
+    adminRoutes.deliveries.index(key, q);
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -333,7 +333,7 @@ function TopRecipients({ mail }: { mail: AdminMail }) {
               <TableRow key={r.email}>
                 <TableCell className="max-w-56 truncate">
                   <TextLink
-                    href={routes.admin.events.index(key, { email: r.email })}
+                    href={adminRoutes.events.index(key, { email: r.email })}
                   >
                     {r.email}
                   </TextLink>
@@ -479,7 +479,7 @@ function Deliveries({
   pathFor: (q: DeliveryPageQuery) => string;
 }) {
   const list = useAdminResource(
-    paths.admin.deliveries.index({
+    adminPaths.deliveries.index({
       status: query.status,
       before: query.before,
     }),
@@ -557,7 +557,7 @@ function DeliveryTable({ rows }: { rows: AdminDeliveryRow[] }) {
         {rows.map((row) => (
           <TableRow key={`${row.event.id}:${row.listener}`}>
             <TableCell>
-              <TextLink href={routes.admin.events.show(key, row.event.id)}>
+              <TextLink href={adminRoutes.events.show(key, row.event.id)}>
                 {formatDateTime(row.event.createdAt)}
               </TextLink>
               <div className="text-zinc-500 dark:text-zinc-400">

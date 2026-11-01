@@ -23,13 +23,17 @@ export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;
   send<T>(method: Method, path: string, body?: unknown): Promise<T>;
 };
-type Transport = {
+// Where and how requests go: the base URL, headers sent with every request,
+// cookies and a timeout.
+export type Transport = {
   base: string;
   headers: Record<string, string>;
   credentials?: RequestCredentials;
   timeout: number;
 };
-function http(transport: Transport): Http {
+// An Http on a transport: browserHttp below, and the admin dashboard's
+// adminHttp (lib/api/admin.ts).
+export function httpWith(transport: Transport): Http {
   const call = <T>(method: string, path: string, body?: unknown) =>
     request<T>(transport, method, path, body);
   return {
@@ -69,24 +73,9 @@ async function request<T>(
 // development) with the session cookie; mutations add the session's CSRF
 // token when one is given.
 export function browserHttp(csrfToken?: string): Http {
-  return http({
+  return httpWith({
     base: "",
     headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
-    credentials: "same-origin",
-    timeout: 12000,
-  });
-}
-// The admin dashboard's requests: the same-origin /api/admin with the admin
-// cookie, the ADMIN_ROUTE_KEY from the page's URL in X-Admin-Key on every
-// call (without it the API answers as an unknown route), and the admin
-// session's CSRF token on mutations when given.
-export function adminHttp(adminKey: string, csrfToken?: string): Http {
-  return http({
-    base: "",
-    headers: {
-      "X-Admin-Key": adminKey,
-      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-    },
     credentials: "same-origin",
     timeout: 12000,
   });

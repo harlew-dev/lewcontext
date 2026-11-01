@@ -227,6 +227,11 @@ func pageRoutes(s *httpapi.Server) http.Handler {
 	// /admin is an unknown page (admin.go).
 	mux.Handle("GET /admin/{key}", s.AdminPage(false))
 	mux.Handle("GET /admin/{key}/{page...}", s.AdminPage(true))
+	// The admin build's files, only with the assets pass the admin pages set;
+	// without one, an unknown page. The bare path is one too: without it the
+	// mux would redirect it to /admin-assets/, showing the route exists.
+	mux.HandleFunc("GET /admin-assets/{file...}", s.AdminAssets)
+	mux.Handle("GET /admin-assets", s.Pages)
 	return mux
 }
 

@@ -110,8 +110,8 @@ func adminPageHeaders(w http.ResponseWriter) {
 
 // AdminPage serves /admin/{key} and /admin/{key}/{page...}. A wrong key (or
 // admin off) gets exactly what an unknown URL gets, with no query; the right
-// one the app shell, which renders the admin pages. Inner pages need an
-// admin session first.
+// one the admin build's shell, which renders the admin pages, and a fresh
+// assets pass for its files. Inner pages need an admin session first.
 func (s *Server) AdminPage(inner bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("key")
@@ -119,9 +119,69 @@ func (s *Server) AdminPage(inner bool) http.Handler {
 			s.Pages.ServeHTTP(w, r)
 			return
 		}
+		// Without an admin build there is no page to serve: the ordinary 404,
+		// and no pass.
+		if !s.Pages.AdminBuilt() {
+			s.Pages.ServeHTTP(w, r)
+			return
+		}
 		if inner && !s.requireAdminPage(w, r, key) {
 			return
 		}
+		s.issueAdminAssetsPass(w)
 		s.Pages.ServeAdmin(w, r)
 	})
+}
+
+// issueAdminAssetsPass sets the cookie that opens the admin build's files
+// for AdminAssetsPassLifetime: only here, on an admin page about to be
+// served with 200, never on a redirect or a 404. It is always signed with
+// the CURRENT key's digest (AdminKeyHash), whichever key the page was
+// served under: once a previous key is accepted too (ADMIN_ROUTE_KEY_PREVIOUS),
+// its pages still hand out passes for the current key, and AdminAssets
+// accepts no other.
+func (s *Server) issueAdminAssetsPass(w http.ResponseWriter) {
+	pass := s.keys.AdminAssetsPass(s.AdminKeyHash(), time.Now().Add(auth.AdminAssetsPassLifetime))
+	http.SetCookie(w, auth.AdminAssetsCookie(pass, s.Config.Production))
+}
+
+// AdminAssets serves GET /admin-assets/{file...}, the admin build's files,
+// to a browser holding a valid assets pass (auth/admin_assets.go). Anything
+// else (admin off, no pass, an expired or tampered one, one signed under
+// another key or APP_KEY, an unknown file, HTML or a dot-file) gets exactly
+// what an unknown URL gets: the pass is checked before any file is looked
+// up, so its answer doesn't depend on which files exist. The API never reads
+// the pass; it opens code, nothing else.
+func (s *Server) AdminAssets(w http.ResponseWriter, r *http.Request) {
+	if !s.adminAssetsPassValid(r) || !s.Pages.ServeAdminFile(w, r, r.PathValue("file")) {
+		s.Pages.ServeHTTP(w, r)
+	}
+}
+
+// adminAssetsPassChecked is how many cookies named as the pass a request
+// may have checked: a sibling subdomain can plant one under the same name
+// (the name can't be __Host-, as its path isn't /), and it may be sent
+// first, so the first alone isn't enough; but no request makes us compute
+// HMACs without end.
+const adminAssetsPassChecked = 4
+
+// adminAssetsPassValid reports whether the request carries a pass signed
+// for the current key that hasn't ended, among its first
+// adminAssetsPassChecked cookies of the pass's name. With admin off nothing
+// is.
+func (s *Server) adminAssetsPassValid(r *http.Request) bool {
+	if s.Config.AdminRouteKey == "" {
+		return false
+	}
+	cookies := r.CookiesNamed(auth.AdminAssetsCookieName(s.Config.Production))
+	now, keyHash := time.Now(), s.AdminKeyHash()
+	for i, cookie := range cookies {
+		if i == adminAssetsPassChecked {
+			break
+		}
+		if s.keys.AdminAssetsPassValid(cookie.Value, keyHash, now) {
+			return true
+		}
+	}
+	return false
 }

@@ -61,6 +61,72 @@ async function passwordStep(page: Page, email: string) {
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
+// What the app build must never hold (scripts/check-app-build.sh checks the
+// files too): the admin API's paths and header, admin routes, and the admin
+// build's file path.
+const adminMarkers = [
+  "/api/admin",
+  "X-Admin-Key",
+  "pages/admin",
+  "admin-assets",
+];
+test("the public pages ship no admin code", async ({ page, request }) => {
+  const scripts: string[] = [];
+  // Scripts and module preloads alike: everything JavaScript it fetched.
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname.endsWith(".js"))
+      scripts.push(response.url());
+  });
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible();
+  const routes = await page.evaluate(() =>
+    Object.keys(
+      (window as unknown as { __reactRouterManifest: { routes: object } })
+        .__reactRouterManifest.routes,
+    ),
+  );
+  expect(routes.length).toBeGreaterThan(5);
+  expect(routes.filter((id) => id.includes("admin"))).toEqual([]);
+  // The manifest and every script the homepage loaded, read in full.
+  expect(scripts.some((url) => /\/assets\/manifest-/.test(url))).toBe(true);
+  for (const url of scripts) {
+    const body = await (await request.get(url)).text();
+    for (const marker of adminMarkers) expect(body, url).not.toContain(marker);
+  }
+});
+// The admin build's files open only with the pass the admin page sets: the
+// same file from a browser that never opened the page is the 404 page.
+test("admin files are the 404 page without the assets pass", async ({
+  page,
+  browser,
+}) => {
+  const door = await page.goto(`/admin/${key}`);
+  expect(door?.status()).toBe(200);
+  const html = await door!.text();
+  const file = /\/admin-assets\/assets\/[\w.-]+\.js/.exec(html)?.[0];
+  expect(file).toBeTruthy();
+  const pass = (await page.context().cookies()).find(
+    (c) => c.name === "lewcontext_admin_assets",
+  );
+  expect(pass?.path).toBe("/admin-assets/");
+  expect(pass?.httpOnly).toBe(true);
+  expect(pass?.sameSite).toBe("Strict");
+  const withPass = await page.request.get(file!);
+  expect(withPass.status()).toBe(200);
+  expect(withPass.headers()["cache-control"]).toBe(
+    "private, max-age=28800, immutable",
+  );
+
+  const fresh = await browser.newContext();
+  const stranger = await fresh.newPage();
+  const nowhere = await stranger.request.get("/nowhere");
+  const response = await stranger.goto(file!);
+  expect(response?.status()).toBe(404);
+  await expect(stranger.getByText("This page has wandered off.")).toBeVisible();
+  expect(await response!.text()).toBe(await nowhere.text());
+  expect(response!.headers()["cache-control"]).toBe("no-store");
+  await fresh.close();
+});
 test("a wrong key is the ordinary 404 page", async ({ page }) => {
   for (const path of [`/admin/${key}x`, "/admin/x/users", "/admin"]) {
     const response = await page.goto(path);
@@ -195,6 +261,22 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
     ),
   ).toMatch(/^(127\.0\.0\.1|::1)$/);
 
+  // The pass ends mid-visit (deleted here): the next page's code fails to
+  // load, React Router reloads the page, and the page gate renews the pass.
+  // Mail's code hasn't been loaded yet.
+  await page.context().clearCookies({ name: "lewcontext_admin_assets" });
+  await page.getByRole("link", { name: "Mail" }).first().click();
+  await expect
+    .poll(async () =>
+      (await page.context().cookies()).some(
+        (c) => c.name === "lewcontext_admin_assets",
+      ),
+    )
+    .toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Nora Notadmin" }),
+  ).toBeVisible();
+
   // Mail: a delivery that failed (seeded, as a broken template leaves one)
   // is listed under Failed with its error.
   sql(
@@ -203,7 +285,10 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
      SELECT id, 'mail.password_reset', 6, now(), 'render forgot-password: template: no such template' FROM e`,
   );
   await page.getByRole("link", { name: "Mail" }).first().click();
-  await expect(page.getByRole("heading", { name: "Mail" })).toBeVisible();
+  // Exact: "Emails sent per hour" and "How mail is sent" are headings too.
+  await expect(
+    page.getByRole("heading", { name: "Mail", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("table", { name: "Emails sent per hour" }),
   ).toBeAttached();
@@ -214,5 +299,15 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   const failed = page.getByRole("row").filter({ hasText: brokenEmail });
   await expect(failed).toContainText("Failed");
   await expect(failed).toContainText("no such template");
+  expect(errors).toEqual([]);
+
+  // Back to app is another build: it loads as a new page, which Go answers
+  // (this browser has no app session, so login, returning to /app).
+  await page.getByRole("button", { name: "Admin account menu" }).click();
+  await page.getByRole("menuitem", { name: "Back to app" }).click();
+  await expect(page).toHaveURL(/\/auth\/login\?next=%2Fapp$/);
+  await expect(
+    page.getByRole("heading", { name: "Sign in to your account" }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 });

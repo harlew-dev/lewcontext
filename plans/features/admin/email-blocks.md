@@ -51,12 +51,12 @@ There is **no Block in the dashboard** (decision 4). An address without an accou
 
 ### Web app
 
-- **Page:** `/admin/:key/email-blocks`, `pages/admin/[key]/email-blocks.tsx`, exporting `AdminEmailBlockIndex`, inside the admin layout; route `routes.admin.emailBlocks.index(key)`. "Email blocks" joins the admin sidebar after Mail (`NoSymbolIcon`).
+- **Page:** `/admin/:key/email-blocks`, `pages/admin/[key]/email-blocks.tsx`, exporting `AdminEmailBlockIndex`, inside the admin layout; route `adminRoutes.emailBlocks.index(key)` (`lib/admin-routes.ts`). "Email blocks" joins the admin sidebar after Mail (`NoSymbolIcon`).
 - **Header:** the heading, then one line: "Addresses whose owners asked for no email from lewcontext, from a link in one of our emails. A blocked address gets no email and can't be used to sign up."
 - **List:** `PaginatedTable` with `SearchField` and sortable headers (`admin-list.tsx`). Columns: Address, Blocked (date), Owner's link ("Works until 31 Oct 2027", or "Expired" in zinc when `linkExpiresAt` is null), and a ⋯ `Dropdown` in the last column ([forms-and-actions.md](../../../docs/ui/forms-and-actions.md): table rows). Empty: "No blocked addresses." Search with no match: "No addresses match "…"." Loading, refresh failure with Retry, and the 401 redirect as other admin lists.
 - **Row menu:** Show activity (Events `?email=`, where `email.blocked` and `email.unblocked` show who blocked, from which IP, and every unblock's reason), then **Unblock** as `DropdownItem variant="danger"`. An admin can't undo an unblock, since there is no admin block; only the owner's next link can block again.
 - **`AdminActionDialog`** (`components/app/admin/admin-action-dialog.tsx`), as A6 describes it: a `ConfirmationDialog` with a required Reason `Textarea` (10–500 characters, counted) and, when the API answers `stepUp`, a code field (`OtpInput`, as the sign-in's `CodeStep` uses) that calls `POST /api/admin/step-up` and retries the action. Danger variant here. Title "Unblock ada@example.com?"; body "This address will get email from lewcontext again and can be used to sign up. Only its owner can block it again, from the link in a new email."; confirm **Unblock**. Pending, the API's error kept in the dialog, then a toast "ada@example.com unblocked." and the list reloads (one more recorded read).
-- **Client** (`lib/api/admin.ts`, the admin modules [separate build](separate-build.md)'s rule keeps admin code in): `adminRoutes.emailBlocks.index(query)`, `api.emailBlocks().index(query)`, `.destroy({email, reason})`, and `api.stepUp(code)`. Types `AdminEmailBlock`, `AdminEmailBlockIndexQuery`.
+- **Client** (`lib/api/admin.ts`, the admin modules [separate build](../implemented/admin/separate-build.md)'s rule keeps admin code in): typed paths `adminPaths.emailBlocks.index(query)`, `api.emailBlocks().index(query)`, `.destroy({email, reason})`, and `api.stepUp(code)`. Types `AdminEmailBlock`, `AdminEmailBlockIndexQuery`.
 
 ## Events
 

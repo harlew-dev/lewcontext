@@ -1,6 +1,6 @@
 # Admin dashboard
 
-Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate), `internal/httpapi/endpoints/admin`: `sessions.go` (sign-in), `users.go`, `workspaces.go`, `workspace_projects.go`, `events.go`, `mail.go` and `deliveries.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go` and `admin_mail.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/api/admin.ts`. Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md).
+Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate, the assets pass), `internal/auth/admin_assets.go` (the pass itself), `internal/web` (the admin build, apart from the app's), `internal/httpapi/endpoints/admin`: `sessions.go` (sign-in), `users.go`, `workspaces.go`, `workspace_projects.go`, `events.go`, `mail.go` and `deliveries.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go` and `admin_mail.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/admin-routes.ts`, `lib/api/admin.ts`, built on their own (`WEB_BUILD=admin`). Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md), [separate build](../../plans/features/implemented/admin/separate-build.md).
 
 Operators see every account and every workspace without running SQL against production. That view reads every user's data, so it's guarded by layers, each of which alone gets nobody in:
 
@@ -24,14 +24,48 @@ Operators see every account and every workspace without running SQL against prod
 ```
 GET /admin, /admin/<anything>     key unset, or <anything> isn't the key
                                   → exactly what GET /nowhere gets: the fallback page, 404, same headers, no query
-GET /admin/<key>                  → the app shell, 200: the admin sign-in page
-GET /admin/<key>/<page…>          no live admin session → 302 /admin/<key> (an app session doesn't count)
-                                  admin session         → the app shell, 200
+GET /admin/<key>                  → the admin build's shell, 200: the admin sign-in page, + the assets pass
+GET /admin/<key>/<page…>          no live admin session → 302 /admin/<key> (an app session doesn't count), no pass
+                                  admin session         → the admin build's shell, 200, + the assets pass
+GET /admin-assets/<file>          a valid assets pass, and the file exists → the file, Cache-Control: private
+                                  anything else                         → exactly what GET /nowhere gets
 ```
 
-Admin pages and their redirects send `Referrer-Policy: no-referrer` (the key never leaves in a Referer), `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store` (`Pages.ServeAdmin`, `adminPageHeaders`). The CSP and other headers are the app's.
+Admin pages and their redirects send `Referrer-Policy: no-referrer` (the key never leaves in a Referer), `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store` (`Pages.ServeAdmin`, `adminPageHeaders`). The CSP and other headers are the app's, with the admin shell's own script hashes.
 
-**The browser picks the page.** The 404's HTML is the same app bundle as any page's, so the admin routes' loaders first call `GET /api/admin/me` with the key: a 404 throws a 404 and the root renders the ordinary not-found page; a 401 shows the sign-in form (or, inside the layout, redirects to it); a 200 goes on. Until then they show the same blank `HydrateFallback` as every page. The bundle reveals that admin pages exist (`admin/:key`, `/api/admin/*`), never the key.
+**The browser picks the page.** The admin build's loaders first call `GET /api/admin/me` with the key: a 404 throws a 404 and the root renders the ordinary not-found page; a 401 shows the sign-in form (or, inside the layout, redirects to it); a 200 goes on. Until then they show the same blank `HydrateFallback` as every page. A wrong key never gets that far: Go answers it with the app's 404 page, which holds no admin code.
+
+## The admin build
+
+The admin pages are a build of their own, so nobody without the key can download them: the app build (every page anyone can load) holds no admin route, no `/api/admin` path and no `X-Admin-Key`. Plan: [separate build](../../plans/features/implemented/admin/separate-build.md).
+
+- **Two builds from one web app.** `scripts/build-web.sh` runs `react-router build` for the app (`build/client` → `internal/web/dist`) and again with `WEB_BUILD=admin` (`build/admin/client` → `internal/web/admin`). `routes.ts` holds both page lists and `react-router build` takes one; the admin build's files live under `/admin-assets/` (Vite's `base`) and its one HTML file is `index.html`. Its every-other-URL page (`pages/admin/not-found.tsx`) loads anything outside `/admin/` as a new page, so links to the app (Back to app, the logo) reach the app build.
+- **Kept apart, three times over:**
+  - **The app build fails on any admin module** it bundles (`no-admin-modules` in `vite.config.ts`, the modules listed by `isAdminModule` in `web-build.ts`): `pages/admin`, `components/app/admin`, `components/layout/admin-layout.tsx`, `lib/admin.tsx`, `lib/admin-routes.ts`, `lib/use-admin-resource.ts`, `lib/api/admin.ts`, `types/admin.ts`. It reads Rollup's module ids, so it holds however the import was written (an alias, a relative path, `..`, an extension, a dynamic `import()`). This is the main guard.
+  - **ESLint** stops such imports in the editor: `no-restricted-imports` for any path naming an admin module, and `no-restricted-syntax` for `import()` of one (and for `import()` of a template literal, which it can't read). Only the admin modules themselves may import them.
+  - **`scripts/check-app-build.sh` reads the output** for what isn't a module, such as a pasted string: it fails `make build`, the e2e server and the Docker image when any app build file contains `/admin/`, `/api/admin`, `X-Admin-Key`, `pages/admin` or `admin-assets`, in any case. `make check` runs its self-test (`scripts/check-app-build.test.sh`).
+- **Served apart.** `internal/web` embeds the admin build in its own directory (`//go:embed all:admin`), never in `dist`: `/admin-assets/…` on the app's side is the 404, and only `Pages.ServeAdmin` (the shell, after the key) and `Pages.ServeAdminFile` (a file, after the pass) read it. With `ADMIN_ROUTE_KEY` set, a server whose web build has no admin build refuses to start (`web.ErrAdminNotBuilt`); unset, nothing of it is loaded.
+
+### The assets pass
+
+The admin shell's scripts, styles and fonts need the key's protection too, but the key can't be in their URLs (Vite fixes them at build time, and the key would end up in every stack trace and HAR file). So every 200 admin page sets a pass, and `GET /admin-assets/{file...}` (`Server.AdminAssets`) checks it:
+
+| | |
+| --- | --- |
+| Cookie | `__Secure-lewcontext_admin_assets` in production (`lewcontext_admin_assets` in development); **Path=/admin-assets/**, HttpOnly, SameSite=Strict, Secure in production, Max-Age 8 hours (an admin session's longest) |
+| Value | `<expiry, unix seconds>.<base64url HMAC-SHA256(k, "admin-assets" ‖ key digest ‖ expiry)>`; `k` is derived from `APP_KEY` for this alone (HKDF, `lewcontext admin-assets-pass v1`), not the key that seals MFA secrets |
+| Set | by `issueAdminAssetsPass` on every 200 admin page (the sign-in page and each inner page), renewing it; never on a redirect or a 404 |
+| Signed with | **always the current `ADMIN_ROUTE_KEY`'s digest** (`AdminKeyHash`), whichever key the page was served under. Once a previous key is accepted too (planned: `ADMIN_ROUTE_KEY_PREVIOUS`), its pages still hand out passes for the current key, and a pass signed with any other digest is invalid |
+| Checked | before any file is looked up: the MAC in constant time (`hmac.Equal`), the expiry a positive number of seconds, in the future and at most 8 hours and a minute ahead (the minute for another server's clock). Any of the first 4 cookies of the pass's name may be the pass: the name can't be `__Host-` (its path isn't `/`), so a sibling subdomain could plant one that the browser sends first, but no request makes the server check more |
+| Invalid when | it expires, the key is rotated, `APP_KEY` changes, or admin is off |
+
+- **Stateless:** no table and no query, so servers sharing `APP_KEY` and `ADMIN_ROUTE_KEY` accept each other's passes.
+- **It opens code, nothing else.** The API never reads it, and a pass without an admin session only gets the sign-in page's code, which anyone with the key gets anyway.
+- **Anything else is the ordinary 404:** no pass, an expired, tampered or other key's pass, an unknown file, HTML (the shell itself), dot-files and directories all get exactly what `GET /nowhere` gets (status, headers, body), and so does the bare `/admin-assets`. Whether a file exists isn't checked until the pass is valid.
+- **Caching:** `Cache-Control: private, max-age=28800, immutable`: browsers keep a file only as long as the pass that opened it lasts (`AdminAssetsPassLifetime`), and never `public`, or a shared cache would hand the file to anyone. The names are content-hashed, so a cached file is always the right one.
+- **A pass that ends mid-visit:** the next page's code fails to load and React Router reloads the page, which goes through the gate again and renews it (or, without an admin session, back to sign-in).
+- **A script injected into an app page** (same origin, and the cookie's path matches) could read admin code in a browser that opened the dashboard in the last 8 hours (the pass, and the browser's cached copies, last that long): still no key and no API access. The app's CSP and `react/no-danger` are the defence against the injection itself.
+- **In development** `make dev`'s second Vite (`WEB_BUILD=admin` on `127.0.0.1:3002`, which `:3000` forwards `/admin` and `/admin-assets` to; [testing.md](../testing.md#run-the-dev-server)) serves the admin pages and checks neither the key nor the pass, so anyone who can reach `:3000` can load the admin code (never the data: the API still checks the key). `make serve` and the e2e server run the real gate.
 
 ## API
 
@@ -164,12 +198,12 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 ## Web app
 
 - **Routes** (`routes.ts`): `admin/:key` (`pages/admin/[key]/index.tsx`, `AdminLogin`), and inside `pages/admin/layout.tsx`: `users` (`AdminUserIndex`), `users/:user` (`AdminUserShow`, with **Activity**: Events for `?account=`), `workspaces` (`AdminWorkspaceIndex`), `workspaces/:workspace` (`AdminWorkspaceShow`, with **Activity** and its projects in a `PaginatedTable`, rows without links), `events` (`AdminEventIndex`), `events/:event` (`AdminEventShow`), `mail` (`AdminDeliveryIndex`). Not prerendered.
-- **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. `useAdminApi()` sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `routes.admin.*(key)`.
+- **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. `useAdminApi()` (`lib/api/admin.ts`) sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads an `adminPaths` path with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `adminRoutes.*(key)` (`lib/admin-routes.ts`).
 - **Nothing reloads on its own.** Every load is a recorded read, so `useAdminResource` doesn't revalidate on focus or reconnect: only opening a page, a new query, or a Refresh button (Events, Mail) loads again.
 - **Events** (`pages/admin/[key]/events.tsx`): the filters in a form (Event, a `Listbox` of the catalogue grouped by area, each area's prefix an option; Account, Workspace, Email, IP; From and To as UTC days; Admin reads), applied together with Apply filters, kept in the URL. The table (`components/app/admin/events.tsx`: `EventTable`, `eventSummary`) shows the time (opening the event), the name and a one-line summary from the payload, the actor, what it's about, and the IP; every account, workspace and IP links to its page or filter. **Older / Newer** (`CursorNav`) follow the cursor; the way back travels in navigation state, so the URL holds only `before`. An event's page shows the payload as indented JSON in a `<pre>`, through React's escaping.
 - **Mail** (`pages/admin/[key]/mail.tsx`): the window and Refresh in the header, `Stat` tiles for the queue, emails per hour as a stacked `BarChart` (`components/ui/chart.tsx`, Recharts; its numbers in a table for screen readers), asked for vs sent, frequent addresses (each linking to Events `?email=`), the queue per listener, how mail is sent, then the deliveries with status tabs (Failed first while the window has any).
-- **Loaders** (`lib/loaders.ts`): `adminLoginLoader` (404 → not-found, signed in → Users) and `adminLoader` (404 → not-found, 401 → sign-in).
-- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users, Workspaces, Events and Mail, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out.
+- **Loaders** (`lib/admin.tsx`, so they stay out of the app build): `adminLoginLoader` (404 → not-found, signed in → Users) and `adminLoader` (404 → not-found, 401 → sign-in).
+- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users, Workspaces, Events and Mail, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out. The app's pages are the other build, so those two load as a new page (`pages/admin/not-found.tsx`).
 - **Lists** use `PaginatedTable`, `SearchField` and sortable headers (`components/app/admin/admin-list.tsx`: URL state, `AdminTableHead`, `MfaBadge`, `EmailBadge` (zinc "Not verified"; a user's page also shows lime "Verified", the list only the unverified), `AdminBadge`); rows link to their page. There are no row menus: there are no actions.
 - `react/no-danger` is on for the whole web app: other users' names and emails render only through React's escaping.
 

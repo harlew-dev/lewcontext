@@ -43,9 +43,25 @@ func serve(t *testing.T, p *Pages, method, target string) *httptest.ResponseReco
 	return w
 }
 
+// The admin build: its shell with its own inline script, hashed assets, the
+// build manifest and the favicon React Router copies in.
+const adminScript = "window.__reactRouterContext = {\"isSpaMode\":true,\"admin\":true};"
+
+func adminBuild() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html": {Data: []byte(`<!DOCTYPE html><html><body><main>admin shell</main>` +
+			`<script>` + adminScript + `</script></body></html>`)},
+		"assets/entry.client-admin.js": {Data: []byte("console.log('admin')")},
+		"assets/root-admin.css":        {Data: []byte("body{}")},
+		"assets/inter-latin.woff2":     {Data: []byte("wOF2")},
+		"favicon.svg":                  {Data: []byte("<svg></svg>")},
+		".vite/manifest.json":          {Data: []byte("{}")},
+	}
+}
+
 func pages(t *testing.T, files fstest.MapFS) *Pages {
 	t.Helper()
-	p, err := New(files, false)
+	p, err := New(files, adminBuild(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +141,7 @@ func TestCachesHashedAssetsAndRevalidatesOtherFiles(t *testing.T) {
 
 func TestSetsSecurityHeadersEverywhere(t *testing.T) {
 	for _, production := range []bool{false, true} {
-		p, err := New(build(), production)
+		p, err := New(build(), adminBuild(), production)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,12 +168,104 @@ func TestHeadRequestsGetHeadersOnly(t *testing.T) {
 func TestRefusesABuildWithoutTheFallback(t *testing.T) {
 	files := build()
 	delete(files, "__spa-fallback.html")
-	if _, err := New(files, false); !errors.Is(err, ErrNotBuilt) {
+	if _, err := New(files, nil, false); !errors.Is(err, ErrNotBuilt) {
 		t.Fatalf("want ErrNotBuilt, got %v", err)
 	}
 	// The committed placeholder: no web build at all.
-	if _, err := New(fstest.MapFS{".gitkeep": {}}, false); !errors.Is(err, ErrNotBuilt) {
+	if _, err := New(fstest.MapFS{".gitkeep": {}}, nil, false); !errors.Is(err, ErrNotBuilt) {
 		t.Fatalf("want ErrNotBuilt for an empty build, got %v", err)
+	}
+}
+
+// With admin on (an admin build passed), its shell must be there: the
+// committed placeholder alone refuses to start. Admin off needs none.
+func TestRefusesAdminWithoutTheAdminBuild(t *testing.T) {
+	if _, err := New(build(), fstest.MapFS{".gitkeep": {}}, true); !errors.Is(err, ErrAdminNotBuilt) {
+		t.Fatalf("want ErrAdminNotBuilt, got %v", err)
+	}
+	p, err := New(build(), nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AdminBuilt() || !pages(t, build()).AdminBuilt() {
+		t.Fatal("AdminBuilt doesn't say whether the admin build is loaded")
+	}
+	// Admin off: the admin shell and files are the ordinary 404.
+	w := httptest.NewRecorder()
+	p.ServeAdmin(w, httptest.NewRequest("GET", "/admin/x", nil))
+	if w.Code != 404 || !strings.Contains(w.Body.String(), "<main></main>") {
+		t.Fatalf("ServeAdmin without an admin build: %d %q", w.Code, w.Body.String())
+	}
+	if p.ServeAdminFile(httptest.NewRecorder(), httptest.NewRequest("GET", "/admin-assets/x.js", nil), "assets/entry.client-admin.js") {
+		t.Fatal("ServeAdminFile served a file without an admin build")
+	}
+}
+
+// The admin shell is its own build's index.html, never the app's fallback,
+// with its own script hashes and the admin headers.
+func TestServesTheAdminShellWithItsOwnScriptHashes(t *testing.T) {
+	w := httptest.NewRecorder()
+	pages(t, build()).ServeAdmin(w, httptest.NewRequest("GET", "/admin/key/users", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "admin shell") || strings.Contains(w.Body.String(), "<main></main>") {
+		t.Fatalf("admin shell: %d %q", w.Code, w.Body.String())
+	}
+	csp := w.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self' "+hash(adminScript)+";") {
+		t.Fatalf("admin CSP %q lacks exactly the shell's script hash", csp)
+	}
+	want := map[string]string{"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow", "X-Frame-Options": "DENY"}
+	for header, value := range want {
+		if got := w.Header().Get(header); got != value {
+			t.Errorf("admin shell %s = %q, want %q", header, got, value)
+		}
+	}
+}
+
+// Admin files are cached by browsers only (private, never public), and
+// HTML, dot-files, directories and unknown names are never served.
+func TestServesAdminFilesPrivately(t *testing.T) {
+	p := pages(t, build())
+	for name, body := range map[string]string{
+		"assets/entry.client-admin.js": "console.log('admin')",
+		"assets/root-admin.css":        "body{}",
+		"assets/inter-latin.woff2":     "wOF2",
+		"favicon.svg":                  "<svg></svg>",
+	} {
+		w := httptest.NewRecorder()
+		if !p.ServeAdminFile(w, httptest.NewRequest("GET", "/admin-assets/"+name, nil), name) {
+			t.Fatalf("%s wasn't served", name)
+		}
+		if w.Code != 200 || w.Body.String() != body {
+			t.Errorf("%s: %d %q", name, w.Code, w.Body.String())
+		}
+		// For the assets pass's 8 hours, no longer.
+		if got := w.Header().Get("Cache-Control"); got != "private, max-age=28800, immutable" {
+			t.Errorf("%s Cache-Control = %q", name, got)
+		}
+		if w.Header().Get("X-Content-Type-Options") != "nosniff" || w.Header().Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("%s lacks the security headers: %v", name, w.Header())
+		}
+	}
+	for _, name := range []string{"index.html", "./index.html", "assets/../index.html", ".vite/manifest.json", ".vite", "assets", "assets/", "", ".", "/", "../dist/index.html", "assets/missing.js", "missing"} {
+		w := httptest.NewRecorder()
+		if p.ServeAdminFile(w, httptest.NewRequest("GET", "/admin-assets/x", nil), name) {
+			t.Errorf("%q was served: %d %q", name, w.Code, w.Body.String())
+		}
+		if w.Code != 200 || w.Body.Len() != 0 || len(w.Header()) != 0 {
+			t.Errorf("%q wrote a response: %d %v", name, w.Code, w.Header())
+		}
+	}
+}
+
+// The app's side never serves the admin build: /admin-assets/… is the
+// fallback 404 there, as is the admin shell's name.
+func TestTheAppNeverServesAdminFiles(t *testing.T) {
+	p := pages(t, build())
+	for _, target := range []string{"/admin-assets/assets/entry.client-admin.js", "/assets/entry.client-admin.js", "/admin-assets/favicon.svg", "/admin"} {
+		w := serve(t, p, "GET", target)
+		if w.Code != 404 || !strings.Contains(w.Body.String(), "<main></main>") {
+			t.Errorf("%s: %d %q", target, w.Code, w.Body.String())
+		}
 	}
 }
 

@@ -1,8 +1,6 @@
 import { useMemo } from "react";
-import { useOptionalAdmin } from "@/lib/admin";
 import { useOptionalSession } from "@/lib/session";
-import { adminClient, adminRoutes, type AdminApiClient } from "./admin";
-import { adminHttp, browserHttp, type Http } from "./http";
+import { browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
 import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
 import { emailBlockRoutes, emailBlocks } from "./email-blocks";
@@ -12,18 +10,6 @@ import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
 export { ApiError, errorMessage } from "./http";
 export type { ApiPath } from "./paths";
-export type {
-  AdminApiClient,
-  AdminLoginStep,
-  AdminSetupDone,
-  AdminSignedIn,
-  AdminDeliveryIndexQuery,
-  AdminEventIndexQuery,
-  AdminProjectIndexQuery,
-  AdminUserIndexQuery,
-  AdminWorkspaceIndexQuery,
-} from "./admin";
-export { needsMfaSetup } from "./admin";
 export type { InvitationIndexQuery } from "./invitations";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
@@ -47,6 +33,9 @@ export type {
   VerificationRequired,
   WorkspaceSummary,
 } from "./auth";
+// The admin dashboard's client is lib/api/admin.ts, which only the admin
+// build imports (plans/features/admin/README.md, rule 7).
+//
 // Typed API paths, for SWR keys and module constants:
 //   paths.workspaces.index()   paths.projects(workspace).index({ page: 2 })
 export const paths = {
@@ -57,7 +46,6 @@ export const paths = {
   auth: authRoutes,
   sessions: sessionRoutes,
   emailBlocks: () => emailBlockRoutes,
-  admin: adminRoutes,
 };
 // The API for components. Mutations send the current session's CSRF token.
 // Call it in the component body and use the result in handlers:
@@ -71,26 +59,6 @@ export function useApi(): ApiClient {
 // no CSRF token, so mutations go through useApi().
 export function loaderApi(): ApiClient {
   return client(browserHttp());
-}
-// The admin dashboard's API, for components under the admin pages
-// (AdminProvider): every call sends the key from the page's URL, and
-// mutations the admin session's CSRF token. It never uses the app session.
-//   const api = useAdminApi();
-//   await api.logout();
-export function useAdminApi(): AdminApiClient {
-  const admin = useOptionalAdmin();
-  if (!admin) throw new Error("useAdminApi() needs an AdminProvider");
-  const { adminKey } = admin;
-  const csrfToken = admin.session?.csrfToken;
-  return useMemo(
-    () => adminClient(adminHttp(adminKey, csrfToken)),
-    [adminKey, csrfToken],
-  );
-}
-// The admin API for the admin pages' route loaders: reads only, with the key
-// from the route's params.
-export function loaderAdminApi(adminKey: string): AdminApiClient {
-  return adminClient(adminHttp(adminKey));
 }
 // Builds the API on a transport (browserHttp, or a stub in tests).
 export function client(http: Http) {

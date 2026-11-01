@@ -13,10 +13,10 @@ import { Heading } from "@/components/ui/heading";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { paths } from "@/lib/api";
+import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { formatDate } from "@/lib/format";
-import { routes } from "@/lib/routes";
+import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import {
   adminUserSortable,
@@ -49,9 +49,9 @@ export default function AdminUserIndex() {
   const [search] = useSearchParams();
   const goTo = useNavigate();
   const query = adminListQuery(search, adminUserSortable, defaultAdminUserSort);
-  const list = useAdminResource(paths.admin.users.index(query));
+  const list = useAdminResource(adminPaths.users.index(query));
   const pathFor = (q: AdminListQuery<AdminUserSort>) =>
-    adminListPath(routes.admin.users.index(key), q, defaultAdminUserSort);
+    adminListPath(adminRoutes.users.index(key), q, defaultAdminUserSort);
   return (
     <>
       <Heading>Users</Heading>
@@ -105,7 +105,7 @@ function UserRow({ user }: { user: AdminUser }) {
   const key = useAdminKey();
   return (
     <TableRow
-      href={routes.admin.users.show(key, user.id)}
+      href={adminRoutes.users.show(key, user.id)}
       title={`Open ${user.name}`}
     >
       <TableCell>

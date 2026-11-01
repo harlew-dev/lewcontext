@@ -11,17 +11,15 @@ import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Text } from "@/components/ui/text";
+import { ApiError, errorMessage, type MfaSetup } from "@/lib/api";
 import {
-  ApiError,
-  errorMessage,
   needsMfaSetup,
   useAdminApi,
   type AdminSetupDone,
-  type MfaSetup,
-} from "@/lib/api";
-import { AdminProvider, useAdminKey } from "@/lib/admin";
+} from "@/lib/api/admin";
+import { AdminProvider, adminLoginLoader, useAdminKey } from "@/lib/admin";
+import { adminRoutes } from "@/lib/admin-routes";
 import { appName } from "@/lib/app";
-import { adminLoginLoader } from "@/lib/loaders";
 import { routes } from "@/lib/routes";
 import { useAction } from "@/lib/use-action";
 import type { Route } from "./+types/index";
@@ -66,7 +64,7 @@ function AdminSignIn() {
   if (step === "code")
     return (
       <AdminCodeStep
-        destination={routes.admin.users.index(key)}
+        destination={adminRoutes.users.index(key)}
         onRestart={restart}
       />
     );
@@ -198,7 +196,7 @@ function AdminSetup({
     },
   });
   const goOn = useAction(async () => {
-    await navigate(routes.admin.users.index(key));
+    await navigate(adminRoutes.users.index(key));
   });
   async function submit(event: FormEvent) {
     event.preventDefault();

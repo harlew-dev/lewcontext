@@ -3,11 +3,19 @@ import {
   layout,
   route,
   type RouteConfig,
+  type RouteConfigEntry,
 } from "@react-router/dev/routes";
+import { webBuild } from "../web-build.ts";
 // The page registry: every URL and the file under src/pages that renders it.
 // Pages inside the app layout share the signed-in chrome, which stays mounted
 // between them (sidebar state, the sliding current-page indicator).
-export default [
+//
+// The web app is built twice (web-build.ts): `react-router build` takes the
+// app's pages or, with WEB_BUILD=admin, the admin dashboard's, each ending in
+// a not-found page. Type generation and the development servers register
+// every page: typegen writes one set of types for the whole program, and
+// each dev server runs it (plans/features/implemented/admin/separate-build.md).
+const appRoutes = [
   index("pages/home.tsx"),
   route("auth/login", "pages/auth/login.tsx"),
   route("auth/register", "pages/auth/register.tsx"),
@@ -40,8 +48,11 @@ export default [
       ],
     ),
   ]),
-  // The admin dashboard, at its secret key (docs/api/admin.md). The sign-in
-  // page stands alone; the rest share the admin chrome.
+] satisfies RouteConfig;
+
+// The admin dashboard, at its secret key (docs/api/admin.md), in the admin
+// build only. The sign-in page stands alone; the rest share the admin chrome.
+const adminRoutes = [
   route("admin/:key", "pages/admin/[key]/index.tsx"),
   layout("pages/admin/layout.tsx", [
     route("admin/:key/users", "pages/admin/[key]/users.tsx"),
@@ -55,5 +66,22 @@ export default [
     route("admin/:key/events/:event", "pages/admin/[key]/events/[event].tsx"),
     route("admin/:key/mail", "pages/admin/[key]/mail.tsx"),
   ]),
-  route("*", "pages/not-found.tsx"),
 ] satisfies RouteConfig;
+
+// Every URL no other route matches. The admin build's hands links to the
+// app's pages over to a full page load (pages/admin/not-found.tsx).
+const notFound = route("*", "pages/not-found.tsx");
+const adminNotFound = route("*", "pages/admin/not-found.tsx");
+
+// Every page, for typegen and the dev servers; one build's for anything else
+// (`react-router build`), so an unexpected command never mixes the two.
+function pages(): RouteConfigEntry[] {
+  const command = process.argv[2];
+  if (command === "typegen" || command === "dev")
+    return [...appRoutes, ...adminRoutes, notFound];
+  return webBuild() === "admin"
+    ? [...adminRoutes, adminNotFound]
+    : [...appRoutes, notFound];
+}
+
+export default pages() satisfies RouteConfig;

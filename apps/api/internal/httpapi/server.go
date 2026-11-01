@@ -22,7 +22,8 @@ type Server struct {
 	// Pages serves the web app (internal/web); nil serves the API only.
 	Pages     WebPages
 	dummyHash string
-	// keys seal MFA secrets and digest recovery codes (APP_KEY).
+	// keys seal MFA secrets, digest recovery codes and sign the admin
+	// assets pass (APP_KEY).
 	keys      *auth.Keys
 	authSlots chan struct{}
 	// memoryLimits counts the limits kept in memory (api-read:per-user).
@@ -30,10 +31,12 @@ type Server struct {
 }
 
 // WebPages serves the built web app (web.Pages): its pages and files, and
-// the app shell for admin pages once their key is checked.
+// the admin build's shell and files once their key or pass is checked.
 type WebPages interface {
 	http.Handler
+	AdminBuilt() bool
 	ServeAdmin(w http.ResponseWriter, r *http.Request)
+	ServeAdminFile(w http.ResponseWriter, r *http.Request, name string) bool
 }
 
 func New(s *store.Store, c config.Config) (*Server, error) {
