@@ -157,7 +157,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   <DropdownLabel>Account & security</DropdownLabel>
                 </DropdownItem>
                 <DropdownDivider />
-                <DropdownItem variant="danger" onClick={signOut}>
+                <DropdownItem onClick={signOut}>
                   <ArrowRightStartOnRectangleIcon />
                   <DropdownLabel>Sign out</DropdownLabel>
                 </DropdownItem>

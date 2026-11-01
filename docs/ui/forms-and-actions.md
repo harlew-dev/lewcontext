@@ -41,7 +41,7 @@ Everything signed in and outside a dialog follows the settings rows: right-align
 
 - **Primary action last (rightmost)**, solid (`<Button>`, `dark/zinc`). Secondary actions to its left: `plain` for Cancel and Back, `outline` for an alternative that does something (Try again).
 - **At most one solid button per group.** A one-off action that isn't the main thing on the page is `outline` (Change password, Sign out other sessions).
-- **Red (`color="red"`) only for destructive actions**, and only in a danger zone or as a `ConfirmationDialog`'s confirm button (`variant="danger"`). In a ⋯ menu use `DropdownItem variant="danger"` instead. See [design.md](design.md#confirmations). **The one non-destructive exception:** Sign out in the account menus (the app layout's and onboarding's) is a `DropdownItem variant="danger"` too, so the way out stands apart from the menu's other items.
+- **Red (`color="red"`) only for destructive actions**, and only in a danger zone or as a `ConfirmationDialog`'s confirm button (`variant="danger"`). In a ⋯ menu use `DropdownItem variant="danger"` instead. See [design.md](design.md#confirmations). **Sign out is not destructive,** so in the account menus (the app layout's, onboarding's and the admin dashboard's) it's a default `DropdownItem`, after a divider; never red.
 - **Labels say what happens**, with a verb: "Save", "Create project", "Delete workspace", "Sign out other sessions". Never "OK", "Submit" or a bare "Delete".
 - **Cancel** never has a destructive or primary style. It's disabled while the action runs, as dialogs already do.
 
