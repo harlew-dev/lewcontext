@@ -60,10 +60,12 @@ type IPBlock struct {
 	ExpiresAt time.Time    `json:"expiresAt"`
 }
 
-// LiveIPBlock is a live block as a server enforces it.
+// LiveIPBlock is a live block as a server loads it to enforce: its network
+// as CIDR text, which the server parses (skipping one that doesn't), and
+// its end.
 type LiveIPBlock struct {
-	Network   netip.Prefix
-	ExpiresAt time.Time
+	Network   string    `bun:"network"`
+	ExpiresAt time.Time `bun:"expires_at"`
 }
 
 // NewIPBlock is a block to create: the network (already masked and
@@ -161,25 +163,11 @@ func (s *Store) IndexIPBlocks(ctx context.Context) ([]IPBlock, error) {
 // IndexLiveIPBlocks lists every live block's network and end, for a
 // server's in-memory list: one small query, every 30 seconds.
 func (s *Store) IndexLiveIPBlocks(ctx context.Context) ([]LiveIPBlock, error) {
-	var rows []struct {
-		Network   string    `bun:"network"`
-		ExpiresAt time.Time `bun:"expires_at"`
-	}
+	var live []LiveIPBlock
 	err := s.DB.NewSelect().Model((*ipBlockRecord)(nil)).
 		ColumnExpr("host(ipb.network) || '/' || masklen(ipb.network) AS network, ipb.expires_at").
 		Where("ipb.expires_at > now()").
 		Limit(MaxIPBlocks).
-		Scan(ctx, &rows)
-	if err != nil {
-		return nil, err
-	}
-	live := make([]LiveIPBlock, 0, len(rows))
-	for _, row := range rows {
-		network, err := netip.ParsePrefix(row.Network)
-		if err != nil {
-			return nil, err
-		}
-		live = append(live, LiveIPBlock{Network: network, ExpiresAt: row.ExpiresAt})
-	}
-	return live, nil
+		Scan(ctx, &live)
+	return live, err
 }

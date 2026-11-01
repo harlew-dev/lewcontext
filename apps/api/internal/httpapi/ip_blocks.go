@@ -35,41 +35,135 @@ const IPBlocksReload = 30 * time.Second
 // words as plain text.
 const IPBlocked = "Access from your network has been blocked."
 
-// ipBlocks is a server's copy of the live blocks, and how many requests
-// they refused (the ip_block_refused_total metric, once /metrics exists).
+// IPBlocksFirstRetry is how soon a server tries again when it hasn't loaded
+// the live blocks yet (the database was down at startup): it doubles on
+// each failure, up to IPBlocksReload, so a server never runs long without
+// the blocks once the database is back.
+const IPBlocksFirstRetry = time.Second
+
+// ipBlocks is a server's copy of the live blocks, when it last loaded them
+// and how many requests they refused (the ip_block_refused_total metric,
+// once /metrics exists).
 type ipBlocks struct {
-	live    atomic.Pointer[[]store.LiveIPBlock]
-	refused atomic.Int64
+	live atomic.Pointer[[]liveBlock]
+	// loadedAt is the Unix time in nanoseconds of the last load that
+	// succeeded; 0 until the first.
+	loadedAt atomic.Int64
+	refused  atomic.Int64
+}
+
+// liveBlock is a live block as this server enforces it.
+type liveBlock struct {
+	network   netip.Prefix
+	expiresAt time.Time
 }
 
 // ReloadIPBlocks replaces this server's copy of the live blocks with the
 // database's. On an error the old copy stays (an expired block in it stops
-// applying at its end regardless).
+// applying at its end regardless); before the first success there is none,
+// so nothing is blocked, which RunIPBlocks retries soon to end. A row whose
+// network doesn't parse is skipped with an error logged, never the whole
+// list.
 func (s *Server) ReloadIPBlocks(ctx context.Context) error {
-	live, err := s.Repo.IndexLiveIPBlocks(ctx)
+	rows, err := s.Repo.IndexLiveIPBlocks(ctx)
 	if err != nil {
 		return err
 	}
+	live := parseLiveBlocks(rows)
 	s.ipBlocks.live.Store(&live)
+	s.ipBlocks.loadedAt.Store(time.Now().UnixNano())
 	return nil
 }
 
-// RunIPBlocks reloads the live blocks every interval until ctx ends, logging
-// a failed reload. Start it once per server, after a first ReloadIPBlocks.
+// parseLiveBlocks turns the database's live blocks into this server's list,
+// skipping (and logging) any whose network doesn't parse, so one bad row
+// can't leave every other block unenforced.
+func parseLiveBlocks(rows []store.LiveIPBlock) []liveBlock {
+	live := make([]liveBlock, 0, len(rows))
+	for _, row := range rows {
+		network, err := netip.ParsePrefix(row.Network)
+		if err != nil {
+			slog.Error("an IP block's network doesn't parse; it is skipped", "network", row.Network, "error", err)
+			continue
+		}
+		live = append(live, liveBlock{network: network, expiresAt: row.ExpiresAt})
+	}
+	return live
+}
+
+// IPBlocksLoadedAt is when this server last loaded the live blocks, zero
+// if it never has (then nothing is blocked on it).
+//
+// TODO(metrics): export it on /metrics as the
+// ip_blocks_loaded_timestamp_seconds gauge, beside ip_block_refused_total,
+// once /metrics exists (at the merge), so an alert can fire on a server
+// whose list has gone stale.
+func (s *Server) IPBlocksLoadedAt() time.Time {
+	at := s.ipBlocks.loadedAt.Load()
+	if at == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, at)
+}
+
+// RunIPBlocks reloads the live blocks every interval until ctx ends. Until
+// a load has succeeded (the database was down when the server started), it
+// retries sooner: after IPBlocksFirstRetry (or every, if shorter), doubling
+// up to every. A failure is logged with when the list was last loaded.
+// Start it once per server, after a first ReloadIPBlocks.
 func (s *Server) RunIPBlocks(ctx context.Context, every time.Duration) {
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
+	runReloads(ctx, !s.IPBlocksLoadedAt().IsZero(), every, IPBlocksFirstRetry, s.reloadIPBlocksLogged)
+}
+
+// reloadIPBlocksLogged is one of RunIPBlocks' reloads: it logs a failure
+// with when the list was last loaded (or that the server runs without
+// one), and the first success after a failure.
+func (s *Server) reloadIPBlocksLogged(ctx context.Context) error {
+	reload, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	err := s.ReloadIPBlocks(reload)
+	if err != nil {
+		if loaded := s.IPBlocksLoadedAt(); loaded.IsZero() {
+			slog.Error("loading IP blocks failed; nothing is blocked on this server until it succeeds", "error", err)
+		} else {
+			slog.Error("reloading IP blocks failed; the previous list still applies", "error", err, "lastLoaded", loaded.UTC().Format(time.RFC3339))
+		}
+	}
+	return err
+}
+
+// runReloads calls reload every `every` until ctx ends. While loaded is
+// false (no reload has succeeded yet) it waits less: first (or every, if
+// shorter), doubling after each failure up to every. A failure after a
+// success waits the full interval, as the old list still applies. The
+// first success after failures is logged.
+func runReloads(ctx context.Context, loaded bool, every, first time.Duration, reload func(context.Context) error) {
+	wait := every
+	if !loaded {
+		wait = min(first, every)
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	failing := !loaded
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			reload, cancel := context.WithTimeout(ctx, 5*time.Second)
-			if err := s.ReloadIPBlocks(reload); err != nil {
-				slog.Error("reloading IP blocks failed; the previous list still applies", "error", err)
-			}
-			cancel()
+		case <-timer.C:
 		}
+		err := reload(ctx)
+		switch {
+		case err == nil:
+			if failing {
+				slog.Info("IP blocks loaded")
+			}
+			loaded, failing, wait = true, false, every
+		case !loaded:
+			failing, wait = true, min(wait*2, every)
+		default:
+			failing, wait = true, every
+		}
+		timer.Reset(wait)
 	}
 }
 
@@ -91,7 +185,7 @@ func (s *Server) addressBlocked(ip string) bool {
 	}
 	addr, now := addr.Unmap().WithZone(""), time.Now()
 	for _, block := range *live {
-		if now.Before(block.ExpiresAt) && block.Network.Contains(addr) {
+		if now.Before(block.expiresAt) && block.network.Contains(addr) {
 			return true
 		}
 	}

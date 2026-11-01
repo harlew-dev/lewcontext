@@ -129,7 +129,7 @@ Everything that must be shared lives in PostgreSQL, so several `api` processes b
 | Rate-limit counters | `rate_limits` | exact across servers |
 | Event deliveries (mail, future listeners) | `event_deliveries`, claimed with `FOR UPDATE SKIP LOCKED` | each delivery runs on one server; a crashed one's lease expires after 5 minutes and another takes over |
 | Reset links and invitations | digests in their tables | any server can check a link |
-| IP blocks | `ip_blocks`, reloaded into memory every 30 seconds | a new block applies on the server that made it at once, and on every other within 30 seconds |
+| IP blocks | `ip_blocks`, reloaded into memory every 30 seconds | a new block applies on the server that made it at once, and on every other within 30 seconds; a server started while the database was down blocks nothing until its retries (every second, doubling to 30) load the list, and logs an error meanwhile |
 | The admin assets pass | an HMAC in the cookie, under `APP_KEY` and the admin key's digest | any server accepts another's, **if every server has the same `APP_KEY` and `ADMIN_ROUTE_KEY`** (and `ADMIN_ROUTE_KEY_PREVIOUS` and `ADMIN_ALLOWED_IPS`, or a session works on one server and not the next) |
 | Sign-ups and email codes | `pending_registrations`, `email_verifications`: HMACs under `APP_KEY` | any server can check a code, **if every server has the same `APP_KEY`** |
 | CAPTCHA tokens (**Planned**) | single use enforced by Cloudflare | no table needed |

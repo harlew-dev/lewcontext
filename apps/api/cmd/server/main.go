@@ -76,9 +76,10 @@ func run() error {
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)}
 	// The live IP blocks, before the first request, then every 30 seconds.
 	// Without the database the server still starts (readiness says so),
-	// and the next reload loads them.
+	// with nothing blocked: RunIPBlocks retries after a second, doubling up
+	// to 30 seconds, until a load succeeds.
 	if err := api.ReloadIPBlocks(ctx); err != nil {
-		slog.Error("loading IP blocks failed; retrying every 30 seconds", "error", err)
+		slog.Error("loading IP blocks failed; nothing is blocked until a retry succeeds", "error", err)
 	}
 	go api.RunIPBlocks(ctx, httpapi.IPBlocksReload)
 	failures := make(chan error, 1)

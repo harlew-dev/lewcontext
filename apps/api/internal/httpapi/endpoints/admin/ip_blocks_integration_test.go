@@ -238,10 +238,16 @@ func TestIPBlocksAreEnforced(t *testing.T) {
 	if w := from(otherHandler, blocked, "GET", "/api/auth/me", "", user.Cookie()); w.Code != 200 {
 		t.Fatalf("before its reload: %d", w.Code)
 	}
+	if !other.IPBlocksLoadedAt().IsZero() {
+		t.Fatal("loaded before any load")
+	}
 	running, stop := context.WithCancel(ctx)
 	defer stop()
 	go other.RunIPBlocks(running, 20*time.Millisecond)
 	waitFor(t, func() bool { return from(otherHandler, blocked, "GET", "/api/auth/me", "", user.Cookie()).Code == 403 })
+	if loaded := other.IPBlocksLoadedAt(); time.Since(loaded) > time.Minute {
+		t.Fatalf("when it loaded: %v", loaded)
+	}
 	apitest.Must(db.NewUpdate().TableExpr("ip_blocks").Set("created_at = now() - interval '2 seconds'").Set("expires_at = now() - interval '1 second'").Where("TRUE").Exec(ctx))(t)
 	waitFor(t, func() bool { return from(otherHandler, blocked, "GET", "/api/auth/me", "", user.Cookie()).Code == 200 })
 
