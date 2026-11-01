@@ -79,4 +79,25 @@ All passed:
 
 ## Security review
 
-_Filled in after the independent review._
+The independent reviewer found **nothing high-severity**. It confirmed sound:
+- **Suspension is refused everywhere:** session lookups, session creation under a lock, reset links, MFA challenges, admin sessions and grant.
+- **Sign-in answers:** a wrong password for a suspended account answers exactly as for any account.
+- **Reset MFA** refuses admins and yourself, and needs the confirmation.
+- **IP blocks:** each width, proxy and own-address refusal; the 403 is byte-identical everywhere; a forged header neither blocks nor unblocks anyone.
+- **Retries:** delivered mail is never resent, and old links are never sent.
+- **The registry:** every mutation is registered through `Action`.
+- **Events:** one per action, in the change's transaction.
+- **URLs:** they hold only public IDs.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | Low–medium | **A blocked address could test admin keys.** From a blocked IP, a wrong key got the block's 403, while the right key from outside `ADMIN_ALLOWED_IPS`, or the retired key, got the door's 404. That broke A2's "looks exactly like a wrong key" guarantees. Confirmed by probe | Only the current key from an allowed address is exempt from blocks; byte-identical tests added |
+| 2 | Low | An invitation sent in the same instant as a suspension survived and was mailed | Creating an invitation locks the inviter's row and checks for suspension |
+| 3 | Low | **A 30-day block answered 500 for about a month before each spring-forward** if the database runs in a local time zone ("30 days" is 719 hours across DST). Confirmed by SQL | The limit is written as 720 hours |
+| 4 | Low | If the block list failed to load at startup, a server enforced nothing, with only an ERROR line every 30 s; one bad row emptied the whole list | Quick retries until loaded; bad rows skipped; last-loaded time logged |
+| 5 | Low | `sessions revoke-all` left sign-ins waiting for a code | Those end too |
+| 6–9 | Nits | Reset MFA "succeeded" for a never-confirmed setup; stale MFA docs; the 1,000-block cap could be exceeded under concurrency; the CLI's reason skipped the character rules | Fixed |
+
+**Design note (your call):** the IPv6 cap is a /32, which is a whole ISP's allocation and far wider than IPv4's /16. Blocking one could cut off an entire mobile carrier. The confirmed cap stays, but the dialog warns above /48 and suggests /64 for one person.
+
+_Fix results: filled in once committed._

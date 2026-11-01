@@ -24,6 +24,7 @@ Last updated 2026-11-01, during the overnight run.
 | 12 | **Captcha: production now refuses to start without `CAPTCHA_PROVIDER`** (`turnstile` with keys, or `off`). Add it to your deployment before releasing. Also: development uses Turnstile's test keys by default, so after 5 sign-ins in 15 minutes the dev app loads Cloudflare's script (the plan's decision). Keep that, or make it `off` outside production? | As planned (on in dev) | [captcha findings](../findings/captcha.md#what-you-must-configure) |
 | 13 | **The doc link check ignores untracked files.** Other sessions keep untracked markdown in this checkout with dead links, which would fail `make check` forever. A doc is checked once it's `git add`-ed | Keep | [observability findings](../findings/observability.md#the-merge-0cf723a) |
 | 14 | **A6: send "You already have an account" to suspended accounts?** It's sent today when someone signs up with a suspended account's address. Also: new convention-check names (`Suspend`, `Unsuspend`, `Requeue`, `Retry`, five `admin.*` event resources, the `Housekeeping` registrar) | Keep sending; accept the names | [actions findings](../findings/actions.md#for-you-to-decide) |
+| 15 | **IPv6 block width (A6).** The confirmed cap lets one block cover an IPv6 /32, a whole ISP's allocation. The dialog now warns above /48. Lower the cap to /48? | Warn only (as confirmed) | [actions findings](../findings/actions.md#security-review) |
 
 ## Every open plan: recommendations taken as accepted
 
