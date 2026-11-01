@@ -23,7 +23,7 @@ type resetMFAInput struct {
 // Destroy turns the account's MFA off and signs every session of it out,
 // recording auth.mfa.disabled (reason reset) and admin.user.mfa_reset.
 // 422 on confirmed without the out-of-band confirmation; 409 when MFA is
-// off. Never an admin's (403): admins must keep MFA, and only the command
+// off, a setup never confirmed included (nothing to reset). Never an admin's (403): admins must keep MFA, and only the command
 // line resets it, reopening their setup window at the door.
 // DELETE /api/admin/users/{user}/mfa.
 func (h UserMFA) Destroy(w http.ResponseWriter, r *http.Request) {

@@ -217,6 +217,16 @@ func TestAdminResetMFA(t *testing.T) {
 	apitest.Call(t, h, "POST", "/api/auth/login", apitest.LoginBody(target.User.Email), "", nil, 200)
 	// Again: MFA is off, 409.
 	adminCall(t, h, "DELETE", path, reasonBody(reason, "confirmed", true), session.CSRFToken, 409, session.Cookie())
+	// A setup never confirmed isn't MFA on: 409, nothing changed or
+	// recorded, the account's session kept.
+	pending := apitest.SignedIn(t, db, f)
+	apitest.Must(factory.MFATOTPs.State(factory.TOTPFor(pending.UserID)).State(factory.PendingTOTP).CreateOne(ctx, db, f))(t)
+	if w := adminCall(t, h, "DELETE", "/api/admin/users/"+apitest.PublicIDOf(t, db, pending.UserID)+"/mfa", reasonBody(reason, "confirmed", true), session.CSRFToken, 409, session.Cookie()); !strings.Contains(w.Body.String(), "already off") {
+		t.Fatalf("a pending setup: %s", w.Body.String())
+	}
+	if apitest.CountRows(t, db, "mfa_totp", pending.UserID) != 1 || apitest.CountRows(t, db, "sessions", pending.UserID) != 1 || len(apitest.EventsNamed(t, db, "admin.user.mfa_reset")) != 1 {
+		t.Fatal("a pending setup was reset")
+	}
 	// Another admin's MFA, and yours: refused, nothing changed.
 	other := withAdmin(t, db, f)
 	adminCall(t, h, "DELETE", "/api/admin/users/"+other.User.PublicID+"/mfa", reasonBody(reason, "confirmed", true), session.CSRFToken, 403, session.Cookie())

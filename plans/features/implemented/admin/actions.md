@@ -26,7 +26,7 @@ Built on the events worktree (branch `admin-run/events`) with every recommendati
 **The other actions:**
 - **`sessions revoke-all`** also ends every sign-in waiting for its code (`mfa_challenges`, the app's and the admin door's), counted as `challenges` in `auth.sessions_revoked_all` beside `sessions` and `adminSessions` (not one `count`), so a password typed before the command can't become a session after it (found by the security review).
 - **Sign another admin out** ends their app sessions too, not only their admin sessions (a lost laptop holds both); they stay an admin. 404 for an account that isn't an admin.
-- **Reset MFA** needs `confirmed: true` in the body (422 on `confirmed`), so the out-of-band tick isn't only the dialog's; 409 when MFA is off.
+- **Reset MFA** needs `confirmed: true` in the body (422 on `confirmed`), so the out-of-band tick isn't only the dialog's; 409 when MFA is off, and (after the security review) when its setup was never confirmed, as `useConfirmedFactor` decides MFA is on, rather than "resetting" a pending setup that signs nobody in.
 - **Revoke pending invitations** is 409 with none live, recording nothing; the workspace's page shows `pendingInvitations` and disables the button at 0.
 - **Retries:** the bulk retry's `failedSince` must be within the last 7 days (the dashboard's bounded window) and the listener a registered one; a delivery that hasn't failed is 409, so a delivered email is never sent twice; the dialog offers the last hour, 6 hours, 24 hours or 7 days. The routes are the named action `Retry` (`admin.Deliveries.Retry`, and `admin.FailedDeliveries.Retry` for `/deliveries/retry`); the store's verb is `Requeue` (the worker's `Retry` is `events.Queue`'s). Bulk is 200 `{count}`.
 - **IP blocks:**

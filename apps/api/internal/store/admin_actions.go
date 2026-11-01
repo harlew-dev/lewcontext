@@ -82,8 +82,9 @@ func (s *Store) RevokeUserSessions(ctx context.Context, publicID string, a Admin
 // recording auth.mfa.disabled (reason reset) and admin.user.mfa_reset.
 // Never an admin's (ErrActionOnAdmin): admins must keep MFA, and only the
 // command line resets it, reopening their setup window. ErrMFANotEnabled
-// without an authenticator, set up or pending; otherwise lockActionTarget's
-// errors.
+// without a confirmed authenticator (none, or a setup never confirmed,
+// which signs nobody in and the cleanup deletes), as useConfirmedFactor
+// decides MFA is on; otherwise lockActionTarget's errors.
 func (s *Store) ResetUserMFA(ctx context.Context, publicID string, a AdminAction) (int, error) {
 	var count int
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -91,9 +92,11 @@ func (s *Store) ResetUserMFA(ctx context.Context, publicID string, a AdminAction
 		if err != nil {
 			return err
 		}
-		if _, err := lockTOTP(ctx, tx, u.ID); errors.Is(err, sql.ErrNoRows) {
+		totp, err := lockTOTP(ctx, tx, u.ID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && totp.ConfirmedAt == nil) {
 			return ErrMFANotEnabled
-		} else if err != nil {
+		}
+		if err != nil {
 			return err
 		}
 		if err := deleteMFA(ctx, tx, u.ID); err != nil {
