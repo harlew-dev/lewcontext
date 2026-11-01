@@ -114,4 +114,6 @@ check:
 	@test -z "$$(gofmt -l apps/api)" || (echo 'Run gofmt -w apps/api'; exit 1)
 	./scripts/check-app-build.test.sh
 	cd apps/api && go vet ./...
+	node scripts/check-doc-links.mjs --test
+	node scripts/check-doc-links.mjs
 	cd apps/web && npm run typecheck && npm run lint && npm run format:check
