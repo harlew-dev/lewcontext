@@ -147,10 +147,16 @@ func TestTakeMinute(t *testing.T) {
 type minuteStore struct {
 	minutes []Minute
 	fail    bool
+	// wrote, when set, gets a value after each write has been recorded, so
+	// a test can wait for a write instead of racing the flush goroutine.
+	wrote chan struct{}
 }
 
 func (s *minuteStore) store(_ context.Context, m Minute) error {
 	s.minutes = append(s.minutes, m)
+	if s.wrote != nil {
+		defer func() { s.wrote <- struct{}{} }()
+	}
 	if s.fail {
 		return errors.New("database down")
 	}
@@ -163,7 +169,7 @@ func (s *minuteStore) store(_ context.Context, m Minute) error {
 // but without its routes or series. A minute is never written twice.
 func TestMinuteFlush(t *testing.T) {
 	r := NewRegistry()
-	s := &minuteStore{fail: true}
+	s := &minuteStore{fail: true, wrote: make(chan struct{})}
 	now := time.Date(2026, 11, 1, 10, 4, 59, 0, time.UTC)
 	ticks := make(chan time.Time)
 	f := &MinuteFlush{Registry: r, Store: s.store, Now: func() time.Time { return now }, after: func(time.Duration) <-chan time.Time { return ticks }}
@@ -175,8 +181,10 @@ func TestMinuteFlush(t *testing.T) {
 	}()
 	r.Requests.Observe("GET /a", 200, time.Millisecond, false, false)
 	ticks <- now // the 10:05 boundary: writes 10:04, which fails
+	<-s.wrote    // the tick is received before the minute is taken: wait for the write, or the next request could land in it
 	r.Requests.Observe("GET /a", 200, time.Millisecond, false, false)
 	ticks <- now // writes 10:04 again by the clock, moved on to 10:05
+	<-s.wrote
 	cancel()
 	<-done
 	if len(s.minutes) != 2 {
@@ -192,6 +200,7 @@ func TestMinuteFlush(t *testing.T) {
 	// The last flush before a shutdown takes the current minute, after
 	// the last one written.
 	s.fail = false
+	s.wrote = nil
 	r.Requests.Observe("GET /a", 200, time.Millisecond, false, false)
 	if err := f.Flush(context.Background()); err != nil || !s.minutes[2].Minute.Equal(second.Minute.Add(time.Minute)) {
 		t.Fatalf("flush: %v %+v", err, s.minutes[2])

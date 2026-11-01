@@ -243,4 +243,12 @@ The independent reviewer found **nothing high-severity**. It confirmed sound:
 
 ### Security review (Data page and part 3 fixes)
 
-_Running._
+**No high or medium findings, and no leak** of query text, role names, client addresses or catalog names (a test holds a lock with a marker in its query and checks none of it appears). Probes of `SafeStatement` (hex, `1_000`, `x'..'`, `U&"…"`, `$tag$`, unicode digits, doubled quotes) were all rejected. Sound: catalog reads through the builder, known tables only, the daily writer (one server, insert-only, at most 28 rows a day), retention probes through indexes, one recorded read per page, text-only rendering, and the sr-only chart fix.
+
+| # | Severity | Finding | Plan |
+| --- | --- | --- | --- |
+| 1 | Low | A partial Integrity summary that read only the cheap checks can show an OK badge for checks it never ran | Show "unknown" (or "OK so far") when partial and zero. **Queued for the final polish** |
+| 2 | Low | Docs say "oldest row a run would prune"; the probe takes the table's oldest row | Reword docs. Queued |
+| 3 | Low | The retention reading isn't memoised (up to 3 runs per Data page, 2 per Overview) | Memoise like the integrity checks. Queued |
+| 4 | Low | The daily row's "day" uses the session time zone, not UTC; a crash can record 0 rows for a day | `(now() AT TIME ZONE 'UTC')::date`. Queued |
+| 5–6 | Low | Plain quoted names of any length pass the statement filter; the active-workspace list is materialised in Go | Optional hardening; bounded today |

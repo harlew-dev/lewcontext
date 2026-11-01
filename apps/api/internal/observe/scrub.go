@@ -56,10 +56,14 @@ var (
 	// scrubbed.
 	quotedEmailPattern = regexp.MustCompile(`"…"(?:@|＠|%40)[^\s@＠<>"'()\[\],;:]+`)
 	emailPattern       = regexp.MustCompile(`<?[^\s@＠<>"'()\[\],;:]+(?:@|＠|%40)[^\s@＠<>"'()\[\],;:]+>?`)
-	// A public ID (usr_, wsp_, prj_, inv_, evt_) or a request's (req_): three
-	// letters, an underscore and 14 base62 characters.
-	publicIDPattern = regexp.MustCompile(`\b[a-z]{3}_[0-9A-Za-z]{14}\b`)
-	uuidPattern     = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+	// A public ID or a request's, server's or other generated one: one of
+	// the app's prefixes (the public_id() column defaults usr, wsp, prj,
+	// inv, evt, err, ipb, and the generated req, srv, alt), an underscore and
+	// 14 base62 characters. Only the real prefixes, so a random token isn't
+	// cut up by an ID-shaped piece (Scrub also scrubs token runs first).
+	publicIDPattern  = regexp.MustCompile(`\b(?:usr|wsp|prj|inv|evt|err|ipb|req|srv|alt)_[0-9A-Za-z]{14}\b`)
+	uuidPattern      = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+	wholeUUIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	// An IPv4 address, with a port when it has one.
 	ipv4Pattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b`)
 	// What could be an IPv6 address (hex digits, colons, dots, maybe in
@@ -145,6 +149,10 @@ func Scrub(message string) string {
 	s = urlPattern.ReplaceAllString(s, scrubbedURL)
 	s = queryPattern.ReplaceAllStringFunc(s, func(q string) string { return q[:1] + "<query>" })
 	s = emailPattern.ReplaceAllString(s, scrubbedEmail)
+	// Token runs go before the ID, IP and number rules: those match small
+	// shapes that a random token contains by chance, and replacing one would
+	// leave the rest of the token behind as two runs too short to catch.
+	s = tokenPattern.ReplaceAllStringFunc(s, scrubLongRun)
 	s = publicIDPattern.ReplaceAllString(s, scrubbedID)
 	s = uuidPattern.ReplaceAllString(s, scrubbedID)
 	s = ipv4Pattern.ReplaceAllString(s, scrubbedIP)
@@ -303,6 +311,15 @@ func keepIdentifier(before, quoted string) bool {
 		}
 	}
 	return false
+}
+
+// scrubLongRun is scrubToken for the early pass, which leaves a UUID to
+// the ID rule (it is 36 characters with dashes).
+func scrubLongRun(run string) string {
+	if wholeUUIDPattern.MatchString(run) {
+		return run
+	}
+	return scrubToken(run)
 }
 
 // scrubToken decides on a run of base64 or base64url characters (20 or

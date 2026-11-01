@@ -75,7 +75,7 @@ The access line's keys, the request IDs and a panic line's `panic` and `stack` a
 
 ## Scrubbing
 
-`observe.Scrub(message)` is what an error's text may keep, in the log and in `app_errors` alike. First the text becomes one line: control characters and line breaks become spaces, **format characters** (bidi controls, zero-width spaces, a soft hyphen) are removed, since one could split a token so half of it looked like a word, and invalid UTF-8 becomes a replacement character. Then it replaces, in this order:
+`observe.Scrub(message)` is what an error's text may keep, in the log and in `app_errors` alike. First the text becomes one line: control characters and line breaks become spaces, **format characters** (bidi controls, zero-width spaces, a soft hyphen) are removed, since one could split a token so half of it looked like a word, and invalid UTF-8 becomes a replacement character. Then it replaces, in this order (token runs go before IDs, IPs and numbers: a random token holds such shapes by chance, and replacing one would leave the rest of it behind in two runs too short to catch; the ID rule matches only the app's own prefixes; the remaining hex, base32 and recovery-code rules follow the quoted strings):
 
 | What | Becomes | For example |
 | --- | --- | --- |
@@ -83,10 +83,10 @@ The access line's keys, the request IDs and a panic line's `panic` and `stack` a
 | PostgreSQL's details: `Key (…)=(…)` and `Failing row contains (…)`, up to the line's last parenthesis (a value can hold its own) | `=(…)`, `contains (…)` | a duplicate email, a refused row |
 | a URL (any `scheme://…`), a query string or fragment (`?a=b…`, `#a=b…`) | `<url>`, `?<query>`, `#<query>` | a link's token in a path, a search in a query |
 | an email address, with or without `<…>`, its `@` also as `%40` or full-width `＠`, or with a quoted local part (`"ada lovelace"@…`) | `<email>` | an SMTP refusal's recipient |
-| a public or request ID (three letters, `_`, 14 base62), a UUID | `<id>` | `usr_…`, `wsp_…`, `req_…` |
+| a run of 20 or more base64 or base64url characters: always at 32 or more (a session, reset, invitation or block-link token is 43, whatever characters it happens to hold), and under 32 when it mixes two of upper case, lower case and digits. All hex is `<hex>` | `<token>` | tokens, `APP_KEY`-like base64, a JWT's parts |
+| a public or generated ID (`usr`, `wsp`, `prj`, `inv`, `evt`, `err`, `ipb`, `req`, `srv` or `alt`, `_`, 14 base62), a UUID | `<id>` | `usr_…`, `wsp_…`, `req_…` |
 | an IPv4 address (and port), an IPv6 address (`[…]:port`, `%zone`, and when a sentence's `:` or `.` follows it) | `<ip>` | `dial tcp 10.0.0.5:5432` |
 | a double-quoted (Go's `%q` included, or cut off at the end), curly (`“…”`, `‘…’`), guillemet (`«…»`), backquoted or single-quoted string; quotes nested so they can't be paired (a closing quote followed straight by more text) go to the line's last quote | `"…"`, `“…”`, `'…'` … | PostgreSQL's `invalid input syntax for type uuid: "…"` |
-| a run of 20 or more base64 or base64url characters: always at 32 or more (a session, reset, invitation or block-link token is 43, whatever characters it happens to hold), and under 32 when it mixes two of upper case, lower case and digits. All hex is `<hex>` | `<token>` | tokens, `APP_KEY`-like base64, a JWT's parts |
 | 16 or more of `A–Z` and `2–7` (base32) | `<token>` | an authenticator's secret |
 | 16 or more hex digits, even inside a word (`digest_9f86…`) | `<hex>` | a SHA-256 digest |
 | a recovery code: `xxxxx-xxxxx` in its alphabet (Crockford's base32), or its ten characters without the dash when they hold a digit and a letter | `<token>` | |
