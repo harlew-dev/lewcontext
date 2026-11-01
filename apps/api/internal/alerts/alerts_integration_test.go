@@ -580,3 +580,29 @@ func TestAlertEscalationAndResolutionAreBounded(t *testing.T) {
 		}
 	}
 }
+
+// A leader whose lock check times out lets the lock go (closing its
+// connection) and leads again from a fresh one, so a hung connection can't
+// hold the lock while evaluating nothing.
+func TestAlertLeaderLetsGoWhenItsCheckTimesOut(t *testing.T) {
+	s, e, _ := setup(t, monitor.AlertRule{Signal: "test.none"})
+	ctx := context.Background()
+	r := &Runner{DB: s.DB, Evaluator: e, Now: func() time.Time { return start }}
+	defer r.Release()
+	if ran, err := r.Tick(ctx); !ran || err != nil {
+		t.Fatalf("first: %v %v", ran, err)
+	}
+	before := r.leader
+	r.CheckTimeout = time.Nanosecond
+	if ran, _ := r.Tick(ctx); !ran || r.leader == nil || r.leader == before {
+		t.Fatalf("the timed-out leader wasn't replaced: %v %v", ran, r.leader == before)
+	}
+	// Only one session holds the lock.
+	var holders int
+	err := s.DB.NewSelect().TableExpr("pg_locks").ColumnExpr("count(*)").
+		Where("locktype = 'advisory' AND granted AND objid = (hashtextextended(? || current_schema(), 0) & 4294967295)::bigint::oid", "lewcontext:alerts:").
+		Scan(ctx, &holders)
+	if err != nil || holders != 1 {
+		t.Fatalf("%d holders (%v)", holders, err)
+	}
+}

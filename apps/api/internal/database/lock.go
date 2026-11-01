@@ -116,9 +116,15 @@ func TryLeadAlerts(ctx context.Context, db *bun.DB) (*Leader, error) {
 	err = conn.NewSelect().
 		ColumnExpr("pg_try_advisory_lock(hashtextextended(? || current_schema(), 0))", alertsLock).
 		Scan(ctx, &locked)
-	if err != nil || !locked {
-		_ = conn.Close()
+	if err != nil {
+		// The lock may have been taken though the answer was lost: end the
+		// session rather than return the connection to the pool with it.
+		discard(conn)
 		return nil, err
+	}
+	if !locked {
+		_ = conn.Close()
+		return nil, nil
 	}
 	return &Leader{conn: conn}, nil
 }
@@ -149,9 +155,16 @@ func (l *Leader) Release(ctx context.Context) {
 		ColumnExpr("pg_advisory_unlock(hashtextextended(? || current_schema(), 0))", alertsLock).
 		Scan(ctx, &unlocked)
 	if err != nil || !unlocked {
-		// Raw closes the driver connection, so PostgreSQL ends the session
-		// and its locks with it.
-		_ = l.conn.Raw(func(driverConn any) error { return driver.ErrBadConn })
+		discard(l.conn)
+		return
 	}
 	_ = l.conn.Close()
+}
+
+// discard closes conn's driver connection instead of returning it to the
+// pool: PostgreSQL ends the session and its locks with it, so a session
+// lock is never left on a pooled connection.
+func discard(conn bun.Conn) {
+	_ = conn.Raw(func(driverConn any) error { return driver.ErrBadConn })
+	_ = conn.Close()
 }

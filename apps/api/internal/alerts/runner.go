@@ -16,6 +16,11 @@ const Interval = time.Minute
 // releaseTimeout bounds handing the lock back at shutdown.
 const releaseTimeout = 2 * time.Second
 
+// DefaultCheckTimeout bounds Leader.Check: past it the lock is let go, so
+// a hung connection can't keep a leader that evaluates nothing, nor keep
+// the others from taking over.
+const DefaultCheckTimeout = 5 * time.Second
+
 // Runner is the alert loop every server runs (decision 1): each minute it
 // takes, or checks it still holds, the alerts' session lock
 // (database.TryLeadAlerts); only the holder evaluates, then pings the
@@ -30,6 +35,9 @@ type Runner struct {
 	Heartbeat *Heartbeat
 	// Now is the clock: time.Now when nil.
 	Now func() time.Time
+	// CheckTimeout bounds checking the lock is still held (CheckTimeout
+	// by default): a connection that hangs counts as a lost lock.
+	CheckTimeout time.Duration
 
 	leader *database.Leader
 }
@@ -90,7 +98,14 @@ func (r *Runner) Tick(ctx context.Context) (evaluated bool, err error) {
 // connection broke) is let go, and the evaluator's memory with it.
 func (r *Runner) lead(ctx context.Context) bool {
 	if r.leader != nil {
-		if err := r.leader.Check(ctx); err == nil {
+		timeout := r.CheckTimeout
+		if timeout == 0 {
+			timeout = DefaultCheckTimeout
+		}
+		checking, cancel := context.WithTimeout(ctx, timeout)
+		err := r.leader.Check(checking)
+		cancel()
+		if err == nil {
 			return true
 		} else if ctx.Err() == nil {
 			slog.WarnContext(ctx, "lost the alerts' lock; standing by", observe.ErrorAttr(err))
