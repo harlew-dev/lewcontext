@@ -32,6 +32,8 @@ func New(s *httpapi.Server) http.Handler {
 func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", health(s))
+	policies := account.Policies{Server: s}
+	mux.HandleFunc("GET /api/policies", policies.Show)
 	registrations := account.Registrations{Server: s}
 	sessions := account.Sessions{Server: s}
 	me := account.Me{Server: s}

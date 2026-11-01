@@ -20,7 +20,11 @@ type Server struct {
 	Repo   *store.Store
 	Config config.Config
 	// Pages serves the web app (internal/web); nil serves the API only.
-	Pages     WebPages
+	Pages WebPages
+	// Policies are the current versions of the terms of service and privacy
+	// policy while POLICIES=on (cmd/server reads them from the web build),
+	// and empty while off: sign-up must agree to them (policies.md).
+	Policies  store.PolicyVersions
 	dummyHash string
 	// keys seal MFA secrets, digest recovery codes and sign the admin
 	// assets pass (APP_KEY).

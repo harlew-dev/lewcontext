@@ -21,6 +21,9 @@ type Config struct {
 	// EmailVerification is whether emails are verified with a code
 	// (verification.go).
 	EmailVerification
+	// Policies (POLICIES=on) publishes the terms of service and privacy
+	// policy and makes sign-up agree to them (policies.go). Off by default.
+	Policies bool
 	// AppKey (APP_KEY, 32 bytes) seals MFA secrets at rest
 	// (encryption.go, auth.Keys).
 	AppKey []byte
@@ -56,6 +59,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if err := c.loadEmailVerification(); err != nil {
+		return c, err
+	}
+	if err := c.loadPolicies(); err != nil {
 		return c, err
 	}
 	if err := c.loadAppKey(); err != nil {

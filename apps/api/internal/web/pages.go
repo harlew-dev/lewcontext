@@ -35,6 +35,10 @@ type Pages struct {
 	adminFiles fs.FS
 	adminShell page
 	production bool
+	// policies is the build's policy manifest, or nil; policiesOn is set by
+	// ServePolicies (policies.go).
+	policies   *Policies
+	policiesOn bool
 }
 
 type page struct {
@@ -46,7 +50,9 @@ type page struct {
 // if the fallback page is missing or an HTML file can't be read, so a broken
 // build never serves a policy that blocks the app. admin is the admin build
 // when admin is on (ADMIN_ROUTE_KEY set), or nil; without its shell New
-// fails with ErrAdminNotBuilt.
+// fails with ErrAdminNotBuilt. It reads the policy manifest when the build
+// has one (a malformed one fails), but the policy pages stay unpublished
+// until ServePolicies.
 func New(files, admin fs.FS, production bool) (*Pages, error) {
 	p := &Pages{files: files, prerendered: map[string]page{}, production: production}
 	err := fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
@@ -69,6 +75,9 @@ func New(files, admin fs.FS, production bool) (*Pages, error) {
 	}
 	if p.fallback.body == nil {
 		return nil, ErrNotBuilt
+	}
+	if p.policies, err = readPolicies(files); err != nil {
+		return nil, err
 	}
 	if admin != nil {
 		shell, err := load(admin, adminShellFile)
@@ -114,7 +123,7 @@ func urlPath(name string) string {
 // (with status 404).
 func (p *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.securityHeaders(w)
-	if prerendered, ok := p.prerendered[r.URL.Path]; ok {
+	if prerendered, ok := p.prerendered[r.URL.Path]; ok && !p.unpublished(strings.TrimPrefix(r.URL.Path, "/")) {
 		// No user data is built into these, but they change with each deploy.
 		p.serveHTML(w, prerendered, http.StatusOK, "no-cache")
 		return
@@ -208,7 +217,7 @@ func (p *Pages) serveHTML(w http.ResponseWriter, html page, status int, cache st
 // are never served.
 func (p *Pages) serveFile(w http.ResponseWriter, r *http.Request) bool {
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-	if name == "" || path.Ext(name) == ".html" || hidden(name) {
+	if name == "" || path.Ext(name) == ".html" || hidden(name) || p.unpublished(name) {
 		return false
 	}
 	info, err := fs.Stat(p.files, name)

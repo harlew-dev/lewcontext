@@ -154,21 +154,34 @@ func mailDriver(c config.Config) (mail.Driver, error) {
 // servePages adds the embedded web build, and with ADMIN_ROUTE_KEY set the
 // admin build beside it. Production requires the web build; in development
 // the API can run alone while Vite serves the pages (make web). A web build
-// without its admin build, with admin on, never starts (ErrAdminNotBuilt).
+// without its admin build, with admin on, never starts (ErrAdminNotBuilt),
+// nor POLICIES=on without the policies in the build, or in production with
+// a document still the template (web.Pages.ServePolicies).
 func servePages(api *httpapi.Server, c config.Config) error {
 	var admin fs.FS
 	if c.AdminRouteKey != "" {
 		admin = web.AdminFiles()
 	}
 	pages, err := web.New(web.Files(), admin, c.Production)
-	if errors.Is(err, web.ErrNotBuilt) && !c.Production {
+	if errors.Is(err, web.ErrNotBuilt) && !c.Production && !c.Policies {
 		slog.Info("serving the API only; the web app isn't built into this binary (make serve)")
 		return nil
+	}
+	if errors.Is(err, web.ErrNotBuilt) && c.Policies {
+		return web.ErrPoliciesNotBuilt
 	}
 	if err != nil {
 		return err
 	}
 	api.Pages = pages
+	if c.Policies {
+		built, err := pages.ServePolicies()
+		if err != nil {
+			return err
+		}
+		api.Policies = store.PolicyVersions{TermsOfService: built.TermsOfService.Version, PrivacyPolicy: built.PrivacyPolicy.Version}
+		slog.Info("the terms of service and privacy policy are published", "termsOfService", api.Policies.TermsOfService, "privacyPolicy", api.Policies.PrivacyPolicy)
+	}
 	return nil
 }
 
