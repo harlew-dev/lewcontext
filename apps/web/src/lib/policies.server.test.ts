@@ -188,6 +188,11 @@ describe("parsePolicy", () => {
     ["a protocol-relative link", "[x](//evil.example)", /isn't allowed/],
     ["a data: link", "[x](data:text/html,hi)", /isn't allowed/],
     ["strikethrough", "~~gone~~", /strikethrough isn't allowed/],
+    [
+      "a reference-style link definition",
+      "See [terms][t].\n\n[t]: https://example.com",
+      /link definition isn't allowed/,
+    ],
   ])("refuses %s, saying where", (_name, body, error) => {
     expect(() => parse(body)).toThrow(error);
   });

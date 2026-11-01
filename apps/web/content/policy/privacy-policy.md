@@ -18,6 +18,7 @@ This policy is a template. Replace every part in square brackets, check it again
 | Your name, email address and password (stored only as a one-way hash) | To give you an account and let you sign in | Until you delete your account |
 | The workspaces and projects you create, and their members | To run the service | Until they, or your account, are deleted |
 | Sign-in sessions and the address and browser they came from | To keep you signed in and protect your account | Until the session ends |
+| Which versions of these terms and this policy you agreed to at sign-up (two dates) and when | To show what you agreed to | Until you delete your account |
 | A record of security events (sign-ins, password changes, invitations) | To protect accounts and investigate misuse | [90 days] |
 | Emails we send you and whether they were delivered | To send you what you asked for | [retention period] |
 

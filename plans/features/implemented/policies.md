@@ -30,7 +30,7 @@ GET  /policy/terms-of-service       on: the prerendered page   off: the ordinary
 GET  /api/policies                  {enabled: true, termsOfService: "2026-11-01", privacyPolicy: "2026-11-01"} | {enabled: false}
 /auth/register                      its loader asks /api/policies; on: a required checkbox with both links
 POST /api/auth/register {name, email, password, policies: {termsOfService, privacyPolicy}}
-  on: both versions present and current, or 422 field "policies"   (before any limit or lookup)
+  on: both versions present and current, or 422 field "policies"   (after `auth:per-ip`, which counts the address and not the email, and before every other limit or lookup)
   → pending_registrations keeps the versions → verify copies them to users (policies_accepted_at)
   → auth.registered {…, policies}
 ```
@@ -132,7 +132,7 @@ A small Vite plugin in the app build (`policyManifest()` in `vite.config.ts`, be
 {"termsOfService": {"version": "2026-11-01", "boilerplate": true}, "privacyPolicy": {"version": "2026-11-01", "boilerplate": true}}
 ```
 
-It's a dot-file, so `internal/web` never serves it (`hidden`), and `//go:embed all:dist` and `install_build` carry it into the binary. `web.New` parses it; `Pages.Policies()` returns it.
+It's a dot-file, so `internal/web` never serves it (`hidden`), and `//go:embed all:dist` and `install_build` carry it into the binary. `web.New` parses it; `Pages.ServePolicies()` returns it (built as `ServePolicies`, which also publishes the pages).
 
 ## Pages (decision 8)
 
@@ -259,7 +259,7 @@ No new event. Versions aren't sensitive, so `TestPayloadsHoldNothingSensitive` i
 | --- | --- |
 | Script or markup injected through a Markdown file | Raw HTML tokens fail the build; pages render React elements from typed blocks, never `dangerouslySetInnerHTML`; link schemes are an allowlist (`https:`, `mailto:`, `/`), so `javascript:` fails the build |
 | Weakening the CSP | No inline script of ours. React Router's loader data is an inline script in the prerendered HTML, which `internal/web` hashes at startup like every other; never `'unsafe-inline'`. Playwright checks for CSP violations on both pages |
-| The parser shipping to browsers | `policies.server.ts` (React Router refuses `.server` imports from client code); `marked` is a devDependency, pinned; `npm audit` |
+| The parser shipping to browsers | (The two pages' route chunks, the component code and not the text, are in the app build even with `POLICIES=off`; Go only hides the HTML and `.data`.) `policies.server.ts` (React Router refuses `.server` imports from client code); `marked` is a devDependency, pinned; `npm audit` |
 | Signing up through the API without agreeing | The API enforces it, not the checkbox |
 | Recording a version nobody was shown | Only the current versions are accepted; a stale or invented one is 422 |
 | Sign-up revealing whether an email has an account | The check reads only the body and config, runs before every limit and lookup, and verification-on writes the same row for every address; the same-answer test covers it |
