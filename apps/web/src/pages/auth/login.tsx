@@ -4,7 +4,7 @@ import { InvitationCallout } from "@/components/app/invitations/invitation-callo
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Field, Label } from "@/components/ui/fieldset";
+import { Description, Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
@@ -120,13 +120,14 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
           />
+          {/* Under the input, as its description. The email goes along in
+              navigation state, not the URL. */}
+          <Description>
+            <TextLink href={routes.forgotPassword} state={{ email }}>
+              <Strong>Forgot password?</Strong>
+            </TextLink>
+          </Description>
         </Field>
-        {/* The email goes along in navigation state, not the URL. */}
-        <Text>
-          <TextLink href={routes.forgotPassword} state={{ email }}>
-            <Strong>Forgot password?</Strong>
-          </TextLink>
-        </Text>
         <Button type="submit" className="w-full" loading={loading}>
           Sign in
         </Button>
