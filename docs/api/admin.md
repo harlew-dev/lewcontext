@@ -340,7 +340,7 @@ The writes an operator makes from the dashboard (plan: [actions](../../plans/fea
 
 | Action | Where | Does |
 | --- | --- | --- |
-| **Sign out everywhere** | a user's page | Deletes every app session of the account |
+| **Sign out everywhere** | a user's page | Deletes every app session of the account, and ends a sign-in waiting for its code |
 | **Reset two-factor authentication** | a user's page (MFA on) | `admin reset-mfa` from the dashboard: the authenticator, recovery codes and sign-in challenges deleted, every session signed out. The body must say `confirmed: true`: the dialog's "I've confirmed who is asking, outside the app" |
 | **Suspend**, **Unsuspend** | a user's page | Below |
 | **Revoke pending invitations** | a workspace's page | Revokes every live invitation of the workspace (an invitation-spam run), without touching its members or projects. Its page shows how many are pending |
@@ -380,7 +380,7 @@ A failed delivery (its listener gave up) is queued again: `failed_at` cleared, `
 
 ### Signing another admin out
 
-The one action on another admin (a lost laptop, a session flagged by `admin.session.moved`): every admin session and app session of theirs ends, recorded as `admin.admin.signed_out`. They stay an admin and sign in again with their password and a code; revoking admin stays on the command line. Not on yourself (403): your own other sessions have `DELETE /api/admin/sessions`. 404 for an account that isn't an admin.
+The one action on another admin (a lost laptop, a session flagged by `admin.session.moved`): every admin session and app session of theirs ends, with any sign-in waiting for its code, recorded as `admin.admin.signed_out`. They stay an admin and sign in again with their password and a code; revoking admin stays on the command line. Not on yourself (403): your own other sessions have `DELETE /api/admin/sessions`. 404 for an account that isn't an admin.
 
 ## The Admins page
 

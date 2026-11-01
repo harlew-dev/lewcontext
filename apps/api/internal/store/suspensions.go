@@ -135,8 +135,7 @@ func endAccess(ctx context.Context, tx bun.Tx, userID int64) (int, error) {
 	if err := deletePasswordReset(ctx, tx, userID); err != nil {
 		return 0, err
 	}
-	_, err = tx.NewDelete().Model((*mfaChallenge)(nil)).Where("user_id = ?", userID).Exec(ctx)
-	return sessions + adminSessions, err
+	return sessions + adminSessions, deleteChallenges(ctx, tx, userID)
 }
 
 // recordSuspension records auth.suspended and, from the dashboard,

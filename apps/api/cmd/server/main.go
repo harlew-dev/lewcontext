@@ -75,8 +75,10 @@ func run() error {
 		// line) go through the same handler, as warnings.
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)}
 	// The live IP blocks, before the first request, then every 30 seconds.
+	// Without the database the server still starts (readiness says so),
+	// and the next reload loads them.
 	if err := api.ReloadIPBlocks(ctx); err != nil {
-		return err
+		slog.Error("loading IP blocks failed; retrying every 30 seconds", "error", err)
 	}
 	go api.RunIPBlocks(ctx, httpapi.IPBlocksReload)
 	failures := make(chan error, 1)

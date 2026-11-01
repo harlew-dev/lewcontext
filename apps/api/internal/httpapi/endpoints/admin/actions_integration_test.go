@@ -149,11 +149,13 @@ func TestAdminSignOutEverywhere(t *testing.T) {
 	operator, session := operatorSignedIn(t, db, f, factory.SteppedUp)
 	target := apitest.SignedIn(t, db, f)
 	apitest.Must(factory.SessionFor(ctx, db, f, target.UserID))(t)
+	// A sign-in waiting for its code ends too.
+	apitest.Must(factory.MFAChallenges.State(factory.ChallengeFor(target.UserID)).CreateOne(ctx, db, f))(t)
 	bystander := apitest.SignedIn(t, db, f)
 	path := "/api/admin/users/" + apitest.PublicIDOf(t, db, target.UserID) + "/sessions"
 	adminCall(t, h, "DELETE", path, reasonBody(reason), session.CSRFToken, 204, session.Cookie())
-	if n := apitest.CountRows(t, db, "sessions", target.UserID); n != 0 {
-		t.Fatalf("sessions left: %d", n)
+	if n := apitest.CountRows(t, db, "sessions", target.UserID) + apitest.CountRows(t, db, "mfa_challenges", target.UserID); n != 0 {
+		t.Fatalf("sessions or challenges left: %d", n)
 	}
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", target.Cookie(), 401)
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", bystander.Cookie(), 200)

@@ -55,8 +55,8 @@ func lockActionTarget(ctx context.Context, tx bun.Tx, publicID string, a AdminAc
 }
 
 // RevokeUserSessions signs every session of the account publicID out
-// (Sign out everywhere), recording admin.user.signed_out. Errors as
-// lockActionTarget's.
+// (Sign out everywhere), and ends any sign-in waiting for its code,
+// recording admin.user.signed_out. Errors as lockActionTarget's.
 func (s *Store) RevokeUserSessions(ctx context.Context, publicID string, a AdminAction) (int, error) {
 	var count int
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -65,6 +65,9 @@ func (s *Store) RevokeUserSessions(ctx context.Context, publicID string, a Admin
 			return err
 		}
 		if count, err = deleteSessions(ctx, tx, "user_id = ?", u.ID); err != nil {
+			return err
+		}
+		if err := deleteChallenges(ctx, tx, u.ID); err != nil {
 			return err
 		}
 		e := events.AdminUserSignedOut{Admin: a.Admin.PublicID, User: u.PublicID, Reason: a.Reason, SessionsRevoked: count}
@@ -110,7 +113,8 @@ func (s *Store) ResetUserMFA(ctx context.Context, publicID string, a AdminAction
 }
 
 // RevokeAdminSessions signs another admin out: every admin session and app
-// session of theirs (a lost laptop, a session flagged as moved), recording
+// session of theirs (a lost laptop, a session flagged as moved), and any
+// sign-in of theirs waiting for its code, recording
 // admin.admin.signed_out. sql.ErrNoRows for an unknown account,
 // ErrNotAdmin for one that isn't an admin, ErrActionOnSelf for the acting
 // admin (who signs their own other sessions out with
@@ -128,6 +132,9 @@ func (s *Store) RevokeAdminSessions(ctx context.Context, publicID string, a Admi
 			return err
 		}
 		if sessions, err = deleteSessions(ctx, tx, "user_id = ?", u.ID); err != nil {
+			return err
+		}
+		if err := deleteChallenges(ctx, tx, u.ID); err != nil {
 			return err
 		}
 		e := events.AdminAdminSignedOut{Admin: a.Admin.PublicID, User: u.PublicID, Reason: a.Reason, AdminSessionsRevoked: adminSessions, SessionsRevoked: sessions}
@@ -200,4 +207,12 @@ func (s *Store) revokeInvitations(ctx context.Context, tx bun.Tx, where string, 
 		}
 	}
 	return len(rows), nil
+}
+
+// deleteChallenges ends the user's sign-ins waiting for a code (the app's
+// and the admin door's), so a sign-out from the dashboard can't be
+// followed by a session from a password typed just before.
+func deleteChallenges(ctx context.Context, tx bun.Tx, userID int64) error {
+	_, err := tx.NewDelete().Model((*mfaChallenge)(nil)).Where("user_id = ?", userID).Exec(ctx)
+	return err
 }
