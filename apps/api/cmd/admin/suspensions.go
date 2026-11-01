@@ -7,12 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"log"
 	"os"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // Suspending from the command line (docs/api/admin.md#suspending-an-account):
@@ -20,7 +20,8 @@ import (
 // first), recording auth.suspended with by: cli and the reason.
 
 // suspensionFlags parses `<command> -email <address> -reason <why>
-// [-confirm]`. The reason is 10 to 500 characters, as the dashboard's.
+// [-confirm]`. The reason follows the dashboard's rule (input.Reason): 10
+// to 500 characters, nothing that could hide what the audit trail says.
 func suspensionFlags(name string, args []string) (string, string, bool, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	email := fs.String("email", "", "the account's email (required)")
@@ -30,12 +31,12 @@ func suspensionFlags(name string, args []string) (string, string, bool, error) {
 		return "", "", false, err
 	}
 	address := strings.ToLower(strings.TrimSpace(*email))
-	why := strings.TrimSpace(*reason)
+	why := *reason
 	if address == "" || fs.NArg() > 0 {
 		return "", "", false, fmt.Errorf("usage: go run ./cmd/admin %s -email <address> -reason <why> [-confirm]", name)
 	}
-	if n := utf8.RuneCountInString(why); n < 10 || n > 500 {
-		return "", "", false, errors.New("give a -reason of 10 to 500 characters")
+	if !input.Reason(&why) {
+		return "", "", false, errors.New("give a -reason of 10 to 500 characters, without control or invisible formatting characters (line breaks and tabs are fine)")
 	}
 	return address, why, *confirm, nil
 }

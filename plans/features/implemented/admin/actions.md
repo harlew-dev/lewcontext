@@ -38,7 +38,7 @@ Built on the events worktree (branch `admin-run/events`) with every recommendati
 - **Response codes** follow the routes' actions: 204 for the deletes and a single retry, 201 for Suspend and a block, 200 `{count}` for the bulk retry; 409 for a state that makes the action pointless (already suspended, not suspended, MFA off, nothing to revoke or retry, already blocked).
 
 **Shared parts:**
-- The reason's rule moved from `email_blocks.go` to `endpoints/admin/action.go` (`validReason`, `adminAction`), shared by every action; the ui branch's `input.ValidText` will replace it at the merge. `store.AdminUnblock` became `store.AdminAction`.
+- The reason's rule moved from `email_blocks.go` to `endpoints/admin/action.go` (`validReason`, `adminAction`), shared by every action, and then (after the security review found the CLI's `-reason` only counted characters) to `internal/httpapi/input/reason.go` (`input.Reason`), so `cmd/admin`'s `suspend` and `unsuspend` check the same rule without importing a controller; the ui branch's `input.ValidText` will replace it at the merge. `store.AdminUnblock` became `store.AdminAction`.
 - `AdminActionDialog` takes the action's own fields (`children`, `ready`, `onError`), and `components/ui/checkbox.tsx` is new (BaseUI's `Checkbox`).
 - New names, each listed with its reason in its check: the store verbs `Suspend`, `Unsuspend`, `Requeue` (and `Revoke`, `Reset`, `Count` widened); the named action `Retry`; the stored event resources `admin.user`, `admin.workspace`, `admin.delivery`, `admin.ip`, `admin.admin`; the event groups `admin.user.*` (Actions on accounts) and `admin.ip.*` (IP blocks).
 - **Migrations 060 and 061**, numbered apart from the other lines' work.

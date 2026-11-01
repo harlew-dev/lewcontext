@@ -7,9 +7,6 @@ import (
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 // What every account-and-access action shares (plans/features/admin/actions.md):
@@ -18,41 +15,12 @@ import (
 // fresh code, then admin-action:per-user), so by the time a controller
 // runs, those have passed.
 
-// Bounds of an action's reason, in characters, after trimming.
-const (
-	minReason = 10
-	maxReason = 500
-)
-
-// validReason trims the reason and checks it is 10 to 500 characters
-// (counted as Unicode characters, as sign-up counts a password's), with no
-// character that could hide or rearrange what an audit record says: line
-// breaks and tabs are allowed, but no other control character (and no NUL,
-// which PostgreSQL's jsonb can't hold), no format character (bidi
-// overrides such as U+202E, zero-width characters, U+FEFF) and no Unicode
-// line or paragraph separator.
-func validReason(reason *string) bool {
-	*reason = strings.TrimSpace(*reason)
-	n := utf8.RuneCountInString(*reason)
-	return n >= minReason && n <= maxReason && !strings.ContainsFunc(*reason, hiddenInReason)
-}
-
-// hiddenInReason reports whether c may not appear in a reason.
-func hiddenInReason(c rune) bool {
-	switch {
-	case c == '\n' || c == '\r' || c == '\t':
-		return false
-	case c == ' ' || c == ' ':
-		return true
-	}
-	return unicode.IsControl(c) || unicode.Is(unicode.Cf, c)
-}
-
-// adminAction checks the reason and returns the action of the signed-in
+// adminAction checks the reason (input.Reason, the command line's rule
+// too) and returns the action of the signed-in
 // admin, answering 422 on reason when it isn't valid. The reason goes only
 // into the action's event: never a log line (the body is never logged).
 func adminAction(w http.ResponseWriter, r *http.Request, reason string) (store.AdminAction, bool) {
-	if !validReason(&reason) {
+	if !input.Reason(&reason) {
 		httpapi.FailField(w, 422, "reason", "Give a reason of 10 to 500 characters.")
 		return store.AdminAction{}, false
 	}

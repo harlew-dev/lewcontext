@@ -106,8 +106,15 @@ func TestSuspendFromTheCommandLine(t *testing.T) {
 	if err := unsuspendAccount(ctx, repository, user.Email, why, true, &out); err == nil {
 		t.Fatal("unsuspended twice")
 	}
-	if _, _, _, err := suspensionFlags("suspend", []string{"-email", user.Email, "-reason", "short"}); err == nil {
-		t.Fatal("a short reason")
+	// -reason follows the dashboard's rule (input.Reason): trimmed, 10 to
+	// 500 characters, nothing hidden.
+	for _, bad := range []string{"short", "  short   ", "Spam \u202eklat\u202c from them", "Spam\u200b from this account", "Spam from\x00this account"} {
+		if _, _, _, err := suspensionFlags("suspend", []string{"-email", user.Email, "-reason", bad}); err == nil {
+			t.Fatalf("the reason %q", bad)
+		}
+	}
+	if _, kept, _, err := suspensionFlags("suspend", []string{"-email", user.Email, "-reason", "  Ticket 4521:\n\tspam  "}); err != nil || kept != "Ticket 4521:\n\tspam" {
+		t.Fatalf("a reason with a line break and a tab: %q %v", kept, err)
 	}
 }
 
