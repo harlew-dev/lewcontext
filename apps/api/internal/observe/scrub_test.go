@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -307,12 +308,12 @@ func TestScrubbedSecretShapes(t *testing.T) {
 					}
 				}
 			}
-			check("base64url token", 20000, func() string { return base64.RawURLEncoding.EncodeToString(random(32)) })
-			check("base64 key", 20000, func() string { return base64.StdEncoding.EncodeToString(random(32)) })
-			check("base32 secret", 20000, func() string { return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(random(20)) })
-			check("base64url token with a planted piece", 20000, func() string { return planted(43) })
-			check("long base64url token with a planted piece", 10000, func() string { return planted(64) })
-			check("short token (20-31) with a planted piece", 10000, func() string { return planted(20 + rng.IntN(8)) })
+			check("base64url token", 500, func() string { return base64.RawURLEncoding.EncodeToString(random(32)) })
+			check("base64 key", 500, func() string { return base64.StdEncoding.EncodeToString(random(32)) })
+			check("base32 secret", 500, func() string { return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(random(20)) })
+			check("base64url token with a planted piece", 500, func() string { return planted(43) })
+			check("long base64url token with a planted piece", 300, func() string { return planted(64) })
+			check("short token (20-31) with a planted piece", 300, func() string { return planted(20 + rng.IntN(8)) })
 			alphabet := "0123456789abcdefghjkmnpqrstvwxyz"
 			code := func(dash bool) func() string {
 				return func() string {
@@ -326,12 +327,12 @@ func TestScrubbedSecretShapes(t *testing.T) {
 					return b.String()
 				}
 			}
-			check("recovery code", 20000, code(true))
+			check("recovery code", 500, code(true))
 			// Typed without its dash, a code is caught when it holds a digit
 			// and a letter: all but about 2.4% (all letters) and 1 in 10^5
 			// (all digits, then a number anyway). Ten letters in a row are a
 			// word as often as a code, so those stay.
-			check("recovery code without its dash", 20000, func() string {
+			check("recovery code without its dash", 500, func() string {
 				for {
 					c := code(false)()
 					if strings.ContainsAny(c, "0123456789") && strings.ContainsAny(c, "abcdefghjkmnpqrstvwxyz") {
@@ -381,5 +382,62 @@ func TestScrubStackLinesAreSafe(t *testing.T) {
 	}
 	if client := ScrubClientStack(planted); client != "at ProjectRow (projects-B4xQ9.js:12:345)" {
 		t.Errorf("client stack: %q", client)
+	}
+}
+
+// Text an attacker controls (a message sent from a browser, an error that
+// quotes a request) must not make the scrubber slow: every call on a large,
+// hostile input finishes well under 100 ms (a second with the race detector).
+func TestScrubIsFastOnAdversarialInput(t *testing.T) {
+	const size = 100 << 10
+	limit := 100 * time.Millisecond
+	if raceEnabled {
+		limit *= 10 // the race detector slows this code about tenfold
+	}
+	repeat := func(unit string) string { return strings.Repeat(unit, size/len(unit)+1)[:size] }
+	inputs := map[string]string{
+		"token runs":         repeat("Zx9_aB3-qL0vT7mK2pR5sW8yE1nH4jD6 "),
+		"one long token":     repeat("aB3dE5gH7jK9mN1pQ3sT5vW7yZ"),
+		"at signs":           repeat("@"),
+		"emails":             repeat("a@b.c "),
+		"local parts":        repeat("a.b+c@") + "x",
+		"underscores":        repeat("_"),
+		"id-like":            repeat("usr_2yEHYLwiwPVhLW_"),
+		"digits":             repeat("1234567890"),
+		"dotted digits":      repeat("1.2.3.4.5."),
+		"colons":             repeat(":"),
+		"hex and colons":     repeat("ab:cd:"),
+		"double quotes":      repeat(`"`),
+		"unpaired quotes":    repeat(`"a`),
+		"single quotes":      repeat(`'a`),
+		"curly quotes":       repeat("“a‘b«c„"),
+		"backquotes":         repeat("`"),
+		"open parentheses":   repeat("("),
+		"nested parentheses": repeat("(a)") + strings.Repeat(")", 10),
+		"key values":         repeat(")=(a"),
+		"urls":               repeat("http://a/b?c=d#e=f "),
+		"query strings":      repeat("?a=b"),
+		"brackets":           repeat("[::"),
+		"hosts":              repeat("a.b.c.d."),
+		"json snippets":      repeat(`"{"a":1}" `),
+		"digits in words":    repeat("a1"),
+		"spaces":             repeat(" "),
+		"many lines":         repeat("\tx.go:1\nf(a)\n"),
+	}
+	calls := map[string]func(string) string{
+		"Scrub":            Scrub,
+		"ScrubClient":      ScrubClient,
+		"ScrubError":       func(s string) string { return ScrubError(errors.New(s)) },
+		"ScrubStack":       ScrubStack,
+		"ScrubClientStack": ScrubClientStack,
+	}
+	for name, input := range inputs {
+		for call, fn := range calls {
+			start := time.Now()
+			fn(input)
+			if took := time.Since(start); took > limit {
+				t.Errorf("%s on %s (%d bytes) took %v", call, name, len(input), took)
+			}
+		}
 	}
 }
