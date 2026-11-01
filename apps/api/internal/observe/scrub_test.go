@@ -1,11 +1,11 @@
 package observe
 
 import (
-	"crypto/rand"
 	"encoding/base32"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	mrand "math/rand/v2"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -227,57 +227,120 @@ func TestScrubBrowserStack(t *testing.T) {
 	}
 }
 
-// No random secret of the app's shapes survives: session, reset,
-// invitation and block-link tokens (base64url of 32 bytes), APP_KEY-like
-// base64, authenticator secrets (base32 of 20 bytes) and recovery codes,
-// with and without their dash. (The security review's probe found 115 in
-// 200,000 tokens, every base32 secret and 2.4% of recovery codes left.)
+// A random token that holds an ID-shaped piece (vbv_ and 14 base62 characters)
+// was cut up by the ID rule before the token rules saw it, leaving 25 of its
+// 43 characters in the output.
+func TestScrubTokenWithIDShapedPiece(t *testing.T) {
+	const secret = "Uc3gCkIXBG4kWB-vbv_R7RP4mCmrLclu3-VcGmW_zaA"
+	if got, want := Scrub("reset "+secret+" expired"), "reset <token> expired"; got != want {
+		t.Fatalf("Scrub = %q, want %q", got, want)
+	}
+	// A real ID next to it is still an ID.
+	if got, want := Scrub("usr_2yEHYLwiwPVhLW "+secret), "<id> <token>"; got != want {
+		t.Fatalf("Scrub = %q, want %q", got, want)
+	}
+}
+
+// longestSharedRun is the length of the longest run of consecutive
+// characters of secret that out also holds.
+func longestSharedRun(secret, out string) int {
+	best := 0
+	for i := 0; i < len(secret); i++ {
+		for n := best + 1; i+n <= len(secret) && strings.Contains(out, secret[i:i+n]); n++ {
+			best = n
+		}
+	}
+	return best
+}
+
+// Secrets in the shapes the app makes, plain and with pieces shaped like
+// the other rules' targets (an ID, hex, a number, an email, a UUID) planted
+// inside, none of which may leave 8 or more consecutive characters. Runs
+// with several fixed seeds, and a failure names its seed.
 func TestScrubbedSecretShapes(t *testing.T) {
-	survives := func(kind string, n int, make func() string, wrap func(string) string) {
-		t.Helper()
-		for range n {
-			secret := make()
-			if out := Scrub(wrap(secret)); strings.Contains(out, secret[:min(12, len(secret))]) {
-				t.Fatalf("a %s survived: %q → %q", kind, secret, out)
-			}
-		}
-	}
-	random := func(n int) []byte {
-		b := make([]byte, n)
-		_, _ = rand.Read(b)
-		return b
-	}
-	in := func(s string) string { return "reset " + s + " expired" }
-	survives("base64url token", 20000, func() string { return base64.RawURLEncoding.EncodeToString(random(32)) }, in)
-	survives("base64 key", 20000, func() string { return base64.StdEncoding.EncodeToString(random(32)) }, in)
-	survives("base32 secret", 20000, func() string { return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(random(20)) }, in)
-	code := func(dash bool) func() string {
-		return func() string {
-			alphabet := "0123456789abcdefghjkmnpqrstvwxyz"
-			var b strings.Builder
-			for i, x := range random(10) {
-				if i == 5 && dash {
-					b.WriteByte('-')
+	for _, seed := range []uint64{1, 2, 3, 20261101, 0xC0FFEE} {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			rng := mrand.New(mrand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
+			random := func(n int) []byte {
+				b := make([]byte, n)
+				for i := range b {
+					b[i] = byte(rng.UintN(256))
 				}
-				b.WriteByte(alphabet[x%32])
+				return b
 			}
-			return b.String()
-		}
-	}
-	survives("recovery code", 20000, code(true), in)
-	// Typed without its dash, a code is caught when it holds a digit and a
-	// letter: all but about 2.4% (all letters) and 1 in 10^5 (all digits,
-	// then a number anyway). Ten letters in a row are a word as often as a
-	// code, so those stay.
-	digitAndLetter := func() string {
-		for {
-			c := code(false)()
-			if strings.ContainsAny(c, "0123456789") && strings.ContainsAny(c, "abcdefghjkmnpqrstvwxyz") {
-				return c
+			const alnum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+			pick := func(set string, n int) string {
+				b := make([]byte, n)
+				for i := range b {
+					b[i] = set[rng.IntN(len(set))]
+				}
+				return string(b)
 			}
-		}
+			// Planted pieces, each as the other rules would match it.
+			plants := []func() string{
+				func() string { return pick("abcdefghijklmnopqrstuvwxyz", 3) + "_" + pick(alnum, 14) },
+				func() string {
+					return []string{"usr", "wsp", "prj", "inv", "req", "evt", "err", "srv", "ipb", "alt"}[rng.IntN(10)] + "_" + pick(alnum, 14)
+				},
+				func() string { return pick("0123456789abcdef", 16+rng.IntN(20)) },
+				func() string { return pick("0123456789", 1+rng.IntN(12)) },
+				func() string { return pick("abcdefgh", 5) + "@" + pick("abcdefgh", 5) + ".com" },
+				func() string {
+					return pick("0123456789abcdef", 8) + "-" + pick("0123456789abcdef", 4) + "-" + pick("0123456789abcdef", 4) + "-" + pick("0123456789abcdef", 4) + "-" + pick("0123456789abcdef", 12)
+				},
+			}
+			// planted is a base64url token of n characters with a plant
+			// swapped in at a random place.
+			planted := func(n int) string {
+				tok := base64.RawURLEncoding.EncodeToString(random(n))[:n]
+				plant := plants[rng.IntN(len(plants))]()
+				at := rng.IntN(n)
+				return tok[:at] + plant + tok[at:]
+			}
+			check := func(kind string, n int, make func() string) {
+				t.Helper()
+				for range n {
+					secret := make()
+					out := Scrub("reset " + secret + " expired")
+					if run := longestSharedRun(secret, out); run >= 8 {
+						t.Fatalf("seed %d: a %s left %d consecutive characters: %q → %q", seed, kind, run, secret, out)
+					}
+				}
+			}
+			check("base64url token", 20000, func() string { return base64.RawURLEncoding.EncodeToString(random(32)) })
+			check("base64 key", 20000, func() string { return base64.StdEncoding.EncodeToString(random(32)) })
+			check("base32 secret", 20000, func() string { return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(random(20)) })
+			check("base64url token with a planted piece", 20000, func() string { return planted(43) })
+			check("long base64url token with a planted piece", 10000, func() string { return planted(64) })
+			check("short token (20-31) with a planted piece", 10000, func() string { return planted(20 + rng.IntN(8)) })
+			alphabet := "0123456789abcdefghjkmnpqrstvwxyz"
+			code := func(dash bool) func() string {
+				return func() string {
+					var b strings.Builder
+					for i, x := range random(10) {
+						if i == 5 && dash {
+							b.WriteByte('-')
+						}
+						b.WriteByte(alphabet[x%32])
+					}
+					return b.String()
+				}
+			}
+			check("recovery code", 20000, code(true))
+			// Typed without its dash, a code is caught when it holds a digit
+			// and a letter: all but about 2.4% (all letters) and 1 in 10^5
+			// (all digits, then a number anyway). Ten letters in a row are a
+			// word as often as a code, so those stay.
+			check("recovery code without its dash", 20000, func() string {
+				for {
+					c := code(false)()
+					if strings.ContainsAny(c, "0123456789") && strings.ContainsAny(c, "abcdefghjkmnpqrstvwxyz") {
+						return c
+					}
+				}
+			})
+		})
 	}
-	survives("recovery code without its dash", 20000, digitAndLetter, in)
 }
 
 // A browser's text also loses bare hosts and paths someone could leave for
