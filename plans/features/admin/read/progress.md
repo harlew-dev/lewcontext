@@ -32,9 +32,26 @@ All were fixed before committing, apart from the few listed as accepted in each 
   1. Logs, request IDs, panic recovery, health checks: _building_.
   2. Grouped errors (`app_errors`), errors from the browser.
   3. Metrics, server heartbeats, slow queries, `/metrics`.
-- **Plans being written** (no code): [legal pages](../../legal-pages.md) and the [Events page redesign](../events-page.md).
+- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../events-page.md) (A10, `e1cd3b4`).
 
-## Next, after A3 (your [notes.md](../../notes.md))
+## The parallel plan (from 2026-11-01, about 05:00)
+
+You asked for every open plan to be built, with their recommendations accepted for you to review in the morning, and for unrelated work to run in parallel git worktrees, merged in once each is finished.
+
+| Line | Where | Branch | Order |
+| --- | --- | --- | --- |
+| Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A6 actions → A7 compliance (each needs the one before) |
+| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (_7 commits done, under review_; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy) → [captcha challenges](../../captcha-challenges.md) |
+| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../events-page.md) (_building_) → [convention checks](../../convention-checks.md) |
+| Last, on main | after the merges | | [page-folders](../../page-folders.md): it moves every page file, so it would collide with everything else |
+
+**Keeping parallel lines apart:**
+- **Separate dev databases:** the worktrees use `lewcontext_ui` and `lewcontext_events`. Tests and e2e already use databases of their own.
+- **New migration numbers:** main 020–049, ui 050–059, events 060–069, so merges don't collide.
+- **Shared test runs:** about 2 heavy test runs at once, shared across all lines.
+- **Commits:** each line commits each change on its own branch. Each branch merges into `nimble-quartz-1f9` once its review and checks pass.
+
+## Next, after A3 (your [notes.md](../../notes.md); moved to the ui worktree)
 
 - **Small UI fixes:**
   - the "Didn't receive the email?" modal;
