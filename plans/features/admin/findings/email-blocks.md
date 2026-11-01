@@ -81,7 +81,7 @@ It also checked these and found them sound:
   - concurrency: one code sent 8 times at once gives exactly one 204; 6 unblocks at once give one pair of events;
   - the window ends with a password change and with an MFA reset;
   - a step-up racing a sign-out doesn't use up the code.
-- **The dialog now fits a 720px-tall screen.** The notice became the code field's description, and the reason box is 2 rows ([screenshot](email-blocks-unblock-dialog.png)).
+- **The dialog now fits a 720px-tall screen.** The notice became the code field's description, and the reason box is 2 rows ([screenshot](../../screenshots/email-blocks/email-blocks-unblock-dialog.png)).
 - **All checks passed:**
   - `make check`;
   - `make test`: 20 Go packages, 290 Vitest tests;

@@ -1,6 +1,6 @@
 # Findings: A7, compliance
 
-Plan: [compliance](../../implemented/admin/compliance.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), with every recommendation in its Decisions table taken as accepted. Screenshots are in [compliance/](compliance/).
+Plan: [compliance](../../implemented/admin/compliance.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), with every recommendation in its Decisions table taken as accepted. Screenshots are in [compliance/](../../screenshots/compliance/).
 
 ## What shipped
 
@@ -15,8 +15,8 @@ Plan: [compliance](../../implemented/admin/compliance.md). Built on the **events
 | `f86de86` | Fix: the Download button's height |
 
 **Screenshots:**
-- [the Download my data dialog](compliance/download-my-data-dialog.png), and [after downloading](compliance/download-my-data-done.png);
-- [Download CSV on Events](compliance/events-download-csv.png).
+- [the Download my data dialog](../../screenshots/compliance/download-my-data-dialog.png), and [after downloading](../../screenshots/compliance/download-my-data-done.png);
+- [Download CSV on Events](../../screenshots/compliance/events-download-csv.png).
 
 ### What each part does
 

@@ -1,6 +1,6 @@
 # Findings: A6, admin actions
 
-Plan: [actions](../../implemented/admin/actions.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), moved there from main to run in parallel. Every recommendation in its Decisions table was taken as accepted. Screenshots are in [actions/](actions/).
+Plan: [actions](../../implemented/admin/actions.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), moved there from main to run in parallel. Every recommendation in its Decisions table was taken as accepted. Screenshots are in [actions/](../../screenshots/actions/).
 
 ## What shipped
 
@@ -31,10 +31,10 @@ Every account-and-access action goes through `signedIn.Action`: the `operator` r
 | `9ac5892` | Signing out also ends sign-ins waiting for a code; a failed IP-block load at startup logs instead of stopping the server |
 
 **How it looks:**
-- [a user's Actions](actions/user-page-actions.png);
-- [the suspend dialog](actions/suspend-dialog.png);
-- [the IP blocks page](actions/ip-blocks-page.png);
-- [what a suspended person sees at sign-in](actions/suspended-sign-in.png).
+- [a user's Actions](../../screenshots/actions/user-page-actions.png);
+- [the suspend dialog](../../screenshots/actions/suspend-dialog.png);
+- [the IP blocks page](../../screenshots/actions/ip-blocks-page.png);
+- [what a suspended person sees at sign-in](../../screenshots/actions/suspended-sign-in.png).
 
 ## Stronger than the plan asked
 

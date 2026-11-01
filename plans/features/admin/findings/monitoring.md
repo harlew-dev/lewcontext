@@ -1,6 +1,6 @@
 # Findings: A4, monitoring
 
-Plan: [monitoring](../../implemented/admin/monitoring.md), built on main in three parts, with every recommendation in its Decisions table taken as accepted. Screenshots are in [monitoring/](monitoring/).
+Plan: [monitoring](../../implemented/admin/monitoring.md), built on main in three parts, with every recommendation in its Decisions table taken as accepted. Screenshots are in [monitoring/](../../screenshots/monitoring/).
 
 | Part | Pages | State |
 | --- | --- | --- |
@@ -23,9 +23,9 @@ Plan: [monitoring](../../implemented/admin/monitoring.md), built on main in thre
 | `ebcacd8` | Fix: the admin door chart stacked 6 series and crashed the Security page (caught by e2e); a test now checks every chart |
 
 **Screenshots:**
-- [Overview](monitoring/overview-light.png), [Overview, dark](monitoring/overview-dark.png);
-- [Security](monitoring/security-light.png), [Security, dark](monitoring/security-dark.png), [Security on a phone](monitoring/security-phone.png);
-- [Rate limits](monitoring/limits-light.png).
+- [Overview](../../screenshots/monitoring/overview-light.png), [Overview, dark](../../screenshots/monitoring/overview-dark.png);
+- [Security](../../screenshots/monitoring/security-light.png), [Security, dark](../../screenshots/monitoring/security-dark.png), [Security on a phone](../../screenshots/monitoring/security-phone.png);
+- [Rate limits](../../screenshots/monitoring/limits-light.png).
 
 **What each page answers:**
 - **Overview:** is everything all right? Tiles with a level (OK, Warning, Critical, always in words as well as colour), a sparkline, and the threshold written out. Tiles whose page isn't built yet say "Its page comes later".
@@ -106,11 +106,11 @@ _These fixes are being made by the A4 part 2 builder first._
 | `ce21590` | Docs, plan, e2e |
 
 **Screenshots:**
-- [IP addresses](monitoring/part2/ips-light.png), [one address](monitoring/part2/ip-light.png), [on a phone](monitoring/part2/ips-phone.png);
-- [Accounts](monitoring/part2/accounts-light.png), [Accounts, dark](monitoring/part2/accounts-dark.png);
-- [Workspaces](monitoring/part2/workspaces-light.png), [Workspaces, dark](monitoring/part2/workspaces-dark.png);
-- [Usage](monitoring/part2/usage-light.png);
-- [Overview](monitoring/part2/overview-light.png).
+- [IP addresses](../../screenshots/monitoring/part2/ips-light.png), [one address](../../screenshots/monitoring/part2/ip-light.png), [on a phone](../../screenshots/monitoring/part2/ips-phone.png);
+- [Accounts](../../screenshots/monitoring/part2/accounts-light.png), [Accounts, dark](../../screenshots/monitoring/part2/accounts-dark.png);
+- [Workspaces](../../screenshots/monitoring/part2/workspaces-light.png), [Workspaces, dark](../../screenshots/monitoring/part2/workspaces-dark.png);
+- [Usage](../../screenshots/monitoring/part2/usage-light.png);
+- [Overview](../../screenshots/monitoring/part2/overview-light.png).
 
 **How the pages stay bounded:**
 - Rows per workspace and quota headroom are counted only for workspaces with an event in the window (a workspace only grows by writing).
@@ -168,11 +168,11 @@ The independent reviewer found **no data exposure or injection**. It confirmed s
 | `3c53ba4`, `64f5cd4`, `5f08fb2`, `2cb68a5` | Fixes, e2e, docs |
 
 **Screenshots:**
-- [Overview](monitoring/part3/overview-light.png), [Overview, dark](monitoring/part3/overview-dark.png);
-- [Integrity](monitoring/part3/integrity-light.png), [on a phone](monitoring/part3/integrity-phone.png);
-- [Performance](monitoring/part3/performance-light.png);
-- [Errors](monitoring/part3/errors-light.png), [one error group](monitoring/part3/error-group-light.png);
-- [Configuration](monitoring/part3/configuration-light.png).
+- [Overview](../../screenshots/monitoring/part3/overview-light.png), [Overview, dark](../../screenshots/monitoring/part3/overview-dark.png);
+- [Integrity](../../screenshots/monitoring/part3/integrity-light.png), [on a phone](../../screenshots/monitoring/part3/integrity-phone.png);
+- [Performance](../../screenshots/monitoring/part3/performance-light.png);
+- [Errors](../../screenshots/monitoring/part3/errors-light.png), [one error group](../../screenshots/monitoring/part3/error-group-light.png);
+- [Configuration](../../screenshots/monitoring/part3/configuration-light.png).
 
 **What each page answers:**
 - **Integrity:** checks that should never fail. Each is its own section and catches its planted row by ID.
@@ -234,7 +234,7 @@ The independent reviewer found **nothing high-severity**. It confirmed sound:
 | `125ec20`, `0972b4c`, `a221c64` | Tests and seeder, the page, docs and e2e |
 | `26b365b` | The plan moved to `plans/features/implemented/admin/monitoring.md` |
 
-**Screenshots:** [Data](monitoring/data/data-light.png), [dark](monitoring/data/data-dark.png), [phone](monitoring/data/data-phone.png) (taken before a width fix), [Overview with the Data tile](monitoring/data/overview-light.png), [Configuration](monitoring/data/configuration-light.png).
+**Screenshots:** [Data](../../screenshots/monitoring/data/data-light.png), [dark](../../screenshots/monitoring/data/data-dark.png), [phone](../../screenshots/monitoring/data/data-phone.png) (taken before a width fix), [Overview with the Data tile](../../screenshots/monitoring/data/overview-light.png), [Configuration](../../screenshots/monitoring/data/configuration-light.png).
 
 - **What it shows:** database and table sizes, connections (counts only), lock waits, growth (a rate and a 90-day projection once two days of sizes exist), and retention: the oldest event per class against its limit and the last `prune.completed` per target, with a warning on Configuration when prune isn't running.
 - **Never shown:** query text, role names or client addresses from `pg_stat_activity`; a test holds a lock with a marker in its query and checks none of it appears. Only tables the app knows are listed.

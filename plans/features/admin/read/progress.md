@@ -17,7 +17,7 @@ What has shipped on branch `nimble-quartz-1f9`, and what's next. Nothing is push
 | --- | --- | --- | --- |
 | A8: the admin pages as their own build | `942a846` | check, test, build; e2e 22/22 | [separate-build](../findings/separate-build.md) |
 | A2: IP allowlist, key rotation, roles, Admins page | `f5c815f` | check, test, build; e2e 22/22 | [access-hardening](../findings/access-hardening.md) |
-| A9: the Email blocks page and Unblock (the first admin write) | `b84eaa7` | check, test, build; e2e 23/23 | [email-blocks](../findings/email-blocks.md) ([screenshot](../findings/email-blocks-unblock-dialog.png)) |
+| A9: the Email blocks page and Unblock (the first admin write) | `b84eaa7` | check, test, build; e2e 23/23 | [email-blocks](../findings/email-blocks.md) ([screenshot](../../screenshots/email-blocks/email-blocks-unblock-dialog.png)) |
 | A3 phase 1: logs, request IDs, panic recovery, health | `10797fd` | check, test, build; e2e 23/23 | [observability](../findings/observability.md) |
 
 Security reviews found:

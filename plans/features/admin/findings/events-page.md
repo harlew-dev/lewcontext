@@ -1,6 +1,6 @@
 # Findings: A10, the Events page redesign
 
-Plan: [events-page](../../implemented/admin/events-page.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), from your notes.md, with every recommendation in its Decisions table taken as accepted. Screenshots are in [events-page/](events-page/).
+Plan: [events-page](../../implemented/admin/events-page.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), from your notes.md, with every recommendation in its Decisions table taken as accepted. Screenshots are in [events-page/](../../screenshots/events-page/).
 
 ## What shipped
 
@@ -15,11 +15,11 @@ Commits on `admin-run/events`:
 | `f584610` | Docs; the plan marked implemented and moved |
 
 **How it looks** (the screenshots):
-- [charts and badges](events-page/events-charts-badges.png), and the [full page](events-page/events-charts-badges-full.png);
-- [dark mode](events-page/events-charts-badges-dark.png);
-- [the Filters dialog with a group partly picked](events-page/events-filters-picker.png);
-- [the custom range](events-page/events-custom-range.png), and [after applying it](events-page/events-after-range.png);
-- [phone width](events-page/events-phone.png).
+- [charts and badges](../../screenshots/events-page/events-charts-badges.png), and the [full page](../../screenshots/events-page/events-charts-badges-full.png);
+- [dark mode](../../screenshots/events-page/events-charts-badges-dark.png);
+- [the Filters dialog with a group partly picked](../../screenshots/events-page/events-filters-picker.png);
+- [the custom range](../../screenshots/events-page/events-custom-range.png), and [after applying it](../../screenshots/events-page/events-after-range.png);
+- [phone width](../../screenshots/events-page/events-phone.png).
 
 **Your notes, as built:**
 - **Picking events:** a searchable multi-select where picking a group (`auth.*`, `auth.mfa.*`, …) picks all its events; a partly picked group shows a dash.

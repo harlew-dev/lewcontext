@@ -1,6 +1,6 @@
 # Findings: terms of service and a privacy policy (policies)
 
-Plan: [policies](../../implemented/policies.md) (on the ui branch it has moved to `implemented/policies.md`). You asked for it in notes.md and then for every plan to be built, so it was built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`) with every recommendation in its 19-decision table taken as accepted. Screenshots are in [policies/](policies/).
+Plan: [policies](../../implemented/policies.md) (on the ui branch it has moved to `implemented/policies.md`). You asked for it in notes.md and then for every plan to be built, so it was built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`) with every recommendation in its 19-decision table taken as accepted. Screenshots are in [policies/](../../screenshots/policies/).
 
 ## What shipped
 
@@ -14,8 +14,8 @@ Plan: [policies](../../implemented/policies.md) (on the ui branch it has moved t
 | `354e9c7` | Docs and plan |
 
 **How it looks:**
-- [sign-up with the checkbox](policies/9-sign-up-checkbox.png), and [ticked](policies/9-sign-up-checkbox-ticked.png);
-- [a policy page](policies/8-policy-page.png), and the [full page](policies/8-policy-page-full.png) showing the template warning.
+- [sign-up with the checkbox](../../screenshots/policies/9-sign-up-checkbox.png), and [ticked](../../screenshots/policies/9-sign-up-checkbox-ticked.png);
+- [a policy page](../../screenshots/policies/8-policy-page.png), and the [full page](../../screenshots/policies/8-policy-page-full.png) showing the template warning.
 
 ## What you need to do before turning it on
 

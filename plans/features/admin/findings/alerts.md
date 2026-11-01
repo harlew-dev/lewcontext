@@ -40,4 +40,4 @@ All optional: `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_FORMAT` (`json` or `slack`), `
 
 **Verified on the merged tree (now in main, `ea93e33`):** `make check`; `make test` (all Go packages with the race detector; Vitest 65 files, 456 tests); `make build`; e2e 32 of 32, including the new Alerts spec.
 
-**Screenshots:** [the Alerts list](alerts/alerts-list.png), [one alert](alerts/alert-page.png), [the silence dialog](alerts/silence-dialog.png), [Resolve on an error group](alerts/error-resolve.png).
+**Screenshots:** [the Alerts list](../../screenshots/alerts/alerts-list.png), [one alert](../../screenshots/alerts/alert-page.png), [the silence dialog](../../screenshots/alerts/silence-dialog.png), [Resolve on an error group](../../screenshots/alerts/error-resolve.png).

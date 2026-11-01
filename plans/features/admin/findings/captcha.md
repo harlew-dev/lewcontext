@@ -1,6 +1,6 @@
 # Findings: captcha challenges
 
-Plan: captcha-challenges (on the ui branch it has moved to `plans/features/implemented/captcha-challenges.md`). Built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`), with every recommendation in its Decisions table taken as accepted. Screenshots are in [captcha/](captcha/).
+Plan: captcha-challenges (on the ui branch it has moved to `plans/features/implemented/captcha-challenges.md`). Built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`), with every recommendation in its Decisions table taken as accepted. Screenshots are in [captcha/](../../screenshots/captcha/).
 
 ## What shipped
 
@@ -12,9 +12,9 @@ Plan: captcha-challenges (on the ui branch it has moved to `plans/features/imple
 | `68af2ec` | Docs and plan |
 
 **Screenshots:**
-- [checking](captcha/10-challenge-checking.png);
-- [the widget](captcha/10-challenge-widget.png), and [on a phone](captcha/10-challenge-widget-phone.png);
-- [cancelled](captcha/10-challenge-cancelled.png): the form keeps its values.
+- [checking](../../screenshots/captcha/10-challenge-checking.png);
+- [the widget](../../screenshots/captcha/10-challenge-widget.png), and [on a phone](../../screenshots/captcha/10-challenge-widget-phone.png);
+- [cancelled](../../screenshots/captcha/10-challenge-cancelled.png): the form keeps its values.
 
 **Which routes are challenged:** only sign-in, sign-up, a password-reset request and creating an invitation. The admin door never is, so admin pages never load Cloudflare's script. The reset link's own pages and the signed-in password check are never challenged.
 
