@@ -16,15 +16,23 @@ import (
 
 // MonitorSpan is a review list's window, [From, To), grouped in periods of
 // Per from From: an hour for "in an hour", or the whole span for a
-// signal's own window.
+// signal's own window. With Origin set, the periods are counted from it
+// instead: a day's periods from To, so the last one is the whole last day
+// rather than the minutes past the window's last whole day.
 type MonitorSpan struct {
 	From, To time.Time
 	Per      time.Duration
+	Origin   time.Time
 }
 
-// period is the span's grouping column: date_bin of Per from From.
+// period is the span's grouping column: date_bin of Per from From (or
+// Origin).
 func (sp MonitorSpan) period() (string, []any) {
-	return "date_bin(?::interval, e.created_at, ?)", []any{fmt.Sprintf("%d seconds", int(sp.Per.Seconds())), sp.From}
+	origin := sp.From
+	if !sp.Origin.IsZero() {
+		origin = sp.Origin
+	}
+	return "date_bin(?::interval, e.created_at, ?)", []any{fmt.Sprintf("%d seconds", int(sp.Per.Seconds())), origin}
 }
 
 // Review list thresholds (docs/api/monitoring.md#security), and how many

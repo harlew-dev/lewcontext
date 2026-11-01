@@ -90,11 +90,12 @@ type accountsSections struct {
 }
 
 // accountsPage reads the Accounts page's lists over w: the review list in
-// days from the window's start, acceptance over the 7 days before its end.
+// days back from the window's end, acceptance over the 7 days before it.
 func accountsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
 	out := &accountsSections{}
-	rs := reviewSpan(env, store.MonitorSpan{From: w.From, To: w.To, Per: store.AccountDay}, w.To.Add(-store.InvitationsLookback))
+	// Days counted back from the window's end: the last is the last 24 hours.
+	rs := reviewSpan(env, store.MonitorSpan{From: w.From, To: w.To, Per: store.AccountDay, Origin: w.To}, w.To.Add(-store.InvitationsLookback))
 	return readSections(ctx, env, out, []section{
 		{"review", func(ctx context.Context) (err error) { out.Review, err = s.IndexAccountReview(ctx, rs); return }},
 		{"topWriters", func(ctx context.Context) (err error) {

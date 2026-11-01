@@ -50,7 +50,7 @@ type ipsSections struct {
 }
 
 // ipsPage reads the IP addresses page's lists over w: sign-up clusters by
-// the day from the window's start.
+// the day, counted back from the window's end.
 func ipsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	out := &ipsSections{}
 	return readSections(ctx, env, out, []section{
@@ -59,7 +59,7 @@ func ipsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 			return
 		}},
 		{"clusters", func(ctx context.Context) (err error) {
-			out.Clusters, err = env.Store.IndexSignUpClusters(ctx, store.MonitorSpan{From: w.From, To: w.To, Per: 24 * time.Hour})
+			out.Clusters, err = env.Store.IndexSignUpClusters(ctx, store.MonitorSpan{From: w.From, To: w.To, Per: 24 * time.Hour, Origin: w.To})
 			return
 		}},
 	})
