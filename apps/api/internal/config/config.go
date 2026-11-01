@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -43,6 +44,13 @@ type Config struct {
 	// are empty, the default, to use the connection's address.
 	ClientIPHeader string
 	TrustedProxies []netip.Prefix
+	// Logging is the log's format and level, and which requests get an
+	// access line (logging.go).
+	Logging
+	// ShutdownDelay (SHUTDOWN_DELAY) is how long the server keeps answering,
+	// with readiness already 503, before it stops taking connections: time
+	// for a load balancer polling GET /api/health to take it out.
+	ShutdownDelay time.Duration
 }
 
 const (
@@ -72,6 +80,14 @@ func Load() (Config, error) {
 		return c, errors.New("RATE_LIMITS=off is for tests only; production keeps its rate limits")
 	}
 	if err := c.loadClientIP(); err != nil {
+		return c, err
+	}
+	logging, err := LoadLogging()
+	if err != nil {
+		return c, err
+	}
+	c.Logging = logging
+	if c.ShutdownDelay, err = loadShutdownDelay(c.Production); err != nil {
 		return c, err
 	}
 	if c.DatabaseURL == "" {
@@ -167,6 +183,25 @@ func parseRange(name, entry string) (netip.Prefix, error) {
 	}
 	return r.Masked(), nil
 }
+
+// maxShutdownDelay bounds SHUTDOWN_DELAY: past it, platforms kill the
+// server before its 10 s drain could finish anyway.
+const maxShutdownDelay = time.Minute
+
+// loadShutdownDelay reads SHUTDOWN_DELAY, a Go duration ("5s") from 0 to a
+// minute: 5 s by default in production, 0 elsewhere.
+func loadShutdownDelay(production bool) (time.Duration, error) {
+	fallback := "0s"
+	if production {
+		fallback = "5s"
+	}
+	delay, err := time.ParseDuration(env("SHUTDOWN_DELAY", fallback))
+	if err != nil || delay < 0 || delay > maxShutdownDelay {
+		return 0, errors.New("SHUTDOWN_DELAY must be a duration from 0s to 60s, such as 5s")
+	}
+	return delay, nil
+}
+
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

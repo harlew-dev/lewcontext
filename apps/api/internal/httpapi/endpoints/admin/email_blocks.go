@@ -31,12 +31,12 @@ func (h EmailBlocks) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexAdminEmailBlocks(r.Context(), f, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminEmailBlockListed{Admin: httpapi.Admin(r).User.PublicID, Q: f.Search, Sort: f.Sort, Page: req.Page}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -98,7 +98,7 @@ func (h EmailBlocks) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(204)

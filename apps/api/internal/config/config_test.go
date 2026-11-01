@@ -38,6 +38,10 @@ func setEnv(t *testing.T, vars map[string]string) {
 		// doesn't leak into a test.
 		"CLIENT_IP_HEADER": "",
 		"TRUSTED_PROXIES":  "",
+		"LOG_FORMAT":       "",
+		"LOG_LEVEL":        "",
+		"ACCESS_LOG":       "",
+		"SHUTDOWN_DELAY":   "",
 	}
 	for k, v := range vars {
 		base[k] = v

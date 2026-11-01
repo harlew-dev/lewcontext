@@ -39,7 +39,8 @@ export function clientLoader() {
   return onboardingLoader();
 }
 export default function Onboarding({ loaderData }: Route.ComponentProps) {
-  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  if ("unavailable" in loaderData)
+    return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (
     <SessionProvider session={loaderData.session}>
       <NewWorkspace />

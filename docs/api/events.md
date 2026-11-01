@@ -21,7 +21,8 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `user_id` | The account the event is about (auth events, and the member in member events). Deleting the account deletes these events |
 | `workspace_id` | The workspace (workspace and project events). Deleting the workspace sets it to null; the events stay, readable through the `wsp_` in their payload, until pruned |
 | `payload` | The event struct as JSON (`jsonb`) |
-| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithIP`, set by `ClientAddress` from `httpapi.ClientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
+| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithRequest`, set by `ClientAddress` from `httpapi.ClientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
+| `request_id` | The ID of the request it was recorded in (`req_…`, always the server's own, never a client's or a proxy's), the `requestId` on that request's log lines and in its `X-Request-ID` (`events.WithRequest`, with the IP); empty for the CLI and listeners. `CHECK`ed to be empty or `req_` and 14 base62 ([observability.md](observability.md#request-ids)) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
 | `created_at` | When |
 
@@ -124,7 +125,7 @@ events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.P
 The server runs one worker (`cmd/server`); every server process runs its own, sharing the queue.
 
 1. **Claim:** a single statement takes up to 10 due deliveries with `FOR UPDATE SKIP LOCKED` (other workers skip those rows instead of waiting), adds 1 to `attempts`, and pushes `next_attempt_at` 5 minutes ahead as a **lease**. The row locks end with the statement, so listeners run with no lock or transaction held.
-2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure.
+2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure, and is logged at error with its stack ([observability.md](observability.md#errors-and-panics)).
 3. **Record:** success sets `delivered_at`. A failure sets `last_error` (cut to 500 characters) and retries after 1 s, 10 s, 1 min, 10 min, then 1 h; the attempt after that marks it `failed_at` and logs an error. One listener failing doesn't affect others on the same event.
 4. **Poll:** when a claim comes back empty, the worker waits 1 s. A full batch is followed straight away by the next.
 5. **Shutdown:** the worker stops claiming and finishes its batch within the server's 10 s grace period. A delivery cut off by a crash is claimed again when its lease ends.

@@ -6,6 +6,7 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/observe"
 	"log"
 	"os"
 	"time"
@@ -21,6 +22,7 @@ const usage = `usage: migrate [command]
   create <name>       write an empty <timestamp>_<name>.tx.up.sql / .tx.down.sql pair`
 
 func main() {
+	useLogger()
 	command, args := "up", os.Args[1:]
 	if len(args) > 0 {
 		command, args = args[0], args[1:]
@@ -139,4 +141,15 @@ func create(ctx context.Context, name string) {
 	for _, f := range files {
 		log.Printf("Created %s", f.Path)
 	}
+}
+
+// useLogger installs the server's log handler (LOG_FORMAT, LOG_LEVEL) for
+// anything logged through slog, keeping this command's own output plain
+// (observe.UseForCommand).
+func useLogger() {
+	logging, err := config.LoadLogging()
+	if err != nil {
+		log.Fatal(err)
+	}
+	observe.UseForCommand(logging.LogFormat, logging.LogLevel)
 }

@@ -147,7 +147,7 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 		err = s.recordLimitReached(r, l, resetsAt)
 	}
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return false
 	}
 	if allowed {
@@ -177,7 +177,7 @@ func (s *Server) count(r *http.Request, l ratelimit.Limit, key string) (allowed,
 // block (the CAPTCHA plan adds challenge).
 func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, resetsAt time.Time) error {
 	if l.Busy != "" {
-		slog.Warn("a rate limit shared by everyone was reached", "limit", l.Name, "window", l.Window)
+		slog.WarnContext(r.Context(), "a rate limit shared by everyone was reached", "limit", l.Name, "window", l.Window)
 	}
 	e := events.RateLimitReached{Limit: l.Name + ":block", Window: int(l.Window.Seconds()), ResetsAt: resetsAt}
 	var scope store.EventScope

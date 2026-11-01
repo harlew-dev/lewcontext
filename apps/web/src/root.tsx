@@ -12,6 +12,7 @@ import { MotionConfig } from "motion/react";
 import { SWRConfig } from "swr";
 import { NotFound, ServiceUnavailable } from "@/components/layout/status-page";
 import { RouteProgress } from "@/components/ui/route-progress";
+import { requestIdOf } from "@/lib/api";
 import { appName } from "@/lib/app";
 import { swrConfig } from "@/lib/swr";
 import { theme } from "@/lib/theme";
@@ -81,7 +82,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       {isRouteErrorResponse(error) && error.status === 404 ? (
         <NotFound />
       ) : (
-        <ServiceUnavailable />
+        <ServiceUnavailable requestId={requestIdOf(error)} />
       )}
     </Providers>
   );

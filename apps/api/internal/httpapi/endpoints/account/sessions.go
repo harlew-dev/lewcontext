@@ -32,7 +32,7 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user, hash, err := h.Repo.FindUser(r.Context(), in.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	known := err == nil
@@ -42,7 +42,7 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	valid := auth.CheckPassword(in.Password, hash)
 	needsCode := valid && known && user.MFAEnabledAt != nil
 	if err := h.recordLoginAttempt(r, in.Email, user, known, valid, needsCode); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if !valid || !known {
@@ -96,24 +96,24 @@ func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if !h.Allow(w, r, httpapi.MFAPerAccount, httpapi.MFAPerAccount.Key(user.PublicID)) {
 		return
 	}
-	factor := h.SecondFactor(user, in.Code)
+	factor := h.SecondFactor(r.Context(), user, in.Code)
 	result, err := h.Repo.AnswerMFAChallenge(r.Context(), hash, store.ChallengeLogin, user.ID, factor)
 	if errors.Is(err, store.ErrNoChallenge) {
 		h.EndMFAChallenge(w, httpapi.MFASignInAgain)
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if err := h.RecordMFACheck(r, user, factor, events.MFAStepLogin, result.OK, result.FactorUsed); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	switch {
@@ -129,7 +129,7 @@ func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 
 func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.Repo.DeleteSession(r.Context(), httpapi.Session(r).User, h.SessionDigest(r)); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	h.ClearSessionCookie(w)
@@ -138,7 +138,7 @@ func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
 
 func (h Sessions) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	if err := h.Repo.DeleteOtherSessions(r.Context(), httpapi.Session(r).User, h.SessionDigest(r)); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(204)

@@ -53,12 +53,12 @@ func (h Users) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexAdminUsers(r.Context(), f, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminUserListed{Admin: httpapi.Admin(r).User.PublicID, Q: f.Search, Sort: f.Sort, Page: req.Page}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -76,14 +76,14 @@ func (h Users) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	// No user scope: deleting the account looked at keeps the record that
 	// an admin looked.
 	e := events.AdminUserViewed{Admin: httpapi.Admin(r).User.PublicID, User: user.PublicID}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, user)

@@ -39,12 +39,12 @@ type Registrations struct{ *httpapi.Server }
 func (h Registrations) beginRegistration(w http.ResponseWriter, r *http.Request, in httpapi.Credentials, hash string) {
 	token, err := auth.Token()
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	pending := store.NewRegistration{Email: in.Email, Name: in.Name, PasswordHash: hash, TokenHash: auth.Digest(token)}
 	if err := h.Repo.CreatePendingRegistration(r.Context(), pending); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	http.SetCookie(w, auth.RegistrationCookie(token, h.Config.Production))
@@ -88,7 +88,7 @@ func (h Registrations) Resend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	token, _ := r.Cookie(auth.RegistrationCookieName(h.Config.Production))
@@ -115,7 +115,7 @@ func (h Registrations) Verify(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNoRegistration):
 		h.endRegistration(w, registrationEnded)
 	case err != nil:
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 	case result.Ended:
 		h.endRegistration(w, registrationCodes)
 	case !result.OK:
@@ -146,7 +146,7 @@ func (h Registrations) pendingRegistration(w http.ResponseWriter, r *http.Reques
 		return pending, "", false
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return pending, "", false
 	}
 	return pending, digest, true
@@ -190,7 +190,7 @@ func (h Registrations) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := auth.HashPassword(in.Password)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if h.Config.Verify {
@@ -206,7 +206,7 @@ func (h Registrations) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	h.StartSession(w, r, user, 201, nil)

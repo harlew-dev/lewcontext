@@ -21,12 +21,12 @@ func (h Workspaces) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexAdminWorkspaces(r.Context(), f, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminWorkspaceListed{Admin: httpapi.Admin(r).User.PublicID, Q: f.Search, Sort: f.Sort, Page: req.Page}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -44,14 +44,14 @@ func (h Workspaces) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	// No workspace scope: the record of an admin looking is the admin's,
 	// and never shows among the workspace's own events.
 	e := events.AdminWorkspaceViewed{Admin: httpapi.Admin(r).User.PublicID, Workspace: workspace.PublicID}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, workspace)

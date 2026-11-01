@@ -26,8 +26,11 @@ type eventRecord struct {
 	WorkspaceID   int64           `bun:",nullzero"`
 	Payload       json.RawMessage `bun:"type:jsonb"`
 	// IP is the client's address for an event recorded during a request
-	// (events.WithIP), and null for the CLI and listeners.
-	IP        string `bun:"ip,type:inet,nullzero"`
+	// (events.WithRequest), and null for the CLI and listeners.
+	IP string `bun:"ip,type:inet,nullzero"`
+	// RequestID is the ID of the request it was recorded in
+	// (events.WithRequest), its log lines' requestId; "" outside one.
+	RequestID string
 	UserAgent string
 	CreatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
@@ -57,6 +60,7 @@ func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope 
 		WorkspaceID: scope.WorkspaceID,
 		Payload:     payload,
 		IP:          events.IP(ctx),
+		RequestID:   events.RequestID(ctx),
 		UserAgent:   events.UserAgent(ctx),
 	}
 	if _, err = db.NewInsert().Model(&row).Returning("id, public_id").Exec(ctx); err != nil {

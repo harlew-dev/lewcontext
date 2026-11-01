@@ -52,7 +52,7 @@ func (h Projects) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexProjects(r.Context(), httpapi.Workspace(r).ID, filter, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -69,7 +69,7 @@ func (h Projects) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, p)
@@ -86,7 +86,7 @@ func (h Projects) Store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 201, p)
@@ -107,7 +107,7 @@ func (h Projects) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, p)
@@ -124,7 +124,7 @@ func (h Projects) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(204)

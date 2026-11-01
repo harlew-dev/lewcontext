@@ -3,6 +3,7 @@ import type { Workspace } from "@/types/workspaces";
 import {
   ApiError,
   loaderApi,
+  requestIdOf,
   verificationRequired,
   type PendingRegistration,
 } from "./api";
@@ -16,8 +17,13 @@ import type { Session } from "./types";
 // Go already sends signed-out requests for /app/* to login before serving any
 // HTML; the 401 handling here covers a session that expires afterwards, and
 // the Vite dev server, which has no such gate.
-export type Unavailable = { unavailable: true };
-export const unavailable: Unavailable = { unavailable: true };
+// The API couldn't answer: the page shows the outage page, with the
+// request's ID as its reference when the API sent one (a 500).
+export type Unavailable = { unavailable: true; requestId?: string };
+export function unavailable(error: unknown): Unavailable {
+  const requestId = requestIdOf(error);
+  return requestId ? { unavailable: true, requestId } : { unavailable: true };
+}
 export const unauthorized = (error: unknown) =>
   error instanceof ApiError && error.status === 401;
 // The path and query of a loader's request, to return to after signing in.
@@ -54,7 +60,7 @@ export async function signedInLoader(
     if (unauthorized(error)) throw redirect(loginPath(here(request)));
     if (verificationRequired(error))
       throw redirect(verifyEmailPath(here(request)));
-    return unavailable;
+    return unavailable(error);
   }
   if (loaded.workspaces.pages.items === 0) throw redirect(routes.onboarding);
   return loaded;
@@ -70,7 +76,7 @@ export async function workspaceHomeLoader(
   } catch (error) {
     if (unauthorized(error)) throw redirect(loginPath(here(request)));
     if (verificationRequired(error)) throw redirect(routes.verifyEmail);
-    return unavailable;
+    return unavailable(error);
   }
   throw redirect(newest ? routes.dashboard(newest.id) : routes.onboarding);
 }
@@ -92,7 +98,7 @@ export async function onboardingLoader(): Promise<
   } catch (error) {
     if (unauthorized(error)) throw redirect(routes.login);
     if (verificationRequired(error)) throw redirect(routes.verifyEmail);
-    return unavailable;
+    return unavailable(error);
   }
   if (items > 0) throw redirect(routes.app);
   return { session };
@@ -109,7 +115,7 @@ export async function registerVerifyLoader(
   } catch (error) {
     if (unauthorized(error) && error instanceof ApiError)
       return { ended: error.message };
-    return unavailable;
+    return unavailable(error);
   }
 }
 // The verify-email page: signed in, and only while the account must verify
@@ -123,7 +129,7 @@ export async function verifyEmailLoader(
     session = await loaderApi().auth().me();
   } catch (error) {
     if (unauthorized(error)) throw redirect(loginPath(routes.app));
-    return unavailable;
+    return unavailable(error);
   }
   if (session.user.emailVerifiedAt || session.emailVerification === "off") {
     const next = new URL(request.url).searchParams.get("next");

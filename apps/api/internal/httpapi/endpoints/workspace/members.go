@@ -28,7 +28,7 @@ func memberID(r *http.Request) (string, bool) {
 }
 
 // failMembership answers the errors a membership change can end in.
-func failMembership(w http.ResponseWriter, err error) {
+func failMembership(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		httpapi.Fail(w, 404, "Member not found.")
@@ -37,7 +37,7 @@ func failMembership(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrLastOwner):
 		httpapi.Fail(w, 409, "A workspace needs at least one owner.")
 	default:
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 	}
 }
 
@@ -62,7 +62,7 @@ func (h Members) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexMembers(r.Context(), httpapi.Workspace(r).ID, filter, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -79,7 +79,7 @@ func (h Members) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	member, err := h.Repo.UpdateMemberRole(r.Context(), httpapi.Workspace(r), httpapi.Session(r).User.ID, id, in.Role)
 	if err != nil {
-		failMembership(w, err)
+		failMembership(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, member)
@@ -95,7 +95,7 @@ func (h Members) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Repo.RemoveMember(r.Context(), httpapi.Workspace(r), httpapi.Session(r).User.ID, id); err != nil {
-		failMembership(w, err)
+		failMembership(w, r, err)
 		return
 	}
 	w.WriteHeader(204)

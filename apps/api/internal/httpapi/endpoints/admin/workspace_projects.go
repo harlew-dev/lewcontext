@@ -42,7 +42,7 @@ func (h WorkspaceProjects) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminProjectListed{
@@ -50,7 +50,7 @@ func (h WorkspaceProjects) Index(w http.ResponseWriter, r *http.Request) {
 		Q: filter.Search, Status: filter.Status, Sort: filter.Sort, Page: req.Page,
 	}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)

@@ -63,7 +63,7 @@ func (h Workspaces) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexWorkspaces(r.Context(), httpapi.Session(r).User.ID, filter, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -83,7 +83,7 @@ func (h Workspaces) Store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 201, workspace)
@@ -96,7 +96,7 @@ func (h Workspaces) Update(w http.ResponseWriter, r *http.Request) {
 	current := httpapi.Workspace(r)
 	workspace, err := h.Repo.RenameWorkspace(r.Context(), current.ID, in)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	workspace.Role, workspace.CanLeave = current.Role, current.CanLeave
@@ -133,7 +133,7 @@ func (h Workspaces) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(204)

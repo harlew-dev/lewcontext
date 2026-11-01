@@ -4,6 +4,7 @@ import (
 	"context"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/ratelimit"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -56,13 +57,13 @@ func (s *Server) refuseAdminAddress(r *http.Request, ip string) {
 	if !s.adminRefusals.seen.first(ratelimit.Subject(ip), time.Now()) {
 		return
 	}
-	s.adminRefusals.enqueue(adminRefusal{ip: ip, userAgent: events.UserAgent(r.Context())})
+	s.adminRefusals.enqueue(adminRefusal{ip: ip, userAgent: events.UserAgent(r.Context()), requestID: observe.RequestID(r.Context())})
 }
 
 // adminRefusal is one refused address to record: the request's client
-// address and browser, for the event's columns.
+// address, browser and ID, for the event's columns and the log line.
 type adminRefusal struct {
-	ip, userAgent string
+	ip, userAgent, requestID string
 }
 
 // adminRefusalQueued is how many refusals may wait for the worker; more are
@@ -138,15 +139,16 @@ func (s *Server) runAdminRefusals() {
 
 // recordAdminRefusal logs a refused address (never the path: an admin page's
 // holds the key) and records admin.access_refused with it in events.ip.
+// Both carry the refused request's ID, so its access line is found too.
 func (s *Server) recordAdminRefusal(refusal adminRefusal) {
-	slog.Warn("the admin key (or an assets pass) came from an address outside ADMIN_ALLOWED_IPS: it may have leaked", "ip", refusal.ip)
+	slog.Warn("the admin key (or an assets pass) came from an address outside ADMIN_ALLOWED_IPS: it may have leaked", "ip", refusal.ip, observe.RequestIDKey, refusal.requestID)
 	// Plan A5 (alerts) raises an alert on the first refusal, here.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	ctx = events.WithUserAgent(events.WithIP(ctx, refusal.ip), refusal.userAgent)
+	ctx = events.WithUserAgent(events.WithRequest(ctx, refusal.ip, refusal.requestID), refusal.userAgent)
 	e := events.AdminAccessRefused{Reason: events.AdminRefusedIP}
 	if err := s.Repo.Record(ctx, e, store.EventScope{}); err != nil {
-		slog.Error("recording admin.access_refused failed", "error", err)
+		slog.Error("recording admin.access_refused failed", "error", err, observe.RequestIDKey, refusal.requestID)
 	}
 }
 

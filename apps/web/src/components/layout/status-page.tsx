@@ -1,19 +1,23 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Reference } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Text } from "@/components/ui/text";
 import { routes } from "@/lib/routes";
 import { AuthLayout } from "./auth-layout";
-// Full-page message (homepage, 404, service outage) in the auth layout.
+// Full-page message (homepage, 404, service outage) in the auth layout,
+// with a failure's reference under the description when there is one.
 export function StatusPage({
   title,
   description,
   action,
+  requestId,
 }: {
   title: string;
   description: string;
   action: ReactNode;
+  requestId?: string;
 }) {
   return (
     <AuthLayout>
@@ -22,6 +26,11 @@ export function StatusPage({
         <div className="space-y-2">
           <Heading>{title}</Heading>
           <Text>{description}</Text>
+          {requestId && (
+            <Text>
+              <Reference requestId={requestId} />
+            </Text>
+          )}
         </div>
         <div>{action}</div>
       </div>
@@ -38,11 +47,14 @@ export function NotFound() {
     />
   );
 }
-export function ServiceUnavailable() {
+// The outage page. requestId is the failed request's ID, when the API sent
+// one (a 500): its reference, for support to find the log line.
+export function ServiceUnavailable({ requestId }: { requestId?: string }) {
   return (
     <StatusPage
       title="A brief pause."
       description="We’re having trouble reaching your workspace. Your data is safe — please try again in a moment."
+      requestId={requestId}
       action={
         <Button onClick={() => window.location.reload()}>Try again</Button>
       }

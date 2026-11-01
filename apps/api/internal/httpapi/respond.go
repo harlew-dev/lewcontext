@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"lewcontext/api/internal/observe"
 	"log/slog"
 	"net/http"
 )
@@ -26,9 +27,16 @@ func FailField(w http.ResponseWriter, status int, field, message string) {
 	JSON(w, status, map[string]string{"error": message, "field": field})
 }
 
-func InternalError(w http.ResponseWriter, err error) {
-	slog.Error("request failed", "error", err)
-	Fail(w, 500, "Something went wrong. Please try again.")
+// InternalError answers a failure the client can't fix with the generic 500
+// and the request's ID (answerInternalError), after logging err at error
+// with that ID and the route, and handing it to observe.Report. err is never
+// in the answer.
+func InternalError(w http.ResponseWriter, r *http.Request, err error) {
+	ctx := r.Context()
+	route := observe.Route(ctx)
+	slog.ErrorContext(ctx, "request failed", "route", route, "error", err)
+	observe.Report(ctx, observe.Problem{Source: observe.SourceRequest, Route: route, RequestID: observe.RequestID(ctx), Err: err})
+	answerInternalError(w, r)
 }
 
 // DecodeValid decodes the body into a T and checks it with valid (which may

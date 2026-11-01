@@ -17,6 +17,7 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -112,10 +113,22 @@ func sameAnswer(t *testing.T, name string, got, want *httptest.ResponseRecorder)
 	if got.Code != want.Code || got.Body.String() != want.Body.String() {
 		t.Fatalf("%s: %d %q, want %d %q", name, got.Code, got.Body.String(), want.Code, want.Body.String())
 	}
-	if fmt.Sprint(got.Header()) != fmt.Sprint(want.Header()) {
+	// Each answer has its own request ID (X-Request-ID); nothing else may
+	// differ.
+	gotHeader, wantHeader := got.Header().Clone(), want.Header().Clone()
+	for _, h := range []http.Header{gotHeader, wantHeader} {
+		if !requestIDShape.MatchString(h.Get("X-Request-ID")) {
+			t.Fatalf("%s: no request ID: %v", name, h)
+		}
+		h.Del("X-Request-ID")
+	}
+	if fmt.Sprint(gotHeader) != fmt.Sprint(wantHeader) {
 		t.Fatalf("%s headers: %v, want %v", name, got.Header(), want.Header())
 	}
 }
+
+// requestIDShape is the request ID every answer carries.
+var requestIDShape = regexp.MustCompile(`^req_[0-9A-Za-z]{14}$`)
 
 // Without the right X-Admin-Key, every admin route answers exactly as an
 // unknown API route, even with a live admin session; admin off too.
@@ -422,7 +435,7 @@ func TestLosingAdminEndsAdminSessions(t *testing.T) {
 		},
 		"a password change": func(a apitest.MFAAccount) {
 			user := store.User{ID: a.User.ID, PublicID: a.User.PublicID}
-			confirm := store.PasswordConfirmation{Factor: s.SecondFactor(user, a.CodeAt(0))}
+			confirm := store.PasswordConfirmation{Factor: s.SecondFactor(context.Background(), user, a.CodeAt(0))}
 			apitest.Must(s.Repo.ChangePassword(ctx, user, "", confirm, func(string) (string, error) { return "new-hash", nil }))(t)
 		},
 		"a password reset": func(a apitest.MFAAccount) {

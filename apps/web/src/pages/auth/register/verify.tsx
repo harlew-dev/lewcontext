@@ -27,7 +27,8 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 export default function RegisterVerify({ loaderData }: Route.ComponentProps) {
   const [ended, setEnded] = useState("");
-  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  if ("unavailable" in loaderData)
+    return <ServiceUnavailable requestId={loaderData.requestId} />;
   if ("ended" in loaderData || ended)
     return (
       <SignUpEnded

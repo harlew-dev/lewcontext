@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/prune"
 	"lewcontext/api/internal/store"
 	"log"
@@ -22,6 +23,7 @@ import (
 // previews every target at its default age and never deletes. -older-than
 // needs a target. Allowed in production, where it would run from cron.
 func main() {
+	useLogger()
 	olderThan := flag.String("older-than", "", "with a target: delete rows older than this, in days or hours (90d, 36h); default per target")
 	confirm := flag.Bool("confirm", false, "delete; without it the command only previews")
 	flag.Usage = usage
@@ -122,4 +124,15 @@ func usage() {
 	}
 	fmt.Fprintln(out, "\nFlags:")
 	flag.PrintDefaults()
+}
+
+// useLogger installs the server's log handler (LOG_FORMAT, LOG_LEVEL) for
+// anything logged through slog, keeping this command's own output plain
+// (observe.UseForCommand).
+func useLogger() {
+	logging, err := config.LoadLogging()
+	if err != nil {
+		log.Fatal(err)
+	}
+	observe.UseForCommand(logging.LogFormat, logging.LogLevel)
 }

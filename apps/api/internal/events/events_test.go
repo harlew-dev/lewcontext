@@ -76,14 +76,14 @@ func TestChangesKeepOnlyChangedFields(t *testing.T) {
 
 func TestRequestMeta(t *testing.T) {
 	ctx := context.Background()
-	if Actor(ctx) != 0 || IP(ctx) != "" || UserAgent(ctx) != "" {
+	if Actor(ctx) != 0 || IP(ctx) != "" || RequestID(ctx) != "" || UserAgent(ctx) != "" {
 		t.Fatal("empty context has meta")
 	}
 	ctx = WithUserAgent(ctx, strings.Repeat("é", 300)+"\xff")
 	ctx = WithActor(ctx, 7)
-	ctx = WithIP(ctx, "203.0.113.9")
-	if Actor(ctx) != 7 || IP(ctx) != "203.0.113.9" {
-		t.Fatal("actor or IP lost")
+	ctx = WithRequest(ctx, "203.0.113.9", "req_0123456789abcd")
+	if Actor(ctx) != 7 || IP(ctx) != "203.0.113.9" || RequestID(ctx) != "req_0123456789abcd" {
+		t.Fatal("actor, IP or request ID lost")
 	}
 	agent := UserAgent(ctx)
 	if !utf8.ValidString(agent) || utf8.RuneCountInString(agent) != maxUserAgent {

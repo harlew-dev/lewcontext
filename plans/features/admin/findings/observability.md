@@ -4,7 +4,7 @@ Plan: [observability](../observability.md), built in three phases. Each phase is
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| 1 | Structured logs, request IDs, panic recovery, the health split | built; security review running |
+| 1 | Structured logs, request IDs, panic recovery, the health split | **committed** (see below) |
 | 2 | Grouped errors (`app_errors`), errors from the browser | next |
 | 3 | Metrics, `request_minutes`/`metric_minutes`, server heartbeats, slow queries, `/metrics` | after phase 2 |
 
@@ -77,4 +77,18 @@ The reviewer confirmed sound:
 | 9 | Nit | `method` was logged raw (up to about 16 KB) | Unknown methods logged as `OTHER` |
 | 10 | Nits | Docs: net/http's own 400s carry no ID; `pending_registrations.request_id` means something else; blocking stdout logging | Documented |
 
-_Fix results: filled in once the fixes pass the checks._
+**Fix results.** All ten are fixed.
+
+- **Request IDs:** `events.request_id`'s CHECK now accepts only our own `req_` shape. `TestRequestIDs` and `TestEventsCarryTheRequestID` prove a forged ID appears nowhere except as `proxyRequestId` on the access line.
+- **Panics:** `TestPanicValuesAreRedacted` sends `panic(r)`, `panic(r.Header)`, a URL and a cookie, with a token in the path, the query, `X-Admin-Key` and a cookie. None of those reaches the log, the report or a delivery's stored error.
+- **`SHUTDOWN_DELAY`:** 5 s by default in production, 0–60 s. The Docker stop timeout is raised to 20 s in the docs.
+- **Benchmark after the fixes:** 4.2–5.3 µs and 8 allocations per request (+2), still inside the budget.
+- **All checks passed:**
+  - `make check`;
+  - `make test`: 21 Go packages, 296 Vitest tests;
+  - `make build`;
+  - e2e: 23 of 23.
+
+  The e2e server log (2,697 access lines) held no tokens, key, query strings or emails, and no ERROR lines.
+
+**Still open, by design:** a panic message *built from* a secret (`panic("bad " + token)`) is logged as text, cut to 512 bytes. The docs say never to do that. Scrubbing error values is phase 2's job.

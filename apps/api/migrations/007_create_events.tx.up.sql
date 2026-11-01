@@ -9,6 +9,10 @@ CREATE TABLE events (
  -- The client's address for an event recorded during a request; null for the
  -- CLI and listeners. The one place an event keeps it (never in the payload).
  ip inet,
+ -- The ID of the request it was recorded in, as its log lines' requestId
+ -- (docs/api/observability.md): always ours, never a client's or a proxy's.
+ -- Empty for the CLI and listeners.
+ request_id text NOT NULL DEFAULT '' CHECK (request_id = '' OR request_id ~ '^req_[0-9A-Za-z]{14}$'),
  user_agent text NOT NULL DEFAULT '' CHECK (length(user_agent) <= 256),
  created_at timestamptz NOT NULL DEFAULT now()
 );

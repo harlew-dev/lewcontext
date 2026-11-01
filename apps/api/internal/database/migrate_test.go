@@ -7,6 +7,7 @@ import (
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/database/dbtest"
 	"lewcontext/api/internal/factory"
+	"strings"
 	"testing"
 )
 
@@ -93,7 +94,24 @@ func TestEventNameCheck(t *testing.T) {
 			t.Errorf("%q accepted", name)
 		}
 	}
+	// A request's ID: ours (req_ and 14 base62) or none; never a client's
+	// or a proxy's.
+	withID := func(id string) error {
+		_, err := factory.Events.State(func(e *factory.Event) { e.RequestID = id }).CreateOne(ctx, db, f)
+		return err
+	}
+	for _, id := range []string{"", "req_0123456789abcd", "req_ABCDEFGHIJKLmn"} {
+		if err := withID(id); err != nil {
+			t.Errorf("request ID %q refused: %v", id, err)
+		}
+	}
+	for _, id := range []string{"lb-1.a_b", "req_0123456789abc", "req_0123456789abcde", "req_0123456789ab-d", "a b", "a\nb", strings.Repeat("a", 64)} {
+		if err := withID(id); err == nil {
+			t.Errorf("request ID %q accepted", id)
+		}
+	}
 }
+
 func TestFreshRebuildsTheSchema(t *testing.T) {
 	db := dbtest.Open(t)
 	ctx := context.Background()

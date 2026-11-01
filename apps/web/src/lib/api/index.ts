@@ -8,7 +8,7 @@ import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
-export { ApiError, errorMessage } from "./http";
+export { ApiError, errorMessage, requestIdOf } from "./http";
 export type { ApiPath } from "./paths";
 export type { InvitationIndexQuery } from "./invitations";
 export type { MemberIndexQuery } from "./members";

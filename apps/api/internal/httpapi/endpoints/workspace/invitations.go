@@ -52,7 +52,7 @@ func (h Invitations) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.Repo.IndexInvitations(r.Context(), httpapi.Workspace(r).ID, req)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, page)
@@ -93,14 +93,14 @@ func (h Invitations) Store(w http.ResponseWriter, r *http.Request) {
 	}
 	inv, err := h.Repo.CreateInvitation(r.Context(), httpapi.Workspace(r), httpapi.Session(r).User.ID, store.InvitationInput{Email: in.Email, Role: role})
 	if err != nil {
-		failInvitation(w, err)
+		failInvitation(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 201, inv)
 }
 
 // failInvitation answers the errors creating an invitation can end in.
-func failInvitation(w http.ResponseWriter, err error) {
+func failInvitation(w http.ResponseWriter, r *http.Request, err error) {
 	var quota store.QuotaError
 	switch {
 	case errors.Is(err, store.ErrAlreadyMember):
@@ -112,7 +112,7 @@ func failInvitation(w http.ResponseWriter, err error) {
 	case errors.As(err, &quota):
 		httpapi.Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" members, counting pending invitations.")
 	default:
-		failMembership(w, err)
+		failMembership(w, r, err)
 	}
 }
 
@@ -129,7 +129,7 @@ func (h Invitations) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		failMembership(w, err)
+		failMembership(w, r, err)
 		return
 	}
 	w.WriteHeader(204)
@@ -155,7 +155,7 @@ func (h Invitations) Check(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, preview)
@@ -183,7 +183,7 @@ func (h Invitations) Accept(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &quota):
 		httpapi.Fail(w, 422, "This workspace is full. Ask whoever invited you to make room.")
 	case err != nil:
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 	default:
 		httpapi.JSON(w, 200, workspace)
 	}

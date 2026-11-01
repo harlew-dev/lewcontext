@@ -45,7 +45,7 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user, hash, err := h.Repo.FindUser(r.Context(), in.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	known := err == nil
@@ -56,7 +56,7 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 		// take longer than a wrong one.
 		admin, adminErr = h.Repo.FindAdmin(r.Context(), user.ID)
 		if adminErr != nil && !errors.Is(adminErr, store.ErrNotAdmin) {
-			httpapi.InternalError(w, adminErr)
+			httpapi.InternalError(w, r, adminErr)
 			return
 		}
 	} else {
@@ -65,14 +65,14 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	valid := auth.CheckPassword(in.Password, hash)
 	result := adminLoginResult(known, valid, admin, adminErr)
 	if result == events.AdminLoginMFAOff {
-		slog.Warn("an admin without two-factor authentication signed in outside the setup window; run admin grant again", "user", user.PublicID)
+		slog.WarnContext(r.Context(), "an admin without two-factor authentication signed in outside the setup window; run admin grant again", "user", user.PublicID)
 	}
 	e := events.AdminLoginAttempted{Email: in.Email, Result: result}
 	if known {
 		e.User = user.PublicID
 	}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	switch result {
@@ -94,7 +94,7 @@ func signInAddress(w http.ResponseWriter, r *http.Request) bool {
 	if _, err := netip.ParseAddr(httpapi.ClientIP(r)); err == nil {
 		return true
 	}
-	slog.Error("admin sign-in refused: the client address isn't an IP address; serve the API over TCP (or set CLIENT_IP_HEADER behind a proxy)", "clientIP", httpapi.ClientIP(r))
+	slog.ErrorContext(r.Context(), "admin sign-in refused: the client address isn't an IP address; serve the API over TCP (or set CLIENT_IP_HEADER behind a proxy)", "clientIP", httpapi.ClientIP(r))
 	httpapi.Fail(w, 503, "Admin sign-in isn't available on this server.")
 	return false
 }
@@ -124,11 +124,11 @@ func adminLoginResult(known, valid bool, admin store.Admin, adminErr error) stri
 func (h Sessions) startAdminChallenge(w http.ResponseWriter, r *http.Request, user store.User, purpose string, lifetime time.Duration, flag string) {
 	token, err := auth.Token()
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if err := h.Repo.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, time.Now().Add(lifetime)); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	http.SetCookie(w, auth.AdminMFACookie(token, h.Config.Production, lifetime))
@@ -176,18 +176,18 @@ func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 		h.confirmAdminSetup(w, r, hash, admin, in.Code)
 		return
 	}
-	factor := h.SecondFactor(admin.User, in.Code)
+	factor := h.SecondFactor(r.Context(), admin.User, in.Code)
 	result, err := h.Repo.AnswerMFAChallenge(r.Context(), hash, store.ChallengeAdmin, admin.User.ID, factor)
 	if errors.Is(err, store.ErrNoChallenge) {
 		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if err := h.RecordMFACheck(r, admin.User, factor, events.MFAStepAdminLogin, result.OK, result.FactorUsed); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	switch {
@@ -213,7 +213,7 @@ func (h Sessions) confirmAdminSetup(w http.ResponseWriter, r *http.Request, hash
 		return
 	}
 	if err := h.Repo.DeleteMFAChallenge(r.Context(), hash); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	now := time.Now()
@@ -237,7 +237,7 @@ func (h Sessions) adminChallenge(w http.ResponseWriter, r *http.Request) (string
 		return "", admin, "", false
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return "", admin, "", false
 	}
 	return hash, admin, purpose, true
@@ -248,7 +248,7 @@ func (h Sessions) adminChallenge(w http.ResponseWriter, r *http.Request) (string
 func (h Sessions) endAdminChallenge(w http.ResponseWriter, r *http.Request, hash, message string) {
 	if hash != "" {
 		if err := h.Repo.DeleteMFAChallenge(r.Context(), hash); err != nil {
-			httpapi.InternalError(w, err)
+			httpapi.InternalError(w, r, err)
 			return
 		}
 	}
@@ -262,12 +262,12 @@ func (h Sessions) endAdminChallenge(w http.ResponseWriter, r *http.Request, hash
 func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user store.User, role auth.AdminRole, status int, extra map[string]any) {
 	token, err := auth.Token()
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	csrf, err := auth.Token()
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	expires := time.Now().Add(auth.AdminSessionLifetime)
@@ -284,7 +284,7 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	clearCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
@@ -307,7 +307,7 @@ func (h Sessions) Me(w http.ResponseWriter, r *http.Request) {
 // either key. POST /api/admin/logout.
 func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.Repo.DeleteAdminSession(r.Context(), httpapi.Admin(r).User, h.AdminSessionDigest(r)); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	clearCookie(w, auth.AdminCookie("", h.Config.Production))
@@ -320,7 +320,7 @@ func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
 // admin is an action). DELETE /api/admin/sessions.
 func (h Sessions) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.Repo.DeleteOtherAdminSessions(r.Context(), httpapi.Admin(r).User, h.AdminSessionDigest(r)); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(204)
