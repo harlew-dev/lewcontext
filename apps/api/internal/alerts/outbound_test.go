@@ -66,7 +66,7 @@ func TestWebhookPostsSignedJSON(t *testing.T) {
 	at := time.Unix(1793543400, 0)
 	w := Webhook{URL: srv.URL + secretPath, Format: FormatJSON, Secret: []byte("a-secret-of-32-characters-or-more"),
 		Client: NewClient(WebhookTimeout, false), Now: func() time.Time { return at }}
-	if err := w.Post(context.Background(), notice); err != nil {
+	if err := w.Post(context.Background(), notice, "evt_0123456789abcd"); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
@@ -82,12 +82,12 @@ func TestWebhookPostsSignedJSON(t *testing.T) {
 	mac.Write([]byte("1793543400."))
 	mac.Write(rc.bodies[0])
 	want := "t=1793543400,v1=" + hex.EncodeToString(mac.Sum(nil))
-	if h := rc.headers[0]; h.Get(SignatureHeader) != want || h.Get("Content-Type") != "application/json" {
+	if h := rc.headers[0]; h.Get(SignatureHeader) != want || h.Get("Content-Type") != "application/json" || h.Get(DeliveryHeader) != "evt_0123456789abcd" {
 		t.Fatalf("headers: %v, want %s", h, want)
 	}
 	// Without a secret, no signature.
 	w.Secret = nil
-	if err := w.Post(context.Background(), notice); err != nil || rc.headers[1].Get(SignatureHeader) != "" {
+	if err := w.Post(context.Background(), notice, "evt_0123456789abcd"); err != nil || rc.headers[1].Get(SignatureHeader) != "" {
 		t.Fatalf("unsigned: %v %v", err, rc.headers[1])
 	}
 }
@@ -125,7 +125,7 @@ func TestWebhookFailures(t *testing.T) {
 	srv := httptest.NewServer(rc)
 	defer srv.Close()
 	w := Webhook{URL: srv.URL + secretPath, Format: FormatJSON, Client: NewClient(WebhookTimeout, false)}
-	err := w.Post(context.Background(), notice)
+	err := w.Post(context.Background(), notice, "evt_0123456789abcd")
 	if err == nil || strings.Contains(err.Error(), "SECRET") || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("500: %v", err)
 	}
@@ -135,11 +135,11 @@ func TestWebhookFailures(t *testing.T) {
 	defer redirect.Close()
 	rc.status = 204
 	w.URL = redirect.URL + secretPath
-	if err := w.Post(context.Background(), notice); err == nil || !strings.Contains(err.Error(), "307") || len(rc.bodies) != 1 {
+	if err := w.Post(context.Background(), notice, "evt_0123456789abcd"); err == nil || !strings.Contains(err.Error(), "307") || len(rc.bodies) != 1 {
 		t.Fatalf("redirect followed, or not an error: %v (%d posts)", err, len(rc.bodies))
 	}
 	guarded := Webhook{URL: srv.URL + secretPath, Format: FormatJSON, Client: NewClient(WebhookTimeout, true)}
-	err = guarded.Post(context.Background(), notice)
+	err = guarded.Post(context.Background(), notice, "")
 	if !errors.Is(err, ErrPrivateTarget) || strings.Contains(err.Error(), "SECRET") || len(rc.bodies) != 1 {
 		t.Fatalf("guarded loopback: %v (%d posts)", err, len(rc.bodies))
 	}
@@ -158,7 +158,7 @@ func TestWebhookFailures(t *testing.T) {
 	defer slow.Close()
 	defer close(release)
 	w = Webhook{URL: slow.URL + secretPath, Format: FormatJSON, Client: NewClient(50*time.Millisecond, false)}
-	if err := w.Post(context.Background(), notice); err == nil || strings.Contains(err.Error(), "SECRET") {
+	if err := w.Post(context.Background(), notice, "evt_0123456789abcd"); err == nil || strings.Contains(err.Error(), "SECRET") {
 		t.Fatalf("slow: %v", err)
 	}
 }

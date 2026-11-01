@@ -28,6 +28,10 @@ const WebhookTimeout = 10 * time.Second
 // compares t with its clock).
 const SignatureHeader = "X-Lewcontext-Signature"
 
+// DeliveryHeader carries the ID of the event being posted (evt_…), the same
+// on every retry of it, so a receiver can drop a body it has seen.
+const DeliveryHeader = "X-Lewcontext-Delivery"
+
 // Webhook posts alert events to ALERT_WEBHOOK_URL.
 type Webhook struct {
 	URL    string
@@ -91,9 +95,9 @@ func slackEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
-// Post sends n. A failure (the receiver down, a non-2xx answer) is an
+// Post sends n, identified by delivery (an event's ID). A failure (the receiver down, a non-2xx answer) is an
 // error, so the delivery is retried like an email's.
-func (w Webhook) Post(ctx context.Context, n Notice) error {
+func (w Webhook) Post(ctx context.Context, n Notice, delivery string) error {
 	body, err := w.Body(n)
 	if err != nil {
 		return err
@@ -104,6 +108,9 @@ func (w Webhook) Post(ctx context.Context, n Notice) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "lewcontext-alerts")
+	if delivery != "" {
+		req.Header.Set(DeliveryHeader, delivery)
+	}
 	if len(w.Secret) > 0 {
 		now := time.Now
 		if w.Now != nil {

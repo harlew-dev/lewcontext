@@ -408,7 +408,7 @@ func TestAlertListeners(t *testing.T) {
 	for _, msg := range box.Sent {
 		got[settings[msg.To]] = append(got[settings[msg.To]], msg.Subject)
 	}
-	if len(got["all"]) != 2 || len(got["critical"]) != 1 || got["critical"][0] != "Critical alert: test.critical" || len(got["none"]) != 0 {
+	if len(got["all"]) != 2 || len(got["critical"]) != 1 || got["critical"][0] != "Critical alert: An alert" || len(got["none"]) != 0 {
 		t.Fatalf("emails: %v", got)
 	}
 	if len(rc.bodies) != 2 {
@@ -434,7 +434,7 @@ func TestAlertListeners(t *testing.T) {
 	if failed.Attempts != 1 || !strings.Contains(failed.LastError, "answered") || strings.Contains(failed.LastError, "SECRET") {
 		t.Fatalf("the failed post: %+v", failed)
 	}
-	if subject := box.Sent[len(box.Sent)-1].Subject; subject != "Resolved: test.warning" {
+	if subject := box.Sent[len(box.Sent)-1].Subject; subject != "Resolved: An alert" {
 		t.Fatalf("the resolution: %s", subject)
 	}
 }
@@ -470,7 +470,7 @@ func TestAlertContentHoldsNoSecretsOrPersonalData(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, h := range hooks {
-				if err := postChange(ctx, s, h, c); err != nil {
+				if err := postChange(ctx, s, h, c, "evt_0123456789abcd"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -483,7 +483,7 @@ func TestAlertContentHoldsNoSecretsOrPersonalData(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, h := range hooks {
-			if err := postChange(ctx, s, h, c); err != nil {
+			if err := postChange(ctx, s, h, c, "evt_0123456789abcd"); err != nil {
 				t.Fatal(err)
 			}
 		}

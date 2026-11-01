@@ -52,16 +52,16 @@ func Listen(bus *events.Bus, s *store.Store, mailer *mail.Mailer, webhook *Webho
 	}
 	if webhook != nil {
 		events.Listen(bus, "alert.webhook", func(ctx context.Context, e events.AlertOpened, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.opened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook})
+			return postChange(ctx, s, webhook, change{"alert.opened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook}, d.EventID)
 		})
 		events.Listen(bus, "alert.webhook_escalated", func(ctx context.Context, e events.AlertEscalated, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.escalated", e.Alert, e.Signal, e.To, e.Value, e.Mail, e.Webhook})
+			return postChange(ctx, s, webhook, change{"alert.escalated", e.Alert, e.Signal, e.To, e.Value, e.Mail, e.Webhook}, d.EventID)
 		})
 		events.Listen(bus, "alert.webhook_reminded", func(ctx context.Context, e events.AlertReminded, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.reminded", e.Alert, e.Signal, e.Level, e.Value, true, true})
+			return postChange(ctx, s, webhook, change{"alert.reminded", e.Alert, e.Signal, e.Level, e.Value, true, true}, d.EventID)
 		})
 		events.Listen(bus, "alert.webhook_resolved", func(ctx context.Context, e events.AlertResolved, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.resolved", e.Alert, e.Signal, e.Level, 0, e.Mail, e.Webhook})
+			return postChange(ctx, s, webhook, change{"alert.resolved", e.Alert, e.Signal, e.Level, 0, e.Mail, e.Webhook}, d.EventID)
 		})
 	}
 }
@@ -205,7 +205,7 @@ func partly(ctx context.Context, listener string, sent int, failed []error) erro
 }
 
 // postChange posts the change to the webhook.
-func postChange(ctx context.Context, s *store.Store, w *Webhook, c change) error {
+func postChange(ctx context.Context, s *store.Store, w *Webhook, c change, delivery string) error {
 	if !c.webhook {
 		return nil
 	}
@@ -225,5 +225,5 @@ func postChange(ctx context.Context, s *store.Store, w *Webhook, c change) error
 	if alert.ResolvedAt != nil {
 		n.State = "resolved"
 	}
-	return w.Post(ctx, n)
+	return w.Post(ctx, n, delivery)
 }
