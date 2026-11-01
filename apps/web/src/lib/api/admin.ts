@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useOptionalAdmin } from "@/lib/admin";
 import { url, type Page } from "@/lib/pagination";
+import { eventQuery, eventsUrl } from "@/lib/admin-routes";
 import type { Project, ProjectSort } from "@/types/projects";
 import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
@@ -16,8 +17,8 @@ import {
   type AdminDeliveryRow,
   type AdminEmailBlock,
   type AdminEmailBlockSort,
-  type AdminEvent,
   type AdminEventDetail,
+  type AdminEventPage,
   type AdminMail,
   type AdminSession,
   type AdminUser,
@@ -56,8 +57,12 @@ export type AdminProjectIndexQuery = {
   status?: Project["status"];
   sort?: ProjectSort;
 };
-// The Events list's query: its filters and a page size.
-export type AdminEventIndexQuery = EventFilters & { perPage?: number };
+// The Events list's query: its filters, a page size, and the summary for
+// the charts (the newest page only).
+export type AdminEventIndexQuery = EventFilters & {
+  perPage?: number;
+  summary?: boolean;
+};
 export type AdminDeliveryIndexQuery = {
   status?: DeliveryStatus;
   listener?: string;
@@ -128,7 +133,13 @@ export const adminPaths = {
   }),
   events: {
     index: (query: AdminEventIndexQuery = {}) =>
-      path<CursorPage<AdminEvent>>(url(`${base}/events`, query)),
+      path<AdminEventPage>(
+        eventsUrl(`${base}/events`, {
+          ...eventQuery(query),
+          summary: query.summary ? "include" : undefined,
+          perPage: query.perPage,
+        }),
+      ),
     show: (id: string) => path<AdminEventDetail>(`${base}/events/${id}`),
   },
   catalogue: () => path<AdminCatalogue>(`${base}/catalogue`),

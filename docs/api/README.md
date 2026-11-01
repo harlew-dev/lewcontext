@@ -6,15 +6,16 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 
 | Package | Owns |
 | --- | --- |
-| `cmd/server` | Startup (the CAPTCHA provider, with its origin added to the app pages' CSP; with the embedded web build when there is one, and the admin build beside it when `ADMIN_ROUTE_KEY` is set), event listeners and the delivery worker, HTTP server timeouts, 15-minute cleanup of expired sessions, limits and reset links, graceful shutdown |
+| `cmd/server` | Startup (the log handler first, then the CAPTCHA provider, with its origin added to the app pages' CSP, then the embedded web build when there is one, and the admin build beside it when `ADMIN_ROUTE_KEY` is set), event listeners and the delivery worker, the error collector (`observe.SetReporter`, flushed to `app_errors` every 10 s), the slow-query hook, this server's `server_instances` row and `server.started`, each minute's metrics with its heartbeat, the hourly rollup, `/metrics` on `METRICS_ADDR` (`metrics.go`), HTTP server timeouts, 15-minute cleanup of expired sessions, limits and reset links, graceful shutdown (readiness answers 503 first, `Server.Drain`, for `SHUTDOWN_DELAY`; then `server.stopped`, the last minute's metrics and the error collector's last flush once everything else has stopped) |
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
 | `cmd/admin` | The operator's commands, previewing unless confirmed: `grant` (with a role, `-role viewer|operator`), `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address); the dashboard's Email blocks page does both too); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
-| `internal/config` | Environment loading and validation |
-| `internal/database` | Connection (`Open`) and the Bun migrator |
-| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin keys, sessions, roles, step-up, page gate and assets pass (`admin.go`), and the admin address allowlist (`admin_access.go`) |
-| `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`, `/api/email-blocks/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
+| `internal/config` | Environment loading and validation; `LoadLogging` reads the log's settings on their own, which every command does first |
+| `internal/observe` | The one log handler every command installs (`observe.NewLogger`: JSON or text, the request's ID on each line, redaction), request IDs, what a request's access line reports (`observe.Request`), the scrubber every error's text goes through before it's logged or stored (`observe.Scrub`), the error collector that groups what `observe.Report` is handed and flushes it to `app_errors` (`observe.Collector`), and the metric registry (`observe.Metrics`: counters, gauges, histograms and the request table), its minute's flush (`observe.MinuteFlush`) and `/metrics` (`observe.MetricsHandler`) ([observability.md](observability.md)). It imports nothing else of the app's |
+| `internal/database` | Connection (`Open`), the Bun migrator, the advisory locks (the email lock, the metrics rollup's), and the query hook that times every query and logs slow ones (`QueryHook`) |
+| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), the request's ID, access line, panic recovery and readiness (`observability.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin keys, sessions, roles, step-up, page gate and assets pass (`admin.go`), and the admin address allowlist (`admin_access.go`) |
+| `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`, `/api/email-blocks/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers-internalhttpapi)) |
 | `internal/httpapi/router` | `routes.go`, the one registry of API routes and pages, with their middleware and limits (`router.New`) |
 | `internal/httpapi/{clientip,input,ratelimit}` | Leaves the core imports: resolving the client's address; query parameters, paging, public IDs, search terms, link tokens and the hidden-character rule for typed text (`ValidText`); what a rate limit is and the in-memory counter |
 | `internal/httpapi/apitest` | Helpers the integration tests share ([testing.md](testing.md)); only tests import it |
@@ -26,7 +27,7 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `internal/events` | Event types, the request's actor and user agent, listeners (`Bus`, `Listen`) and the delivery `Worker` ([events.md](events.md)); `internal/store` records events and is the worker's queue |
 | `internal/factory` | Fake records for every table (seeders and tests only) |
 | `internal/seed` | Seeders for `make seed` |
-| `internal/prune` | `make prune`: one file per target (`events.go`) registering itself, plus the shared list, `-older-than` parsing and batched run |
+| `internal/prune` | `make prune`: one file per target (`events.go`, `app_errors.go`, `metric_hours.go`) registering itself, plus the shared list, `-older-than` parsing and batched run |
 | `migrations` | SQL migration pairs, embedded into the binaries |
 
 `cmd/server` never imports `factory`, `seed` or `httpapi/apitest`. Areas never import each other, and the core imports none of them (`TestHTTPLayout`).
@@ -36,9 +37,10 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 `router.New(s)` sends `/api` and `/api/*` to the API; every other request goes to the pages ([below](#serving-the-web-app)).
 
 ```
-ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED_PROXIES), for pages too
-  → Security (headers, no-store, origin + JSON checks on mutations, 10 s timeout)
-  → mux (router/routes.go)
+ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED_PROXIES; the request's ID and X-Request-ID; once answered, the request counted in the metrics and its access line), for pages too
+  → Security (headers, no-store, origin + JSON checks on mutations, 10 s timeout, flagged when it ends a request)
+  → RecoverPanics (a panic → the generic 500 with the request's ID; around the pages too)
+  → mux (router/routes.go; the matched pattern names the route for the access line)
   → RequireSession (cookie → session, CSRF on mutations) for private routes
   → RequireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
   (or, under /api/admin: RequireAdminKey for the sign-in, RequireAdminKeyOrPrevious → RequireAdminSession → RequireAdminRole on an action → RequireAdminStepUp → LimitAdmin on an account-and-access action; admin.md)
@@ -46,7 +48,7 @@ ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
   → controller, e.g. workspace.Projects.Index (parse + validate) → store, e.g. h.Repo.IndexProjects (query scoped by workspace ID) → httpapi.JSON
 ```
 
-- Responses are JSON. Errors are `{"error": "message"}` with a generic message; details go to `slog` only (`httpapi.InternalError`).
+- Responses are JSON. Errors are `{"error": "message"}` with a generic message; a 500 adds the request's ID, `{"error": "Something went wrong. Please try again.", "requestId": "req_…"}`, and its details go to the log only, under that ID (`httpapi.InternalError(w, r, err)`). Log during a request with `slog.*Context(r.Context(), …)`, never the path, query, headers or body ([observability.md](observability.md)).
 - Request bodies: `httpapi.Decode` caps them at 16 KiB, rejects unknown fields and requires exactly one JSON object. `httpapi.DecodeValid(w, r, validProject, message)` decodes and validates in one step (400, or 422 with the message).
 - The session cookie: `h.SessionDigest(r)` is what the `sessions` table stores for it (logout, revoking other sessions, a password change); `s.sessionToken(r)` (core only) is the raw, well-formed cookie.
 - Controllers embed `*httpapi.Server`, so they reach the store as `h.Repo` and the config as `h.Config`. The signed-in session is `httpapi.Session(r)`, the workspace in the path `httpapi.Workspace(r)`, and the admin's session `httpapi.Admin(r)`. The context keys are unexported, so only the core's middleware can set them.
@@ -101,6 +103,14 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `ADMIN_ROUTE_KEY` | (unset: admin off) | The admin dashboard's secret path segment and `X-Admin-Key`: a UUIDv4 or 32–128 characters of `A–Z a–z 0–9 _ -`; `go run ./cmd/admin route-key generate` prints one. Production refuses `.env.example`'s. Rotating it signs every admin out, unless the old one is set as `ADMIN_ROUTE_KEY_PREVIOUS`. It hides the door; admins still need their password and a code ([admin.md](admin.md)) |
 | `ADMIN_ROUTE_KEY_PREVIOUS` | (unset) | After a rotation, the old key: admin sessions made under it keep working until they end (8 hours at most), but it never opens the sign-in. Same format; refused without `ADMIN_ROUTE_KEY` or equal to it. Never set a key that may have leaked ([admin.md](admin.md#rotating-without-signing-out-admin_route_key_previous)) |
 | `ADMIN_ALLOWED_IPS` | (unset: any) | Comma-separated addresses or CIDR ranges the admin dashboard answers; the right key from anywhere else is a 404, recorded as `admin.access_refused`. Parsed like `TRUSTED_PROXIES` (`0.0.0.0/0` and `::/0` refused). Behind a proxy it needs `CLIENT_IP_HEADER`; production warns at startup without it ([admin.md](admin.md#the-address-allowlist-admin_allowed_ips)) |
+| `LOG_FORMAT` | `json` in production, `text` otherwise | One JSON object per line, or slog's `key=value` text ([observability.md](observability.md#logs)) |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `ACCESS_LOG` | `all` | A line per request (`all`), only failures and requests over a second (`errors`), or none (`off`) |
+| `SHUTDOWN_DELAY` | `5s` in production, `0s` otherwise | How long a stopping server keeps serving with readiness already 503 before it drains; 0 to 60 s ([observability.md](observability.md#health)) |
+| `METRICS_STORE` | `on` | `off` writes no metrics to the database (`request_minutes`, `metric_minutes`); `/metrics`, logs, grouped errors and the heartbeat still work ([observability.md](observability.md#metrics-in-the-database)) |
+| `METRICS_ADDR` | (unset: off) | A separate listener serving only `GET /metrics` in the Prometheus text format, such as `127.0.0.1:9090`; never the API's address. Production refuses one on every interface (`:9090`, `0.0.0.0`, `::`, a host name) without `METRICS_TOKEN` ([observability.md](observability.md#metrics-for-an-external-system)) |
+| `METRICS_TOKEN` | (unset) | When set (32 characters at least), `/metrics` requires `Authorization: Bearer <token>`, compared in constant time. Never logged or stored |
+| `SLOW_QUERY_MS` | `500` | A query slower than this is logged at warn, without its text or values; `0` logs none; at most 60000 ([observability.md](observability.md#slow-queries)) |
 | `APP_NAME` | `lewcontext` | The product name: baked into the web build, and read by the server for emails, which open with it ([mail.md](mail.md#templates)) |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |
@@ -109,4 +119,4 @@ Without a web build, the server serves the API only in development (Vite serves 
 
 ## More
 
-[endpoints.md](endpoints.md) · [auth.md](auth.md) · [admin.md](admin.md) · [rate-limits.md](rate-limits.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)
+[endpoints.md](endpoints.md) · [auth.md](auth.md) · [admin.md](admin.md) · [rate-limits.md](rate-limits.md) · [observability.md](observability.md) · [mail.md](mail.md) · [pagination.md](pagination.md) · [database.md](database.md) · [seeding.md](seeding.md) · [testing.md](testing.md)

@@ -19,6 +19,7 @@ type Event struct {
 	Raw                          string         // the payload as PostgreSQL prints it
 	Payload                      map[string]any `bun:"-"`
 	IP                           string         // host() of events.ip, "" for null
+	RequestID                    string
 	UserAgent                    string
 }
 
@@ -28,7 +29,7 @@ var NumericID = regexp.MustCompile(`"id":\s*\d`)
 // storedEvents selects events with their payload as text.
 func storedEvents(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().TableExpr("events").
-		Column("name", "actor_id", "user_id", "workspace_id", "user_agent").
+		Column("name", "actor_id", "user_id", "workspace_id", "request_id", "user_agent").
 		ColumnExpr("payload::text AS raw").
 		ColumnExpr("coalesce(host(ip), '') AS ip").
 		OrderExpr("id")

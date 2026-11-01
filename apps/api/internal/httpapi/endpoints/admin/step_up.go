@@ -35,7 +35,7 @@ func (h StepUp) Store(w http.ResponseWriter, r *http.Request) {
 	if !h.Allow(w, r, httpapi.MFAPerAccount, httpapi.MFAPerAccount.Key(admin.PublicID)) {
 		return
 	}
-	factor := h.SecondFactor(admin, in.Code)
+	factor := h.SecondFactor(r.Context(), admin, in.Code)
 	result, err := h.Repo.StepUpAdminSession(r.Context(), h.AdminSessionDigest(r), admin, factor)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Signed out (or ended) between the session check and here.
@@ -43,11 +43,11 @@ func (h StepUp) Store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if err := h.RecordMFACheck(r, admin, factor, events.MFAStepAdminStepUp, result.OK, result.FactorUsed); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	switch {

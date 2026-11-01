@@ -33,7 +33,7 @@ func (h EmailVerification) Store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Repo.Record(r.Context(), events.EmailVerificationRequested{User: user.PublicID}, store.EventScope{UserID: user.ID}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(202)
@@ -57,7 +57,7 @@ func (h EmailVerification) Update(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNoEmailVerification):
 		httpapi.Fail(w, 410, emailCodeEnded)
 	case err != nil:
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 	case result.Ended:
 		httpapi.Fail(w, 410, emailCodeTooMany)
 	case !result.OK:

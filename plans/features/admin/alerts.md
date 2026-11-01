@@ -1,6 +1,6 @@
 # Admin: Alerts
 
-Status: **draft 2026-10-31**, decisions to confirm. Plan A5 of the [admin plans](README.md). Needs [monitoring](monitoring.md) (its signals and integrity checks) and [observability](observability.md). Docs it will change: [admin.md](../../../docs/api/admin.md), `docs/api/monitoring.md`, [events.md](../../../docs/api/events.md), [mail.md](../../../docs/api/mail.md), [database.md](../../../docs/api/database.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md).
+Status: **draft 2026-10-31**, decisions to confirm. Plan A5 of the [admin plans](README.md). Needs [monitoring](monitoring.md) (its signals and integrity checks) and [observability](../implemented/admin/observability.md). Docs it will change: [admin.md](../../../docs/api/admin.md), `docs/api/monitoring.md`, [events.md](../../../docs/api/events.md), [mail.md](../../../docs/api/mail.md), [database.md](../../../docs/api/database.md), [api/README.md](../../../docs/api/README.md), [deployment.md](../../../docs/deployment.md).
 
 ## Why
 

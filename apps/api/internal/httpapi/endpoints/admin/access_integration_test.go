@@ -13,6 +13,7 @@ import (
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/router"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
@@ -451,6 +452,9 @@ func TestPreviousAdminKeyInAnOutage(t *testing.T) {
 		c.AdminRouteKeyPrevious = previousKey
 	})
 	h := router.New(s)
+	reported := &problems{}
+	observe.SetReporter(reported)
+	t.Cleanup(func() { observe.SetReporter(nil) })
 	cookie := &http.Cookie{Name: auth.AdminCookieName(false), Value: strings.Repeat("A", 43)}
 	nowhere := apitest.Get(h, "GET", "/nowhere", nil)
 
@@ -472,6 +476,30 @@ func TestPreviousAdminKeyInAnOutage(t *testing.T) {
 	if w := adminSend(h, "GET", "/api/admin/me", "", currentKey, "", cookie); w.Code != 500 {
 		t.Fatalf("/me under the current key in an outage: %d", w.Code)
 	}
+
+	// Each failed session check is reported, under its route's label or
+	// pattern, never the key: both pages' gates, the previous key's API
+	// checks (answered as a wrong key) and the current key's 500.
+	count := map[string]int{}
+	for _, p := range reported.list {
+		if strings.Contains(p.Route+p.Err.Error(), previousKey) || strings.Contains(p.Route+p.Err.Error(), currentKey) {
+			t.Fatalf("a report names the key: %+v", p)
+		}
+		message, _, _ := strings.Cut(p.Err.Error(), ":")
+		count[p.Route+" · "+message]++
+	}
+	if count["page /admin/* · admin page session check"] != 2 || count["GET /api/admin/me · admin session check"] != 1 ||
+		count["GET /api/admin/admins · admin session check"] != 1 || len(reported.list) != 7 {
+		t.Fatalf("reported: %v", count)
+	}
+}
+
+// problems records what observe.Report is handed (requests here are served
+// one at a time).
+type problems struct{ list []observe.Problem }
+
+func (p *problems) Report(_ context.Context, problem observe.Problem) {
+	p.list = append(p.list, problem)
 }
 
 // lastSeen reads an admin session's last_seen_at.

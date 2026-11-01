@@ -158,7 +158,7 @@ The server needs the TOTP secret itself to check codes, so it can't be hashed li
 - **`GET /api/auth/me`** and every other response with the user gain `mfaEnabled` (boolean). `FindSession` reads it with an `EXISTS` on a confirmed `mfa_totp` row: no extra query.
 - **Codes are checked after the password**, so an attacker without the password learns nothing about the code.
 - **`DELETE /api/auth/mfa` and `…/recovery-codes`** use `requireSessionUnmetered`, like the other recovery routes. Someone holding a stolen session must not be able to use up the owner's budget and block them from regaining control.
-- **Naming:** `/api/auth/*` holds named actions on the session ([naming.md](../../../docs/naming.md#http-routes-and-handlers-internalhttpapi)). The MFA routes treat `mfa` as a singleton resource of the account (`store`, `destroy`), and `recovery-codes` as its sub-collection; `setup` and `login/mfa` are named verbs.
+- **Naming:** `/api/auth/*` holds named actions on the session ([naming.md](../../../docs/naming.md#controllers-internalhttpapi)). The MFA routes treat `mfa` as a singleton resource of the account (`store`, `destroy`), and `recovery-codes` as its sub-collection; `setup` and `login/mfa` are named verbs.
 
 ## Data
 

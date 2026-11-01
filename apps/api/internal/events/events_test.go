@@ -11,7 +11,7 @@ import (
 
 // eventName is <resource>.<fact> in a known area: two or three snake_case
 // segments, like the events.name CHECK (migration 007).
-var eventName = regexp.MustCompile(`^(auth|workspace|project|rate_limit|admin|email)(\.[a-z][a-z_]*){1,2}$`)
+var eventName = regexp.MustCompile(`^(auth|workspace|project|rate_limit|admin|email|server)(\.[a-z][a-z_]*){1,2}$`)
 
 func TestEventNamePattern(t *testing.T) {
 	for _, name := range []string{"workspace.member.removed", "auth.logged_in", "auth.password_reset.requested", "project.updated", "rate_limit.reached", "admin.user.viewed", "email.blocked"} {
@@ -76,14 +76,14 @@ func TestChangesKeepOnlyChangedFields(t *testing.T) {
 
 func TestRequestMeta(t *testing.T) {
 	ctx := context.Background()
-	if Actor(ctx) != 0 || IP(ctx) != "" || UserAgent(ctx) != "" {
+	if Actor(ctx) != 0 || IP(ctx) != "" || RequestID(ctx) != "" || UserAgent(ctx) != "" {
 		t.Fatal("empty context has meta")
 	}
 	ctx = WithUserAgent(ctx, strings.Repeat("é", 300)+"\xff")
 	ctx = WithActor(ctx, 7)
-	ctx = WithIP(ctx, "203.0.113.9")
-	if Actor(ctx) != 7 || IP(ctx) != "203.0.113.9" {
-		t.Fatal("actor or IP lost")
+	ctx = WithRequest(ctx, "203.0.113.9", "req_0123456789abcd")
+	if Actor(ctx) != 7 || IP(ctx) != "203.0.113.9" || RequestID(ctx) != "req_0123456789abcd" {
+		t.Fatal("actor, IP or request ID lost")
 	}
 	agent := UserAgent(ctx)
 	if !utf8.ValidString(agent) || utf8.RuneCountInString(agent) != maxUserAgent {

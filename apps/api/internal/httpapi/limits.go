@@ -4,6 +4,7 @@ import (
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/ratelimit"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
@@ -120,6 +121,20 @@ var (
 		Busy:      "Invitations are busy. Try again later.",
 	}
 
+	// ClientErrorPerUser: errors one user's browsers report (POST /api/client-errors).
+	// Each is grouped in memory, never stored per report; this caps how much
+	// one account can add. The route skips the write budget, so a page stuck
+	// in an error loop can't use it up: this is its only per-user limit.
+	ClientErrorPerUser = ratelimit.Limit{Name: "client-error:per-user", Block: ratelimit.Above(30), Window: time.Hour}
+	// ClientErrorGlobal: errors every browser reports.
+	// Caps what many accounts together can add to app_errors in an hour.
+	ClientErrorGlobal = ratelimit.Limit{
+		Name:   "client-error:global",
+		Block:  ratelimit.Above(500),
+		Window: time.Hour,
+		Busy:   "Error reports are busy. Try again later.",
+	}
+
 	// AdminActionPerUser: the admin dashboard's account-and-access actions taken by one admin.
 	// Unblocking an address, and A6's actions to come. Every attempt past the
 	// step-up counts, refused or not (an address that isn't blocked too), so a
@@ -136,6 +151,7 @@ var RateLimits = []ratelimit.Limit{
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
+	ClientErrorPerUser, ClientErrorGlobal,
 	AdminActionPerUser,
 }
 
@@ -166,7 +182,7 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 		err = s.recordLimitReached(r, l, "challenge", resetsAt)
 	}
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return false
 	}
 	if l.Shared() && l.Challenge.Exceeds(hits) && s.Captcha != nil {
@@ -174,7 +190,7 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 	}
 	if l.Block.Crossed(hits) {
 		if err := s.recordLimitReached(r, l, "block", resetsAt); err != nil {
-			InternalError(w, err)
+			InternalError(w, r, err)
 			return false
 		}
 	}
@@ -183,7 +199,7 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 		return false
 	}
 	if l.Challenge.Exceeds(hits) {
-		return s.passChallenge(w, r)
+		return s.passChallenge(w, r, l)
 	}
 	return true
 }
@@ -205,14 +221,14 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 	// Already refused: say so without asking for a CAPTCHA first.
 	passed, err := s.peekPassed(r, l, passedKey, resetsAt)
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return false
 	}
 	if l.Block.Exceeds(l.Challenge.At() + passed) {
 		refuse(w, l, resetsAt)
 		return false
 	}
-	if !s.solve(w, r, challengeOf(r)) {
+	if !s.solve(w, r, challengeOf(r), l) {
 		return false
 	}
 	// A late request counted in the next window takes that window's end.
@@ -222,7 +238,7 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 		err = s.recordLimitReached(r, l, "block", resetsAt)
 	}
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return false
 	}
 	if l.Block.Exceeds(through) {
@@ -233,8 +249,11 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 }
 
 // refuse answers a request above l's block level: 503 with Busy for a
-// limit shared by everyone, 429 otherwise, with Retry-After.
+// limit shared by everyone, 429 otherwise, with Retry-After. Every refusal
+// is counted in rate_limit_refused_total (only the first in a window is an
+// event).
 func refuse(w http.ResponseWriter, l ratelimit.Limit, resetsAt time.Time) {
+	observe.RateLimitRefused.Inc(l.Name + ":block")
 	left := time.Until(resetsAt)
 	w.Header().Set("Retry-After", ratelimit.RetryAfter(left))
 	if l.Busy != "" {
@@ -271,14 +290,14 @@ func (s *Server) peekPassed(r *http.Request, l ratelimit.Limit, passedKey string
 	if l.InMemory {
 		return s.memoryLimits.Peek(passedKey, resetsAt), nil
 	}
-	return s.Repo.PeekHits(r.Context(), passedKey, resetsAt)
+	return s.Repo.FindHits(r.Context(), passedKey, resetsAt)
 }
 
 // recordLimitReached records rate_limit.reached for l's level ("challenge"
 // or "block"), with the user and the workspace when the request has them.
 func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, level string, resetsAt time.Time) error {
 	if l.Busy != "" {
-		slog.Warn("a rate limit shared by everyone was reached", "limit", l.Name, "level", level, "window", l.Window)
+		slog.WarnContext(r.Context(), "a rate limit shared by everyone was reached", "limit", l.Name, "level", level, "window", l.Window)
 	}
 	e := events.RateLimitReached{Limit: l.Name + ":" + level, Window: int(l.Window.Seconds()), ResetsAt: resetsAt}
 	var scope store.EventScope

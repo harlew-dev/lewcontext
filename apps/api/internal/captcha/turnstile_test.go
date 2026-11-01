@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/observe"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -148,11 +149,12 @@ func TestTurnstileNeverFollowsRedirects(t *testing.T) {
 
 // siteverify's codes for our mistakes or its outage are ErrUnavailable
 // (503); the token's are ErrRejected. Both are logged with the codes, never
-// the secret or the token.
+// the secret or the token, through the server's own handler, whose
+// redaction must keep the codes.
 func TestTurnstileErrorCodes(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	slog.SetDefault(observe.NewLogger(&logs, observe.FormatText, slog.LevelInfo))
 	defer slog.SetDefault(previous)
 	for code, want := range map[string]error{
 		"missing-input-secret":   ErrUnavailable,

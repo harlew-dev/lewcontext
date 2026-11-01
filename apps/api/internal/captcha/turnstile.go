@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/observe"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -89,24 +90,35 @@ func (t *Turnstile) Verify(ctx context.Context, token, action, ip string) error 
 		return ErrRejected
 	}
 	answer, err := t.siteverify(ctx, token, ip)
-	if err != nil {
-		slog.Error("captcha: siteverify couldn't be used", "err", err)
+	switch {
+	case err != nil && errors.Is(err, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
+		// The client went away (httpapi.ClientGone): not a failure.
+		return errors.Join(ErrUnavailable, err)
+	case err != nil:
+		slog.ErrorContext(ctx, "captcha: siteverify couldn't be used", observe.ErrorAttr(err))
 		return errors.Join(ErrUnavailable, err)
 	}
 	switch {
 	case !answer.Success && slices.ContainsFunc(answer.ErrorCodes, func(code string) bool { return slices.Contains(ourFault, code) }):
-		slog.Error("captcha: siteverify refused our request", "codes", answer.ErrorCodes)
+		slog.ErrorContext(ctx, "captcha: siteverify refused our request", siteverifyErrors(answer))
 		return ErrUnavailable
 	case !answer.Success:
-		slog.Warn("captcha: token rejected", "codes", answer.ErrorCodes)
+		slog.WarnContext(ctx, "captcha: token rejected", siteverifyErrors(answer))
 		return ErrRejected
 	case answer.Metadata.Testing && t.testSecret:
 		return nil
 	case answer.Hostname != t.host || answer.Action != action:
-		slog.Warn("captcha: token solved elsewhere", "hostname", answer.Hostname, "action", answer.Action, "want", action, "testing", answer.Metadata.Testing)
+		slog.WarnContext(ctx, "captcha: token solved elsewhere", "hostname", observe.Scrub(answer.Hostname), "action", observe.Scrub(answer.Action), "want", action, "testing", answer.Metadata.Testing)
 		return ErrRejected
 	}
 	return nil
+}
+
+// siteverifyErrors is the answer's error codes for the log, scrubbed like
+// an error's text (they come from outside), under a key the log's redaction
+// keeps ("codes" would be blanked, docs/api/observability.md).
+func siteverifyErrors(answer siteverifyAnswer) slog.Attr {
+	return slog.String("siteverifyErrors", observe.Scrub(strings.Join(answer.ErrorCodes, ",")))
 }
 
 // siteverify posts the token and reads the answer: an error when

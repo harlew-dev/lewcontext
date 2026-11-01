@@ -52,7 +52,7 @@ make serve          # make build, then run bin/api on http://localhost:3000
 To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGIN`, `API_ADDR`, `APP_ENV`) and start `./bin/api`. `APP_ORIGIN` must be the address browsers use. With `APP_ENV=production`, it also needs HTTPS and a database URL with `sslmode=verify-full`, and it refuses to start without the web build embedded.
 
 - **`bin/api` takes no arguments.** It ignores anything after it and starts the server. So `./bin/api migrate` doesn't migrate: it starts a full server, delivery worker included, against `DATABASE_URL`. Migrate with `make migrate`, or `cd apps/api && DATABASE_URL=… go run ./cmd/migrate` for another database. The Docker image is different: it installs every `cmd/*` as its own command, which is why `docker compose run --rm app migrate` works there.
-- **:3000 can also be held by Docker.** `make docker-dev` leaves the `app` container listening on :3000. It runs the code from its last `make docker-app`, not your working tree, and it shares the local database. Stop it (`docker compose stop app`) or serve on another port ([ui/testing.md](ui/testing.md#against-a-server-of-your-own)).
+- **:3000 can also be held by Docker.** `make docker-dev` leaves the `app` container listening on :3000. It runs the code from its last `make docker-app`, not your working tree, and it shares the local database. Stop it (`docker compose stop app`) or serve on another port ([ui/testing.md](ui/testing.md#running-several-at-once)).
 
 ## Configuration
 
@@ -62,7 +62,7 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Before claiming a change works
 
-`make test` (which includes the PostgreSQL integration tests and needs `make db`), `make check`, `make test-e2e` ([ui/testing.md](ui/testing.md); `E2E_PORT=auto` if another run may be going) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them. Other people's runs may share the machine: check what's running before starting a heavy one.
+`make test` (which includes the PostgreSQL integration tests and needs `make db`), `make check` (which also checks the docs' relative links and anchors: fix a dead one rather than ignoring it; [checks.md](checks.md)), `make test-e2e` ([ui/testing.md](ui/testing.md); `E2E_PORT=auto` if another run may be going) for user flows, and `make build` for build or composition changes. Report failures instead of skipping them. Other people's runs may share the machine: check what's running before starting a heavy one.
 
 ## Manual demo
 
@@ -85,7 +85,17 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Failure checks
 
-Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops them all together). A signed-in page reload should show the "A brief pause." retry screen. During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
+Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops them all together). A signed-in page reload should show the "A brief pause." retry screen. When the API answers but fails (a 500), the error notice and that screen add "Reference: req_…": the API's terminal shows the same ID on the failure's log line and the request's access line (`[api]` prints one line per request; [api/observability.md](api/observability.md)). During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
+
+## Volume check for the Events page
+
+The admin Events page's list and charts are checked at volume with fake history, on a development database only:
+
+```sh
+make seed only=events count=1000000     # about 2½ minutes
+```
+
+Then run the queries with `EXPLAIN (ANALYZE, BUFFERS)` in `psql` (the SQL is `IndexAdminEvents` and `SummarizeAdminEvents`). At a million events (2026-11-01, PostgreSQL 17): the default view's list 0.6 ms, its counts 88 ms (an index-only scan of `events_created_idx`), its failed checks 0.3 s; 7 days' counts 1.2 s and failed checks 0.3 s; a group (`auth.mfa.*`, 7 days) 29 ms; `outcome=failed` 2 ms; all time with rare names 0.1–30 ms (the planner picks the name index). Each should stay under 2 s; one that doesn't needs an index or a rollup, not a slower page.
 
 ## Migration reversal
 

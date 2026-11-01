@@ -32,6 +32,9 @@ export function useAdminResource<T>(path: ApiPath<T> | null) {
   if (data !== undefined && data !== kept) setKept(data);
   return {
     data: data ?? kept,
+    // What's shown is the last query's answer, kept while this one loads
+    // or after it failed.
+    stale: data === undefined && kept !== undefined,
     error: error ? errorMessage(error) : null,
     missing: error instanceof ApiError && error.status === 404,
     loading: data === undefined && isValidating,

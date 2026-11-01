@@ -4,14 +4,16 @@ import { useOptionalSession } from "@/lib/session";
 import { browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
 import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
+import { clientErrorRoutes, clientErrors } from "./client-errors";
 import { emailBlockRoutes, emailBlocks } from "./email-blocks";
 import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
 import { policies, policyRoutes } from "./policies";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
-export { ApiError, errorMessage } from "./http";
+export { ApiError, errorMessage, requestIdOf } from "./http";
 export type { ApiPath } from "./paths";
+export type { ClientErrorReport } from "./client-errors";
 export type { InvitationIndexQuery } from "./invitations";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
@@ -49,6 +51,7 @@ export const paths = {
   sessions: sessionRoutes,
   emailBlocks: () => emailBlockRoutes,
   policies: policyRoutes,
+  clientErrors: () => clientErrorRoutes,
 };
 // The API for components. Mutations send the current session's CSRF token.
 // Call it in the component body and use the result in handlers:
@@ -85,6 +88,8 @@ export function client(http: Http) {
     emailBlocks: () => emailBlocks(http),
     // Whether the policies are published, and their versions.
     policies: () => policies(http),
+    // The web app's own errors (lib/client-errors.ts), signed in only.
+    clientErrors: () => clientErrors(http),
   };
 }
 export type ApiClient = ReturnType<typeof client>;

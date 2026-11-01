@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
-	"strings"
+	"lewcontext/api/internal/observe"
 	"time"
 	"unicode/utf8"
 )
@@ -108,10 +108,11 @@ func (s *Store) updateDelivery(ctx context.Context, d events.Delivery, set strin
 	return err
 }
 
-// errorText is the error's message as text PostgreSQL accepts (valid UTF-8,
-// no NUL), cut to fit last_error.
+// errorText is the error's message scrubbed (observe.Scrub: an SMTP refusal
+// names the recipient, a database error can quote a value), as text
+// PostgreSQL accepts (valid UTF-8, no NUL), cut to fit last_error.
 func errorText(err error) string {
-	text := strings.ReplaceAll(strings.ToValidUTF8(err.Error(), ""), "\x00", "")
+	text := observe.ScrubError(err)
 	if utf8.RuneCountInString(text) > maxLastError {
 		text = string([]rune(text)[:maxLastError])
 	}

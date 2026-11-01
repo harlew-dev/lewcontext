@@ -29,7 +29,7 @@ migrate-fresh:
 migration:
 	@test -n "$(name)" || (echo 'Usage: make migration name=add_tasks'; exit 1)
 	cd apps/api && go run ./cmd/migrate create $(name)
-# make seed [only=demo|volume|users] [count=n] [projects=n] [email=address]
+# make seed [only=demo|volume|users|events] [count=n] [projects=n] [email=address]
 seed:
 	cd apps/api && go run ./cmd/seed $(if $(only),-only '$(only)') $(if $(count),-count '$(count)') $(if $(projects),-projects '$(projects)') $(if $(email),-email '$(email)')
 # make prune [target=events [older-than=90d]] [CONFIRM=1]: deletes old rows from log tables.
@@ -114,4 +114,6 @@ check:
 	@test -z "$$(gofmt -l apps/api)" || (echo 'Run gofmt -w apps/api'; exit 1)
 	./scripts/check-app-build.test.sh
 	cd apps/api && go vet ./...
+	node scripts/check-doc-links.mjs --test
+	node scripts/check-doc-links.mjs
 	cd apps/web && npm run typecheck && npm run lint && npm run format:check

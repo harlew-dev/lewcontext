@@ -67,7 +67,7 @@ func (h Password) Update(w http.ResponseWriter, r *http.Request) {
 	// The store decides which check runs, from the locked rows: the code
 	// with MFA on (the current password is ignored), the password with it off.
 	confirm := store.PasswordConfirmation{
-		Factor: h.SecondFactor(user, in.Code),
+		Factor: h.SecondFactor(r.Context(), user, in.Code),
 		Password: func(hash string) error {
 			if !httpapi.PasswordInBounds(in.CurrentPassword) || !auth.CheckPassword(in.CurrentPassword, hash) {
 				return errWrongPassword
@@ -82,7 +82,7 @@ func (h Password) Update(w http.ResponseWriter, r *http.Request) {
 		return auth.HashPassword(in.NewPassword)
 	})
 	if recordErr := h.recordConfirmation(r, user, confirm.Factor, confirmed, err); recordErr != nil {
-		httpapi.InternalError(w, recordErr)
+		httpapi.InternalError(w, r, recordErr)
 		return
 	}
 	switch {
@@ -93,7 +93,7 @@ func (h Password) Update(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errSamePassword):
 		httpapi.FailField(w, 422, "newPassword", "Choose a password different from your current one.")
 	case err != nil:
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 	default:
 		h.StartSession(w, r, user, 200, nil)
 	}

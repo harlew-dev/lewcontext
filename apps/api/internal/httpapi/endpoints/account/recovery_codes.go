@@ -21,10 +21,10 @@ func (h RecoveryCodes) Store(w http.ResponseWriter, r *http.Request) {
 	}
 	codes, digests, err := h.NewRecoveryCodes()
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
-	factor := h.SecondFactor(user, in.Code)
+	factor := h.SecondFactor(r.Context(), user, in.Code)
 	used, err := h.Repo.CreateRecoveryCodes(r.Context(), user, factor, digests)
 	if answerFactor(h.Server, w, r, user, factor, events.MFAStepRecoveryCodes, used, err) {
 		httpapi.JSON(w, 201, map[string]any{"recoveryCodes": codes})

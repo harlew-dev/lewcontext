@@ -5,10 +5,11 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
-	"log/slog"
 	"net/http"
 	"time"
 )
@@ -165,7 +166,11 @@ func (s *Server) RequireAdminSession(next http.Handler) http.Handler {
 		case err != nil && match == auth.AdminKeyPrevious && !errors.Is(err, sql.ErrNoRows):
 			// Fail closed: under the previous key an outage answers as a
 			// wrong key, never confirming the key is still set.
-			slog.Error("admin session check under the previous key failed", "error", err)
+			if ClientGone(r, err) {
+				abortedByClient(r, err)
+				return
+			}
+			reportFailure(r, "admin session check under the previous key failed", fmt.Errorf("admin session check: %w", err))
 			NotFound(w, r)
 			return
 		case errors.Is(err, errNoSession):
@@ -175,7 +180,7 @@ func (s *Server) RequireAdminSession(next http.Handler) http.Handler {
 			Fail(w, 401, "Your admin session has ended. Please sign in again.")
 			return
 		case err != nil:
-			InternalError(w, err)
+			InternalError(w, r, err)
 			return
 		}
 		if match == auth.AdminKeyPrevious {
@@ -187,8 +192,11 @@ func (s *Server) RequireAdminSession(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), adminSessionKey{}, session)
 		r = r.WithContext(events.WithActor(ctx, session.User.ID))
+		// An admin's reads cross every workspace: the access line says
+		// "admin", and the audit trail (each read recorded) says who.
+		observe.SetUser(ctx, observe.AdminUser)
 		if err := s.noticeAdminSessionMoved(r, session); err != nil {
-			InternalError(w, err)
+			InternalError(w, r, err)
 			return
 		}
 		if !unsafeMethod(r.Method) && !s.Allow(w, r, AdminReadPerUser, AdminReadPerUser.Key(session.User.PublicID)) {
@@ -251,8 +259,12 @@ func (s *Server) requireAdminPage(w http.ResponseWriter, r *http.Request, key st
 	case err == nil:
 		return true
 	case match == auth.AdminKeyPrevious:
+		if ClientGone(r, err) {
+			abortedByClient(r, err)
+			return false
+		}
 		if !errors.Is(err, errPreviousKeyHidden) && !errors.Is(err, sql.ErrNoRows) {
-			slog.Error("admin page session check under the previous key failed", "error", err)
+			reportFailure(r, "admin page session check under the previous key failed", fmt.Errorf("admin page session check: %w", err))
 		}
 		s.Pages.ServeHTTP(w, r)
 		return false
@@ -264,7 +276,11 @@ func (s *Server) requireAdminPage(w http.ResponseWriter, r *http.Request, key st
 		// Served anyway, with its assets pass: anyone with the current key
 		// gets both from the sign-in page, so the pass gives nothing more,
 		// and without it the page couldn't load to show the outage.
-		slog.Error("admin page session check failed", "error", err)
+		if ClientGone(r, err) {
+			abortedByClient(r, err)
+			return false
+		}
+		reportFailure(r, "admin page session check failed", fmt.Errorf("admin page session check: %w", err))
 		return true
 	}
 }

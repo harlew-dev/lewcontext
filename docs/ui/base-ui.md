@@ -21,6 +21,8 @@ Pinned at `baseui` 18.2.0 with React 18.3.1. BaseUI 18 needs React 18, which is 
 | `Button` | `Button` (`button.tsx`) | Hover, press and focus-visible tracking |
 | `Input`, `Textarea` | `Input`, `Textarea` | The input; `Field` wires id, description and disabled state |
 | `Select` | `Listbox` | Combobox keyboard handling, option highlighting, popover positioning |
+| `Select` (`multi`, `searchable`) | `Combobox` (`combobox.tsx`) | Typing to search, ↑ ↓ and Enter, toggling an option chosen twice, the popover; kept open while picking (`closeOnSelect={false}`), the search kept (`onSelectResetsInput={false}`), Backspace removing nothing |
+| `Calendar` (`baseui/datepicker`) | `Calendar` (`calendar.tsx`) | The month grid, arrow keys, picking a day or a range, `minDate` / `maxDate` |
 | `Popover` (`StatefulPopover`) | `Dropdown` | Click trigger, positioning, focus lock, Escape and outside-click dismissal, menu ARIA |
 | `Tooltip` (`StatefulTooltip`) | `Tooltip` (`tooltip.tsx`) | Hover and keyboard-focus trigger with delays, positioning, Escape, `role="tooltip"` and `aria-describedby` |
 | `Modal` | `Dialog` | Focus lock, Escape, backdrop click, enter/leave timing |
@@ -74,6 +76,12 @@ So our classes transition on `data-closed` in both directions. Popovers instead 
 | The toast's close icon can't be reached by keyboard | Our `DismissButton` replaces it (`toast.tsx`) |
 | `Select` positions its panel below the button | A popper.js modifier, `alignSelection`, opens it over the button (`listbox.tsx`) |
 | `Select` names the control "Selected <option's `labelKey`>. <aria-label>", which reads "Selected [object Object]." when the label is markup | Each option also gets `text`, the text inside its children, and `labelKey="text"` (`listbox.tsx`, `listbox.test.tsx`) |
+| The `Select`'s options carry `aria-selected` for the **highlighted** row, not the chosen one | `Combobox` gives each row `aria-checked` (`true`, `false` or `mixed`) for what's picked (`ComboboxOptionItem`), and says it in its text for screen readers too |
+| `Select` with `multi` renders each chosen value as its `Tag` (the `MultiValue` slot), whose remove is `onActionClick`, not `removeValue` | `ComboboxChip` takes `onActionClick` (`combobox.tsx`) |
+| The datepicker's `Calendar` hands back **local `Date`s at local midnight**: `toISOString()` on one moves the day for anyone east of UTC | Read the year, month and day (`getFullYear`, `getMonth`, `getDate`) and build the UTC day from them (`utcDay` in `components/app/admin/event-filters.ts`; tested with `TZ` east and west of UTC) |
+| The `Calendar` picks a range only when `value` is an array; with `null` every click is a single day | `Calendar` passes `[]` for nothing picked (`calendar.tsx`) |
+| The `Calendar`'s month and year are menus in their own popovers | Replaced by plain text (`MonthYearSelectPopover`, `MonthYearSelectButton`); the arrows change month |
+| With two months shown, the `Calendar` opens on today's month and the next, which `maxDate` may disable | With nothing picked, `highlightedDate` opens it a month earlier (`calendar.tsx`) |
 | Dialogs don't animate open under `make dev` | Not fixed; production animates. See below |
 
 ### Dialogs don't animate open in dev

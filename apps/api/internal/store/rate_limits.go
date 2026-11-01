@@ -50,10 +50,10 @@ func (s *Store) CountHitUntil(ctx context.Context, key string, resetsAt time.Tim
 	return hit.Hits, hit.ResetsAt, err
 }
 
-// PeekHits is key's hits in the window that ends at resetsAt (or a later
+// FindHits is key's hits in the window that ends at resetsAt (or a later
 // one), without counting a hit: 0 when there's no counter, or only an
 // earlier window's.
-func (s *Store) PeekHits(ctx context.Context, key string, resetsAt time.Time) (int, error) {
+func (s *Store) FindHits(ctx context.Context, key string, resetsAt time.Time) (int, error) {
 	var hits int
 	err := s.DB.NewSelect().Model((*rateLimitRecord)(nil)).Column("hits").
 		Where("key = ?", key).

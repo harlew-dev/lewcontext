@@ -63,7 +63,7 @@ func (h MFA) Destroy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	factor := h.SecondFactor(user, in.Code)
+	factor := h.SecondFactor(r.Context(), user, in.Code)
 	used, err := h.Repo.DisableMFA(r.Context(), user, factor)
 	if answerFactor(h.Server, w, r, user, factor, events.MFAStepDisable, used, err) {
 		w.WriteHeader(204)
@@ -98,11 +98,11 @@ func answerFactor(s *httpapi.Server, w http.ResponseWriter, r *http.Request, use
 		return false
 	}
 	if err != nil && !errors.Is(err, store.ErrWrongCode) {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return false
 	}
 	if err := s.RecordMFACheck(r, user, f, step, err == nil, used); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return false
 	}
 	if err != nil {

@@ -69,6 +69,18 @@ func singleValue(values []string, conn netip.Addr) netip.Addr {
 	}
 	return normalise(addr)
 }
+
+// FromTrustedProxy reports whether the connection comes from one of
+// proxies: only then is anything a proxy sets in a header believed (the
+// client's address, X-Request-ID).
+func FromTrustedProxy(r *http.Request, proxies []netip.Prefix) bool {
+	if len(proxies) == 0 {
+		return false
+	}
+	conn, err := netip.ParseAddrPort(r.RemoteAddr)
+	return err == nil && trusted(normalise(conn.Addr()), proxies)
+}
+
 func trusted(addr netip.Addr, proxies []netip.Prefix) bool {
 	return slices.ContainsFunc(proxies, func(p netip.Prefix) bool { return p.Contains(addr) })
 }

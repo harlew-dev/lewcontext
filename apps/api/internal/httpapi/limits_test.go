@@ -59,6 +59,8 @@ func TestRateLimitLevels(t *testing.T) {
 		"invitation:per-user":          {0, 20},
 		"invitation:per-email":         {0, 5},
 		"invitation:global":            {100, 200},
+		"client-error:per-user":        {0, 30},
+		"client-error:global":          {0, 500},
 		"admin-action:per-user":        {0, 60},
 	}
 	if len(RateLimits) != len(want) {

@@ -1,7 +1,7 @@
 // Package events defines what the API records as having happened: sign-ins,
 // password changes, workspaces, their members and projects created, changed
-// or deleted, invitations sent and accepted, accounts deleted, and rate
-// limits reached.
+// or deleted, invitations sent and accepted, accounts deleted, rate limits
+// reached, and servers started and stopped.
 //
 // Each event is a struct whose JSON is the stored payload. Payloads identify
 // records by public ID only (usr_, wsp_, prj_) and never hold passwords,
@@ -36,6 +36,7 @@ var Catalogue = []Event{
 	WorkspaceInvitationCreated{}, WorkspaceInvitationSent{}, WorkspaceInvitationRevoked{}, WorkspaceInvitationAccepted{},
 	ProjectCreated{}, ProjectUpdated{}, ProjectDeleted{},
 	RateLimitReached{},
+	ServerStarted{}, ServerStopped{},
 	EmailBlocked{}, EmailUnblocked{},
 	AdminGranted{}, AdminUpdated{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
 	AdminAccessRefused{}, AdminSessionMoved{}, AdminSessionEnded{}, AdminSessionsRevoked{}, AdminAdminListed{},
@@ -70,6 +71,7 @@ const maxUserAgent = 256
 type meta struct {
 	actorID   int64
 	ip        string
+	requestID string
 	userAgent string
 }
 type metaKey struct{}
@@ -86,11 +88,12 @@ func WithActor(ctx context.Context, actorID int64) context.Context {
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
-// WithIP records the request's client address (httpapi's clientIP), stored
-// in the events.ip column rather than in payloads.
-func WithIP(ctx context.Context, ip string) context.Context {
+// WithRequest records the request's client address and its ID
+// (observe.Request), together, for the events.ip and events.request_id
+// columns: httpapi.ClientAddress sets both once per request.
+func WithRequest(ctx context.Context, ip, requestID string) context.Context {
 	m := current(ctx)
-	m.ip = ip
+	m.ip, m.requestID = ip, requestID
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
@@ -112,6 +115,10 @@ func Actor(ctx context.Context) int64 { return current(ctx).actorID }
 // IP is the request's client address, or "" outside a request (the CLI and
 // listeners).
 func IP(ctx context.Context) string { return current(ctx).ip }
+
+// RequestID is the ID of the request the event was recorded in (req_…, or
+// a trusted proxy's), or "" outside a request.
+func RequestID(ctx context.Context) string { return current(ctx).requestID }
 
 // UserAgent is the request's User-Agent, or "" outside a request.
 func UserAgent(ctx context.Context) string { return current(ctx).userAgent }

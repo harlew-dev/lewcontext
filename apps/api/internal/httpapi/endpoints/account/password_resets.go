@@ -51,7 +51,7 @@ func (h PasswordResets) Request(w http.ResponseWriter, r *http.Request) {
 	}
 	e := events.PasswordResetRequested{Email: in.Email}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	w.WriteHeader(202)
@@ -83,7 +83,7 @@ func (h PasswordResets) Check(w http.ResponseWriter, r *http.Request) {
 	}
 	live, err := h.Repo.CheckPasswordReset(r.Context(), auth.Digest(in.Token))
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if !live {
@@ -114,7 +114,7 @@ func (h PasswordResets) Reset(w http.ResponseWriter, r *http.Request) {
 	// checks again under a lock.
 	live, err := h.Repo.CheckPasswordReset(r.Context(), digest)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if !live {
@@ -123,7 +123,7 @@ func (h PasswordResets) Reset(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := auth.HashPassword(in.NewPassword)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	user, err := h.Repo.ResetPassword(r.Context(), digest, hash)
@@ -132,7 +132,7 @@ func (h PasswordResets) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	// The email lets the login page fill it in.

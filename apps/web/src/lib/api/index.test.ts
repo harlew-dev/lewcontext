@@ -263,3 +263,20 @@ describe("the email blocks client", () => {
     expect(paths.emailBlocks().check()).toBe("/api/email-blocks/check");
   });
 });
+describe("the client errors client", () => {
+  it("sends only the message, stack, route and release, with the CSRF token", async () => {
+    const stub = stubApi({ "*": { status: 202 } });
+    const report = {
+      message: "TypeError: x",
+      stack: "at f (a.js:1:2)",
+      route: "/app/:workspace/projects",
+      release: "",
+    };
+    await api("csrf-7")
+      .clientErrors()
+      .store({ ...report, ...{ url: "https://example.com/?q=ada" } });
+    expect(requests(stub)).toEqual(["POST /api/client-errors"]);
+    expect(stub.sent()[0]).toMatchObject({ body: report, csrf: "csrf-7" });
+    expect(paths.clientErrors().store()).toBe("/api/client-errors");
+  });
+});

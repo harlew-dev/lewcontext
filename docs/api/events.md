@@ -21,7 +21,8 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `user_id` | The account the event is about (auth events, and the member in member events). Deleting the account deletes these events |
 | `workspace_id` | The workspace (workspace and project events). Deleting the workspace sets it to null; the events stay, readable through the `wsp_` in their payload, until pruned |
 | `payload` | The event struct as JSON (`jsonb`) |
-| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithIP`, set by `ClientAddress` from `httpapi.ClientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
+| `ip` | The client's address (`inet`) for an event recorded during a request (`events.WithRequest`, set by `ClientAddress` from `httpapi.ClientIP(r)`); null for the CLI and listeners. The one place an event keeps it: no payload has an `ip` field (`TestPayloadsHoldNothingSensitive`) |
+| `request_id` | The ID of the request it was recorded in (`req_…`, always the server's own, never a client's or a proxy's), the `requestId` on that request's log lines and in its `X-Request-ID` (`events.WithRequest`, with the IP); empty for the CLI and listeners. `CHECK`ed to be empty or `req_` and 14 base62 ([observability.md](observability.md#request-ids)) |
 | `user_agent` | The request's `User-Agent`, valid UTF-8, cut to 256 characters (`events.WithUserAgent`, set by `security`) |
 | `created_at` | When |
 
@@ -78,7 +79,7 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `admin.sessions_revoked` | `admin`, `count`; actor only | `DeleteOtherAdminSessions` (`DELETE /api/admin/sessions`) |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page`; actor only | every admin list read |
 | `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` (what was looked at); actor only, so deleting it keeps the record | every admin detail read |
-| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's); actor only | every Events and deliveries list read |
+| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's). For Events: `names` (the name tokens as sent), `outcome`, `account`, `workspace`, `email`, `ip`, `window`, `from` and `to` as resolved, `before`, and `summary`, the charts' status when they were asked for with the list (`ok`, `busy`, `too_slow`, `too_wide`) (older rows have a `name` string and `adminReads` instead); actor only | every Events and deliveries list read, once per request, charts included |
 | `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
 | `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
@@ -88,6 +89,23 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `email.blocked` | `email` (the address, without an account); no user, workspace or actor. The `ip` column is the request's | `BlockEmail`, from a block link, only when the address wasn't blocked already ([auth.md](auth.md#blocking-an-email-address)) |
 | `email.unblocked` | `email`, `by`: `link` (its block link, with the request's `ip`) / `cli` (`admin unblock`, no `ip`) / `admin` (the dashboard's Unblock: the admin as actor, the request's `ip`, beside `admin.email.unblocked`) | `UnblockEmail`, `UnblockEmailAddress`, only when the address was blocked |
 | `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:challenge`, `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md#levels)); `user` and `workspace` when known; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them. Never the CAPTCHA token | `Allow`, only for the request that first crosses each level in a window (challenge levels with no provider too) |
+| `server.started` | `server` (its `server_instances` ID, `srv_…`), `version` (`observe.Version()`); no user, workspace, actor or `ip` | `RecordServerStart`, as a server starts, with its row ([observability.md](observability.md#servers-and-versions)) |
+| `server.stopped` | `server`, `reason`: `signal` (asked to stop) or `failed` (its listener failed, or startup failed after it was recorded). A crash records none | `RecordServerStop`, in a graceful shutdown's final phase ([observability.md](observability.md#shutdown)) |
+
+## Groups
+
+The admin dashboard's Events page picks names in groups (`internal/events/groups.go`, `events.Groups()`, served by `GET /api/admin/catalogue` as `eventGroups`). They're built from the catalogue, so a new event joins its group without anyone remembering:
+
+| Group ID | Label | Holds |
+| --- | --- | --- |
+| `auth.*` | Accounts and sign-in | every `auth.` name: sub-groups `auth.password_reset.*`, `auth.registration.*`, `auth.email_verification.*`, `auth.mfa.*`, then the single names |
+| `workspace.*` | Workspaces | sub-groups `workspace.member.*`, `workspace.invitation.*`, then `workspace.created`, `.renamed`, `.deleted` |
+| `project.*`, `rate_limit.*`, `server.*`, `email.*` | Projects, Rate limits, Servers, Email addresses | their names |
+| `admin.*` | Admin | every `admin.` name **except the reads**; sub-group `admin.session.*` |
+| `admin-reads` | Admin reads | the `admin.<resource>.listed` and `.viewed` names (`events.AdminRead`) |
+
+- **A sub-group** is a three-segment prefix with two or more names; a prefix with one name (`auth.recovery_codes.created`) is just that name. Every name is in exactly one group (`TestEventGroups`). Groups come in catalogue order, sub-groups before single names.
+- **`admin-reads`** can't clash with a name: the `events.name` CHECK allows no `-`. With nothing picked, the Events list shows every name but these.
 
 ## What's stored, and what never is
 
@@ -124,8 +142,8 @@ events.Listen(bus, "mail.password_changed", func(ctx context.Context, e events.P
 The server runs one worker (`cmd/server`); every server process runs its own, sharing the queue.
 
 1. **Claim:** a single statement takes up to 10 due deliveries with `FOR UPDATE SKIP LOCKED` (other workers skip those rows instead of waiting), adds 1 to `attempts`, and pushes `next_attempt_at` 5 minutes ahead as a **lease**. The row locks end with the statement, so listeners run with no lock or transaction held.
-2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure.
-3. **Record:** success sets `delivered_at`. A failure sets `last_error` (cut to 500 characters) and retries after 1 s, 10 s, 1 min, 10 min, then 1 h; the attempt after that marks it `failed_at` and logs an error. One listener failing doesn't affect others on the same event.
+2. **Run:** the batch's listeners run concurrently, each with a 30 s timeout; a panic counts as a failure, and is logged at error with its stack and reported as a grouped error ([observability.md](observability.md#errors-and-panics)).
+3. **Record:** each outcome is counted in `deliveries_total` by listener, and a first attempt's wait in `delivery_lag_ms` ([observability.md](observability.md#metrics)). Success sets `delivered_at`. A failure sets `last_error` (scrubbed, [observability.md](observability.md#scrubbing): an SMTP refusal's recipient is `<email>`; cut to 500 characters), logs it scrubbed, and retries after 1 s, 10 s, 1 min, 10 min, then 1 h; the attempt after that marks it `failed_at`, logs an error and reports it as a grouped error (`app_errors`, source `worker`, the listener's name as its route), once. One listener failing doesn't affect others on the same event. A claim or record that fails (the database) is logged and reported too (source `background`, route `event worker`).
 4. **Poll:** when a claim comes back empty, the worker waits 1 s. A full batch is followed straight away by the next.
 5. **Shutdown:** the worker stops claiming and finishes its batch within the server's 10 s grace period. A delivery cut off by a crash is claimed again when its lease ends.
 

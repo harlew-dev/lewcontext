@@ -21,8 +21,8 @@ func TestCountHitUntil(t *testing.T) {
 	}
 	peek := func(resetsAt time.Time, hits int) {
 		t.Helper()
-		if got, err := s.PeekHits(ctx, "register:global:passed", resetsAt); err != nil || got != hits {
-			t.Fatalf("PeekHits = %d (%v), want %d", got, err, hits)
+		if got, err := s.FindHits(ctx, "register:global:passed", resetsAt); err != nil || got != hits {
+			t.Fatalf("FindHits = %d (%v), want %d", got, err, hits)
 		}
 	}
 	peek(first, 0)

@@ -1,6 +1,6 @@
 # Grouping `internal/httpapi` by area
 
-Status: **implemented 2026-10-31.** Every decision was confirmed ("what's best for Go" for the ones that were open); three more were made while building ([Built](#built-how-it-differs-from-the-plan)). Docs updated: [`docs/naming.md`](../../../docs/naming.md#controllers), [`docs/api/README.md`](../../../docs/api/README.md), [`docs/api/testing.md`](../../../docs/api/testing.md), and the names in `endpoints.md`, `auth.md`, `admin.md`, `rate-limits.md`, `pagination.md`, `events.md`, `database.md`, `docs/README.md`, `README.md` and AGENTS.md rule 5.
+Status: **implemented 2026-10-31.** Every decision was confirmed ("what's best for Go" for the ones that were open); three more were made while building ([Built](#built-how-it-differs-from-the-plan)). Docs updated: [`docs/naming.md`](../../../docs/naming.md#controllers-internalhttpapi), [`docs/api/README.md`](../../../docs/api/README.md), [`docs/api/testing.md`](../../../docs/api/testing.md), and the names in `endpoints.md`, `auth.md`, `admin.md`, `rate-limits.md`, `pagination.md`, `events.md`, `database.md`, `docs/README.md`, `README.md` and AGENTS.md rule 5.
 
 ## Why
 
@@ -154,7 +154,7 @@ Stateless helpers are package functions, like `http.Error`: `httpapi.Fail(w, 404
 
 ### Enforcing the layout: `TestHTTPLayout`
 
-A test in the core package (`layout_test.go`). It parses the source with `go/parser` (no database), in the shape the [convention checks plan](../convention-checks.md) uses: a pure function with a table test, run on the real tree, with failure messages that point to `docs/naming.md`. It fails when:
+A test in the core package (`layout_test.go`). It parses the source with `go/parser` (no database), in the shape the [convention checks plan](convention-checks.md) uses: a pure function with a table test, run on the real tree, with failure messages that point to `docs/naming.md`. It fails when:
 
 1. A controller (a type embedding `*httpapi.Server`) is outside an area package.
 2. A folder isn't an area and isn't one of the listed support packages (`router`, `apitest`, `clientip`, `input`, `ratelimit`), each listed with its reason. A new area is just a new folder.
@@ -188,7 +188,7 @@ None. No route, response, table, migration, event or config changes. `cmd/server
 - `docs/api/testing.md`: `apitest`, tests beside their controllers, which tests stay with the core or the router and why, and the new paths in its table.
 - `docs/api/endpoints.md`, `auth.md`, `admin.md`, `rate-limits.md`, `pagination.md`, `events.md`, `docs/README.md` and `README.md`: the new file, handler and registry names.
 - AGENTS.md rules 4 and 5: the registry is `apps/api/internal/httpapi/router/routes.go`, the `httpapi` folders, and the handler example (`projectHandlers` becomes `workspace.Projects`).
-- [`convention-checks.md`](../convention-checks.md): its `TestHandlerNames` and `TestRouteNames` rows change to the new shape, and point to `TestHTTPLayout`.
+- [`convention-checks.md`](convention-checks.md): its `TestHandlerNames` and `TestRouteNames` rows change to the new shape, and point to `TestHTTPLayout`.
 
 The implemented plans keep the old names. They record what was built at the time.
 

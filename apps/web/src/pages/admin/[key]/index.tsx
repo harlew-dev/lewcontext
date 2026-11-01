@@ -38,7 +38,8 @@ export default function AdminLogin({
   loaderData,
   params,
 }: Route.ComponentProps) {
-  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  if ("unavailable" in loaderData)
+    return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (
     <AdminProvider adminKey={params.key} session={null}>
       <AuthLayout>

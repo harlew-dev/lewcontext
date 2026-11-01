@@ -62,12 +62,12 @@ func (s *Server) PasswordConfirmed(w http.ResponseWriter, r *http.Request, passw
 	}
 	hash, err := s.Repo.FindPasswordHash(r.Context(), user.ID)
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return false
 	}
 	ok := auth.CheckPassword(password, hash)
 	if err := s.RecordPasswordCheck(r, user, ok, step); err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return false
 	}
 	if !ok {

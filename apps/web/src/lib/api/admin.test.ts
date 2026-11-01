@@ -78,16 +78,34 @@ describe("the admin client", () => {
   });
   it("builds the Events, Mail and projects paths, leaving out defaults", () => {
     expect(adminPaths.events.index()).toBe("/api/admin/events");
+    // The default window is left out; names are one comma-separated list.
     expect(
       adminPaths.events.index({
-        name: "workspace.member.",
+        window: "24h",
+        names: ["auth.*", "workspace.invitation.created"],
+        outcome: "failed",
         email: "ada@example.com",
         ip: "10.0.0.0/16",
-        adminReads: "include",
-        before: "evt_2yEHYLwiwPVhLW",
+        summary: true,
       }),
     ).toBe(
-      "/api/admin/events?name=workspace.member.&email=ada%40example.com&ip=10.0.0.0%2F16&adminReads=include&before=evt_2yEHYLwiwPVhLW",
+      "/api/admin/events?name=auth.*,workspace.invitation.created&outcome=failed&email=ada%40example.com&ip=10.0.0.0%2F16&summary=include",
+    );
+    expect(
+      adminPaths.events.index({
+        window: "7d",
+        names: [],
+        before: "evt_2yEHYLwiwPVhLW",
+        summary: false,
+      }),
+    ).toBe("/api/admin/events?window=7d&before=evt_2yEHYLwiwPVhLW");
+    expect(
+      adminPaths.events.index({
+        from: "2026-10-20T00:00:00Z",
+        to: "2026-10-24T00:00:00Z",
+      }),
+    ).toBe(
+      "/api/admin/events?from=2026-10-20T00%3A00%3A00Z&to=2026-10-24T00%3A00%3A00Z",
     );
     expect(adminPaths.events.show("evt_2yEHYLwiwPVhLW")).toBe(
       "/api/admin/events/evt_2yEHYLwiwPVhLW",
@@ -115,8 +133,10 @@ describe("the admin client", () => {
     adminPaths.mail("1h");
     // @ts-expect-error not a delivery status
     adminPaths.deliveries.index({ status: "bounced" });
-    // @ts-expect-error admin reads are shown with "include" only
-    adminPaths.events.index({ adminReads: "yes" });
+    // @ts-expect-error admin reads are a group of names, not a toggle
+    adminPaths.events.index({ adminReads: "include" });
+    // @ts-expect-error not a window the API resolves
+    adminPaths.events.index({ window: "30d" });
   });
   it("sends the key in X-Admin-Key, the codes in bodies, and the admin CSRF token", async () => {
     const stub = stubFetch({ mfaRequired: true });

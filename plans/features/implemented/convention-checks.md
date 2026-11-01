@@ -1,6 +1,6 @@
 # Convention checks
 
-Status: **proposed 2026-10-31**, decisions to confirm. Enforces [`docs/naming.md`](../../docs/naming.md) after the [CRUD naming convention](implemented/crud-routing-convention.md) and [event names](implemented/event-names.md) renames. Do it before [deletion](implemented/deletion.md), so every later plan's new routes, store methods, events and pages are checked as they're written.
+Status: **implemented 2026-11-01**, every recommendation in the Decisions table confirmed as written; see [How the build differs](#how-the-build-differs). Enforces [`docs/naming.md`](../../../docs/naming.md) after the [CRUD naming convention](crud-routing-convention.md) and [event names](event-names.md) renames. Docs updated: [checks.md](../../../docs/checks.md) (new), [naming.md](../../../docs/naming.md), [docs/README.md](../../../docs/README.md), [api/testing.md](../../../docs/api/testing.md), [ui/testing.md](../../../docs/ui/testing.md), [testing.md](../../../docs/testing.md), AGENTS.md and [plans/README.md](../../README.md).
 
 ## Why
 
@@ -22,7 +22,7 @@ Every check follows the same shape:
 | Check | Where | Reads | Rule |
 | --- | --- | --- | --- |
 | `TestStoreMethodNames` | `internal/store/naming_test.go` | reflection on `*Store` | Every exported method starts with `Index`, `Find`, `Create`, `Update`, `Delete` or `Check`, or with a listed domain verb: `Rename`, `Remove`, `Leave`, `Issue`, `Reset`, `Change`, `Record`, `Count`, `Prune`, `Allow`, `Cleanup`. Methods of `events.Queue` (`Claim`, `Delivered`, `Fail`, `Retry`) are exempt, read from the interface type rather than listed, and the test asserts `*Store` implements it. `Index…` methods return `Page[T]` and an error. |
-| `TestHandlerNames` | (done: `TestHTTPLayout`, `internal/httpapi/layout_test.go`) | the `httpapi` tree's Go source | Moved into `TestHTTPLayout` by the [httpapi layout](implemented/httpapi-layout.md): controllers (structs embedding `*httpapi.Server`) only in `endpoints/<area>`, one per file, their exported methods `Index`, `Show`, `Store`, `Update`, `Destroy` or a listed named action. |
+| `TestHandlerNames` | (done: `TestHTTPLayout`, `internal/httpapi/layout_test.go`) | the `httpapi` tree's Go source | Moved into `TestHTTPLayout` by the [httpapi layout](httpapi-layout.md): controllers (structs embedding `*httpapi.Server`) only in `endpoints/<area>`, one per file, their exported methods `Index`, `Show`, `Store`, `Update`, `Destroy` or a listed named action. |
 | `TestRouteNames` | `internal/httpapi/router/routes_test.go` | `router/routes.go` source | Every route's method is GET, POST, PATCH or DELETE (no PUT). Every route outside `/api/health` is registered with `<var>.<Action>`, where `<var>` is a controller value (`workspace.Projects{Server: s}`): no bare `s.something` handlers. |
 | `TestPermissionNames` | `internal/auth/permissions_test.go` | `permissions.go` source (the existing `declaredPermissions`, extended to return the constant's name) | Each permission is `<resource>.<action>`: snake_case segments ending in `index`, `show`, `store`, `update` or `destroy`. The Go constant is the same words in PascalCase (`workspace.member.destroy` → `WorkspaceMemberDestroy`). `AnyMember` is exempt. |
 | `TestEventResources` | `internal/events/events_test.go` | `events.Catalogue`, and `auth`'s permissions | A three-segment event's resource (`workspace.member` in `workspace.member.removed`) is a permission resource (a permission name minus its action), or is listed as a stored resource without permissions (`auth.password_reset`). The existing `TestEventNamePattern` already checks the shape. |
@@ -54,7 +54,7 @@ On 2026-10-31 every relative link in the repository's markdown resolved to a fil
 2. `scripts/check-doc-links.mjs`, and a line in `make check` that runs it (`node scripts/check-doc-links.mjs`) before the web checks.
 3. **`docs/checks.md`**, a new doc explaining the checks and how to respond to them ([below](#the-checks-doc-docschecksmd)).
 4. Fix whatever the checks find on their first run. Nothing is expected apart from possible anchor mismatches. A real violation that should stay becomes a listed exception with its reason, only after the user agrees (decision 8).
-5. **The [rate limits plan](implemented/rate-limits.md):** add `TestRateLimitNames` (`<feature>:<counted by>`, counted by `per-ip`, `per-account`, `per-email`, `per-user` or `global`) to its Tests section. It isn't added here, because `password-reset:all-accounts` breaks the rule until that plan renames it to `password-reset:global` (decision 5).
+5. **The [rate limits plan](rate-limits.md):** add `TestRateLimitNames` (`<feature>:<counted by>`, counted by `per-ip`, `per-account`, `per-email`, `per-user` or `global`) to its Tests section. It isn't added here, because `password-reset:all-accounts` breaks the rule until that plan renames it to `password-reset:global` (decision 5).
 
 ## The checks doc (`docs/checks.md`)
 
@@ -69,7 +69,7 @@ A new doc for people and AI agents. It explains what the checks enforce and how 
    > If you are an AI agent working in this repository:
    >
    > - **Don't work around these checks.** Never rename something to slip past a check while breaking the rule's intent, add an exception, loosen a regex, skip a test (`t.Skip`, `it.skip`), delete a test, or edit a check's word lists to make your change pass, unless the user has agreed to that exception.
-   > - **Fix the name, not the check.** When a check fails, rename your code to follow [`naming.md`](naming.md). The failure message says which rule and section apply.
+   > - **Fix the name, not the check.** When a check fails, rename your code to follow [`naming.md`](../../../docs/naming.md). The failure message says which rule and section apply.
    > - **Ask when unsure.** If `naming.md` doesn't settle a name (a new resource, a new verb, an action that isn't one of the five), stop and ask the user. Give your proposed name and why, rather than inventing a convention or copying a nearby file that may be wrong.
    > - **Say so if a check seems wrong.** If a rule doesn't fit the task, tell the user and explain why. Don't silently pick one side, as AGENTS.md already requires for docs that disagree with code.
    > - **Run the checks before saying you're done:** `make test` and `make check`. A warning from the link check (a tracked file linking to an untracked one) means stage the new file or remove the link. Don't leave it for the user to find.
@@ -79,7 +79,7 @@ A new doc for people and AI agents. It explains what the checks enforce and how 
 ## Docs
 
 - **`docs/checks.md`:** new (above).
-- **`docs/naming.md`:** a line at the top: every rule here is checked; see [checks.md](checks.md). Each rule's section links to its check.
+- **`docs/naming.md`:** a line at the top: every rule here is checked; see [checks.md](../../../docs/checks.md). Each rule's section links to its check.
 - **`AGENTS.md`:** a row for `docs/checks.md` in the docs table, marked as applying to every change, like `naming.md`. Add a line to "Docs and plans" saying agents must not work around a failing check and should ask the user when `naming.md` doesn't settle a name, pointing to `checks.md`.
 - **`docs/README.md`:** a row for `checks.md` in "Everything else", next to `naming.md`.
 - **`docs/api/testing.md`** and **`docs/ui/testing.md`:** the new tests in "Notable tests", and a sentence saying naming checks are pure functions plus a run on the real code, and that exceptions are lists in the test.
@@ -102,7 +102,7 @@ No runtime change: tests, a script and a Makefile line. The checks protect secur
 - Run on the real code: all pass.
 - Run `gofmt`, `go vet`, `make test`, `make check` (which now includes the link check) and `make build`. No integration or e2e change is expected, but run `make test-integration` once, since `TestRouteNames` sits beside the router's integration tests.
 
-## Decisions (to confirm)
+## Decisions (confirmed 2026-11-01, as recommended)
 
 | # | Question | Recommendation |
 | --- | --- | --- |
@@ -115,6 +115,17 @@ No runtime change: tests, a script and a Makefile line. The checks protect secur
 | 7 | Heading anchors | Checked, with GitHub's id rules, since the docs link to anchors often (`auth.md#workspaces-and-roles`). |
 | 8 | Who may add an exception | Only with the user's agreement, recorded as the exception's reason in the test. `docs/checks.md` tells agents to ask rather than add one. |
 | 9 | Where agent guidance lives | `docs/checks.md` (the detail), with a short pointer in AGENTS.md, which every agent reads first. Not a separate agents-only file, so people and agents follow the same rules. |
+
+## How the build differs
+
+- **Main merged first** (A3 phase 1), so the checks read its code too.
+- **Two checks already existed:** `TestHandlerNames` is `TestHTTPLayout` (the httpapi layout plan), and `TestRateLimitNames` shipped with the rate limits plan (`password-reset:global` was renamed there).
+- **Store verbs** (`TestStoreMethodNames`): the list holds every domain verb the store already used, each with what it's for: the plan's (`Rename`, `Remove`, `Leave`, `Issue`, `Reset`, `Change`, `Record`, `Count`, `Prune`, `Allow`, `Cleanup`) and `Accept`, `Answer`, `Block`, `Complete`, `Disable`, `Enable`, `Flag`, `Grant`, `Resend`, `Revoke`, `StepUp`, `Summarize`, `Unblock`, `Verify` (all used by existing methods; naming.md allows domain verbs, and they're for the user to confirm). **`Setup`** (`SetupMFA`) is listed as "existing; to fix": "set up" is the verb (`SetUpMFA`), and the rename crosses the store and the core. A listed verb no method uses fails the test.
+- **`Index…` returns a list**, not only `Page[T]`: a cursor page (`Data` and `Next`: Events, deliveries) or a whole `[]T` (the CLI's `IndexAdmins`, `IndexEmailBlocks`, the Admins page) are lists too.
+- **Routes** (`TestRouteNames`): read with `go/parser` from every function in `routes.go`, a controller being a local assigned an area's composite literal; the health checks and the `/api/admin/` catch-all are its listed exceptions, page routes (`pageRoutes`) may only be GET, and a route whose method or path isn't a string literal fails as unreadable. `TestRouteRegistrations` tests it on a sample source.
+- **Event resources:** admin reads (`admin.<resource>.listed`, `.viewed`) pass by naming.md's rule rather than a list; the stored resources list holds `auth.password_reset`, `auth.registration`, `auth.email_verification`, `auth.mfa`, `auth.recovery_codes`, `admin.session` and `admin.email` (an admin's action names what it acted on).
+- **Web:** the API client's named verbs are `leave` (workspaces), `check` and `accept` (invitation links) and `check` (block links); `auth` and `sessions` are exempt. The admin client (`lib/api/admin.ts`) and admin pages aren't checked: they're the admin build's, and the plan covered `routes` only. The plain pages list gained `verifyEmail` and `registerVerify`, added since the plan; a listed page that's gone fails the test. Page exports are found through `src/routes.ts` and `import.meta.glob`.
+- **Doc links:** `make check` runs the script's self-test (`--test`) before it. Its exceptions are `allowedDeadLinks`, four "existing; to fix": `plans/README.md` → `future/framework.md`, and the admin run's `read/` notes → `page-folders.md` and `notes.md` (files untracked in the main checkout, not in the repository). Its first run found 18 broken links: the dead anchors were fixed (`naming.md#controllers`, which never existed, in AGENTS.md, `docs/api/README.md`, `docs/api/endpoints.md` and the httpapi-layout plan; `#http-routes-and-handlers-internalhttpapi` in the MFA plan; `docs/testing.md` → `ui/testing.md#against-a-server-of-your-own`; `docs/ui/pages.md` → `api.md#reading-data-useresource`; two in `read/questions.md`), the Events page plan's link to the unwritten page-folders plan became text, and this plan's own quoted links point at `docs/`.
 
 ## Not included
 

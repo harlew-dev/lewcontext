@@ -16,6 +16,7 @@ type Event struct {
 	WorkspaceID   int64          `bun:",nullzero"`
 	Payload       map[string]any `bun:"type:jsonb"`
 	IP            string         `bun:"ip,type:inet,nullzero"`
+	RequestID     string
 	UserAgent     string
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
@@ -33,6 +34,7 @@ var Events = Define(func(f *gofakeit.Faker) Event {
 			"resetsAt": created.Add(15 * time.Minute),
 		},
 		IP:        f.IPv4Address(),
+		RequestID: "req_" + f.LetterN(14),
 		UserAgent: truncate(f.UserAgent(), 256),
 		CreatedAt: created,
 	}

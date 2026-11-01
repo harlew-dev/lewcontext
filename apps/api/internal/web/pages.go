@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/observe"
 	"net/http"
 	"path"
 	"strconv"
@@ -45,7 +46,20 @@ type page struct {
 	body   []byte
 	hashes []string
 	policy string
+	// route is a prerendered page's access-line label, "page /" for "/".
+	route string
 }
+
+// The access line's labels for what Pages serves (observe.SetRoute): fixed,
+// never the path, which may hold a link's token or the admin key.
+const (
+	routeAsset      = "asset"
+	routeAdminAsset = "admin asset"
+	routeAdminPage  = "page /admin/*"
+	routeAppPage    = "page /app/*"
+	routeAuthPage   = "page /auth/*"
+	routeNotFound   = "page 404"
+)
 
 // New reads the build's HTML files and hashes their inline scripts. It fails
 // if the fallback page is missing or an HTML file can't be read, so a broken
@@ -67,6 +81,7 @@ func New(files, admin fs.FS, production bool) (*Pages, error) {
 		if name == fallbackFile {
 			p.fallback = loaded
 		} else {
+			loaded.route = "page " + urlPath(name)
 			p.prerendered[urlPath(name)] = loaded
 		}
 		return nil
@@ -125,17 +140,23 @@ func urlPath(name string) string {
 func (p *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.securityHeaders(w)
 	if prerendered, ok := p.prerendered[r.URL.Path]; ok && !p.unpublished(strings.TrimPrefix(r.URL.Path, "/")) {
+		observe.SetRoute(r.Context(), prerendered.route)
 		// No user data is built into these, but they change with each deploy.
 		p.serveHTML(w, prerendered, http.StatusOK, "no-cache")
 		return
 	}
 	if p.serveFile(w, r) {
+		observe.SetRoute(r.Context(), routeAsset)
 		return
 	}
-	status := http.StatusOK
-	if !appPath(r.URL.Path) {
-		status = http.StatusNotFound
+	status, route := http.StatusOK, routeAuthPage
+	switch {
+	case r.URL.Path == "/app" || strings.HasPrefix(r.URL.Path, "/app/"):
+		route = routeAppPage
+	case !appPath(r.URL.Path):
+		status, route = http.StatusNotFound, routeNotFound
 	}
+	observe.SetRoute(r.Context(), route)
 	p.serveHTML(w, p.fallback, status, "no-store")
 }
 
@@ -167,6 +188,7 @@ func (p *Pages) ServeAdmin(w http.ResponseWriter, r *http.Request) {
 		p.ServeHTTP(w, r)
 		return
 	}
+	observe.SetRoute(r.Context(), routeAdminPage)
 	p.securityHeaders(w)
 	adminHeaders(w)
 	p.serveHTML(w, p.adminShell, http.StatusOK, "no-store")
@@ -192,6 +214,7 @@ func (p *Pages) ServeAdminFile(w http.ResponseWriter, r *http.Request, name stri
 	if err != nil || info.IsDir() {
 		return false
 	}
+	observe.SetRoute(r.Context(), routeAdminAsset)
 	p.securityHeaders(w)
 	adminHeaders(w)
 	w.Header().Set("Cache-Control", adminFileCaching)

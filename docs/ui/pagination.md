@@ -64,7 +64,7 @@ navigate(projectsPath(workspace.id, { ...query, page: 1, status }), { preventScr
 
 ## Cursor lists
 
-The admin dashboard's Events and the Mail page's deliveries page by a cursor ([../api/pagination.md](../api/pagination.md#cursor-pages-log-tables)): no page numbers or totals, a plain `Table`, and **Older / Newer** below it (`CursorNav`, `components/app/admin/cursor-nav.tsx`). The URL holds only `before`, so a link to a page stays shareable; Older passes the cursors of the newer pages in navigation state, and Newer pops one, or opens the newest page when there are none (arriving from a link). A cached page comes back from SWR without loading again.
+The admin dashboard's Events and the Mail page's deliveries page by a cursor ([../api/pagination.md](../api/pagination.md#cursor-pages-log-tables)): no page numbers or totals, a plain `Table`, and **Older / Newer** below it (`CursorNav`, `components/app/admin/cursor-nav.tsx`). The URL holds only `before`, so a link to a page stays shareable; Older passes the cursors of the newer pages in navigation state, and Newer pops one, or opens the newest page when there are none (arriving from a link). A cached page comes back from SWR without loading again. Events' charts come only with the newest page (`summary=include`); the page keeps the summary it got in its own state, keyed by the filters without the cursor (never module state), so Older and Newer keep showing it, and a page opened at an older cursor says "Charts show with the newest events." with Show newest.
 
 ## Infinite lists
 

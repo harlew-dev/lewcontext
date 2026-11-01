@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStatesApplyInOrder(t *testing.T) {
@@ -142,6 +143,27 @@ func TestEveryTableHasAFactory(t *testing.T) {
 		t.Fatalf("event: %+v (%v)", event, err)
 	}
 	if _, err := DeliveryOf(event.ID, "test.listener").CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AppErrors.Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	server, err := ServerInstances.CreateOne(ctx, db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RequestMinutes.Sequence(func(i int, m *RequestMinute) {
+		m.Server, m.Minute = server.ID, time.Now().UTC().Truncate(time.Minute).Add(-time.Duration(i+1)*time.Minute)
+	}).Create(ctx, db, f, 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MetricMinutes.State(func(m *MetricMinute) { m.Server = server.ID }).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RequestHours.Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MetricHours.Create(ctx, db, f, 2); err != nil {
 		t.Fatal(err)
 	}
 }

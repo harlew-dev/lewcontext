@@ -5,6 +5,7 @@ import (
 	"errors"
 	"lewcontext/api/internal/captcha"
 	"lewcontext/api/internal/httpapi/ratelimit"
+	"lewcontext/api/internal/observe"
 	"log/slog"
 	"net/http"
 )
@@ -56,12 +57,12 @@ func (s *Server) ChallengeableFunc(action string, next http.HandlerFunc) http.Ha
 // the browser needs to show the CAPTCHA, or 503 while the provider can't be
 // reached (fail closed, only in challenge mode). It runs before any side
 // effect, so a refused request changed nothing and can be sent again.
-func (s *Server) passChallenge(w http.ResponseWriter, r *http.Request) bool {
+func (s *Server) passChallenge(w http.ResponseWriter, r *http.Request, l ratelimit.Limit) bool {
 	c := challengeOf(r)
 	if c == nil || s.Captcha == nil {
 		return true
 	}
-	return s.solve(w, r, c)
+	return s.solve(w, r, c, l)
 }
 
 // challengeOf is the request's challenge context (Challengeable), or nil
@@ -83,7 +84,7 @@ func (s *Server) challengeableFor(w http.ResponseWriter, r *http.Request, l rate
 	if !l.Shared() || !l.Challenge.Set() || challengeOf(r) != nil {
 		return true
 	}
-	slog.Error("a route counts a shared limit with a challenge level but isn't Challengeable (router/routes.go)", "limit", l.Name, "method", r.Method, "path", r.URL.Path)
+	slog.ErrorContext(r.Context(), "a route counts a shared limit with a challenge level but isn't Challengeable (router/routes.go)", "limit", l.Name, "route", r.Pattern)
 	Fail(w, 503, verificationUnavailable)
 	return false
 }
@@ -92,14 +93,17 @@ func (s *Server) challengeableFor(w http.ResponseWriter, r *http.Request, l rate
 const verificationUnavailable = "Verification is unavailable. Try again shortly."
 
 // solve requires c's token: through once it's verified (once per request,
-// c.passed), else 428 or 503. c is non-nil and there is a provider.
-func (s *Server) solve(w http.ResponseWriter, r *http.Request, c *challenge) bool {
+// c.passed), else 428 or 503. c is non-nil and there is a provider. Each
+// refusal is counted as l's challenge level (rate_limit_refused_total,
+// "<limit>:challenge"), except for a client that went away while the token
+// was being checked (ClientGone), which isn't answered.
+func (s *Server) solve(w http.ResponseWriter, r *http.Request, c *challenge, l ratelimit.Limit) bool {
 	if c.passed {
 		return true
 	}
 	token := r.Header.Get(ChallengeTokenHeader)
 	if token == "" {
-		s.challengeRequired(w, c.action, "Complete the check to continue.")
+		s.challengeRequired(w, l, c.action, "Complete the check to continue.")
 		return false
 	}
 	err := s.Captcha.Verify(r.Context(), token, c.action, ClientIP(r))
@@ -107,9 +111,12 @@ func (s *Server) solve(w http.ResponseWriter, r *http.Request, c *challenge) boo
 	case err == nil:
 		c.passed = true
 		return true
+	case ClientGone(r, err):
+		abortedByClient(r, err)
 	case errors.Is(err, captcha.ErrRejected):
-		s.challengeRequired(w, c.action, "The check failed. Try again.")
+		s.challengeRequired(w, l, c.action, "The check failed. Try again.")
 	default:
+		observe.RateLimitRefused.Inc(l.Name + ":challenge")
 		Fail(w, 503, verificationUnavailable)
 	}
 	return false
@@ -117,7 +124,8 @@ func (s *Server) solve(w http.ResponseWriter, r *http.Request, c *challenge) boo
 
 // challengeRequired answers 428 with the provider, its public site key and
 // the action, which is all the browser needs to show the CAPTCHA.
-func (s *Server) challengeRequired(w http.ResponseWriter, action, message string) {
+func (s *Server) challengeRequired(w http.ResponseWriter, l ratelimit.Limit, action, message string) {
+	observe.RateLimitRefused.Inc(l.Name + ":challenge")
 	JSON(w, 428, map[string]any{
 		"error": message,
 		"challenge": map[string]string{

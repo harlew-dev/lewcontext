@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/seed"
 	"log"
 	"os"
@@ -16,12 +18,13 @@ import (
 )
 
 func main() {
+	useLogger()
 	c, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
-	if c.Production {
-		log.Fatal("seeding is disabled in production")
+	if err := allowed(c); err != nil {
+		log.Fatal(err)
 	}
 	only := flag.String("only", seed.Seeders[0].Name, "seeder to run: "+seederNames())
 	count := flag.Int("count", 0, "records to create (0 uses the seeder's default)")
@@ -33,10 +36,11 @@ func main() {
 	if !ok {
 		log.Fatalf("unknown seeder %q; choose %s", *only, seederNames())
 	}
-	for _, n := range []int{*count, *projects} {
-		if n < 0 || n > seed.MaxCount {
-			log.Fatalf("counts must be between 0 and %d", seed.MaxCount)
-		}
+	if *count < 0 || *count > seeder.MaxFor() {
+		log.Fatalf("-count must be between 0 and %d", seeder.MaxFor())
+	}
+	if *projects < 0 || *projects > seed.MaxCount {
+		log.Fatalf("-projects must be between 0 and %d", seed.MaxCount)
 	}
 	options := seed.Options{Count: *count, Projects: *projects, Email: *email}
 	if seeder.NeedsPassword {
@@ -48,7 +52,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 	db, err := database.Open(ctx, c.DatabaseURL)
 	if err != nil {
@@ -60,6 +64,15 @@ func main() {
 		log.Fatalf("seed %s: %v", seeder.Name, err)
 	}
 	log.Printf("%s (fake data seed %d)", summary, fakerSeed)
+}
+
+// allowed refuses seeding in production, before connecting: every seeder
+// writes fake data (accounts, projects, audit history).
+func allowed(c config.Config) error {
+	if c.Production {
+		return errors.New("seeding is disabled in production")
+	}
+	return nil
 }
 
 // passwordHash hashes DEMO_PASSWORD once for every account a seeder creates.
@@ -88,4 +101,15 @@ func usage() {
 	}
 	fmt.Fprintln(out, "\nFlags:")
 	flag.PrintDefaults()
+}
+
+// useLogger installs the server's log handler (LOG_FORMAT, LOG_LEVEL) for
+// anything logged through slog, keeping this command's own output plain
+// (observe.UseForCommand).
+func useLogger() {
+	logging, err := config.LoadLogging()
+	if err != nil {
+		log.Fatal(err)
+	}
+	observe.UseForCommand(logging.LogFormat, logging.LogLevel)
 }

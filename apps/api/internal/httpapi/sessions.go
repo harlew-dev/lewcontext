@@ -51,19 +51,19 @@ func (s *Server) SessionDigest(r *http.Request) string {
 func (s *Server) StartSession(w http.ResponseWriter, r *http.Request, u store.User, status int, e events.Event) {
 	token, err := auth.Token()
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	csrf, err := auth.Token()
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	old := s.SessionDigest(r)
 	signedIn := time.Now()
 	expires := signedIn.Add(auth.SessionLifetime)
 	if err = s.Repo.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires, e); err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	http.SetCookie(w, auth.Cookie(token, s.Config.Production))

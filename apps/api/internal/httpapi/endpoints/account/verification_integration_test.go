@@ -321,10 +321,15 @@ func TestSignUpLooksTheSameForATakenEmail(t *testing.T) {
 }
 
 // sameHeaders compares two responses' headers, apart from the cookie's
-// value and expiry, which are random and timed.
+// value and expiry, which are random and timed, and each one's request ID
+// (X-Request-ID), which must be there and well formed but differs.
 func sameHeaders(a, b http.Header) bool {
+	if !requestIDShape.MatchString(a.Get("X-Request-ID")) || !requestIDShape.MatchString(b.Get("X-Request-ID")) {
+		return false
+	}
 	strip := func(h http.Header) http.Header {
 		h = h.Clone()
+		h.Del("X-Request-ID")
 		for i, c := range h.Values("Set-Cookie") {
 			parsed, err := http.ParseSetCookie(c)
 			if err == nil {
@@ -563,3 +568,6 @@ func TestUnverifiedAccountsMustVerify(t *testing.T) {
 	otherSession := apitest.Must(factory.SessionFor(ctx, db2, f, other.ID))(t)
 	apitest.Call(t, router.New(optional), "GET", "/api/workspaces", "", "", otherSession.Cookie(), 200)
 }
+
+// requestIDShape is the request ID every answer carries.
+var requestIDShape = regexp.MustCompile(`^req_[0-9A-Za-z]{14}$`)

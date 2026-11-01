@@ -206,27 +206,110 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
     ),
   ).toBe(1);
 
-  // Events: filter by the other account's email, open its refused sign-in
-  // at the door, and follow the account it names.
+  // Events: the charts for the last 24 hours, then the Filters dialog: the
+  // auth.* group and one workspace name picked, the other account's email
+  // typed in capitals. Applied, two badges and the URL say so.
   await page.getByRole("link", { name: "Events" }).first().click();
-  await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
-  await page.getByLabel("Email").fill(otherEmail.toUpperCase());
-  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Events", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/^[\d,]+ events in the last 24 hours, most at/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Events over time" }),
+  ).toBeAttached();
+  await page.getByRole("button", { name: /^Filters/ }).click();
+  const dialog = page.getByRole("dialog");
+  const picker = dialog.getByRole("combobox").first();
+  await picker.click();
+  await page.getByRole("option", { name: /^auth\.\* / }).click();
+  await picker.fill("workspace.created");
+  await page.getByRole("option", { name: /^workspace\.created,/ }).click();
+  await dialog.getByRole("heading", { name: "Filter events" }).click();
+  await dialog.getByLabel("Email").fill(otherEmail.toUpperCase());
+  await dialog.getByRole("button", { name: "Apply filters" }).click();
+  const email = encodeURIComponent(otherEmail);
   await expect(page).toHaveURL(
     new RegExp(
-      `/admin/${key}/events\\?email=${encodeURIComponent(otherEmail)}$`,
+      `/admin/${key}/events\\?name=auth\\.\\*,workspace\\.created&email=${email}$`,
     ),
   );
+  const applied = page.getByRole("list", { name: "Applied filters" });
+  await expect(
+    applied.getByText("Events: auth.*, workspace.created"),
+  ).toBeVisible();
+  await expect(applied.getByText(`Email: ${otherEmail}`)).toBeVisible();
+  // Removing a badge applies at once.
+  await page
+    .getByRole("button", {
+      name: "Remove filter: Events: auth.*, workspace.created",
+    })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/${key}/events\\?email=${email}$`),
+  );
+  // The time range: the last hour, then a custom range of today.
+  const range = page.getByRole("combobox", { name: /Time range/ });
+  await range.click();
+  await page.getByRole("option", { name: "Last hour" }).click();
+  await expect(page).toHaveURL(new RegExp(`\\?window=1h&email=${email}$`));
+  await range.click();
+  await page.getByRole("option", { name: "Custom range…" }).click();
+  const calendar = page.getByRole("dialog");
+  await calendar
+    .getByRole("gridcell", { name: /It's available/ })
+    .last()
+    .click();
+  await calendar.getByRole("button", { name: "Apply range" }).click();
+  const day = new Date().toISOString().slice(0, 10);
+  const nextDay = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `\\?email=${email}&from=${day}T00%3A00%3A00Z&to=${nextDay}T00%3A00%3A00Z$`,
+    ),
+  );
+  // Clicking a column zooms to its half hour (once today's chart is in).
+  await expect(
+    page.getByText(/ events in \w{3} \d+ UTC, most at \d\d:(00|30) UTC/),
+  ).toBeVisible();
+  // The tallest segment drawn: a column with events in it.
+  const bars = page.locator(".recharts-bar-rectangle path");
+  const tallest = await bars.evaluateAll((paths) =>
+    paths
+      .map((p) => (p as SVGGraphicsElement).getBBox().height)
+      .reduce((best, h, i, all) => (h > all[best] ? i : best), 0),
+  );
+  await bars.nth(tallest).click();
+  await expect(page).toHaveURL(
+    /&from=\d{4}-\d\d-\d\dT\d\d%3A(00|30)%3A00Z&to=\d{4}-\d\d-\d\dT\d\d%3A(00|30)%3A00Z$/,
+  );
+  const bucket = page.url();
+  // A Top events row filters to its name; Back restores the bucket.
+  await page
+    .getByRole("list", { name: "Top events" })
+    .getByRole("link", { name: /admin\.login_attempted/ })
+    .click();
+  await expect(page).toHaveURL(/name=admin\.login_attempted/);
+  await page.goBack();
+  await expect(page).toHaveURL(bucket);
+  await expect(page.getByRole("button", { name: /^Filters 1/ })).toBeVisible();
+  // Open the refused sign-in at the door and follow the account it names.
   const attempt = page
     .getByRole("row")
     .filter({ hasText: "admin.login_attempted" });
   await expect(attempt).toContainText("not_admin");
+  await expect(attempt).toContainText("Failed");
   await attempt.getByRole("link").first().click();
   await expect(
     page.getByRole("heading", { name: "admin.login_attempted" }),
   ).toBeVisible();
   await expect(page.locator("pre")).toContainText(otherEmail);
-  await page.getByRole("link", { name: "Nora Notadmin" }).click();
+  // More like this: the same account over the last 7 days.
+  await expect(
+    page.getByRole("link", { name: "Events by Nora Notadmin" }),
+  ).toHaveAttribute("href", /\?window=7d&account=usr_/);
+  await page.getByRole("link", { name: "Nora Notadmin", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Nora Notadmin" }),
   ).toBeVisible();

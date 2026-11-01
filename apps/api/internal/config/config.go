@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -53,6 +54,16 @@ type Config struct {
 	// are empty, the default, to use the connection's address.
 	ClientIPHeader string
 	TrustedProxies []netip.Prefix
+	// Logging is the log's format and level, and which requests get an
+	// access line (logging.go).
+	Logging
+	// Metrics is what the server counts, where it keeps it and who may
+	// read it (metrics.go).
+	Metrics
+	// ShutdownDelay (SHUTDOWN_DELAY) is how long the server keeps answering,
+	// with readiness already 503, before it stops taking connections: time
+	// for a load balancer polling GET /api/health to take it out.
+	ShutdownDelay time.Duration
 }
 
 const (
@@ -92,6 +103,17 @@ func Load() (Config, error) {
 	}
 	if c.Production && c.PerIPLimitsOff && c.ClientIPHeader != "" {
 		return c, errors.New("PER_IP_LIMITS=off with CLIENT_IP_HEADER set: the proxy sends each client's address, so per-IP limits can count it; remove PER_IP_LIMITS=off (it's only for a proxy that can't send the address)")
+	}
+	logging, err := LoadLogging()
+	if err != nil {
+		return c, err
+	}
+	c.Logging = logging
+	if c.ShutdownDelay, err = loadShutdownDelay(c.Production); err != nil {
+		return c, err
+	}
+	if err := c.loadMetrics(); err != nil {
+		return c, err
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")
@@ -186,6 +208,25 @@ func parseRange(name, entry string) (netip.Prefix, error) {
 	}
 	return r.Masked(), nil
 }
+
+// maxShutdownDelay bounds SHUTDOWN_DELAY: past it, platforms kill the
+// server before its 10 s drain could finish anyway.
+const maxShutdownDelay = time.Minute
+
+// loadShutdownDelay reads SHUTDOWN_DELAY, a Go duration ("5s") from 0 to a
+// minute: 5 s by default in production, 0 elsewhere.
+func loadShutdownDelay(production bool) (time.Duration, error) {
+	fallback := "0s"
+	if production {
+		fallback = "5s"
+	}
+	delay, err := time.ParseDuration(env("SHUTDOWN_DELAY", fallback))
+	if err != nil || delay < 0 || delay > maxShutdownDelay {
+		return 0, errors.New("SHUTDOWN_DELAY must be a duration from 0s to 60s, such as 5s")
+	}
+	return delay, nil
+}
+
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

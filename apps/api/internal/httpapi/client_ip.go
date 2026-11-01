@@ -1,31 +1,40 @@
 package httpapi
 
 import (
-	"context"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/clientip"
+	"lewcontext/api/internal/observe"
 	"net/http"
+	"time"
 )
 
-type clientIPKey struct{}
-
-// ClientAddress works out the request's client address once, before any
-// other handler, and stores it in the context, for limits and for the
-// events.ip column (events.WithIP). The header is believed only when the
-// connection comes from a trusted proxy.
+// ClientAddress is the outermost middleware, for the API and the pages
+// alike. It works out the request's client address once (the header is
+// believed only when the connection comes from a trusted proxy) and gives
+// the request its ID (requestID, always ours), both kept in the context for limits, the
+// events.ip and events.request_id columns (events.WithRequest) and every log
+// line; sends the ID back in X-Request-ID; and logs the request's access
+// line when it's done, catching a panic nothing inside caught
+// (finishRequest, observability.go).
 func (s *Server) ClientAddress(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		ip := clientip.Resolve(r, s.Config.ClientIPHeader, s.Config.TrustedProxies)
-		ctx := events.WithIP(context.WithValue(r.Context(), clientIPKey{}, ip), ip)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		request := observe.Begin(w, ip)
+		id := s.requestID(r, request)
+		w.Header()[requestIDHeader] = request.IDHeader()
+		ctx := events.WithRequest(observe.WithRequest(r.Context(), request), ip, id)
+		r = r.WithContext(ctx)
+		defer s.finishRequest(request, r, request, start)
+		next.ServeHTTP(request, r)
 	})
 }
 
 // ClientIP is the address every limit and event uses: the one ClientAddress
 // worked out, or the connection's outside it.
 func ClientIP(r *http.Request) string {
-	if ip, ok := r.Context().Value(clientIPKey{}).(string); ok {
-		return ip
+	if request := observe.FromContext(r.Context()); request != nil {
+		return request.IP
 	}
 	return clientip.Resolve(r, "", nil)
 }

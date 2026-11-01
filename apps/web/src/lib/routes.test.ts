@@ -72,3 +72,67 @@ describe("authPath() and loginPath()", () => {
     expect(authPath(routes.register, undefined)).toBe(routes.register);
   });
 });
+// Page route constants (docs/naming.md#web-app): a resource group holds only
+// the page actions; every other key is a page that isn't a resource,
+// listed here, so a new page is a resource action or a deliberate choice.
+const pageActions = ["index", "show", "create", "edit"];
+const plainPages = [
+  "home",
+  "app",
+  "onboarding",
+  "verifyEmail",
+  "settings",
+  "dashboard",
+  "login",
+  "register",
+  "registerVerify",
+  "forgotPassword",
+  // The policy pages: two fixed documents, prerendered, not a resource.
+  "termsOfService",
+  "privacyPolicy",
+];
+// What's wrong with a routes object's keys.
+function badRouteNames(
+  table: Record<string, unknown>,
+  plain: string[],
+): string[] {
+  const problems: string[] = [];
+  for (const [key, value] of Object.entries(table)) {
+    const group = typeof value === "object" && value !== null;
+    if (!group) {
+      if (!plain.includes(key))
+        problems.push(
+          `routes.${key}: a page that isn't a resource is listed in plainPages (lib/routes.test.ts), or it's a resource group with index, show, create or edit; see docs/naming.md#web-app`,
+        );
+      continue;
+    }
+    for (const action of Object.keys(value))
+      if (!pageActions.includes(action))
+        problems.push(
+          `routes.${key}.${action}: resource pages use the page actions ${pageActions.join(", ")}; see docs/naming.md#web-app`,
+        );
+  }
+  return problems;
+}
+describe("page route constant names", () => {
+  it("are resource groups of page actions, or listed plain pages", () => {
+    expect(badRouteNames(routes, plainPages)).toEqual([]);
+    // A listed page that's gone comes off the list.
+    expect(plainPages.filter((key) => !(key in routes))).toEqual([]);
+  });
+  it("refuses other names", () => {
+    expect(
+      badRouteNames(
+        {
+          projectList: (ws: string) => ws,
+          projects: { list: () => "", show: () => "" },
+          home: "/",
+        },
+        plainPages,
+      ),
+    ).toEqual([
+      "routes.projectList: a page that isn't a resource is listed in plainPages (lib/routes.test.ts), or it's a resource group with index, show, create or edit; see docs/naming.md#web-app",
+      "routes.projects.list: resource pages use the page actions index, show, create, edit; see docs/naming.md#web-app",
+    ]);
+  });
+});

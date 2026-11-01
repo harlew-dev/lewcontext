@@ -26,7 +26,8 @@ export default function AdminLayoutRoute({
   params,
 }: Route.ComponentProps) {
   const { pathname } = useLocation();
-  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  if ("unavailable" in loaderData)
+    return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (
     <AdminProvider
       adminKey={params.key}

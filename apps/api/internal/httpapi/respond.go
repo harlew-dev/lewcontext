@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 )
 
@@ -26,9 +25,19 @@ func FailField(w http.ResponseWriter, status int, field, message string) {
 	JSON(w, status, map[string]string{"error": message, "field": field})
 }
 
-func InternalError(w http.ResponseWriter, err error) {
-	slog.Error("request failed", "error", err)
-	Fail(w, 500, "Something went wrong. Please try again.")
+// InternalError answers a failure the client can't fix with the generic 500
+// and the request's ID (answerInternalError), after logging err at error,
+// scrubbed (observe.Scrub), with that ID and the route, and handing it to
+// observe.Report (reportFailure). err is never in the answer. A failure
+// that is only the client going away (ClientGone) is no error: it's logged
+// at debug, the request marked aborted, and nothing answered.
+func InternalError(w http.ResponseWriter, r *http.Request, err error) {
+	if ClientGone(r, err) {
+		abortedByClient(r, err)
+		return
+	}
+	reportFailure(r, "request failed", err)
+	answerInternalError(w, r)
 }
 
 // DecodeValid decodes the body into a T and checks it with valid (which may

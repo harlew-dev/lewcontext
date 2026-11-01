@@ -1,12 +1,14 @@
 package router
 
 import (
+	"errors"
 	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/endpoints/account"
 	"lewcontext/api/internal/httpapi/endpoints/admin"
 	"lewcontext/api/internal/httpapi/endpoints/workspace"
+	"lewcontext/api/internal/observe"
 	"net/http"
 	"strings"
 )
@@ -14,11 +16,13 @@ import (
 // New is the single registry of API endpoints and their authorization
 // requirements and rate limits, and of the web app's pages when Pages is set.
 // Every route behind RequireSession has a budget (limits.go); routes that
-// create rows also name their own limit with s.Limit. The client's address is
-// worked out first (ClientAddress), once for both.
+// create rows also name their own limit with s.Limit. The client's address
+// and the request's ID are worked out first (ClientAddress), once for both,
+// which also logs each request's access line; a panic in either becomes a
+// 500 (RecoverPanics).
 func New(s *httpapi.Server) http.Handler {
-	api := s.Security(unknownRoutesAsJSON(apiRoutes(s)))
-	pages := pageRoutes(s)
+	api := s.Security(httpapi.RecoverPanics(unknownRoutesAsJSON(apiRoutes(s))))
+	pages := httpapi.RecoverPanics(pageRoutes(s))
 	return s.ClientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			api.ServeHTTP(w, r)
@@ -31,7 +35,11 @@ func New(s *httpapi.Server) http.Handler {
 // apiRoutes are the JSON endpoints under /api.
 func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux := http.NewServeMux()
+	// Readiness (the database answers, and the server isn't shutting down)
+	// and liveness (the process answers), for load balancers and
+	// orchestrators; both log at debug.
 	mux.HandleFunc("GET /api/health", health(s))
+	mux.HandleFunc("GET /api/health/live", live)
 	policies := account.Policies{Server: s}
 	mux.HandleFunc("GET /api/policies", policies.Show)
 	registrations := account.Registrations{Server: s}
@@ -89,6 +97,14 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux.HandleFunc("POST /api/email-blocks/check", emailBlocks.Check)
 	mux.HandleFunc("POST /api/email-blocks", emailBlocks.Store)
 	mux.HandleFunc("DELETE /api/email-blocks", emailBlocks.Destroy)
+	// The web app's own errors, signed in only (client_errors.go): grouped
+	// with the server's, never stored per report. Outside the write budget,
+	// so a page stuck in an error loop can't use it up and leave its user
+	// unable to save anything: client-error:per-user (counted after the
+	// CSRF check, so no other site can spend it) and client-error:global
+	// (in the handler) bound it instead.
+	clientErrors := account.ClientErrors{Server: s}
+	mux.Handle("POST /api/client-errors", s.RequireSessionUnmetered(s.Limit(httpapi.ClientErrorPerUser, clientErrors.Store)))
 	workspaces := workspace.Workspaces{Server: s}
 	mux.Handle("GET /api/workspaces", s.RequireSession(http.HandlerFunc(workspaces.Index)))
 	mux.Handle("POST /api/workspaces", s.RequireSession(s.Limit(httpapi.WorkspacePerUser, workspaces.Store)))
@@ -180,9 +196,17 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 // 404 (NotFound) instead of ServeMux's plain text, so an unknown route and an
 // admin route without its key look the same. A known path with the wrong
 // method keeps its 405.
+//
+// It also names the request's route for its access line: the pattern that
+// matched ("GET /api/workspaces/{workspace}/projects"), never the path.
+// A CONNECT request is the one whose "pattern" can be a path it sent (a
+// redirect's), so it stays unmatched.
 func unknownRoutesAsJSON(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, pattern := mux.Handler(r); pattern != "" {
+			if r.Method != http.MethodConnect {
+				observe.SetRoute(r.Context(), pattern)
+			}
 			mux.ServeHTTP(w, r)
 			return
 		}
@@ -251,30 +275,53 @@ func pageRoutes(s *httpapi.Server) http.Handler {
 	if s.Pages == nil {
 		return mux // API only: in development Vite serves the pages
 	}
+	// Each names its route for the access line with a fixed label, never
+	// the path, which holds the admin key or a link's token (pageRoute);
+	// s.Pages names what it serves itself ("asset", "page 404", …).
 	mux.Handle("GET /", s.Pages)
-	mux.Handle("GET /app", s.RequirePageSession(s.Pages))
-	mux.Handle("GET /app/", s.RequirePageSession(s.Pages))
+	mux.Handle("GET /app", pageRoute("page /app/*", s.RequirePageSession(s.Pages)))
+	mux.Handle("GET /app/", pageRoute("page /app/*", s.RequirePageSession(s.Pages)))
 	// The admin dashboard, only at its secret key; anything else under
 	// /admin is an unknown page (admin.go).
-	mux.Handle("GET /admin/{key}", s.AdminPage(false))
-	mux.Handle("GET /admin/{key}/{page...}", s.AdminPage(true))
+	mux.Handle("GET /admin/{key}", pageRoute("page /admin/*", s.AdminPage(false)))
+	mux.Handle("GET /admin/{key}/{page...}", pageRoute("page /admin/*", s.AdminPage(true)))
 	// The admin build's files, only with the assets pass the admin pages set;
 	// without one, an unknown page. The bare path is one too: without it the
 	// mux would redirect it to /admin-assets/, showing the route exists.
-	mux.HandleFunc("GET /admin-assets/{file...}", s.AdminAssets)
+	mux.Handle("GET /admin-assets/{file...}", pageRoute("admin asset", http.HandlerFunc(s.AdminAssets)))
 	mux.Handle("GET /admin-assets", s.Pages)
 	return mux
 }
 
-// health answers whether the API can reach its database.
+// pageRoute names a page route's access-line label before h runs.
+func pageRoute(label string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observe.SetRoute(r.Context(), label)
+		h.ServeHTTP(w, r)
+	})
+}
+
+// health is readiness: 200 while the API can reach its database, 503 when it
+// can't or once graceful shutdown has begun (Server.Drain), so a load
+// balancer stops sending requests to a server that is going away.
 func health(s *httpapi.Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := s.Repo.DB.PingContext(r.Context()); err != nil {
+		switch err := s.Ready(r); {
+		case errors.Is(err, httpapi.ErrDraining):
+			httpapi.Fail(w, 503, "Shutting down")
+			return
+		case err != nil:
 			httpapi.Fail(w, 503, "Database unavailable")
 			return
 		}
 		httpapi.JSON(w, 200, map[string]string{"status": "ok"})
 	}
+}
+
+// live is liveness: 200 while the process answers, without the database,
+// so an orchestrator doesn't restart every server during a database outage.
+func live(w http.ResponseWriter, r *http.Request) {
+	httpapi.JSON(w, 200, map[string]string{"status": "ok"})
 }
 
 // routeGroup registers routes under a shared path prefix, wrapped in shared

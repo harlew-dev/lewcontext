@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"lewcontext/api/internal/observe"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -78,7 +80,8 @@ func (w *Worker) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		n, err := w.RunOnce(ctx)
 		if err != nil && ctx.Err() == nil {
-			w.Log.Error("event delivery failed", "error", err)
+			w.Log.Error("event delivery failed", observe.ErrorAttr(err))
+			observe.Report(ctx, observe.Problem{Source: observe.SourceBackground, Route: "event worker", Err: err})
 		}
 		if n == w.Batch {
 			continue // more may be waiting
@@ -117,34 +120,60 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 }
 
 // deliver runs one listener and records the outcome; the error is only for
-// recording failures, not the listener's.
+// recording failures, not the listener's. A listener's error is logged
+// scrubbed (observe.ErrorAttr: an SMTP refusal names the recipient), and
+// its final failure, after the last retry, is reported (observe.Report).
 func (w *Worker) deliver(d Delivery) error {
 	ctx, cancel := context.WithTimeout(context.Background(), w.Timeout)
 	defer cancel()
 	handle := w.Bus.handler(d.Listener, d.Event)
 	if handle == nil {
+		// Not a registered name, so not a label: counted as unmatched.
+		observe.Deliveries.Inc(observe.Unmatched, observe.DeliveryFailed)
+		cause := fmt.Errorf("no listener %q for %s", d.Listener, d.Event)
 		w.Log.Error("event listener not registered", "listener", d.Listener, "event", d.Event, "id", d.PublicID)
-		return w.Queue.Fail(ctx, d, fmt.Errorf("no listener %q for %s", d.Listener, d.Event))
-	}
-	cause := run(ctx, handle, d)
-	if cause == nil {
-		return w.Queue.Delivered(ctx, d)
-	}
-	attrs := []any{"listener", d.Listener, "event", d.Event, "id", d.PublicID, "attempt", d.Attempts, "error", cause}
-	if d.Attempts > len(w.Backoff) {
-		w.Log.Error("event listener failed for good", attrs...)
+		observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: cause})
 		return w.Queue.Fail(ctx, d, cause)
 	}
+	if d.Attempts == 1 {
+		observe.DeliveryLag.Observe(time.Since(d.CreatedAt), d.Listener)
+	}
+	cause := w.run(ctx, handle, d)
+	if cause == nil {
+		observe.Deliveries.Inc(d.Listener, observe.DeliveryDelivered)
+		return w.Queue.Delivered(ctx, d)
+	}
+	attrs := []any{"listener", d.Listener, "event", d.Event, "id", d.PublicID, "attempt", d.Attempts, observe.ErrorAttr(cause)}
+	if d.Attempts > len(w.Backoff) {
+		w.Log.Error("event listener failed for good", attrs...)
+		// A panic was reported as it happened, with its stack.
+		if !errors.As(cause, new(listenerPanic)) {
+			observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: cause})
+		}
+		observe.Deliveries.Inc(d.Listener, observe.DeliveryFailed)
+		return w.Queue.Fail(ctx, d, cause)
+	}
+	observe.Deliveries.Inc(d.Listener, observe.DeliveryRetried)
 	w.Log.Warn("event listener failed; will retry", attrs...)
 	return w.Queue.Retry(ctx, d, time.Now().Add(w.Backoff[d.Attempts-1]), cause)
 }
 
-// run calls a listener, turning a panic into an error.
-func run(ctx context.Context, handle handler, d Delivery) (err error) {
+// run calls a listener, turning a panic into an error, which fails the
+// delivery like any other (it's retried). The panic is logged at error with
+// its stack, as a request's is, and handed to observe.Report; its value only
+// as observe.PanicValue allows, in the log and in the delivery's stored
+// error alike.
+func (w *Worker) run(ctx context.Context, handle handler, d Delivery) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
-			err = fmt.Errorf("listener panicked: %v", p)
+			err = listenerPanic{fmt.Errorf("listener panicked: %s", observe.PanicValue(p))}
+			stack := debug.Stack()
+			w.Log.ErrorContext(ctx, "event listener panicked", "listener", d.Listener, "event", d.Event, "id", d.PublicID, "panic", observe.ScrubError(err), "stack", observe.ScrubStack(string(stack)))
+			observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: err, Stack: stack})
 		}
 	}()
 	return handle(ctx, d.Payload, Delivered{EventID: d.PublicID, OccurredAt: d.CreatedAt, Attempt: d.Attempts})
 }
+
+// listenerPanic is the error a listener's panic fails its delivery with.
+type listenerPanic struct{ error }

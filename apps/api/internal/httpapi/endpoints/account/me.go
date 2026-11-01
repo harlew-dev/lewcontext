@@ -49,7 +49,7 @@ func (h Me) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := h.Repo.UpdateProfile(r.Context(), httpapi.Session(r).User, in.Name)
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, user)
@@ -81,7 +81,7 @@ func (h Me) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	h.ClearSessionCookie(w)

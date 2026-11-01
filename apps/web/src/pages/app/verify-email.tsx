@@ -23,7 +23,8 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return verifyEmailLoader(request);
 }
 export default function VerifyEmail({ loaderData }: Route.ComponentProps) {
-  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  if ("unavailable" in loaderData)
+    return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (
     <SessionProvider session={loaderData.session}>
       <AuthLayout>

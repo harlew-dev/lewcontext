@@ -32,7 +32,8 @@ export function shouldRevalidate() {
 }
 export default function AppLayout({ loaderData }: Route.ComponentProps) {
   const pageKey = usePageKey();
-  if ("unavailable" in loaderData) return <ServiceUnavailable />;
+  if ("unavailable" in loaderData)
+    return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (
     <SessionProvider session={loaderData.session}>
       <CurrentWorkspace first={loaderData.workspaces}>

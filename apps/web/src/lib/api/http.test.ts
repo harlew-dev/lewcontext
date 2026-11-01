@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError } from "./http";
+import { ApiError, requestIdOf } from "./http";
 import { browserHttp } from "./http";
 import { path } from "./paths";
 function stubFetch(response: Response) {
@@ -67,6 +67,27 @@ describe("browser transport", () => {
     await expect(
       browserHttp().send("POST", "/api/auth/password-reset", {}),
     ).resolves.toBeUndefined();
+  });
+  it("keeps a 500's request ID as its reference, only in the API's shape", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          error: "Something went wrong. Please try again.",
+          requestId: "req_2yEHYLwiwPVhLW",
+        }),
+        { status: 500 },
+      ),
+    );
+    const error = await browserHttp()
+      .get(path("/api/projects"))
+      .catch((e: unknown) => e);
+    expect(requestIdOf(error)).toBe("req_2yEHYLwiwPVhLW");
+    for (const odd of ["has space", "x".repeat(65), 7, null]) {
+      expect(
+        new ApiError("x", 500, undefined, { requestId: odd }).requestId,
+      ).toBeUndefined();
+    }
+    expect(requestIdOf(new Error("x"))).toBeUndefined();
   });
   it("handles non-JSON upstream errors", async () => {
     stubFetch(new Response("bad gateway", { status: 502 }));
