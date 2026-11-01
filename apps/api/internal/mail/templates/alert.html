@@ -1,0 +1,34 @@
+{{ define "title" }}{{ .Subject }}{{ end }}
+{{ define "content" }}
+<p style="margin: 0 0 8px; font-size: 13px; line-height: 20px; font-weight: 600; color: {{ if eq .Kind "resolved" }}#3f6212{{ else if eq .Level "Critical" }}#b91c1c{{ else }}#b45309{{ end }}">
+  {{- if eq .Kind "resolved" }}Resolved{{ else if eq .Kind "escalated" }}Now critical{{ else if eq .Kind "reminded" }}Still open, not acknowledged{{ else }}{{ .Level }} alert{{ end -}}
+</p>
+<p style="margin: 0 0 16px; font-size: 18px; line-height: 26px; font-weight: 600">{{ .Title }}</p>
+<p style="margin: 0 0 24px; font-size: 14px; line-height: 22px; color: #52525b">{{ .Meaning }}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 0 24px; font-size: 14px; line-height: 22px">
+  <tr>
+    <td style="padding: 0 16px 4px 0; color: #71717a">Level</td>
+    <td style="padding: 0 0 4px">{{ .Level }}</td>
+  </tr>
+  {{ if ne .Kind "resolved" }}
+  <tr>
+    <td style="padding: 0 16px 4px 0; color: #71717a">Value</td>
+    <td style="padding: 0 0 4px">{{ .Value }}</td>
+  </tr>
+  {{ end }}
+  <tr>
+    <td style="padding: 0 16px 4px 0; color: #71717a">Opened</td>
+    <td style="padding: 0 0 4px">{{ .Opened }}</td>
+  </tr>
+  {{ if eq .Kind "resolved" }}
+  <tr>
+    <td style="padding: 0 16px 4px 0; color: #71717a">Open for</td>
+    <td style="padding: 0 0 4px">{{ .OpenFor }}</td>
+  </tr>
+  {{ end }}
+</table>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: #71717a">
+  {{ if eq .Kind "resolved" }}Nothing to do: it’s back to normal.{{ else }}Open the admin dashboard to see the details, and acknowledge the alert there.{{ end }}
+  You get these emails as an admin of {{ app }}; choose which on the dashboard’s Admins page.
+</p>
+{{ end }}

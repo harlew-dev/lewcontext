@@ -36,7 +36,10 @@ type adminRecord struct {
 	UserID        int64 `bun:",pk"`
 	MFASetupUntil *time.Time
 	Role          auth.AdminRole `bun:",notnull"`
-	CreatedAt     time.Time      `bun:",nullzero,notnull,default:current_timestamp"`
+	// AlertEmail is which alerts the admin is emailed (AlertEmailAll,
+	// AlertEmailCritical, the default, or AlertEmailNone).
+	AlertEmail string    `bun:",nullzero,notnull,default:'critical'"`
+	CreatedAt  time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 type adminSessionRecord struct {
 	bun.BaseModel `bun:"table:admin_sessions,alias:adms"`

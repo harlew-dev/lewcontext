@@ -168,7 +168,14 @@ type ErrorGroups struct {
 	Open      int64 `json:"open"`
 	New       int64 `json:"new"`
 	NewPanics int64 `json:"newPanics"`
+	// NewFrequent are the new groups the server reported (not a
+	// browser's) that happened FrequentErrors times or more.
+	NewFrequent int64 `json:"newFrequent"`
 }
+
+// FrequentErrors is how many times a new group must have happened to be
+// one of ErrorGroups.NewFrequent.
+const FrequentErrors = 10
 
 // CountErrorGroups counts the open error groups, and those first seen
 // since since. The table holds at most a month of groups (make prune).
@@ -178,7 +185,8 @@ func (s *Store) CountErrorGroups(ctx context.Context, since time.Time) (ErrorGro
 		ColumnExpr("count(*) FILTER (WHERE resolved_at IS NULL)").
 		ColumnExpr("count(*) FILTER (WHERE first_seen_at >= ?)", since).
 		ColumnExpr("count(*) FILTER (WHERE first_seen_at >= ? AND source = 'panic')", since).
-		Scan(ctx, &out.Open, &out.New, &out.NewPanics)
+		ColumnExpr("count(*) FILTER (WHERE first_seen_at >= ? AND source <> 'client' AND count >= ?)", since, FrequentErrors).
+		Scan(ctx, &out.Open, &out.New, &out.NewPanics, &out.NewFrequent)
 	return out, err
 }
 

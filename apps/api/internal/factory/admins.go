@@ -17,7 +17,10 @@ type Admin struct {
 	UserID        int64 `bun:",pk"`
 	MFASetupUntil *time.Time
 	Role          auth.AdminRole `bun:",notnull"`
-	CreatedAt     time.Time      `bun:",nullzero,notnull,default:current_timestamp"`
+	// AlertEmail is which alerts they're emailed: all, critical (the
+	// default, left empty) or none.
+	AlertEmail string    `bun:",nullzero,notnull,default:'critical'"`
+	CreatedAt  time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
 // Admins builds viewers with no setup window (as when MFA is on), as admin
@@ -29,6 +32,11 @@ var Admins = Define(func(f *gofakeit.Faker) Admin {
 // AdminRole gives the admin role instead of viewer.
 func AdminRole(role auth.AdminRole) func(*Admin) {
 	return func(a *Admin) { a.Role = role }
+}
+
+// AlertEmail sets which alerts the admin is emailed.
+func AlertEmail(setting string) func(*Admin) {
+	return func(a *Admin) { a.AlertEmail = setting }
 }
 
 // AdminFor makes the user an admin.

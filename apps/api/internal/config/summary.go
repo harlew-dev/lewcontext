@@ -26,6 +26,13 @@ type Summary struct {
 	MetricsToken      bool         `json:"metricsToken"`
 	SlowQueryMs       int64        `json:"slowQueryMs"`
 	ShutdownDelayMs   int64        `json:"shutdownDelayMs"`
+	// The alerts' webhook and heartbeat: whether each URL is set (never
+	// the URL: it can be a secret), the format, whether bodies are signed.
+	AlertWebhook       bool   `json:"alertWebhook"`
+	AlertWebhookFormat string `json:"alertWebhookFormat"`
+	AlertWebhookSigned bool   `json:"alertWebhookSigned"`
+	AlertHeartbeat     bool   `json:"alertHeartbeat"`
+	AlertPrivate       bool   `json:"alertAllowPrivateTargets"`
 	// Migrations are the migrations the database has applied and those
 	// built into this binary: a server built ahead of its database shows.
 	Migrations MigrationsSummary `json:"migrations"`
@@ -48,24 +55,29 @@ type MigrationsSummary struct {
 // Summary is c's summary, with the migration counts.
 func (c Config) Summary(migrations MigrationsSummary) Summary {
 	s := Summary{
-		Production:        c.Production,
-		MailDriver:        c.MailDriver,
-		EmailVerification: c.VerificationMode(),
-		RateLimits:        c.RateLimits,
-		ClientIPHeader:    c.ClientIPHeader,
-		TrustedProxies:    len(c.TrustedProxies),
-		AdminRouteKey:     c.AdminRouteKey != "",
-		AdminRouteKeyPrev: c.AdminRouteKeyPrevious != "",
-		AdminAllowedIPs:   len(c.AdminAllowedIPs),
-		LogFormat:         c.LogFormat,
-		LogLevel:          c.LogLevel.String(),
-		AccessLog:         c.AccessLog,
-		MetricsStore:      c.MetricsStore,
-		MetricsAddr:       c.MetricsAddr != "",
-		MetricsToken:      c.MetricsToken != "",
-		SlowQueryMs:       c.SlowQuery.Milliseconds(),
-		ShutdownDelayMs:   c.ShutdownDelay.Milliseconds(),
-		Migrations:        migrations,
+		Production:         c.Production,
+		MailDriver:         c.MailDriver,
+		EmailVerification:  c.VerificationMode(),
+		RateLimits:         c.RateLimits,
+		ClientIPHeader:     c.ClientIPHeader,
+		TrustedProxies:     len(c.TrustedProxies),
+		AdminRouteKey:      c.AdminRouteKey != "",
+		AdminRouteKeyPrev:  c.AdminRouteKeyPrevious != "",
+		AdminAllowedIPs:    len(c.AdminAllowedIPs),
+		LogFormat:          c.LogFormat,
+		LogLevel:           c.LogLevel.String(),
+		AccessLog:          c.AccessLog,
+		MetricsStore:       c.MetricsStore,
+		MetricsAddr:        c.MetricsAddr != "",
+		MetricsToken:       c.MetricsToken != "",
+		SlowQueryMs:        c.SlowQuery.Milliseconds(),
+		ShutdownDelayMs:    c.ShutdownDelay.Milliseconds(),
+		AlertWebhook:       c.AlertWebhookURL != "",
+		AlertWebhookFormat: c.AlertWebhookFormat,
+		AlertWebhookSigned: c.AlertWebhookSecret != "",
+		AlertHeartbeat:     c.AlertHeartbeatURL != "",
+		AlertPrivate:       c.AlertAllowPrivateTargets,
+		Migrations:         migrations,
 	}
 	if c.MailDriver == MailSMTP {
 		s.SMTP = &SMTPSummary{Host: c.SMTP.Host, Port: c.SMTP.Port, TLS: c.SMTP.TLS}

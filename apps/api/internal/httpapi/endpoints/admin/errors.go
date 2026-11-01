@@ -2,9 +2,11 @@ package admin
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/monitor"
 	"lewcontext/api/internal/store"
 	"net/http"
@@ -14,8 +16,9 @@ import (
 // /api/admin/errors/{error} (docs/api/monitoring.md#one-group): its
 // scrubbed message and stack, its route's occurrences over a window, and
 // the release now running. Read within the Monitoring pages' bounds and
-// recorded as admin.error.viewed. Read-only: resolving a group is an
-// admin action (plans/features/admin/actions.md).
+// recorded as admin.error.viewed; and resolving it, a housekeeping action
+// (plans/features/implemented/admin/actions.md: the operator role, no
+// code).
 type Errors struct{ *httpapi.Server }
 
 // Show reads one group over ?window=1h|24h|7d (24h by default); a group
@@ -44,4 +47,42 @@ func (h Errors) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.JSON(w, 200, view)
+}
+
+// resolveInput is Update's body: {"resolved": true}, the one change it
+// makes.
+type resolveInput struct {
+	Resolved bool `json:"resolved"`
+}
+
+// Update marks the group resolved ({"resolved": true}), recording
+// admin.error.resolved: 204. Its next occurrence opens it again. 422
+// without resolved true; 404 unknown; 409 when it's resolved already. A
+// housekeeping action: the operator role and admin-action:per-user, no
+// code or reason. PATCH /api/admin/errors/{error}.
+func (h Errors) Update(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("error")
+	if !input.PublicID("err", id) {
+		httpapi.Fail(w, 404, "Error not found.")
+		return
+	}
+	var in resolveInput
+	if !httpapi.Decode(w, r, &in) {
+		return
+	}
+	if !in.Resolved {
+		httpapi.FailField(w, 422, "resolved", "Only resolving an error group is supported.")
+		return
+	}
+	err := h.Repo.ResolveErrorGroup(r.Context(), id, httpapi.Admin(r).User)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		httpapi.Fail(w, 404, "Error not found.")
+	case errors.Is(err, store.ErrAlreadyDone):
+		httpapi.Fail(w, 409, "This error is resolved already.")
+	case err != nil:
+		httpapi.InternalError(w, r, err)
+	default:
+		w.WriteHeader(204)
+	}
 }

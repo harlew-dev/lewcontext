@@ -1,0 +1,13 @@
+{{ define "content" -}}
+{{ if eq .Kind "resolved" }}Resolved{{ else if eq .Kind "escalated" }}Now critical{{ else if eq .Kind "reminded" }}Still open, not acknowledged{{ else }}{{ .Level }} alert{{ end }}: {{ .Title }}
+
+{{ .Meaning }}
+
+Level: {{ .Level }}
+{{ if ne .Kind "resolved" }}Value: {{ .Value }}
+{{ end }}Opened: {{ .Opened }}
+{{ if eq .Kind "resolved" }}Open for: {{ .OpenFor }}
+{{ end }}
+{{ if eq .Kind "resolved" }}Nothing to do: it’s back to normal.{{ else }}Open the admin dashboard to see the details, and acknowledge the alert there.{{ end }}
+You get these emails as an admin of {{ app }}; choose which on the dashboard’s Admins page.
+{{- end }}

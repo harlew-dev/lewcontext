@@ -462,3 +462,55 @@ type AdminEventExported struct {
 }
 
 func (AdminEventExported) EventName() string { return "admin.event.exported" }
+
+// AdminAlertListed: an admin loaded a page of the Alerts list: State
+// (open, resolved, all) and Before, the cursor, when given.
+type AdminAlertListed struct {
+	Admin  string `json:"admin"`
+	State  string `json:"state"`
+	Before string `json:"before,omitempty"`
+}
+
+func (AdminAlertListed) EventName() string { return "admin.alert.listed" }
+
+// AdminAlertViewed: an admin opened one alert (its alt_ ID).
+type AdminAlertViewed struct {
+	Admin string `json:"admin"`
+	Alert string `json:"alert"`
+}
+
+func (AdminAlertViewed) EventName() string { return "admin.alert.viewed" }
+
+// AdminAlertAcknowledged: an operator acknowledged an open alert, which
+// stops its 4-hourly reminders (housekeeping: no code, no reason).
+type AdminAlertAcknowledged struct {
+	Admin  string `json:"admin"`
+	Alert  string `json:"alert"`
+	Signal string `json:"signal"`
+}
+
+func (AdminAlertAcknowledged) EventName() string { return "admin.alert.acknowledged" }
+
+// AdminAlertSilenced: an operator silenced an alert's signal until Until
+// (24 hours at most): no email or webhook about it, nor about another
+// alert of the signal opening meanwhile. It hides what may be a security
+// alert, so it's an account-and-access action, with a fresh code and
+// Reason.
+type AdminAlertSilenced struct {
+	Admin  string    `json:"admin"`
+	Alert  string    `json:"alert"`
+	Signal string    `json:"signal"`
+	Until  time.Time `json:"until"`
+	Reason string    `json:"reason"`
+}
+
+func (AdminAlertSilenced) EventName() string { return "admin.alert.silenced" }
+
+// AdminErrorResolved: an operator marked a grouped error (its err_ ID)
+// resolved; a new occurrence opens it again (housekeeping).
+type AdminErrorResolved struct {
+	Admin string `json:"admin"`
+	Error string `json:"error"`
+}
+
+func (AdminErrorResolved) EventName() string { return "admin.error.resolved" }

@@ -136,6 +136,16 @@ var SecuritySignals = []Signal{
 		},
 		Drill: drill("admin.login_attempted,admin.access_refused", "outcome", "failed"),
 	},
+	{
+		// An admin session used from another network than it signed in
+		// from (admin.session.moved, once per session).
+		Name: "admin.sessions_moved", Page: PageSecurity, Label: "Admin sessions that moved", Unit: UnitCount,
+		Window: time.Hour, Warn: 1,
+		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
+			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "admin.session.moved"))
+		},
+		Drill: drill("admin.session.moved"), DrillExact: true,
+	},
 }
 
 // sum adds the counts of keys.

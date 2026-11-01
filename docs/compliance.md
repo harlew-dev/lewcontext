@@ -27,18 +27,19 @@ Every table, what personal data it holds, why, for how long and who can see it. 
 | `email_verifications` | a verification code's digest for an account | verifying an email (contract) | 15 minutes; the cleanup deletes it | nobody |
 | `email_block_links` | an address and its block link's digest | honouring "don't email me" (legal obligation, legitimate interest) | a year; the cleanup deletes it | nobody |
 | `email_blocks` | an address that asked for no email, when | a suppression list (legal obligation): it must outlive everything else | until its owner unblocks it | admins (the Email blocks page) |
-| `admins` | who is an admin, their role, MFA setup window | privileged access (legitimate interest) | until revoked from the command line | admins (the Admins page) |
+| `admins` | who is an admin, their role, MFA setup window, which alerts they're emailed | privileged access (legitimate interest) | until revoked from the command line | admins (the Admins page) |
 | `admin_sessions` | an admin session's digests, CSRF token, IP, user agent | admin sign-in (legitimate interest) | 15 minutes idle, 8 hours at most | admins (their own, the Admins page) |
 | `user_suspensions` | a suspended account, the admin's reason, who suspended | stopping abuse (legitimate interest) | until unsuspended or the account is deleted | admins |
 | `ip_blocks` | a blocked address or range, the reason, who blocked it | stopping abuse (legitimate interest) | at most 30 days; the cleanup deletes expired ones | admins |
-| `app_errors` | error groups, scrubbed of emails, IPs, IDs and tokens; the last request ID | running the service (legitimate interest) | 30 days after last seen (`prune app_errors`) | admins (SQL until the Errors page) |
+| `app_errors` | error groups, scrubbed of emails, IPs, IDs and tokens; the last request ID | running the service (legitimate interest) | 30 days after last seen (`prune app_errors`) | admins (the Errors page) |
+| `alerts` | a signal's name, level and values; its drill-down and an integrity check's sample public IDs; who acknowledged or silenced it (never emailed or posted: emails and the webhook carry the signal, level and numbers only) | security and running the service (legitimate interest): when something was detected and how fast it was answered | a year after it resolved (`prune alerts`) | admins (the Alerts page) |
 | `request_minutes` | requests per route and minute, never a path, IP or account | running the service | 48 hours, by the hourly rollup | admins |
 | `request_hours` | the same, per hour | running the service | 90 days (`prune request_hours`) | admins |
 | `metric_minutes` | other counters per minute (limit, listener, event names) | running the service | 48 hours | admins |
 | `metric_hours` | the same, per hour | running the service | 90 days (`prune metric_hours`) | admins |
 | `server_instances` | each server's host name, version and settings summary (never a secret) | running the service | a day after it stops | admins |
 
-**Processors** (the organisation lists them in its records and contracts): the hosting provider (the servers, the database and its backups, the logs), the SMTP provider (every email's recipient and contents) and Cloudflare when it's in front ([deployment.md](deployment.md#cloudflare)). Nothing else receives data: there are **no third-party scripts, analytics or trackers** in either web build, and the CSP allows only the app's own scripts.
+**Processors** (the organisation lists them in its records and contracts): the hosting provider (the servers, the database and its backups, the logs), the SMTP provider (every email's recipient and contents), Cloudflare when it's in front ([deployment.md](deployment.md#cloudflare)), and, when the operator sets them, the alerts' webhook and heartbeat services (`ALERT_WEBHOOK_URL`, `ALERT_HEARTBEAT_URL`: signal names, levels and numbers only, never personal data, [api/monitoring.md](api/monitoring.md#alerts)). Nothing else receives data: there are **no third-party scripts, analytics or trackers** in either web build, and the CSP allows only the app's own scripts.
 
 **Cookies,** all strictly necessary, so no consent banner: the session (`lewcontext_session`; its CSRF token travels in a header, never a cookie), a sign-in's MFA challenge (`lewcontext_mfa`), a sign-up's registration cookie, the admin session (`lewcontext_admin`), the admin door's MFA challenge and the admin build's assets pass (`__Host-` or `__Secure-` in production). None tracks anyone across sites.
 
@@ -52,11 +53,12 @@ Every age is a registered prune target, so `make prune` (no target) lists the wh
 
 | Data | Kept | How |
 | --- | --- | --- |
-| **Audit events** (`events.Audit`: every `auth.*`, `admin.*`, `server.*`, `prune.*` name, and `alert.*` to come): sign-ins and attempts, MFA, passwords, sessions, the account's lifecycle, everything admins read and did, servers, retention itself | **1 year** | `prune audit_events` |
+| **Audit events** (`events.Audit`: every `auth.*`, `admin.*`, `alert.*`, `server.*` and `prune.*` name): sign-ins and attempts, MFA, passwords, sessions, the account's lifecycle, everything admins read and did, servers, retention itself | **1 year** | `prune audit_events` |
 | Other events (`workspace.*`, `project.*`, `rate_limit.*`, `email.*`) | 90 days | `prune events` (it no longer touches audit events) |
 | **IPs in events** (the `ip` column, an Events search's IP, the address one address's page looked at, a moved admin session's networks) | full for 30 days, then cut to the IPv4 /24 or IPv6 /48 | `prune pseudonymise` |
 | **Emails in events** (sign-in and sign-up attempts, reset requests, invitations, the admin door, admins' searches) | readable for 30 days, then replaced by a keyed pseudonym | `prune pseudonymise` |
 | `app_errors` | 30 days after last seen | `prune app_errors` |
+| `alerts` | **1 year** after it resolved; open ones are kept | `prune alerts` |
 | `request_minutes`, `metric_minutes` / `request_hours`, `metric_hours` | 48 hours / 90 days | the server's rollup / `prune request_hours`, `metric_hours` |
 | Sessions, limits, links, codes, challenges, sign-ups, IP blocks | until they end | the server's 15-minute cleanup |
 | Accounts, workspaces, projects | until deleted by their owner ([Erasure](#erasure)) | self-service, or `admin erase` |

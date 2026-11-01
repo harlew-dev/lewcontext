@@ -81,9 +81,11 @@ func run() error {
 	}()
 	defer flushErrors(collector, stopCollecting, collected)
 	// Listeners register on the bus here, before anything records an event.
-	if err := listen(bus, repository, c); err != nil {
+	mailer, err := listen(bus, repository, c)
+	if err != nil {
 		return err
 	}
+	listenAlerts(bus, repository, mailer, c)
 	// This server's row and server.started; then each minute's metrics
 	// with its heartbeat, and the hourly rollup. On the way out
 	// server.stopped and the last minute go first, the error groups last
@@ -146,6 +148,10 @@ func run() error {
 		slog.Error("loading IP blocks failed; nothing is blocked until a retry succeeds", observe.ErrorAttr(err))
 	}
 	go api.RunIPBlocks(ctx, httpapi.IPBlocksReload)
+	// Alerts: evaluated each minute by the server holding their lock; it's
+	// handed back (stopAlerts) before the database closes.
+	stopAlerts := runAlerts(ctx, db, repository, c)
+	defer stopAlerts()
 	failures := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "address", c.Address, "pages", api.Pages != nil)
@@ -223,33 +229,35 @@ func flushErrors(collector *observe.Collector, stop context.CancelFunc, stopped 
 	}
 }
 
-// listen registers every listener. Without email delivery (MAIL_DRIVER=off)
-// nothing sends reset links or invitations, and the API refuses to take
-// requests for either; email verification can't be on without it (config).
-func listen(bus *events.Bus, repository *store.Store, c config.Config) error {
+// listen registers every mail listener, and returns the mailer for the
+// alerts' (listenAlerts). Without email delivery (MAIL_DRIVER=off) nothing
+// sends reset links, invitations or alert emails, and the API refuses to
+// take requests for the first two; email verification can't be on without
+// it (config).
+func listen(bus *events.Bus, repository *store.Store, c config.Config) (*mail.Mailer, error) {
 	if c.MailDriver == config.MailOff {
-		slog.Info("mail is off (MAIL_DRIVER=off): password reset and invitations are unavailable")
-		return nil
+		slog.Info("mail is off (MAIL_DRIVER=off): password reset, invitations and alert emails are unavailable")
+		return nil, nil
 	}
 	driver, err := mailDriver(c)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	mailer, err := mail.New(mail.Options{Driver: driver, App: c.AppName, Origin: c.Origin, Blocks: repository})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
 	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(repository, mailer, c.Origin))
 	if c.Verify {
 		keys, err := auth.NewKeys(c.AppKey)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		events.Listen(bus, "mail.registration", mail.Registration(repository, mailer, keys, c.Origin, c.RateLimits == config.RateLimitsOn))
 		events.Listen(bus, "mail.email_verification", mail.EmailVerification(repository, mailer, keys))
 	}
-	return nil
+	return mailer, nil
 }
 
 // mailDriver builds MAIL_DRIVER's driver and logs where mail goes: never the

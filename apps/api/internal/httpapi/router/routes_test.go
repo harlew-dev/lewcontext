@@ -155,10 +155,11 @@ func TestAdminMutationsNeedARole(t *testing.T) {
 		group(http.NewServeMux(), "/api/workspaces/{workspace}").Action("POST", "/things", ok)
 	}()
 	signedIn.OwnSessions("POST", "/logout", ok)
-	// Housekeeping takes only housekeepingRoutes (none yet), so an
-	// account-and-access action can't use it to skip its code; and only in
-	// the signed-in admin group.
-	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/users/{user}/sessions"}, {"PATCH", "/alerts/{alert}"}} {
+	// Housekeeping takes only housekeepingRoutes, so an account-and-access
+	// action can't use it to skip its code (silencing an alert among
+	// them); and only in the signed-in admin group.
+	signedIn.Housekeeping("PATCH", "/alerts/{alert}", ok)
+	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/users/{user}/sessions"}, {"POST", "/alerts/{alert}/silence"}, {"PATCH", "/users/{user}"}} {
 		func() {
 			defer func() {
 				if recover() == nil {

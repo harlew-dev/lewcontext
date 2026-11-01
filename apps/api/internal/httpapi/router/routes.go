@@ -165,6 +165,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	failedDeliveries := admin.FailedDeliveries{Server: s}
 	ipBlocks := admin.IPBlocks{Server: s}
 	adminSessions := admin.AdminSessions{Server: s}
+	me := admin.Me{Server: s}
+	adminAlerts := admin.Alerts{Server: s}
+	alertSilence := admin.AlertSilence{Server: s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.RequireAdminKey(http.HandlerFunc(httpapi.NotFound)))
@@ -177,6 +180,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.requireAdminRoles = true
 	signedIn.server = s
 	signedIn.HandleFunc("GET", "/me", sessions.Me)
+	// Which alerts you're emailed: your own inbox, so every admin may, with
+	// no code.
+	signedIn.Role("PATCH", "/me", auth.AdminViewer, me.Update)
 	// Signing out, and signing out your other admin sessions, only take
 	// your own access away: every admin may, whatever their role.
 	signedIn.OwnSessions("POST", "/logout", sessions.Logout)
@@ -207,6 +213,9 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
 	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
 	signedIn.HandleFunc("GET", "/ip-blocks", ipBlocks.Index)
+	// The alerts, each read recorded.
+	signedIn.HandleFunc("GET", "/alerts", adminAlerts.Index)
+	signedIn.HandleFunc("GET", "/alerts/{alert}", adminAlerts.Show)
 	// A fresh code opens the session's 5-minute step-up window. Only the
 	// actions need it, and they need an operator, so it does too; the code
 	// counts against mfa:per-account, as at the door.
@@ -231,11 +240,13 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.Action("DELETE", "/ip-blocks/{block}", ipBlocks.Destroy)
 	// Signing another admin out: the one action on another admin.
 	signedIn.Action("DELETE", "/admins/{user}/sessions", adminSessions.Destroy)
-	// Housekeeping (Housekeeping: the operator role and
-	// admin-action:per-user, no code) arrives with the plans whose pages
-	// it acts on: acknowledging and silencing an alert with alerts (A5),
-	// resolving an error group with monitoring (A4). Silencing hides
-	// alerts, so it will be an Action.
+	// Silencing an alert's signal for up to 24 hours: it hides what may be
+	// a security alert, so it's an Action, with a code and a reason.
+	signedIn.Action("POST", "/alerts/{alert}/silence", alertSilence.Store)
+	// Housekeeping (the operator role and admin-action:per-user, no code):
+	// acknowledging an alert, resolving an error group.
+	signedIn.Housekeeping("PATCH", "/alerts/{alert}", adminAlerts.Update)
+	signedIn.Housekeeping("PATCH", "/errors/{error}", appErrors.Update)
 }
 
 // unknownRoutesAsJSON answers a request no API route matches with the JSON
@@ -438,10 +449,14 @@ func (g routeGroup) Action(method, path string, h http.HandlerFunc) {
 
 // housekeepingRoutes are the only admin mutations registered with
 // Housekeeping: an operator's routine actions that touch no account,
-// address or delivery (acknowledging an alert, resolving an error group),
-// so they need no fresh code. None exists yet: alerts (A5) and monitoring
-// (A4) add theirs here, each with its reason.
-var housekeepingRoutes = map[string]bool{}
+// address or delivery, so they need no fresh code. Each with its reason.
+var housekeepingRoutes = map[string]bool{
+	// Acknowledging an alert: it only stops the alert's reminder emails;
+	// the alert stays open, and its webhook posts go on.
+	"PATCH /alerts/{alert}": true,
+	// Resolving an error group: its next occurrence opens it again.
+	"PATCH /errors/{error}": true,
+}
 
 // Housekeeping registers one of housekeepingRoutes: the operator role
 // (httpapi.RequireAdminRole), then admin-action:per-user (LimitAdmin), with

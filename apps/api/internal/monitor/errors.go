@@ -41,6 +41,15 @@ var ErrorsSignals = []Signal{
 		},
 	},
 	{
+		// A browser's group isn't counted: anyone signed in can report one.
+		Name: "errors.new_frequent", Page: PageErrors, Label: "New errors happening often", Unit: UnitCount,
+		Window: 24 * time.Hour, Warn: 1,
+		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
+			g, err := env.Store.CountErrorGroups(ctx, sp.From)
+			return count(g.NewFrequent, err)
+		},
+	},
+	{
 		Name: "errors.open", Page: PageErrors, Label: "Open error groups", Unit: UnitCount,
 		Window: 24 * time.Hour,
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {

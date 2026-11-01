@@ -7,8 +7,8 @@ import "strings"
 // audit_events prune target); every other event 90 days (events).
 
 // AuditAreas are the areas whose events are audit events: accounts and
-// sign-in (auth), the admin dashboard and its CLI (admin), alerts (alert,
-// to come), servers starting and stopping (server) and retention itself
+// sign-in (auth), the admin dashboard and its CLI (admin), alerts (alert),
+// servers starting and stopping (server) and retention itself
 // (prune). Each audit event is also written as a log line (msg "audit"),
 // for the operator to ship off the server.
 var AuditAreas = []string{"auth", "admin", "alert", "server", "prune"}

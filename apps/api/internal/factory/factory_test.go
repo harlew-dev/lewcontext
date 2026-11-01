@@ -155,6 +155,13 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := AppErrors.Create(ctx, db, f, 2); err != nil {
 		t.Fatal(err)
 	}
+	alert, err := Alerts.State(AlertAcknowledgedBy(user.ID)).CreateOne(ctx, db, f)
+	if err != nil || alert.PublicID == "" {
+		t.Fatalf("alert: %+v (%v)", alert, err)
+	}
+	if _, err := Alerts.State(AlertOn("http.latency_p95", "critical")).State(AlertResolvedAt(time.Now())).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
 	server, err := ServerInstances.CreateOne(ctx, db, f)
 	if err != nil {
 		t.Fatal(err)

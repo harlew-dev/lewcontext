@@ -90,20 +90,35 @@ var examples = map[Template]any{
 	WorkspaceInvitation: WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc", Home: "http://localhost:3000/"},
 	VerifyEmail:         VerifyEmailData{Code: "482 913"},
 	AccountExists:       AccountExistsData{Name: "Ada", LoginURL: "http://localhost:3000/auth/login?notice=account-exists", ResetURL: "http://localhost:3000/auth/forgot-password"},
+	Alert:               AlertData{Kind: "opened", Level: "Critical", Title: "Failed sign-ins", Value: "1,204", Opened: "1 Nov 2026, 14:30 UTC", Meaning: "Something happened."},
+	AlertDigest:         AlertDigestData{Count: "2", Alerts: []AlertDigestItem{{Level: "Warning", Title: "Failed sign-ins", Value: "12", Opened: "1 Nov 2026, 14:30 UTC"}, {Level: "Critical", Title: "Failed deliveries", Value: "10", Opened: "1 Nov 2026, 14:31 UTC"}}},
+}
+
+// subjectFor is the subject a template's example is sent with.
+func subjectFor(t Template) string {
+	if s, ok := examples[t].(interface{ Subject() string }); ok && titled[t] {
+		return s.Subject()
+	}
+	return subjects[t]
 }
 
 // shows is what each example's content must show: "Ada" (the example's
 // name) unless the email has no name.
 func shows(t Template) string {
-	if t == VerifyEmail {
+	switch t {
+	case VerifyEmail:
 		return "482 913"
+	case Alert:
+		return "1,204"
+	case AlertDigest:
+		return "Failed deliveries"
 	}
 	return "Ada"
 }
 
 // withoutLinks are the emails that carry no link: a code is typed, never
 // clicked.
-var withoutLinks = map[Template]bool{VerifyEmail: true}
+var withoutLinks = map[Template]bool{VerifyEmail: true, Alert: true, AlertDigest: true}
 
 // Every email is a whole document from the shared layout, titled with its own
 // subject.
@@ -114,7 +129,7 @@ func TestLayoutWrapsEveryTemplate(t *testing.T) {
 			t.Fatal(err)
 		}
 		html := box.sent[len(box.sent)-1].HTML
-		if !strings.HasPrefix(html, "<!doctype html>") || !strings.Contains(html, "<title>"+subjects[name]+"</title>") || !strings.Contains(html, "max-width: 480px") {
+		if !strings.HasPrefix(html, "<!doctype html>") || !strings.Contains(html, "<title>"+subjectFor(name)+"</title>") || !strings.Contains(html, "max-width: 480px") {
 			t.Errorf("%s isn't wrapped in the layout:\n%s", name, html)
 		}
 	}

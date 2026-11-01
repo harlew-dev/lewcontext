@@ -25,6 +25,7 @@ import (
 	"html/template"
 	"lewcontext/api/internal/auth"
 	"net/mail"
+	"regexp"
 	"strings"
 )
 
@@ -42,6 +43,8 @@ const (
 	WorkspaceInvitation Template = "workspace-invitation"
 	VerifyEmail         Template = "verify-email"
 	AccountExists       Template = "account-exists"
+	Alert               Template = "alert"
+	AlertDigest         Template = "alert-digest"
 )
 
 // Subjects are fixed text kept here rather than in the HTML file: a subject is
@@ -51,6 +54,49 @@ var subjects = map[Template]string{
 	WorkspaceInvitation: "You’ve been invited to join a workspace",
 	VerifyEmail:         "Confirm your email address",
 	AccountExists:       "You already have an account",
+	// Alert's subject is its data's (titled).
+	Alert:       "",
+	AlertDigest: "Several alerts opened",
+}
+
+// titled are the templates whose subject their data gives (Subject), from
+// fixed strings in Go: a level's word and a signal's title, never data
+// anyone typed. Send still checks it against subjectShape.
+var titled = map[Template]bool{
+	Alert: true,
+}
+
+// subjected is the data of a titled template.
+type subjected interface {
+	Subject() string
+}
+
+// subjectShape is what a titled subject may hold: words, digits and a
+// little punctuation, no line break, at most 120 characters.
+var subjectShape = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ,.:()%+/'’-]{0,119}$`)
+
+// CheckSubject says whether data makes a valid subject for t, for tests of
+// the data's own words.
+func CheckSubject(t Template, data any) error {
+	_, err := subjectOf(t, data)
+	return err
+}
+
+// subjectOf is t's subject for data: the fixed one, or for a titled
+// template the data's, checked.
+func subjectOf(t Template, data any) (string, error) {
+	subject, ok := subjects[t]
+	if !ok {
+		return "", fmt.Errorf("mail: unknown template %q", t)
+	}
+	if !titled[t] {
+		return subject, nil
+	}
+	s, ok := data.(subjected)
+	if !ok || !subjectShape.MatchString(s.Subject()) {
+		return "", fmt.Errorf("mail: %s needs a subject of fixed words", t)
+	}
+	return s.Subject(), nil
 }
 
 // blockable are the templates whose emails carry a block link: a footer
@@ -101,6 +147,52 @@ type AccountExistsData struct {
 	Name     string // the account's own name, never the one just typed
 	LoginURL string // the login page with its account-exists notice
 	ResetURL string // the page that asks for a reset link
+}
+
+// AlertData fills templates/alert.html: an alert opened, raised to
+// critical, still open, or resolved (docs/api/monitoring.md#alerts). Every
+// field is fixed text or a number from Go: the signal's title and meaning,
+// the level's word, the value in its unit, times in UTC. Never an address,
+// a name, a sample ID or a link: the details stay in the dashboard, behind
+// its key, which no email carries.
+type AlertData struct {
+	// Kind is "opened", "escalated", "reminded" or "resolved".
+	Kind    string
+	Level   string // "Critical" or "Warning"
+	Title   string // the signal's label
+	Value   string // "1,204", "5.2%", "1,450 ms"
+	Opened  string // "1 Nov 2026, 14:30 UTC"
+	OpenFor string // a resolved alert's: "2 hours 5 minutes"
+	Meaning string // what it usually means
+}
+
+// Subject is the alert email's subject: what happened, and the signal.
+func (d AlertData) Subject() string {
+	switch d.Kind {
+	case "resolved":
+		return "Resolved: " + d.Title
+	case "reminded":
+		return "Still open: " + d.Title
+	case "escalated":
+		return "Now critical: " + d.Title
+	}
+	if d.Level == "Critical" {
+		return "Critical alert: " + d.Title
+	}
+	return "Warning: " + d.Title
+}
+
+// AlertDigestData fills templates/alert-digest.html: openings past the
+// burst limit, gathered into one email. Fixed text and numbers only, as
+// AlertData.
+type AlertDigestData struct {
+	Count  string // how many, "7"
+	Alerts []AlertDigestItem
+}
+
+// AlertDigestItem is one alert in a digest.
+type AlertDigestItem struct {
+	Level, Title, Value, Opened string
 }
 
 // Message is a rendered email, ready for a driver.
@@ -188,9 +280,9 @@ func (m *Mailer) Send(ctx context.Context, to string, t Template, data any) erro
 	if !validRecipient(to) {
 		return errors.New("mail: invalid recipient address")
 	}
-	subject, ok := subjects[t]
-	if !ok {
-		return fmt.Errorf("mail: unknown template %q", t)
+	subject, err := subjectOf(t, data)
+	if err != nil {
+		return err
 	}
 	address := strings.ToLower(to)
 	blocked, err := m.blocks.CheckEmailBlocked(ctx, address)

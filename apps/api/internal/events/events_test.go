@@ -11,7 +11,7 @@ import (
 
 // eventName is <resource>.<fact> in a known area: two or three snake_case
 // segments, like the events.name CHECK (migration 007).
-var eventName = regexp.MustCompile(`^(auth|workspace|project|rate_limit|admin|email|server|prune)(\.[a-z][a-z_]*){1,2}$`)
+var eventName = regexp.MustCompile(`^(auth|workspace|project|rate_limit|admin|email|server|prune|alert)(\.[a-z][a-z_]*){1,2}$`)
 
 func TestEventNamePattern(t *testing.T) {
 	for _, name := range []string{"workspace.member.removed", "auth.logged_in", "auth.password_reset.requested", "project.updated", "rate_limit.reached", "admin.user.viewed", "email.blocked"} {

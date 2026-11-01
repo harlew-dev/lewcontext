@@ -50,6 +50,8 @@ type Config struct {
 	// Metrics is what the server counts, where it keeps it and who may
 	// read it (metrics.go).
 	Metrics
+	// Alerts is where alerts go besides admins' email (alerts.go).
+	Alerts
 	// ShutdownDelay (SHUTDOWN_DELAY) is how long the server keeps answering,
 	// with readiness already 503, before it stops taking connections: time
 	// for a load balancer polling GET /api/health to take it out.
@@ -94,6 +96,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if err := c.loadMetrics(); err != nil {
+		return c, err
+	}
+	if err := c.loadAlerts(); err != nil {
 		return c, err
 	}
 	if c.DatabaseURL == "" {

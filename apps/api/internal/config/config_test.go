@@ -36,17 +36,22 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"RATE_LIMITS":                 "",
 		// Set to "" rather than left out, so the developer's own value
 		// doesn't leak into a test.
-		"CLIENT_IP_HEADER": "",
-		"TRUSTED_PROXIES":  "",
-		"LOG_FORMAT":       "",
-		"LOG_LEVEL":        "",
-		"ACCESS_LOG":       "",
-		"SHUTDOWN_DELAY":   "",
-		"METRICS_STORE":    "",
-		"METRICS_ADDR":     "",
-		"METRICS_TOKEN":    "",
-		"SLOW_QUERY_MS":    "",
-		"API_ADDR":         "",
+		"CLIENT_IP_HEADER":            "",
+		"TRUSTED_PROXIES":             "",
+		"ALERT_WEBHOOK_URL":           "",
+		"ALERT_WEBHOOK_FORMAT":        "",
+		"ALERT_WEBHOOK_SECRET":        "",
+		"ALERT_HEARTBEAT_URL":         "",
+		"ALERT_ALLOW_PRIVATE_TARGETS": "",
+		"LOG_FORMAT":                  "",
+		"LOG_LEVEL":                   "",
+		"ACCESS_LOG":                  "",
+		"SHUTDOWN_DELAY":              "",
+		"METRICS_STORE":               "",
+		"METRICS_ADDR":                "",
+		"METRICS_TOKEN":               "",
+		"SLOW_QUERY_MS":               "",
+		"API_ADDR":                    "",
 	}
 	for k, v := range vars {
 		base[k] = v
