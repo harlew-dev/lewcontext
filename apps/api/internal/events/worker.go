@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"lewcontext/api/internal/observe"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -126,7 +128,7 @@ func (w *Worker) deliver(d Delivery) error {
 		w.Log.Error("event listener not registered", "listener", d.Listener, "event", d.Event, "id", d.PublicID)
 		return w.Queue.Fail(ctx, d, fmt.Errorf("no listener %q for %s", d.Listener, d.Event))
 	}
-	cause := run(ctx, handle, d)
+	cause := w.run(ctx, handle, d)
 	if cause == nil {
 		return w.Queue.Delivered(ctx, d)
 	}
@@ -139,11 +141,18 @@ func (w *Worker) deliver(d Delivery) error {
 	return w.Queue.Retry(ctx, d, time.Now().Add(w.Backoff[d.Attempts-1]), cause)
 }
 
-// run calls a listener, turning a panic into an error.
-func run(ctx context.Context, handle handler, d Delivery) (err error) {
+// run calls a listener, turning a panic into an error, which fails the
+// delivery like any other (it's retried). The panic is logged at error with
+// its stack, as a request's is, and handed to observe.Report; its value only
+// as observe.PanicValue allows, in the log and in the delivery's stored
+// error alike.
+func (w *Worker) run(ctx context.Context, handle handler, d Delivery) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
-			err = fmt.Errorf("listener panicked: %v", p)
+			err = fmt.Errorf("listener panicked: %s", observe.PanicValue(p))
+			stack := debug.Stack()
+			w.Log.ErrorContext(ctx, "event listener panicked", "listener", d.Listener, "event", d.Event, "id", d.PublicID, "panic", err, "stack", string(stack))
+			observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: err, Stack: stack})
 		}
 	}()
 	return handle(ctx, d.Payload, Delivered{EventID: d.PublicID, OccurredAt: d.CreatedAt, Attempt: d.Attempts})

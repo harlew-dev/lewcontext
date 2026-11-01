@@ -210,18 +210,18 @@ func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	out := adminEventIndex{AdminEventPage: page, Window: q.window.echo(now)}
 	if out.Refs, err = h.Repo.FindAdminEventRefs(r.Context(), q.filter.Account, q.filter.Workspace); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	if q.summary {
 		summary, err := h.summarize(r.Context(), q, now)
 		if err != nil {
-			httpapi.InternalError(w, err)
+			httpapi.InternalError(w, r, err)
 			return
 		}
 		out.Summary = &summary
@@ -229,7 +229,7 @@ func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 	// One read recorded for the list and its charts together.
 	e := events.AdminEventListed{Admin: httpapi.Admin(r).User.PublicID, Filters: q.used}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, out)
@@ -279,12 +279,12 @@ func (h Events) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminEventViewed{Admin: httpapi.Admin(r).User.PublicID, Event: event.PublicID}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, event)

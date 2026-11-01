@@ -7,6 +7,7 @@ package httpapi
 // sign-up and email verification are digested here too (EmailCodeDigest).
 
 import (
+	"context"
 	"errors"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
@@ -34,12 +35,12 @@ type MFACode struct {
 func (s *Server) BeginMFASetup(w http.ResponseWriter, r *http.Request, user store.User) {
 	secret, err := auth.GenerateTOTPSecret()
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	sealed, err := s.keys.Seal(secret, user.ID)
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	err = s.Repo.SetupMFA(r.Context(), user.ID, sealed)
@@ -48,7 +49,7 @@ func (s *Server) BeginMFASetup(w http.ResponseWriter, r *http.Request, user stor
 		return
 	}
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	JSON(w, 200, map[string]string{
@@ -63,10 +64,10 @@ func (s *Server) BeginMFASetup(w http.ResponseWriter, r *http.Request, user stor
 func (s *Server) ConfirmMFASetup(w http.ResponseWriter, r *http.Request, user store.User, sessionHash, code string) ([]string, bool) {
 	codes, digests, err := s.NewRecoveryCodes()
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return nil, false
 	}
-	factor := s.totpFactor(user, code)
+	factor := s.totpFactor(r.Context(), user, code)
 	err = s.Repo.EnableMFA(r.Context(), user, sessionHash, factor, digests)
 	switch {
 	case errors.Is(err, store.ErrMFAEnabled):
@@ -76,11 +77,11 @@ func (s *Server) ConfirmMFASetup(w http.ResponseWriter, r *http.Request, user st
 		Fail(w, 409, "Setup expired. Start again.")
 		return nil, false
 	case err != nil && !errors.Is(err, store.ErrWrongCode):
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return nil, false
 	}
 	if err := s.RecordMFACheck(r, user, factor, events.MFAStepEnable, err == nil, store.FactorUsed{}); err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return nil, false
 	}
 	if err != nil {
@@ -94,27 +95,27 @@ func (s *Server) ConfirmMFASetup(w http.ResponseWriter, r *http.Request, user st
 // "123 456") are an authenticator code; anything shaped like a recovery code
 // is one. Anything else is an authenticator code that can't match, so it
 // counts as a wrong try like any other.
-func (s *Server) SecondFactor(user store.User, code string) store.SecondFactor {
+func (s *Server) SecondFactor(ctx context.Context, user store.User, code string) store.SecondFactor {
 	if len(code) > 64 {
-		return s.totpFactor(user, "")
+		return s.totpFactor(ctx, user, "")
 	}
 	if digits := strings.ReplaceAll(strings.TrimSpace(code), " ", ""); auth.ValidTOTPCode(digits) {
-		return s.totpFactor(user, digits)
+		return s.totpFactor(ctx, user, digits)
 	}
 	if normal, ok := auth.NormalizeRecoveryCode(code); ok {
 		return store.SecondFactor{RecoveryDigest: s.keys.RecoveryCodeDigest(normal)}
 	}
-	return s.totpFactor(user, "")
+	return s.totpFactor(ctx, user, "")
 }
 
 // totpFactor checks code against user's sealed authenticator secret.
-func (s *Server) totpFactor(user store.User, code string) store.SecondFactor {
+func (s *Server) totpFactor(ctx context.Context, user store.User, code string) store.SecondFactor {
 	code = strings.ReplaceAll(strings.TrimSpace(code), " ", "")
 	return store.SecondFactor{TOTP: func(sealed []byte, last int64) (int64, bool) {
 		secret, err := s.keys.Open(sealed, user.ID)
 		if err != nil {
 			// Only a changed APP_KEY (or a damaged row) gets here.
-			slog.Error("can't open a TOTP secret: was APP_KEY changed?", "user", user.PublicID)
+			slog.ErrorContext(ctx, "can't open a TOTP secret: was APP_KEY changed?", "user", user.PublicID)
 			return 0, false
 		}
 		return auth.CheckTOTP(secret, code, time.Now(), last)
@@ -146,12 +147,12 @@ func (s *Server) RecordMFACheck(r *http.Request, user store.User, f store.Second
 func (s *Server) StartMFAChallenge(w http.ResponseWriter, r *http.Request, user store.User, purpose string) {
 	token, err := auth.Token()
 	if err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	expires := time.Now().Add(auth.MFAChallengeLifetime)
 	if err := s.Repo.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, expires); err != nil {
-		InternalError(w, err)
+		InternalError(w, r, err)
 		return
 	}
 	http.SetCookie(w, auth.MFACookie(token, s.Config.Production))

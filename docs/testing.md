@@ -83,7 +83,7 @@ To run the binary yourself, export the configuration (`DATABASE_URL`, `APP_ORIGI
 
 ## Failure checks
 
-Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops them all together). A signed-in page reload should show the "A brief pause." retry screen. During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
+Run `make api` and `make web` in separate terminals, then stop only the API (`make dev` stops them all together). A signed-in page reload should show the "A brief pause." retry screen. When the API answers but fails (a 500), the error notice and that screen add "Reference: req_…": the API's terminal shows the same ID on the failure's log line and the request's access line (`[api]` prints one line per request; [api/observability.md](api/observability.md)). During a client refresh, the UI keeps the loaded data and shows an error with Retry. Restart the API to recover. Expired sessions redirect to sign-in. Slow navigation shows a top progress bar, lists show skeletons, and mutations show spinners with submission disabled.
 
 ## Volume check for the Events page
 

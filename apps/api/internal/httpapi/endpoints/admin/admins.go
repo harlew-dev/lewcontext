@@ -22,12 +22,12 @@ func (h Admins) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	admins, err := h.Repo.IndexAdminAdmins(r.Context(), h.AdminSessionDigest(r), h.AdminKeys())
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminAdminListed{Admin: httpapi.Admin(r).User.PublicID}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, map[string]any{"data": admins})

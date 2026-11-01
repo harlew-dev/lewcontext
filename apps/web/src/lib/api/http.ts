@@ -11,6 +11,22 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+  // The request's ID from a 500's body (requestId), shown as the reference
+  // a user can quote; only in the shape the API sends.
+  get requestId(): string | undefined {
+    return requestIdIn(this.details.requestId);
+  }
+}
+const requestIdShape = /^[A-Za-z0-9._-]{1,64}$/;
+function requestIdIn(value: unknown): string | undefined {
+  return typeof value === "string" && requestIdShape.test(value)
+    ? value
+    : undefined;
+}
+// The reference to show for a failure: the request's ID when the API sent
+// one (a 500), so support can find its log line.
+export function requestIdOf(error: unknown): string | undefined {
+  return error instanceof ApiError ? error.requestId : undefined;
 }
 export function errorMessage(error: unknown): string {
   return error instanceof Error

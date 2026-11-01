@@ -7,6 +7,6 @@ import type { Route } from "./+types/index";
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return workspaceHomeLoader(request);
 }
-export default function WorkspaceHome() {
-  return <ServiceUnavailable />;
+export default function WorkspaceHome({ loaderData }: Route.ComponentProps) {
+  return <ServiceUnavailable requestId={loaderData.requestId} />;
 }

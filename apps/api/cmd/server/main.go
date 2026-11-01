@@ -11,6 +11,7 @@ import (
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/mail"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"lewcontext/api/internal/web"
 	"log/slog"
@@ -22,6 +23,14 @@ import (
 )
 
 func main() {
+	// The log's format and level come first, so even a refused config is
+	// logged as the operator asked (docs/api/observability.md).
+	logging, err := config.LoadLogging()
+	if err != nil {
+		slog.Error("server stopped", "error", err)
+		os.Exit(1)
+	}
+	slog.SetDefault(observe.NewLogger(os.Stdout, logging.LogFormat, logging.LogLevel))
 	if err := run(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
@@ -61,7 +70,10 @@ func run() error {
 	if err := servePages(api, c); err != nil {
 		return err
 	}
-	server := &http.Server{Addr: c.Address, Handler: router.New(api), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	server := &http.Server{Addr: c.Address, Handler: router.New(api), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10,
+		// net/http's own complaints (a broken connection, a bad request
+		// line) go through the same handler, as warnings.
+		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)}
 	failures := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "address", c.Address, "pages", api.Pages != nil)
@@ -86,6 +98,14 @@ func run() error {
 				slog.Error("session cleanup failed", "error", err)
 			}
 		case <-ctx.Done():
+			// Readiness answers 503 from here on, while the server keeps
+			// answering for SHUTDOWN_DELAY, so a load balancer polling it
+			// takes it out before it stops taking connections.
+			api.Drain()
+			if c.ShutdownDelay > 0 {
+				slog.Info("shutting down: readiness answers 503; waiting before the drain", "delay", c.ShutdownDelay.String())
+				time.Sleep(c.ShutdownDelay)
+			}
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err := server.Shutdown(shutdown)

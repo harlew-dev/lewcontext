@@ -11,6 +11,7 @@ import (
 	"lewcontext/api/internal/httpapi/ratelimit"
 	"lewcontext/api/internal/store"
 	"net/http"
+	"sync/atomic"
 )
 
 type Server struct {
@@ -33,6 +34,9 @@ type Server struct {
 	adminRefusals *adminRefusals
 	// Summaries bound the admin dashboard's aggregates (summaries.go).
 	Summaries *Summaries
+	// draining is set once shutdown has begun (Drain): readiness then
+	// answers 503.
+	draining atomic.Bool
 }
 
 // WebPages serves the built web app (web.Pages): its pages and files, and

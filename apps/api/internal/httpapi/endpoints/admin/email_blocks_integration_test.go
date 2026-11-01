@@ -612,7 +612,7 @@ func TestAdminStepUpRacingSignOut(t *testing.T) {
 	adminCall(t, h, "POST", "/api/admin/logout", "", session.CSRFToken, 204, session.Cookie())
 	user := store.User{ID: operator.User.ID, PublicID: operator.User.PublicID}
 	for _, code := range []string{operator.CodeAt(0), "000000", operator.Codes[0].Code} {
-		_, err := s.Repo.StepUpAdminSession(ctx, session.TokenHash, user, s.SecondFactor(user, code))
+		_, err := s.Repo.StepUpAdminSession(ctx, session.TokenHash, user, s.SecondFactor(context.Background(), user, code))
 		if !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("a step-up on a signed-out session: %v", err)
 		}

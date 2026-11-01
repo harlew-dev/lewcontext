@@ -1,11 +1,14 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"lewcontext/api/internal/observe"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -169,5 +172,59 @@ func TestRunStopsWhenItsContextEnds(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run kept going after its context ended")
+	}
+}
+
+// A listener's panic is logged at error with its stack, as a request's is,
+// and handed to observe.Report; the delivery is retried.
+func TestListenerPanicsAreLogged(t *testing.T) {
+	bus := NewBus()
+	Listen(bus, "test.panics", func(context.Context, ProjectCreated, Delivered) error { panic("boom") })
+	q := queueOf(delivery("test.panics", 1))
+	var out bytes.Buffer
+	w := worker(bus, q)
+	w.Log = slog.New(slog.NewJSONHandler(&out, nil))
+	var reported []observe.Problem
+	observe.SetReporter(problems(func(p observe.Problem) { reported = append(reported, p) }))
+	defer observe.SetReporter(nil)
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var first map[string]any
+	if err := json.Unmarshal([]byte(strings.SplitN(out.String(), "\n", 2)[0]), &first); err != nil {
+		t.Fatalf("log: %v %q", err, out.String())
+	}
+	if first["level"] != "ERROR" || first["msg"] != "event listener panicked" || first["listener"] != "test.panics" ||
+		!strings.Contains(first["panic"].(string), "boom") || !strings.Contains(first["stack"].(string), "TestListenerPanicsAreLogged") {
+		t.Fatalf("panic line: %v", first)
+	}
+	if len(reported) != 1 || reported[0].Source != observe.SourceWorker || reported[0].Route != "test.panics" || len(reported[0].Stack) == 0 {
+		t.Fatalf("reported: %+v", reported)
+	}
+	if _, ok := q.retried["test.panics"]; !ok {
+		t.Fatal("not retried")
+	}
+}
+
+type problems func(observe.Problem)
+
+func (f problems) Report(_ context.Context, p observe.Problem) { f(p) }
+
+// A listener's panic value is stored and logged only as observe.PanicValue
+// allows: a URL (which may hold a token) is redacted.
+func TestListenerPanicValuesAreRedacted(t *testing.T) {
+	bus := NewBus()
+	link, _ := url.Parse("https://app.example.com/auth/forgot-password/s3cr3t-token")
+	Listen(bus, "test.panics", func(context.Context, ProjectCreated, Delivered) error { panic(link) })
+	q := queueOf(delivery("test.panics", len(Backoff)+1))
+	var out bytes.Buffer
+	w := worker(bus, q)
+	w.Log = slog.New(slog.NewJSONHandler(&out, nil))
+	if _, err := w.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cause := q.failed["test.panics"]
+	if cause == nil || !strings.Contains(cause.Error(), observe.Redacted) || strings.Contains(cause.Error(), "s3cr3t") || strings.Contains(out.String(), "s3cr3t") {
+		t.Fatalf("stored %v, logged %s", cause, out.String())
 	}
 }

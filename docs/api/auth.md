@@ -22,7 +22,7 @@ Code: `internal/httpapi/endpoints/account/password_resets.go`, `internal/store/p
 4. **Reset** (`PATCH /api/auth/password-reset {token, newPassword}`): sign-up's password rule; a cheap validity check before hashing, then one transaction locks the user, then the link (the same order as a password change), checks the link again, saves the hash, deletes the link and **every** session, and records `auth.password_reset.completed`. Nobody is signed in afterwards: the page sends the user to login with the email filled in.
 
 - A link works once, for 30 minutes. A newer request, a reset or a signed-in password change ends it.
-- The link is built from `APP_ORIGIN`, never the request's `Host`. Tokens travel to the API only in JSON bodies. The page URL holds the token, so the 30-minute lifetime and single use limit what browser history can leak; pages send `strict-origin-when-cross-origin` referrers and load nothing from other sites, and Go keeps no access log.
+- The link is built from `APP_ORIGIN`, never the request's `Host`. Tokens travel to the API only in JSON bodies. The page URL holds the token, so the 30-minute lifetime and single use limit what browser history can leak; pages send `strict-origin-when-cross-origin` referrers and load nothing from other sites, and Go's access log names the page's label (`page /auth/*`), never its path ([observability.md](observability.md#the-access-line)).
 - **Delivery:** over SMTP (`MAIL_DRIVER=smtp`; Mailpit locally), or the development mailbox (`log`, refused in production since it holds working links) ([mail.md](mail.md)). With `MAIL_DRIVER=off` the request endpoint answers 503.
 
 ## Email verification
@@ -128,7 +128,7 @@ Sign-ups (requested, sent, each code checked, completed), email verifications, l
 
 ## Transport and headers
 
-- **API:** `Cache-Control: no-store`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
+- **API:** `Cache-Control: no-store`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Every response, pages too, has `X-Request-ID`; a 500 says only "Something went wrong" and the request's ID, a handler's panic included ([observability.md](observability.md)).
 - **Limits:** request bodies 16 KiB, headers 16 KiB, 10 s per request context, and server read/write timeouts.
 - **Web** (`internal/web`): a CSP per HTML file whose `script-src` allows only this origin plus the SHA-256 hashes of that file's own inline scripts (computed at startup; never `'unsafe-inline'` scripts), inline CSS allowed because Styletron needs it, self-hosted fonts, `frame-ancestors 'none'`, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, and HSTS when `APP_ENV=production`. The app shell is `no-store`; hashed assets are cached for a year, the admin build's (`/admin-assets/`) only by browsers (`private`), for the pass's 8 hours, and only with the assets pass an admin page sets ([admin.md](admin.md#the-assets-pass)).
 - **Signed-in pages:** `GET /app` and `/app/*` without a valid session (missing, unknown, idle or expired) get a `302` to `/auth/login?next=<path>` before any HTML is sent.
@@ -195,6 +195,6 @@ Register workspace routes in `workspaceRoutes` in `router/routes.go` (the `ws` g
 
 ## Not implemented
 
-Passkeys (WebAuthn), OIDC, and changing an account's email. Two-factor authentication is authenticator-app codes and recovery codes only; email verification is a code at sign-up and, for older accounts, from Account settings. Don't describe the others as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need observability, backups, abuse monitoring and load testing.
+Passkeys (WebAuthn), OIDC, and changing an account's email. Two-factor authentication is authenticator-app codes and recovery codes only; email verification is a code at sign-up and, for older accounts, from Account settings. Don't describe the others as existing. Email delivery exists over SMTP, but bounces and complaints aren't handled ([mail.md](mail.md)). Before public use you'd also need the rest of observability (grouped errors and metrics; logs, request IDs and health checks exist: [observability.md](observability.md)), backups, abuse monitoring and load testing.
 
 References: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

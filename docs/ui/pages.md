@@ -65,7 +65,7 @@ Loaders run in the browser before a route renders. They only decide what a page 
 
 | Loader | Route | Does |
 | --- | --- | --- |
-| `signedInLoader` | the app layout | Loads the session and page 1 of the member's workspaces, once (`shouldRevalidate` is false). 401 → `/auth/login?next=<this page>`; no workspace → `/app/onboarding`; API unreachable → `ServiceUnavailable` |
+| `signedInLoader` | the app layout | Loads the session and page 1 of the member's workspaces, once (`shouldRevalidate` is false). 401 → `/auth/login?next=<this page>`; no workspace → `/app/onboarding`; API unreachable or failing → `ServiceUnavailable` (with a 500's reference: `unavailable(error)`) |
 | `workspaceHomeLoader` | `/app` | Redirects to the newest workspace's dashboard or onboarding |
 | `onboardingLoader` | `/app/onboarding` | Needs a session; accounts with a workspace go on to `/app` |
 | `guestLoader` | login, register | Signed-in visitors go on to `?next=` or `/app`; if the API is down the form still renders |
@@ -127,4 +127,4 @@ BaseUI styles itself with Styletron. `src/entry.server.tsx` runs only at build t
 
 ## Status pages
 
-`StatusPage` in `components/layout/status-page.tsx` renders `NotFound` ("This page has wandered off.", linking to `/app`) and `ServiceUnavailable` (retry). The root `ErrorBoundary` shows `NotFound` for a 404 route error and `ServiceUnavailable` otherwise. `RouteProgress` shows a top bar when a navigation waits more than 200 ms on a loader (`useDelayedLoading`, so it also stays at least 400 ms).
+`StatusPage` in `components/layout/status-page.tsx` renders `NotFound` ("This page has wandered off.", linking to `/app`) and `ServiceUnavailable` (retry; with `requestId`, a 500's "Reference: req_…" under its description). The root `ErrorBoundary` shows `NotFound` for a 404 route error and `ServiceUnavailable` otherwise, with the error's reference when it has one. `RouteProgress` shows a top bar when a navigation waits more than 200 ms on a loader (`useDelayedLoading`, so it also stays at least 400 ms).

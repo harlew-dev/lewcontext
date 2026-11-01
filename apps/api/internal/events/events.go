@@ -70,6 +70,7 @@ const maxUserAgent = 256
 type meta struct {
 	actorID   int64
 	ip        string
+	requestID string
 	userAgent string
 }
 type metaKey struct{}
@@ -86,11 +87,12 @@ func WithActor(ctx context.Context, actorID int64) context.Context {
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
-// WithIP records the request's client address (httpapi's clientIP), stored
-// in the events.ip column rather than in payloads.
-func WithIP(ctx context.Context, ip string) context.Context {
+// WithRequest records the request's client address and its ID
+// (observe.Request), together, for the events.ip and events.request_id
+// columns: httpapi.ClientAddress sets both once per request.
+func WithRequest(ctx context.Context, ip, requestID string) context.Context {
 	m := current(ctx)
-	m.ip = ip
+	m.ip, m.requestID = ip, requestID
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
@@ -112,6 +114,10 @@ func Actor(ctx context.Context) int64 { return current(ctx).actorID }
 // IP is the request's client address, or "" outside a request (the CLI and
 // listeners).
 func IP(ctx context.Context) string { return current(ctx).ip }
+
+// RequestID is the ID of the request the event was recorded in (req_…, or
+// a trusted proxy's), or "" outside a request.
+func RequestID(ctx context.Context) string { return current(ctx).requestID }
 
 // UserAgent is the request's User-Agent, or "" outside a request.
 func UserAgent(ctx context.Context) string { return current(ctx).userAgent }

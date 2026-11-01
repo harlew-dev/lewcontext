@@ -72,12 +72,12 @@ func (h Mail) Show(w http.ResponseWriter, r *http.Request) {
 	}
 	summary, err := h.Repo.FindAdminMailSummary(r.Context(), time.Now().Add(-length), listeners(h.Server))
 	if err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	e := events.AdminMailViewed{Admin: httpapi.Admin(r).User.PublicID, Window: window}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, adminMail{Window: window, Driver: h.driver(), AdminMailSummary: summary})

@@ -95,7 +95,7 @@ async function adminProbe(
     if (error instanceof ApiError && error.status === 404)
       throw data(null, { status: 404 });
     if (unauthorized(error)) return "signed-out";
-    return unavailable;
+    return unavailable(error);
   }
 }
 // The admin sign-in page: a signed-in admin goes on to Users.

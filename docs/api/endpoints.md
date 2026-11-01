@@ -4,7 +4,8 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
-| GET | `/api/health` | Public | `{"status":"ok"}`, or 503 if the database is down |
+| GET | `/api/health` | Public | Readiness: `{"status":"ok"}`, or 503 if the database is down or the server is shutting down ([observability.md](observability.md#health)) |
+| GET | `/api/health/live` | Public | Liveness: `{"status":"ok"}` while the process answers; no database |
 | POST | `/api/auth/register` | Origin, JSON, rate limits | With `EMAIL_VERIFICATION=on` (the default): 202 `{verificationRequired: true, email}` and the registration cookie, the same for every valid email, taken or not; no account yet ([auth.md](auth.md#email-verification)). With it off: 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a new session cookie, or 409 for a taken email or a blocked one (the same answer) |
 | POST | `/api/auth/register/check` | Origin, JSON, the registration cookie, `auth:per-ip` | 200 `{email, expiresAt}` of this browser's sign-up; 401 (and the cookie cleared) when it has ended. Only with verification on |
 | POST | `/api/auth/register/resend` | Origin, JSON, the registration cookie, `auth:per-ip`, `register:per-email`, `register:global` | 202 `{verificationRequired: true, email}`: a new code (or "you already have an account") for this browser's sign-up, 15 more minutes, its tries back to 5; 401 when it has ended |
@@ -53,6 +54,8 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 Every route that needs a session also counts against the user's budget (300 writes per 15 minutes, 1,000 reads per 5 minutes), except logout, `DELETE /api/auth/sessions`, the two password routes, `DELETE /api/auth/mfa` and `POST /api/auth/mfa/recovery-codes` ([rate-limits.md](rate-limits.md)). Every response with the signed-in `user` includes `mfaEnabledAt` (when two-factor authentication was turned on, or null) and `emailVerifiedAt` (when the email was verified, or null). With `EMAIL_VERIFICATION_EXISTING=required`, every signed-in route except those marked "unverified allowed" answers an account that never verified its email 403 `{error: "Verify your email to continue.", verificationRequired: true}` ([auth.md](auth.md#email-verification)). "Origin" means the exact `APP_ORIGIN`, no cross-site fetch metadata, and `Content-Type: application/json` on POST, PATCH and any DELETE with a body. "Member" means a session plus a `workspace_user` row for that workspace; a permission such as `project.store` means a member whose role grants it ([auth.md](auth.md#workspaces-and-roles)).
 
 The admin dashboard's routes, `/api/admin/*` (sign-in, signing out your other admin sessions, Users, Workspaces and their projects, Events (filtered by name groups, outcome and window, with its charts' summary on the newest page), the catalogue (with the event groups), Mail and deliveries, Admins, Email blocks and unblocking one, the step-up), are in [admin.md](admin.md#api): every one needs the right `X-Admin-Key` from an allowed address (otherwise it answers as an unknown route), and all but the sign-in steps an admin session made under that key.
+
+**Every response** (apart from `net/http`'s own 400 and 431 for a request it can't read) carries `X-Request-ID`, the request's ID, always the server's own, which is on its log lines and on any event it recorded; a **500** answers only `{"error": "Something went wrong. Please try again.", "requestId": "req_…"}` ([observability.md](observability.md#request-ids)).
 
 **Unknown routes** answer `404 {"error": "Not found."}` (JSON, `unknownRoutesAsJSON`), the same as an admin route without its key. A known path with the wrong method stays 405.
 
@@ -156,7 +159,8 @@ Deletion is permanent and immediate: one transaction, with `ON DELETE CASCADE` r
 | 415 | Mutation without JSON content type (a DELETE needs one only when it has a body) |
 | 422 | Body failed validation. Errors about one field add `"field"`, e.g. `{"error": "Current password is incorrect.", "field": "currentPassword"}`. A quota reached ("A workspace can have up to 1,000 projects.") has no `field` |
 | 429 | Rate limited; `Retry-After` is the seconds left in the window ([rate-limits.md](rate-limits.md)) |
-| 503 | Database unavailable, sign-in concurrency full, or a limit shared by everyone reached (sign-up, password reset), with `Retry-After` |
+| 500 | Something failed on our side: the generic message and `requestId`, never what failed (that's in the log, under the ID) |
+| 503 | Database unavailable, sign-in concurrency full, or a limit shared by everyone reached (sign-up, password reset), with `Retry-After`; readiness while shutting down |
 
 ## Adding an endpoint
 

@@ -12,6 +12,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [api/admin.md](api/admin.md) | touch the admin dashboard: its secret key (and the previous one, and the address allowlist), admins and their roles, admin sign-in and sessions, what admins see (Users, Workspaces, Events, Mail, Email blocks, Admins), and its one action, Unblock, behind a fresh code (step-up) and a reason |
 | [api/rate-limits.md](api/rate-limits.md) | add an endpoint, a limit or a quota, or touch `RequireSession` |
 | [api/events.md](api/events.md) | record something that happened (the `events` audit trail), or add an event type |
+| [api/observability.md](api/observability.md) | log anything, or touch the access line, request IDs, a 500, panic recovery or the health checks (`LOG_FORMAT`, `LOG_LEVEL`, `ACCESS_LOG`) |
 | [api/mail.md](api/mail.md) | send an email, add a mail template, or read the development mailbox |
 | [api/pagination.md](api/pagination.md) | list, search or sort a resource |
 | [api/database.md](api/database.md) | write a query, add a migration or a table, or prune old rows (`make prune`) |

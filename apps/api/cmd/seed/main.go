@@ -9,6 +9,7 @@ import (
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/seed"
 	"log"
 	"os"
@@ -17,6 +18,7 @@ import (
 )
 
 func main() {
+	useLogger()
 	c, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
@@ -99,4 +101,15 @@ func usage() {
 	}
 	fmt.Fprintln(out, "\nFlags:")
 	flag.PrintDefaults()
+}
+
+// useLogger installs the server's log handler (LOG_FORMAT, LOG_LEVEL) for
+// anything logged through slog, keeping this command's own output plain
+// (observe.UseForCommand).
+func useLogger() {
+	logging, err := config.LoadLogging()
+	if err != nil {
+		log.Fatal(err)
+	}
+	observe.UseForCommand(logging.LogFormat, logging.LogLevel)
 }

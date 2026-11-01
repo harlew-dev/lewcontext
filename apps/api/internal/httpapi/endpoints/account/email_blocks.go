@@ -36,7 +36,7 @@ func (h EmailBlocks) Check(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	link, err := h.Repo.CheckEmailBlockLink(r.Context(), digest)
-	if h.failed(w, err) {
+	if h.failed(w, r, err) {
 		return
 	}
 	httpapi.JSON(w, 200, link)
@@ -48,7 +48,7 @@ func (h EmailBlocks) Store(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.failed(w, h.Repo.BlockEmail(r.Context(), digest)) {
+	if !h.failed(w, r, h.Repo.BlockEmail(r.Context(), digest)) {
 		w.WriteHeader(204)
 	}
 }
@@ -59,7 +59,7 @@ func (h EmailBlocks) Destroy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.failed(w, h.Repo.UnblockEmail(r.Context(), digest)) {
+	if !h.failed(w, r, h.Repo.UnblockEmail(r.Context(), digest)) {
 		w.WriteHeader(204)
 	}
 }
@@ -83,7 +83,7 @@ func (h EmailBlocks) blockLink(w http.ResponseWriter, r *http.Request) (string, 
 
 // failed answers a store error, if there is one: a dead link, an address an
 // account uses, or a 500.
-func (h EmailBlocks) failed(w http.ResponseWriter, err error) bool {
+func (h EmailBlocks) failed(w http.ResponseWriter, r *http.Request, err error) bool {
 	switch {
 	case err == nil:
 		return false
@@ -92,7 +92,7 @@ func (h EmailBlocks) failed(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, store.ErrEmailRegistered):
 		httpapi.Fail(w, 409, blockRegistered)
 	default:
-		httpapi.InternalError(w, err)
+		httpapi.InternalError(w, r, err)
 	}
 	return true
 }

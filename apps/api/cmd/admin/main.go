@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ import (
 // database. Allowed in production. Commands that change something preview
 // unless -confirm.
 func main() {
+	useLogger()
 	flag.Usage = usage
 	if len(os.Args) < 2 {
 		usage()
@@ -119,4 +121,15 @@ func usage() {
 	fmt.Fprintln(out, "  unblock -email <address> [-confirm]     take an address off the block list; previews without -confirm")
 	fmt.Fprintln(out, "  app-key generate [-env path]            print a new APP_KEY, or write it into an .env file that has none")
 	fmt.Fprintln(out, "  route-key generate                      print a new ADMIN_ROUTE_KEY")
+}
+
+// useLogger installs the server's log handler (LOG_FORMAT, LOG_LEVEL) for
+// anything logged through slog, keeping this command's own output plain
+// (observe.UseForCommand).
+func useLogger() {
+	logging, err := config.LoadLogging()
+	if err != nil {
+		log.Fatal(err)
+	}
+	observe.UseForCommand(logging.LogFormat, logging.LogLevel)
 }

@@ -8,6 +8,7 @@ import (
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi/input"
+	"lewcontext/api/internal/observe"
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"mime"
@@ -19,12 +20,19 @@ import (
 func unsafeMethod(method string) bool {
 	return method != "GET" && method != "HEAD" && method != "OPTIONS"
 }
+
+// apiHeaders are on every API answer, a panic's 500 included: nothing is
+// cached, sniffed, framed or sent on as a Referer.
+func apiHeaders(h http.Header) {
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "no-referrer")
+}
+
 func (s *Server) Security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "no-referrer")
+		apiHeaders(w.Header())
 		if unsafeMethod(r.Method) {
 			if r.Header.Get("Origin") != s.Config.Origin || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				Fail(w, 403, "Request origin is not allowed.")
@@ -71,7 +79,7 @@ func (s *Server) signedIn(next http.Handler, metered bool) http.Handler {
 			return
 		}
 		if err != nil {
-			InternalError(w, err)
+			InternalError(w, r, err)
 			return
 		}
 		if unsafeMethod(r.Method) && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(session.CSRF)) != 1 {
@@ -84,6 +92,7 @@ func (s *Server) signedIn(next http.Handler, metered bool) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), sessionKey{}, session)
 		r = r.WithContext(events.WithActor(ctx, session.User.ID))
+		observe.SetUser(ctx, session.User.PublicID)
 		if metered && !s.meter(w, r) {
 			return
 		}
@@ -116,7 +125,10 @@ func (s *Server) RequirePageSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		_, err := s.session(r.WithContext(ctx))
+		session, err := s.session(r.WithContext(ctx))
+		if err == nil {
+			observe.SetUser(r.Context(), session.User.PublicID)
+		}
 		if errors.Is(err, errNoSession) || errors.Is(err, sql.ErrNoRows) {
 			w.Header().Set("Cache-Control", "no-store")
 			login := "/auth/login?next=" + url.QueryEscape(r.URL.RequestURI())
@@ -124,7 +136,7 @@ func (s *Server) RequirePageSession(next http.Handler) http.Handler {
 			return
 		}
 		if err != nil {
-			slog.Error("page session check failed", "error", err)
+			slog.ErrorContext(r.Context(), "page session check failed", "error", err)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -146,7 +158,7 @@ func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
 			return
 		}
 		if err != nil {
-			InternalError(w, err)
+			InternalError(w, r, err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), workspaceKey{}, workspace)))

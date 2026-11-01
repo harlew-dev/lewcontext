@@ -106,7 +106,23 @@ export function ErrorNotice({
   return (
     <Notice key={error.key} variant="error" className={className}>
       {error.message}
+      {error.requestId && <Reference requestId={error.requestId} />}
     </Notice>
+  );
+}
+// A failure's reference (the request's ID from a 500), for a user to quote
+// to support, who find its log line by it. Selecting it selects it whole.
+export function Reference({
+  requestId,
+  className,
+}: {
+  requestId: string;
+  className?: string;
+}) {
+  return (
+    <span className={cx(className, "block text-xs/5 opacity-80")}>
+      Reference: <span className="font-mono select-all">{requestId}</span>
+    </span>
   );
 }
 export function EmptyState({

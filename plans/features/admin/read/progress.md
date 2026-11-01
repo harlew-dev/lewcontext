@@ -18,6 +18,7 @@ What has shipped on branch `nimble-quartz-1f9`, and what's next. Nothing is push
 | A8: the admin pages as their own build | `942a846` | check, test, build; e2e 22/22 | [separate-build](../findings/separate-build.md) |
 | A2: IP allowlist, key rotation, roles, Admins page | `f5c815f` | check, test, build; e2e 22/22 | [access-hardening](../findings/access-hardening.md) |
 | A9: the Email blocks page and Unblock (the first admin write) | `b84eaa7` | check, test, build; e2e 23/23 | [email-blocks](../findings/email-blocks.md) ([screenshot](../findings/email-blocks-unblock-dialog.png)) |
+| A3 phase 1: logs, request IDs, panic recovery, health | `10797fd` | check, test, build; e2e 23/23 | [observability](../findings/observability.md) |
 
 Security reviews found:
 - **A8:** one medium (admin code could slip past both build guards) and 7 lower.
@@ -29,10 +30,10 @@ All were fixed before committing, apart from the few listed as accepted in each 
 ## In progress
 
 - **A3, observability,** in three phases. Each is reviewed and committed on its own. The plan moves to `implemented/` after phase 3.
-  1. Logs, request IDs, panic recovery, health checks: _building_.
-  2. Grouped errors (`app_errors`), errors from the browser.
+  1. Logs, request IDs, panic recovery, health checks: **committed `10797fd`**.
+  2. Grouped errors (`app_errors`), errors from the browser: _building_.
   3. Metrics, server heartbeats, slow queries, `/metrics`.
-- **Plans being written** (no code): [policies](../../policies.md) (terms and privacy) and the [Events page redesign](../../implemented/admin/events-page.md).
+- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
 
 ## The parallel plan (from 2026-11-01, about 05:00)
 
@@ -41,8 +42,8 @@ You asked for every open plan to be built, with their recommendations accepted f
 | Line | Where | Branch | Order |
 | --- | --- | --- | --- |
 | Main | this checkout | `nimble-quartz-1f9` | A3 phases 1–3 → A4 monitoring → A5 alerts → A6 actions → A7 compliance (each needs the one before) |
-| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (_building_) → [policies](../../policies.md) (terms and privacy) → [captcha challenges](../../captcha-challenges.md) |
-| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) → [convention checks](../../convention-checks.md) |
+| ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (_7 commits done, under review_; [findings](../findings/notes-ui.md)) → [policies](../../policies.md) (terms and privacy) → [captcha challenges](../../captcha-challenges.md) |
+| events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (_building_) → [convention checks](../../convention-checks.md) |
 | Last, on main | after the merges | | [page-folders](../../page-folders.md): it moves every page file, so it would collide with everything else |
 
 **Keeping parallel lines apart:**

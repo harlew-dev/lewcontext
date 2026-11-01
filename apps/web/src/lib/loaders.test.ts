@@ -71,6 +71,21 @@ describe("signed-in layout loader", () => {
       unavailable: true,
     });
   });
+  it("keeps a 500's reference for the outage page", async () => {
+    stubLoaderApi({
+      me: {
+        status: 500,
+        body: {
+          error: "Something went wrong. Please try again.",
+          requestId: "req_2yEHYLwiwPVhLW",
+        },
+      },
+    });
+    expect(await signedInLoader(request("/app/settings"))).toEqual({
+      unavailable: true,
+      requestId: "req_2yEHYLwiwPVhLW",
+    });
+  });
 });
 describe("guest loader", () => {
   it("renders the form for signed-out visitors", async () => {
