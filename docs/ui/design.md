@@ -64,7 +64,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `paginated-table.tsx` | `PaginatedTable` ([pagination.md](pagination.md)) |
 | `search-field.tsx` | `SearchField label value onSearch`: updates the URL 300 ms after typing pauses ([pagination.md](pagination.md#url-state)) |
 | `sidebar.tsx` / `navbar.tsx` | `Sidebar*` (`SidebarItem href current selected`), `SidebarToggle` ([Sidebar layout](#sidebar-layout)) · `Navbar*` (`NavbarItem current selected`, `NavbarLabel`). `current`: the item's link is this page (the sliding indicator, `aria-current`); `selected`: a grey background for a menu button whose menu holds this page ([Where you are](#where-you-are)) |
-| `heading.tsx` / `text.tsx` | `Heading level`, `Subheading` · `Text`, `TextLink`, `TextButton` (a `TextLink` look for an action that doesn't navigate: "Use a recovery code"), `Strong`, `Code` |
+| `heading.tsx` / `text.tsx` | `Heading level`, `Subheading`, `HeadingGroup` (a `Heading` and the `Text` describing it, 8px apart in an `<hgroup>`; [Descriptions](#descriptions)) · `Text`, `TextLink`, `TextButton` (a `TextLink` look for an action that doesn't navigate: "Use a recovery code"), `Strong`, `Code` |
 | `description-list.tsx` / `divider.tsx` | `DescriptionList`, `DescriptionTerm`, `DescriptionDetails` · `Divider soft` |
 | `reveal.tsx` | `Reveal label hideLabel announcement placeholder onReveal`: keeps a secret (a QR code, recovery codes) off the page until asked for. Hidden, it renders only a blurred `placeholder` (`aria-hidden`) with the button over it, never the secret blurred; revealing moves focus to it and announces `announcement`; Hide puts it back. Key it to start hidden again |
 | `route-progress.tsx` / `logo.tsx` | `RouteProgress` · `Logo` (`href` makes it a link; the sign-in pages link it to `/`) |
@@ -86,6 +86,7 @@ A title doesn't need a description under it. Add one only when it tells the read
 
 - **Leave it out** for settings sections whose fields, buttons and lock tooltips explain themselves: General, Workspace ID, Profile, Password, Two-factor authentication, Sign-in sessions.
 - **Keep it** where it carries consequences or rules the reader can't infer: the danger zone (`SettingsSection variant="danger"` and every `DangerAction`), confirmation dialogs, and empty states.
+- **A description sits right under its title**, read as a subheading, never spaced as the next section. On the sign-in and status pages, whose forms are `gap-8` grids, the page's `Heading` and its `Text` go in one `HeadingGroup` (8px apart); `SettingsSection` (4px) and `DialogTitle`/`DialogDescription` (8px) already do this, and a page heading's line of context takes `mt-1` or `mt-2`.
 - A reason something can't be changed goes in its `Field locked`, not in a description ([Locked fields](#locked-fields)).
 
 ## Locked fields

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { CodeField } from "@/components/app/mfa/mfa-setup";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Strong, Text, TextButton } from "@/components/ui/text";
 import { ApiError, errorMessage } from "@/lib/api";
 import { useAction } from "@/lib/use-action";
@@ -74,13 +74,13 @@ export function EmailCodeStep({
       }}
       className="grid grid-cols-1 gap-8"
     >
-      <div className="space-y-2">
+      <HeadingGroup>
         <Heading>{heading}</Heading>
         <Text>
           Enter the 6-digit code we sent to <Strong>{email}</Strong>. It works
           for 15 minutes. If it hasn’t arrived, check your spam folder.
         </Text>
-      </div>
+      </HeadingGroup>
       {resent && !error.message && (
         <Notice variant="success">We sent a new code to {email}.</Notice>
       )}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextButton } from "@/components/ui/text";
 import { ApiError, errorMessage } from "@/lib/api";
@@ -50,12 +50,14 @@ export function CodeStep({
       className="grid w-full max-w-sm grid-cols-1 gap-8"
     >
       <Logo href={routes.home} />
-      <Heading>Two-factor authentication</Heading>
-      <Text>
-        {recovery
-          ? "Enter one of your recovery codes. Each one works once."
-          : "Enter the code from your authenticator app."}
-      </Text>
+      <HeadingGroup>
+        <Heading>Two-factor authentication</Heading>
+        <Text>
+          {recovery
+            ? "Enter one of your recovery codes. Each one works once."
+            : "Enter the code from your authenticator app."}
+        </Text>
+      </HeadingGroup>
       <ErrorNotice error={error} />
       <CodeField
         key={recovery ? "recovery" : "app"}

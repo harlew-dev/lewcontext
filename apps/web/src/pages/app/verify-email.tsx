@@ -5,7 +5,7 @@ import { AuthLayout } from "@/components/layout/auth-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextButton } from "@/components/ui/text";
 import { errorMessage, useApi } from "@/lib/api";
@@ -72,13 +72,13 @@ function VerifySteps() {
     );
   return (
     <div className="grid grid-cols-1 gap-8">
-      <div className="space-y-2">
+      <HeadingGroup>
         <Heading>Verify your email</Heading>
         <Text>
           You must verify your email to continue. We’ll send a 6-digit code to{" "}
           <Strong>{email}</Strong>.
         </Text>
-      </div>
+      </HeadingGroup>
       {ended && <Notice variant="error">{ended}</Notice>}
       <ErrorNotice error={send.error} />
       <Button className="w-full" loading={send.loading} onClick={sendCode}>

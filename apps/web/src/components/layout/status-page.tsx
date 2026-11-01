@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Text } from "@/components/ui/text";
 import { routes } from "@/lib/routes";
@@ -19,10 +19,10 @@ export function StatusPage({
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo />
-        <div className="space-y-2">
+        <HeadingGroup>
           <Heading>{title}</Heading>
           <Text>{description}</Text>
-        </div>
+        </HeadingGroup>
         <div>{action}</div>
       </div>
     </AuthLayout>

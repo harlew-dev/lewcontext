@@ -4,7 +4,7 @@ import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
@@ -40,13 +40,13 @@ export default function ForgotPassword() {
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
-        <div>
+        <HeadingGroup>
           <Heading>Reset your password</Heading>
-          <Text className="mt-2">
+          <Text>
             Enter your account’s email and we’ll send you a link to choose a new
             password.
           </Text>
-        </div>
+        </HeadingGroup>
         <ErrorNotice error={request.error} />
         <Field disabled={request.loading}>
           <Label>Email</Label>
@@ -86,15 +86,15 @@ function LinkSent({
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo href={routes.home} />
         {/* Announced when it replaces the form. */}
-        <div role="status">
+        <HeadingGroup role="status">
           <Heading>Check your email</Heading>
-          <Text className="mt-2">
+          <Text>
             If an account uses this email, we’ve sent it a reset link:
           </Text>
-          <Text className="mt-1 break-all">
+          <Text className="break-all">
             <Strong>{email}</Strong>
           </Text>
-        </div>
+        </HeadingGroup>
         <Text>
           The link works once and expires in 30 minutes. Nothing after a few
           minutes? Check your spam folder, or try again.

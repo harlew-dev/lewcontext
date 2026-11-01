@@ -7,7 +7,7 @@ import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Text } from "@/components/ui/text";
@@ -211,11 +211,18 @@ function AdminSetup({
   return (
     <form onSubmit={submit} className="grid w-full max-w-sm grid-cols-1 gap-8">
       <Logo href={routes.home} />
-      <Heading>
-        {codes
-          ? "Save your recovery codes"
-          : "Set up two-factor authentication"}
-      </Heading>
+      <HeadingGroup>
+        <Heading>
+          {codes
+            ? "Save your recovery codes"
+            : "Set up two-factor authentication"}
+        </Heading>
+        <Text>
+          {codes
+            ? "Two-factor authentication is on. Save your recovery codes before you go on."
+            : "Admins need two-factor authentication. Scan this with your authenticator app."}
+        </Text>
+      </HeadingGroup>
       {codes ? (
         <RecoveryCodeList
           codes={codes}
@@ -224,10 +231,6 @@ function AdminSetup({
         />
       ) : (
         <>
-          <Text>
-            Admins need two-factor authentication. Scan this with your
-            authenticator app.
-          </Text>
           <ErrorNotice error={confirm.error} />
           <MfaScanStep
             setup={setup}

@@ -7,7 +7,7 @@ import {
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
 import { ApiError, errorMessage, useApi } from "@/lib/api";
@@ -142,13 +142,13 @@ function NewPasswordForm({
   }
   return (
     <form onSubmit={submit} className="grid grid-cols-1 gap-8">
-      <div>
+      <HeadingGroup>
         <Heading>Choose a new password</Heading>
-        <Text className="mt-2">
+        <Text>
           Every session on your account will be signed out, and you’ll sign in
           again with the new password.
         </Text>
-      </div>
+      </HeadingGroup>
       <ErrorNotice error={reset.error} />
       <NewPasswordFields
         password={password}
