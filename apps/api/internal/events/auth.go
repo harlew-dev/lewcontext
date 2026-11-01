@@ -5,11 +5,16 @@ const (
 	LoginSucceeded      = "succeeded"
 	LoginWrongPassword  = "wrong_password"
 	LoginUnknownAccount = "unknown_account"
+	// LoginSuspended: the right password (and code) of a suspended account,
+	// refused with an honest 403. A wrong password is wrong_password, as
+	// for any account, so a suspension can't be probed.
+	LoginSuspended = "suspended"
 )
 
 // Steps that check the current password: the two of a password change,
-// deleting a workspace or the account, and setting up, turning off or
-// renewing the recovery codes of two-factor authentication.
+// deleting a workspace or the account, setting up, turning off or
+// renewing the recovery codes of two-factor authentication, and
+// downloading the account's data.
 const (
 	PasswordStepVerify           = "verify"
 	PasswordStepUpdate           = "update"
@@ -18,6 +23,7 @@ const (
 	PasswordStepMFASetup         = "mfa_setup"
 	PasswordStepMFADisable       = "mfa_disable"
 	PasswordStepRecoveryCodes    = "recovery_codes"
+	PasswordStepExportData       = "export_data"
 )
 
 // How a new account's email was verified (Registered.VerifiedBy), and how an
@@ -100,14 +106,23 @@ type PasswordChanged struct {
 
 func (PasswordChanged) EventName() string { return "auth.password_changed" }
 
-// AccountDeleted: a user deleted their account. It holds no name or email,
-// since the account's personal data is what's being erased, and has no user
-// or actor: both would be the deleted account.
+// AccountDeleted: a user deleted their account, or the operator erased it
+// (admin erase, with admin.user.erased beside it). It holds no name or
+// email, since the account's personal data is what's being erased, and has
+// no user or actor: both would be the deleted account.
 type AccountDeleted struct {
 	User string `json:"user"`
 }
 
 func (AccountDeleted) EventName() string { return "auth.account_deleted" }
+
+// DataExported: a user downloaded their data ("Download my data",
+// docs/compliance.md#download-my-data), after their password.
+type DataExported struct {
+	User string `json:"user"`
+}
+
+func (DataExported) EventName() string { return "auth.data_exported" }
 
 // ProfileUpdated: a user changed their account's name.
 type ProfileUpdated struct {
@@ -203,3 +218,49 @@ type EmailVerified struct {
 }
 
 func (EmailVerified) EventName() string { return "auth.email_verified" }
+
+// Who suspended or unsuspended an account (Suspended.By, Unsuspended.By):
+// an admin from the dashboard, or the operator's command line.
+const (
+	SuspendedByAdmin = "admin"
+	SuspendedByCLI   = "cli"
+)
+
+// Suspended: an account was suspended (docs/api/admin.md#suspending-an-account):
+// every session of it signed out (SessionsRevoked) and, when asked, every
+// live invitation it sent revoked (InvitationsRevoked; each is also
+// workspace.invitation.revoked). From the dashboard, admin.user.suspended
+// is recorded with it, holding the reason; from the command line (By cli)
+// the reason is here.
+type Suspended struct {
+	User               string `json:"user"`
+	By                 string `json:"by"`
+	SessionsRevoked    int    `json:"sessionsRevoked"`
+	InvitationsRevoked int    `json:"invitationsRevoked"`
+	Reason             string `json:"reason,omitempty"`
+}
+
+func (Suspended) EventName() string { return "auth.suspended" }
+
+// Unsuspended: a suspended account may sign in again. From the dashboard,
+// admin.user.unsuspended is recorded with it, holding the reason; from the
+// command line the reason is here.
+type Unsuspended struct {
+	User   string `json:"user"`
+	By     string `json:"by"`
+	Reason string `json:"reason,omitempty"`
+}
+
+func (Unsuspended) EventName() string { return "auth.unsuspended" }
+
+// SessionsRevokedAll: the operator signed every account out from the
+// command line (admin sessions revoke-all), for a suspected leak of the
+// session tables: Sessions app sessions and AdminSessions admin sessions
+// signed out, and Challenges sign-ins waiting for their code ended.
+type SessionsRevokedAll struct {
+	Sessions      int `json:"sessions"`
+	AdminSessions int `json:"adminSessions"`
+	Challenges    int `json:"challenges"`
+}
+
+func (SessionsRevokedAll) EventName() string { return "auth.sessions_revoked_all" }

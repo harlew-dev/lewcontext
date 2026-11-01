@@ -54,6 +54,10 @@ func (s *Server) Security(next http.Handler) http.Handler {
 	})
 }
 
+// SessionExpired is the answer to a session that has ended: expired,
+// signed out, or its account suspended since it was checked.
+const SessionExpired = "Your session has expired. Please sign in again."
+
 // RequestTimeout is how long an API request may run: its context ends
 // then, and the queries it is waiting on with it.
 const RequestTimeout = 10 * time.Second
@@ -95,7 +99,7 @@ func (s *Server) signedIn(next http.Handler, metered bool) http.Handler {
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			Fail(w, 401, "Your session has expired. Please sign in again.")
+			Fail(w, 401, SessionExpired)
 			return
 		}
 		if err != nil {

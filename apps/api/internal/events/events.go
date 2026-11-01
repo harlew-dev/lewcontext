@@ -26,7 +26,7 @@ type Event interface {
 var Catalogue = []Event{
 	Registered{}, LoginAttempted{}, LoggedIn{}, LoggedOut{},
 	OtherSessionsRevoked{}, PasswordChecked{}, PasswordChanged{}, ProfileUpdated{},
-	AccountDeleted{},
+	AccountDeleted{}, Suspended{}, Unsuspended{}, SessionsRevokedAll{}, DataExported{},
 	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
 	RegistrationRequested{}, RegistrationSent{}, RegistrationChecked{},
 	EmailVerificationRequested{}, EmailVerificationSent{}, EmailVerified{},
@@ -41,8 +41,13 @@ var Catalogue = []Event{
 	AdminGranted{}, AdminUpdated{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
 	AdminAccessRefused{}, AdminSessionMoved{}, AdminSessionEnded{}, AdminSessionsRevoked{}, AdminAdminListed{},
 	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
-	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminMonitoringViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
+	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminMonitoringViewed{}, AdminIPViewed{}, AdminErrorViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
 	AdminEmailBlockListed{}, AdminEmailUnblocked{},
+	AdminUserSignedOut{}, AdminUserMFAReset{}, AdminUserSuspended{}, AdminUserUnsuspended{},
+	AdminWorkspaceInvitationsRevoked{}, AdminDeliveryRetried{},
+	AdminIPBlocked{}, AdminIPUnblocked{}, AdminIPBlockListed{}, AdminAdminSignedOut{},
+	AdminUserErased{}, AdminUserExported{}, AdminEventExported{},
+	PruneCompleted{},
 }
 
 // Change is a field's value before and after an update.
@@ -69,10 +74,11 @@ const maxUserAgent = 256
 // carried in the request context so store methods can record it without
 // extra arguments.
 type meta struct {
-	actorID   int64
-	ip        string
-	requestID string
-	userAgent string
+	actorID      int64
+	ip           string
+	requestID    string
+	userAgent    string
+	adminRequest bool
 }
 type metaKey struct{}
 
@@ -88,6 +94,18 @@ func WithActor(ctx context.Context, actorID int64) context.Context {
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
+// WithAdminRequest records that the request is the admin dashboard's
+// (behind its key): every event it records is marked events.admin_request,
+// so an account's Download my data leaves out what it did as an admin,
+// which holds other people's data and belongs to the admin trail
+// (docs/compliance.md#download-my-data). Set once, by the admin key's
+// middleware, so every dashboard route and action is covered.
+func WithAdminRequest(ctx context.Context) context.Context {
+	m := current(ctx)
+	m.adminRequest = true
+	return context.WithValue(ctx, metaKey{}, m)
+}
+
 // WithRequest records the request's client address and its ID
 // (observe.Request), together, for the events.ip and events.request_id
 // columns: httpapi.ClientAddress sets both once per request.
@@ -97,16 +115,21 @@ func WithRequest(ctx context.Context, ip, requestID string) context.Context {
 	return context.WithValue(ctx, metaKey{}, m)
 }
 
-// WithUserAgent records the request's User-Agent, made valid UTF-8 and cut
-// to 256 characters.
+// WithUserAgent records the request's User-Agent, as CutUserAgent leaves it.
 func WithUserAgent(ctx context.Context, userAgent string) context.Context {
+	m := current(ctx)
+	m.userAgent = CutUserAgent(userAgent)
+	return context.WithValue(ctx, metaKey{}, m)
+}
+
+// CutUserAgent is a User-Agent as an event stores it: valid UTF-8, cut to
+// 256 characters.
+func CutUserAgent(userAgent string) string {
 	userAgent = strings.ToValidUTF8(userAgent, "")
 	if utf8.RuneCountInString(userAgent) > maxUserAgent {
 		userAgent = string([]rune(userAgent)[:maxUserAgent])
 	}
-	m := current(ctx)
-	m.userAgent = userAgent
-	return context.WithValue(ctx, metaKey{}, m)
+	return userAgent
 }
 
 // Actor is the internal ID of the user acting, or 0 when nobody is signed in.
@@ -122,3 +145,7 @@ func RequestID(ctx context.Context) string { return current(ctx).requestID }
 
 // UserAgent is the request's User-Agent, or "" outside a request.
 func UserAgent(ctx context.Context) string { return current(ctx).userAgent }
+
+// AdminRequest says the event is recorded in an admin dashboard request
+// (WithAdminRequest).
+func AdminRequest(ctx context.Context) bool { return current(ctx).adminRequest }

@@ -33,11 +33,23 @@ func main() {
 		os.Exit(1)
 	}
 	slog.SetDefault(observe.NewLogger(os.Stdout, logging.LogFormat, logging.LogLevel))
+	warnIfAuditLinesHidden(slog.Default(), logging.LogLevel)
 	if err := run(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
 }
+
+// warnIfAuditLinesHidden says, at startup, that a LOG_LEVEL above info
+// hides the audit lines (docs/compliance.md#audit-lines). Logged at error,
+// the one level every LOG_LEVEL writes, so LOG_LEVEL=error can't hide the
+// warning too.
+func warnIfAuditLinesHidden(log *slog.Logger, level slog.Level) {
+	if level > slog.LevelInfo {
+		log.Error("LOG_LEVEL is above info, so audit lines (msg audit) aren't written: the audit trail has no copy off the server (docs/compliance.md#audit-lines)")
+	}
+}
+
 func run() error {
 	c, err := config.Load()
 	if err != nil {
@@ -131,6 +143,14 @@ func run() error {
 		// net/http's own complaints (a broken connection, a bad request
 		// line) go through the same handler, as warnings.
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn)}
+	// The live IP blocks, before the first request, then every 30 seconds.
+	// Without the database the server still starts (readiness says so),
+	// with nothing blocked: RunIPBlocks retries after a second, doubling up
+	// to 30 seconds, until a load succeeds.
+	if err := api.ReloadIPBlocks(ctx); err != nil {
+		slog.Error("loading IP blocks failed; nothing is blocked until a retry succeeds", observe.ErrorAttr(err))
+	}
+	go api.RunIPBlocks(ctx, httpapi.IPBlocksReload)
 	failures := make(chan error, 1)
 	go func() {
 		slog.Info("listening", "address", c.Address, "pages", api.Pages != nil)

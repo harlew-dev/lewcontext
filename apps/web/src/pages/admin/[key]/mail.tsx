@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   DeliveryStatusBadge,
   DeliveryTime,
 } from "@/components/app/admin/admin-list";
 import { CursorNav } from "@/components/app/admin/cursor-nav";
+import { Button } from "@/components/ui/button";
 import {
   BarChart,
   type ChartRow,
@@ -14,7 +18,15 @@ import {
   DescriptionList,
   DescriptionTerm,
 } from "@/components/ui/description-list";
+import {
+  Dropdown,
+  DropdownButton,
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+} from "@/components/ui/dropdown";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
+import { Field, Label } from "@/components/ui/fieldset";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Navbar, NavbarItem, NavbarSection } from "@/components/ui/navbar";
@@ -28,17 +40,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Code, Text, TextLink } from "@/components/ui/text";
-import { adminPaths } from "@/lib/api/admin";
-import { useAdminKey } from "@/lib/admin";
+import { toast } from "@/components/ui/toast";
+import { adminPaths, useAdminApi } from "@/lib/api/admin";
+import { adminCan, useAdminKey, useAdminSession } from "@/lib/admin";
 import { cx } from "@/lib/cx";
 import { formatDateTime } from "@/lib/format";
 import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
+import { useOpenCount } from "@/lib/use-open-count";
 import {
   deliveryStatuses,
   mailWindows,
   type AdminDeliveryRow,
   type AdminMail,
+  type CursorPage,
   type DeliveryPageQuery,
   type DeliveryStatus,
   type MailKind,
@@ -50,7 +65,9 @@ import {
 // often, how mail leaves, and every delivery by status. Opening it records
 // two reads: the summary (admin.mail.viewed) and the deliveries
 // (admin.delivery.listed). Nothing reloads on its own: reloading the page
-// does.
+// does, and so does a retry. Operators can retry a failed delivery from its
+// row's ⋯ menu, or a listener's failures since a time from the header, each
+// behind a fresh code and a reason.
 export default function AdminDeliveryIndex() {
   const key = useAdminKey();
   const navigate = useNavigate();
@@ -58,27 +75,45 @@ export default function AdminDeliveryIndex() {
   const query = pageQuery(search);
   const period = query.window ?? "24h";
   const summary = useAdminResource(adminPaths.mail(period));
+  const deliveries = useAdminResource(
+    adminPaths.deliveries.index({
+      status: query.status,
+      before: query.before,
+    }),
+  );
+  const operator = adminCan(useAdminSession().role, "operator");
+  // After a retry, both reload (two more recorded reads).
+  const retried = () => {
+    summary.refresh();
+    deliveries.refresh();
+  };
   const pathFor = (q: DeliveryPageQuery) =>
     adminRoutes.deliveries.index(key, q);
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Heading>Mail</Heading>
-        <Listbox
-          aria-label="Window"
-          value={period}
-          onChange={(w) =>
-            void navigate(pathFor({ ...query, window: w, before: undefined }), {
-              preventScrollReset: true,
-            })
-          }
-        >
-          {mailWindows.map((w) => (
-            <ListboxOption key={w} value={w}>
-              <ListboxLabel>{windowLabels[w]}</ListboxLabel>
-            </ListboxOption>
-          ))}
-        </Listbox>
+        <div className="flex items-center gap-2">
+          <Listbox
+            aria-label="Window"
+            value={period}
+            onChange={(w) =>
+              void navigate(
+                pathFor({ ...query, window: w, before: undefined }),
+                { preventScrollReset: true },
+              )
+            }
+          >
+            {mailWindows.map((w) => (
+              <ListboxOption key={w} value={w}>
+                <ListboxLabel>{windowLabels[w]}</ListboxLabel>
+              </ListboxOption>
+            ))}
+          </Listbox>
+          {operator && (
+            <RetryFailedButton mail={summary.data} onRetried={retried} />
+          )}
+        </div>
       </div>
       {summary.error && (
         <Notice variant="error" className="mt-6" onRetry={summary.refresh}>
@@ -95,7 +130,96 @@ export default function AdminDeliveryIndex() {
       ) : (
         summary.loading && <ListSkeleton label="Loading mail" rows={3} />
       )}
-      <Deliveries query={query} mail={summary.data} pathFor={pathFor} />
+      <Deliveries
+        query={query}
+        mail={summary.data}
+        list={deliveries}
+        pathFor={pathFor}
+        onRetried={retried}
+      />
+    </>
+  );
+}
+// How far back a bulk retry reaches: at most 7 days (the API's bound).
+const retrySince = [
+  { value: "1h", label: "the last hour", hours: 1 },
+  { value: "6h", label: "the last 6 hours", hours: 6 },
+  { value: "24h", label: "the last 24 hours", hours: 24 },
+  // A minute short of 7 days, so the API's bound holds by the time it's sent.
+  { value: "7d", label: "the last 7 days", hours: 7 * 24 - 1 / 60 },
+] as const;
+// Retry failed deliveries: one listener's failures since a time (the most
+// recent 1,000), for after an SMTP outage. Each runs its listener again, so
+// a reset or an invitation gets a fresh link; a blocked address still gets
+// nothing.
+function RetryFailedButton({
+  mail,
+  onRetried,
+}: {
+  mail: AdminMail | undefined;
+  onRetried: () => void;
+}) {
+  const api = useAdminApi();
+  const [open, setOpen] = useState(false);
+  const opened = useOpenCount(open);
+  const listeners = mail?.queue.map((q) => q.listener) ?? [];
+  const [listener, setListener] = useState("");
+  const [since, setSince] = useState("24h");
+  const chosen = listener || listeners[0] || "";
+  async function retry(reason: string) {
+    const hours = retrySince.find((s) => s.value === since)?.hours ?? 24;
+    const failedSince = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const { count } = await api.failedDeliveries().retry({
+      listener: chosen,
+      failedSince: failedSince.toISOString(),
+      reason,
+    });
+    toast.success(
+      `${count} ${count === 1 ? "delivery" : "deliveries"} queued again.`,
+    );
+  }
+  return (
+    <>
+      <Button
+        outline
+        disabled={listeners.length === 0}
+        disabledReason="Loading the listeners"
+        onClick={() => setOpen(true)}
+      >
+        Retry failed deliveries
+      </Button>
+      <AdminActionDialog
+        key={opened}
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Retry failed deliveries?"
+        description="Every delivery to the listener that failed since then is queued again (the most recent 1,000), and runs as for a new event: reset and invitation emails get fresh links. Blocked addresses still get nothing."
+        confirm="Retry deliveries"
+        ready={chosen !== ""}
+        action={retry}
+        onDone={onRetried}
+      >
+        <Field>
+          <Label>Listener</Label>
+          <Listbox value={chosen} onChange={setListener}>
+            {listeners.map((name) => (
+              <ListboxOption key={name} value={name}>
+                <ListboxLabel>{name}</ListboxLabel>
+              </ListboxOption>
+            ))}
+          </Listbox>
+        </Field>
+        <Field>
+          <Label>Failed in</Label>
+          <Listbox value={since} onChange={setSince}>
+            {retrySince.map(({ label, value }) => (
+              <ListboxOption key={value} value={value}>
+                <ListboxLabel>{label}</ListboxLabel>
+              </ListboxOption>
+            ))}
+          </Listbox>
+        </Field>
+      </AdminActionDialog>
     </>
   );
 }
@@ -463,18 +587,16 @@ const statusLabels: Record<DeliveryStatus, string> = {
 function Deliveries({
   query,
   mail,
+  list,
   pathFor,
+  onRetried,
 }: {
   query: DeliveryPageQuery;
   mail: AdminMail | undefined;
+  list: ReturnType<typeof useAdminResource<CursorPage<AdminDeliveryRow>>>;
   pathFor: (q: DeliveryPageQuery) => string;
+  onRetried: () => void;
 }) {
-  const list = useAdminResource(
-    adminPaths.deliveries.index({
-      status: query.status,
-      before: query.before,
-    }),
-  );
   const failures = mail ? sum(mail, "failed") : 0;
   const tabs: (DeliveryStatus | undefined)[] = failures
     ? ["failed", undefined, "retrying", "pending", "delivered"]
@@ -517,7 +639,7 @@ function Deliveries({
             aria-busy={list.refreshing}
             className={cx(list.refreshing && "opacity-60")}
           >
-            <DeliveryTable rows={list.data.data} />
+            <DeliveryTable rows={list.data.data} onRetried={onRetried} />
             <CursorNav
               label="Delivery pages"
               next={list.data.next}
@@ -531,52 +653,108 @@ function Deliveries({
     </div>
   );
 }
-function DeliveryTable({ rows }: { rows: AdminDeliveryRow[] }) {
+function DeliveryTable({
+  rows,
+  onRetried,
+}: {
+  rows: AdminDeliveryRow[];
+  onRetried: () => void;
+}) {
   const key = useAdminKey();
+  const api = useAdminApi();
+  const operator = adminCan(useAdminSession().role, "operator");
+  const [retrying, setRetrying] = useState<AdminDeliveryRow | null>(null);
+  const opened = useOpenCount(retrying !== null);
+  // The last one stays rendered while its dialog animates out.
+  const [shown, setShown] = useState<AdminDeliveryRow | null>(null);
+  if (retrying && retrying !== shown) setShown(retrying);
   return (
-    <Table dense className="mt-4">
-      <TableHead>
-        <TableRow>
-          <TableHeader>Event</TableHeader>
-          <TableHeader className="max-md:hidden">Listener</TableHeader>
-          <TableHeader className="max-sm:hidden">To</TableHeader>
-          <TableHeader>Status</TableHeader>
-          <TableHeader className="max-lg:hidden">When</TableHeader>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={`${row.event.id}:${row.listener}`}>
-            <TableCell>
-              <TextLink href={adminRoutes.events.show(key, row.event.id)}>
-                {formatDateTime(row.event.createdAt)}
-              </TextLink>
-              <div className="text-zinc-500 dark:text-zinc-400">
-                {row.event.name}
-              </div>
-            </TableCell>
-            <TableCell className="max-md:hidden">
-              <Code>{row.listener}</Code>
-            </TableCell>
-            <TableCell className="max-w-56 truncate max-sm:hidden">
-              {row.to ?? "–"}
-            </TableCell>
-            <TableCell>
-              <DeliveryStatusBadge status={row.status} />
-              <div className="mt-1 text-zinc-500 tabular-nums">
-                {row.attempts} {row.attempts === 1 ? "attempt" : "attempts"}
-              </div>
-            </TableCell>
-            {/* The last error under the time, wrapping: an SMTP reply is long. */}
-            <TableCell className="max-w-sm whitespace-normal text-zinc-500 max-lg:hidden">
-              <DeliveryTime delivery={row} />
-              {row.lastError && (
-                <div className="mt-1 wrap-anywhere">{row.lastError}</div>
-              )}
-            </TableCell>
+    <>
+      <Table dense className="mt-4">
+        <TableHead>
+          <TableRow>
+            <TableHeader>Event</TableHeader>
+            <TableHeader className="max-md:hidden">Listener</TableHeader>
+            <TableHeader className="max-sm:hidden">To</TableHeader>
+            <TableHeader>Status</TableHeader>
+            <TableHeader className="max-lg:hidden">When</TableHeader>
+            {operator && (
+              <TableHeader className="w-0">
+                <span className="sr-only">Actions</span>
+              </TableHeader>
+            )}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={`${row.event.id}:${row.listener}`}>
+              <TableCell>
+                <TextLink href={adminRoutes.events.show(key, row.event.id)}>
+                  {formatDateTime(row.event.createdAt)}
+                </TextLink>
+                <div className="text-zinc-500 dark:text-zinc-400">
+                  {row.event.name}
+                </div>
+              </TableCell>
+              <TableCell className="max-md:hidden">
+                <Code>{row.listener}</Code>
+              </TableCell>
+              <TableCell className="max-w-56 truncate max-sm:hidden">
+                {row.to ?? "–"}
+              </TableCell>
+              <TableCell>
+                <DeliveryStatusBadge status={row.status} />
+                <div className="mt-1 text-zinc-500 tabular-nums">
+                  {row.attempts} {row.attempts === 1 ? "attempt" : "attempts"}
+                </div>
+              </TableCell>
+              {/* The last error under the time, wrapping: an SMTP reply is long. */}
+              <TableCell className="max-w-sm whitespace-normal text-zinc-500 max-lg:hidden">
+                <DeliveryTime delivery={row} />
+                {row.lastError && (
+                  <div className="mt-1 wrap-anywhere">{row.lastError}</div>
+                )}
+              </TableCell>
+              {operator && (
+                <TableCell className="w-0 text-right">
+                  {row.status === "failed" && (
+                    <Dropdown>
+                      <DropdownButton
+                        plain
+                        aria-label={`Actions for the ${row.listener} delivery`}
+                      >
+                        <EllipsisHorizontalIcon />
+                      </DropdownButton>
+                      <DropdownMenu anchor="bottom end">
+                        <DropdownItem onClick={() => setRetrying(row)}>
+                          <DropdownLabel>Retry delivery</DropdownLabel>
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </Dropdown>
+                  )}
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {shown && (
+        <AdminActionDialog
+          key={opened}
+          open={retrying !== null}
+          onClose={() => setRetrying(null)}
+          title="Retry this delivery?"
+          description={`The ${shown.event.name} event is delivered to ${shown.listener} again, as for a new event: a reset or invitation email gets a fresh link, never the old one. A blocked address still gets nothing.`}
+          confirm="Retry delivery"
+          action={(reason) =>
+            api.deliveries().retry(shown.event.id, shown.listener, reason)
+          }
+          onDone={() => {
+            toast.success("Delivery queued again.");
+            onRetried();
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"database/sql"
 	"errors"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
@@ -11,7 +12,8 @@ import (
 	"strings"
 )
 
-// Deliveries are the admin dashboard's /api/admin/deliveries.
+// Deliveries are the admin dashboard's /api/admin/deliveries: the list,
+// and queuing one failed delivery again (Retry).
 type Deliveries struct{ *httpapi.Server }
 
 // deliveryCursor reads a deliveries cursor, evt_…:listener.
@@ -65,4 +67,39 @@ func (h Deliveries) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.JSON(w, 200, page)
+}
+
+// Retry queues the failed delivery of {event} to {listener} again: not
+// failed, no attempts yet, due now. Its listener runs as for a new event,
+// so a reset, invitation or sign-up email gets a fresh link or code, never
+// the old one, and Send still refuses a blocked address. 404 for an
+// unknown delivery (or listener), 409 when it hasn't failed. Recorded as
+// admin.delivery.retried. POST /api/admin/deliveries/{event}/{listener}/retry.
+func (h Deliveries) Retry(w http.ResponseWriter, r *http.Request) {
+	event, listener := r.PathValue("event"), r.PathValue("listener")
+	if !input.PublicID("evt", event) || !slices.Contains(listeners(h.Server), listener) {
+		httpapi.Fail(w, 404, "Delivery not found.")
+		return
+	}
+	var in destroyInput
+	if !httpapi.Decode(w, r, &in) {
+		return
+	}
+	action, ok := adminAction(w, r, in.Reason)
+	if !ok {
+		return
+	}
+	err := h.Repo.RequeueDelivery(r.Context(), event, listener, action)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		httpapi.Fail(w, 404, "Delivery not found.")
+	case errors.Is(err, store.ErrDeliveryNotFailed):
+		httpapi.Fail(w, 409, "This delivery hasn’t failed.")
+	case errors.Is(err, store.ErrDeliveryMinimised):
+		httpapi.Fail(w, 409, "This delivery’s event is over 30 days old: its email address has been replaced, so it can’t be sent.")
+	case err != nil:
+		httpapi.InternalError(w, r, err)
+	default:
+		w.WriteHeader(204)
+	}
 }

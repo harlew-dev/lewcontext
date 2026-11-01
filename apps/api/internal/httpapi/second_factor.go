@@ -43,7 +43,7 @@ func (s *Server) BeginMFASetup(w http.ResponseWriter, r *http.Request, user stor
 		InternalError(w, r, err)
 		return
 	}
-	err = s.Repo.SetupMFA(r.Context(), user.ID, sealed)
+	err = s.Repo.SetUpMFA(r.Context(), user.ID, sealed)
 	if errors.Is(err, store.ErrMFAEnabled) {
 		Fail(w, 409, "Two-factor authentication is already on.")
 		return

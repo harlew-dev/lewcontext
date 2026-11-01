@@ -111,10 +111,14 @@ type InvitationInput struct {
 // live invitation to the same email (ErrAlreadyInvited), the 51st live one
 // (ErrTooManyInvitations) and the member quota (QuotaError). An expired
 // invitation to the same email is replaced. The answer is the same whether
-// or not the email has an account.
+// or not the email has an account. ErrSuspended when the actor was
+// suspended after its session was checked (lockInviter).
 func (s *Store) CreateInvitation(ctx context.Context, w Workspace, actorID int64, in InvitationInput) (Invitation, error) {
 	inv := invitationRecord{WorkspaceID: w.ID, Email: in.Email, Role: in.Role, InvitedBy: actorID, ExpiresAt: time.Now().Add(InvitationLifetime)}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockInviter(ctx, tx, actorID); err != nil {
+			return err
+		}
 		if err := lockWorkspace(ctx, tx, w.ID); err != nil {
 			return err
 		}
@@ -146,6 +150,21 @@ func (s *Store) CreateInvitation(ctx context.Context, w Workspace, actorID int64
 	var created Invitation
 	err = invitationsOf(s.DB, w.ID).Where("i.id = ?", inv.ID).Scan(ctx, &created)
 	return created, err
+}
+
+// lockInviter holds the inviter's user row (FOR SHARE) until the invitation
+// is made, then refuses a suspended inviter (ErrSuspended). SuspendUser
+// locks the same row FOR UPDATE before revoking the account's invitations,
+// so a request whose session was checked just before a suspension either
+// finishes first (and its invitation is revoked with the others) or sees
+// the suspension: no invitation, and no email to a third party, outlives
+// it. The user's row comes before the workspace's, as in SuspendUser and
+// DeleteAccount, so the two locks never wait on each other in a cycle.
+func lockInviter(ctx context.Context, tx bun.Tx, userID int64) error {
+	if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", userID).For("SHARE").Exec(ctx); err != nil {
+		return err
+	}
+	return checkNotSuspended(ctx, tx, userID)
 }
 
 // refuseDuplicateInvitation refuses inviting a member, or an email with a

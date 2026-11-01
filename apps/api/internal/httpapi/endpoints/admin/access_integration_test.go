@@ -121,6 +121,24 @@ func TestAdminAllowedIPs(t *testing.T) {
 	}
 }
 
+// A refusal recorded from an admin page (no API security middleware on the
+// way) keeps the request's browser, as one from the API does.
+func TestAdminRefusalsKeepTheUserAgent(t *testing.T) {
+	_, db := server(t)
+	s := serverWith(t, db, func(c *config.Config) {
+		c.AdminAllowedIPs = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}
+	})
+	const browser = "refused-page-browser/1.0"
+	r := httptest.NewRequest("GET", "/admin/"+factory.AdminRouteKey+"/users", nil)
+	r.RemoteAddr = "198.51.100.9:1234"
+	r.Header.Set("User-Agent", browser)
+	router.New(s).ServeHTTP(httptest.NewRecorder(), r)
+	refused := eventually(t, db, "admin.access_refused", 1)
+	if len(refused) != 1 || refused[0].IP != "198.51.100.9" || refused[0].UserAgent != browser {
+		t.Fatalf("admin.access_refused from a page: %+v", refused)
+	}
+}
+
 // The previous key keeps live sessions made under it working, with a
 // header saying so; it never opens the sign-in, and to anyone without such a
 // session it is a wrong key.

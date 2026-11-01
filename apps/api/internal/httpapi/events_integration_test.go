@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/httpapi/router"
@@ -68,6 +70,10 @@ func TestAuthEvents(t *testing.T) {
 	if !apitest.Is(e.ActorID, userID) || !apitest.Is(e.UserID, userID) || e.Payload["count"] != float64(1) {
 		t.Fatalf("other sessions revoked (the registration's session): %+v", e)
 	}
+	// With no other session left, asking again changes nothing and records
+	// nothing.
+	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", signed.CSRF, cookie, 204)
+	apitest.OnlyEvent(t, db, "auth.other_sessions_revoked")
 	apitest.Call(t, h, "POST", "/api/auth/logout", "{}", signed.CSRF, cookie, 204)
 	e = apitest.OnlyEvent(t, db, "auth.logged_out")
 	if !apitest.Is(e.ActorID, userID) || !apitest.Is(e.UserID, userID) || e.Payload["user"] != signed.User.PublicID {
@@ -287,5 +293,35 @@ func TestListenerReceivesEventsFromTheAPI(t *testing.T) {
 	var deliveredAt sql.NullTime
 	if err := db.NewSelect().TableExpr("event_deliveries").Column("delivered_at").Where("listener = ?", "test.projects").Scan(context.Background(), &deliveredAt); err != nil || !deliveredAt.Valid {
 		t.Fatalf("delivery not marked delivered: %v (%v)", deliveredAt, err)
+	}
+}
+
+// Signing out the other sessions skips the write budget (a recovery route)
+// but has a limit of its own, sessions-revoke:per-user, counted per
+// session: a second session of the same user (the owner, when the first
+// was stolen) isn't refused once the first has used its budget up.
+func TestSessionsRevokeLimited(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
+	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 204)
+	// The first request opened the session's window; use the rest of it up.
+	key := httpapi.SessionsRevokePerUser.Key(auth.Digest(session.Token))
+	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", httpapi.SessionsRevokePerUser.Block.At()).Where("key = ?", key).Exec(ctx))(t)
+	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 429)
+	if e := apitest.OnlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "sessions-revoke:per-user:block" {
+		t.Fatalf("rate limited: %+v", e)
+	}
+	if n := len(apitest.EventsNamed(t, db, "auth.other_sessions_revoked")); n != 0 {
+		t.Fatalf("%d revokes recorded with nothing signed out", n)
+	}
+	// The same user's other session still signs the first out.
+	owner := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
+	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", owner.CSRFToken, owner.Cookie(), 204)
+	if e := apitest.EventsNamed(t, db, "auth.other_sessions_revoked"); len(e) != 1 || e[0].Payload["count"] != 1.0 {
+		t.Fatalf("revoked: %+v", e)
 	}
 }

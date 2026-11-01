@@ -68,6 +68,7 @@ const adminRoutes = [
     route("admin/:key/events/:event", "pages/admin/[key]/events/[event].tsx"),
     route("admin/:key/mail", "pages/admin/[key]/mail.tsx"),
     route("admin/:key/email-blocks", "pages/admin/[key]/email-blocks.tsx"),
+    route("admin/:key/ip-blocks", "pages/admin/[key]/ip-blocks.tsx"),
     route("admin/:key/admins", "pages/admin/[key]/admins.tsx"),
     route("admin/:key/monitoring", "pages/admin/[key]/monitoring/index.tsx"),
     route(
@@ -77,6 +78,43 @@ const adminRoutes = [
     route(
       "admin/:key/monitoring/limits",
       "pages/admin/[key]/monitoring/limits.tsx",
+    ),
+    route("admin/:key/monitoring/ips", "pages/admin/[key]/monitoring/ips.tsx"),
+    route(
+      "admin/:key/monitoring/ips/:ip",
+      "pages/admin/[key]/monitoring/ips/[ip].tsx",
+    ),
+    route(
+      "admin/:key/monitoring/accounts",
+      "pages/admin/[key]/monitoring/accounts.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/workspaces",
+      "pages/admin/[key]/monitoring/workspaces.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/usage",
+      "pages/admin/[key]/monitoring/usage.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/integrity",
+      "pages/admin/[key]/monitoring/integrity.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/performance",
+      "pages/admin/[key]/monitoring/performance.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/errors",
+      "pages/admin/[key]/monitoring/errors.tsx",
+    ),
+    route(
+      "admin/:key/monitoring/errors/:error",
+      "pages/admin/[key]/monitoring/errors/[error].tsx",
+    ),
+    route(
+      "admin/:key/monitoring/configuration",
+      "pages/admin/[key]/monitoring/configuration.tsx",
     ),
   ]),
 ] satisfies RouteConfig;

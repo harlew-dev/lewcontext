@@ -9,6 +9,7 @@ import (
 	"lewcontext/api/internal/factory"
 	"strings"
 	"testing"
+	"time"
 )
 
 var appTables = []string{"users", "sessions", "workspaces", "workspace_user", "projects", "rate_limits", "events", "event_deliveries", "workspace_invitations"}
@@ -148,5 +149,37 @@ func TestFreshRebuildsTheSchema(t *testing.T) {
 		if !tableExists(t, db, table) {
 			t.Fatalf("%s missing after fresh", table)
 		}
+	}
+}
+
+// A 30-day IP block passes ip_blocks' CHECK whatever the session's
+// TimeZone: across a spring-forward 30 calendar days are 719 hours, so the
+// CHECK counts 720 hours, never days, and one hour more is still refused.
+func TestIPBlockLifetimeAcrossDST(t *testing.T) {
+	db := dbtest.Open(t)
+	ctx := context.Background()
+	if _, err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	f := factory.TestFaker(t)
+	// New York springs forward on 14 March 2027.
+	created := time.Date(2027, 3, 10, 12, 0, 0, 0, time.UTC)
+	block := func(network string, lifetime time.Duration) error {
+		return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			var zone string
+			if err := tx.NewSelect().ColumnExpr("set_config('TimeZone', ?, true)", "America/New_York").Scan(ctx, &zone); err != nil {
+				return err
+			}
+			_, err := factory.IPBlocks.State(factory.BlockOf(network)).State(func(b *factory.IPBlock) {
+				b.CreatedAt, b.ExpiresAt = created, created.Add(lifetime)
+			}).CreateOne(ctx, tx, f)
+			return err
+		})
+	}
+	if err := block("198.51.100.1/32", 720*time.Hour); err != nil {
+		t.Fatalf("a 30-day block across spring-forward: %v", err)
+	}
+	if err := block("198.51.100.2/32", 721*time.Hour); err == nil || !strings.Contains(err.Error(), "ip_blocks_check") {
+		t.Fatalf("a block of 30 days and an hour: %v", err)
 	}
 }

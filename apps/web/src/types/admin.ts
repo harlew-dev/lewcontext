@@ -54,15 +54,26 @@ export type AdminUser = {
   admin: boolean;
   workspaceCount: number;
   lastSignedInAt: string | null;
+  // An admin suspended it: it can't sign in (AdminUserDetail.suspension
+  // says why).
+  suspended: boolean;
 };
 export type AdminMembership = {
   workspace: { id: string; name: string };
   role: Role;
   addedAt: string;
 };
+// Why an account is suspended, by whom (null from the command line, or once
+// that admin's account is gone) and since when. Shown to admins only.
+export type AdminSuspension = {
+  reason: string;
+  suspendedBy: AdminPerson | null;
+  suspendedAt: string;
+};
 export type AdminUserDetail = AdminUser & {
   memberships: AdminMembership[];
   sessionCount: number;
+  suspension: AdminSuspension | null;
 };
 export type AdminPerson = { id: string; name: string; email: string };
 export type AdminWorkspace = {
@@ -75,7 +86,11 @@ export type AdminWorkspace = {
   owners: AdminPerson[];
 };
 export type AdminMember = AdminPerson & { role: Role; addedAt: string };
-export type AdminWorkspaceDetail = AdminWorkspace & { members: AdminMember[] };
+export type AdminWorkspaceDetail = AdminWorkspace & {
+  members: AdminMember[];
+  // Live invitations: what Revoke pending invitations would revoke.
+  pendingInvitations: number;
+};
 // Sorts the lists accept; "-field" sorts descending. Mirror adminUserSorts
 // and adminWorkspaceSorts in apps/api/internal/store/admin_views.go.
 export const adminUserSortable = ["created", "name", "email"] as const;
@@ -100,6 +115,21 @@ export type AdminEmailBlockSort = Sort<
 export const defaultAdminEmailBlockSort: AdminEmailBlockSort = "-created";
 // A list page's state, kept in its URL.
 export type AdminListQuery<S> = { page: number; q: string; sort: S };
+// A client address or range every server refuses (403) until expiresAt,
+// as CIDR ("203.0.113.7/32"); createdBy is null once that admin's account
+// is gone.
+export type AdminIPBlock = {
+  id: string;
+  network: string;
+  reason: string;
+  createdBy: AdminPerson | null;
+  createdAt: string;
+  expiresAt: string;
+};
+// How long a new block lasts: at most 30 days. Mirrors ipBlockLifetimes in
+// apps/api/internal/httpapi/endpoints/admin/ip_blocks.go.
+export const ipBlockLifetimes = ["1h", "24h", "7d", "30d"] as const;
+export type IPBlockLifetime = (typeof ipBlockLifetimes)[number];
 
 // An account or workspace named inside an event: name (and an account's
 // email) are missing once it's deleted, leaving the ID from the payload.
@@ -294,7 +324,19 @@ export type AdminMail = {
 };
 // The Monitoring pages built so far (docs/api/monitoring.md), and their
 // windows: what the charts and review lists cover. Signals keep their own.
-export const monitoringPages = ["overview", "security", "limits"] as const;
+export const monitoringPages = [
+  "overview",
+  "security",
+  "limits",
+  "ips",
+  "accounts",
+  "workspaces",
+  "usage",
+  "integrity",
+  "performance",
+  "errors",
+  "configuration",
+] as const;
 export type MonitoringPage = (typeof monitoringPages)[number];
 export const monitoringWindows = ["1h", "24h", "7d"] as const;
 export type MonitoringWindow = (typeof monitoringWindows)[number];
@@ -315,9 +357,12 @@ export type Signal = {
   minSample?: number;
   windowSeconds: number;
   drill?: Record<string, string>;
+  // It couldn't be read in time: its value and level mean nothing.
+  unavailable?: boolean;
 };
-// A Monitoring page's answer: its window as resolved, its signals, and its
-// own sections.
+// A Monitoring page's answer: its window as resolved, its signals, its
+// own sections, and the sections that couldn't be read in time (by their
+// key in `sections`; their data is missing).
 export type MonitoringView<S> = {
   page: MonitoringPage;
   window: {
@@ -328,6 +373,7 @@ export type MonitoringView<S> = {
   };
   signals: Signal[];
   sections: S;
+  unavailable: string[];
 };
 // A chart's numbers: a column per bucket, counts lining up with series.
 export type MonitorSeries = { series: string[]; buckets: SummaryBucket[] };
@@ -355,7 +401,13 @@ export type MonitoringTile = {
     points: { start: string; value: number }[];
   } | null;
 };
-export type OverviewSections = { tiles: MonitoringTile[] };
+// How the live servers store metrics (METRICS_STORE): with it off the
+// request, latency and pool numbers read nothing. Empty: no server live.
+export type MetricsStore = "on" | "off" | "mixed" | "";
+export type OverviewSections = {
+  tiles: MonitoringTile[];
+  metricsStore: MetricsStore;
+};
 export type FailedChecksRow = {
   period: string;
   account: AccountRef;
@@ -440,4 +492,261 @@ export type LimitsSections = {
     requests: number;
     serverErrors: number;
   }[];
+};
+// The IP addresses page: the top addresses both ways (`network`: an IPv6
+// /64, as the signals count; otherwise one address: listed by /64, the
+// /64s and the IPv4 addresses; each on its own, every address), and
+// sign-up clusters.
+export type AddressRow = {
+  ip: string;
+  network: boolean;
+  events: number;
+  failedSignIns: number;
+  signUps: number;
+  limitsReached: number;
+  accounts: number;
+};
+export type IpsSections = {
+  addresses: AddressRow[];
+  clusters: { period: string; ip: string; accounts: number }[];
+  // How many IP blocks are live (the IP blocks page lists them).
+  blocks: { live: number };
+};
+// One address's page: what an address (or an IPv6 /64) did in a window.
+export type AddressView = {
+  ip: string;
+  // An IPv6 address's /64, to open.
+  network?: string;
+  window: MonitoringView<unknown>["window"];
+  events: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  byName: { name: string; count: number }[];
+  accounts: {
+    account: AccountRef;
+    signedIn: number;
+    registered: number;
+    failed: number;
+  }[];
+  unknownEmails: number;
+  limits: { limit: string; windows: number; lastReached: string }[];
+  addresses: AddressCount[];
+  // The live IP blocks holding it, or part of its /64.
+  blocks: { network: string; expiresAt: string }[];
+};
+// The Accounts page's review list: each account with the signals it
+// tripped in its busiest day.
+export type AccountReviewSignal =
+  | "workspaces"
+  | "invitations"
+  | "acceptance"
+  | "projects"
+  | "links"
+  | "limits"
+  | "checks";
+export type WorkspaceRef = { id: string; name?: string };
+export type AccountReview = {
+  account: AccountRef;
+  createdAt: string;
+  new: boolean;
+  signals: {
+    signal: AccountReviewSignal;
+    count: number;
+    of?: number;
+    workspace?: WorkspaceRef;
+  }[];
+};
+export type AccountCount = { account: AccountRef; count: number };
+export type AccountsSections = {
+  review: AccountReview[];
+  topWriters: AccountCount[];
+  topOwners: AccountCount[];
+};
+// The Workspaces page.
+export type WorkspacesSections = {
+  quotas: {
+    caps: {
+      projects: number;
+      members: number;
+      invitations: number;
+      owned: number;
+    };
+    workspaces: {
+      workspace: WorkspaceRef;
+      projects: number;
+      members: number;
+      invitations: number;
+      used: number;
+    }[];
+    owners: { account: AccountRef; owned: number; used: number }[];
+  };
+  rows: {
+    // Each table is counted up to one more than cap: more reads "over".
+    cap: number;
+    tables: { table: string; label: string }[];
+    workspaces: { workspace: WorkspaceRef; counts: number[]; total: number }[];
+  };
+  growth: { workspace: WorkspaceRef; created: number; events: number }[];
+  invitations: {
+    workspace: WorkspaceRef;
+    sent: number;
+    accepted: number;
+    revoked: number;
+    expired: number;
+  }[];
+  throwaways: {
+    account: AccountRef;
+    workspaces: number;
+    invitations: number;
+    lastDeleted: string;
+  }[];
+  totals: { estimate: number; series: MonitorSeries };
+};
+// The Usage page.
+export type Activation = {
+  accounts: number;
+  activated: number;
+  from: string;
+  to: string;
+};
+export type SizeCount = { size: string; workspaces: number };
+export type UsageSections = {
+  active: { day: number; week: number; month: number; withMfa: number };
+  signUps: MonitorSeries;
+  activation: { workspace: Activation; invited: Activation };
+  features: MonitorSeries;
+  sizes: { members: SizeCount[]; projects: SizeCount[] };
+  inactive: {
+    before: string;
+    count: number;
+    accounts: {
+      account: AccountRef;
+      lastSeenAt: string | null;
+      createdAt: string;
+      admin: boolean;
+    }[];
+  };
+};
+// The Integrity page: each check's rows (its count and level are its
+// signal's), then duplicates and retries over the window.
+export type CheckResult = {
+  count: number;
+  capped?: boolean;
+  samples: string[];
+};
+export type IntegritySections = {
+  checks: { name: string; capped?: boolean; samples: string[] }[];
+  duplicates: CheckResult & { byName: { name: string; count: number }[] };
+  duplicateSends: CheckResult;
+  retriedDeliveries: CheckResult;
+  timedOutWrites: { route: string; count: number }[];
+};
+// The Performance page: percentiles in milliseconds.
+export type Latencies = { p50: number; p95: number; p99: number };
+export type LatencyRow = Latencies & { label: string; count: number };
+export type GaugePoint = { start: string; value: number };
+export type RouteRow = Latencies & {
+  route: string;
+  requests: number;
+  status4xx: number;
+  status429: number;
+  status5xx: number;
+  timeouts: number;
+};
+export type ServerRow = {
+  id: string;
+  hostname: string;
+  version: string;
+  startedAt: string;
+  lastSeenAt: string;
+  live: boolean;
+  goroutines: number | null;
+  heapBytes: number | null;
+  memoryBytes: number | null;
+  gcPauseMs: number | null;
+  poolOpen: number | null;
+  poolInUse: number | null;
+  poolIdle: number | null;
+  measuredAt: string | null;
+};
+// pg_stat_statements' statements, as PostgreSQL normalised them ($1 for
+// every constant); available false when the database doesn't have it.
+export type StatementStats = {
+  available: boolean;
+  statements: {
+    query: string;
+    calls: number;
+    totalMs: number;
+    meanMs: number;
+    rows: number;
+  }[];
+  hidden: number;
+};
+export type PerformanceSections = {
+  metricsStore: MetricsStore;
+  requests: (Latencies & {
+    start: string;
+    requests: number;
+    serverErrors: number;
+  })[];
+  routes: RouteRow[];
+  database: {
+    operations: LatencyRow[];
+    slowQueries: { label: string; count: number }[];
+    inUse: GaugePoint[];
+    waits: { from: string; waits: number; waitedMs: number; minutes: number };
+    statements: StatementStats | null;
+  };
+  worker: {
+    deliveries: MonitorSeries;
+    lag: LatencyRow[];
+    pending: GaugePoint[];
+  };
+  slotsBusy: number;
+  servers: ServerRow[];
+};
+// The Errors page: grouped errors (app_errors). A browser's group
+// (source client) holds a user's text: shown as text, never a link.
+export type ErrorSource =
+  "request" | "panic" | "worker" | "background" | "client";
+export type ErrorGroup = {
+  id: string;
+  source: ErrorSource;
+  route: string;
+  message: string;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastRequestId: string;
+  // Only in a release's shape (a revision, or dev); empty otherwise.
+  lastVersion: string;
+  resolvedAt: string | null;
+};
+export type Release = { version: string; startedAt: string };
+export type ErrorsSections = {
+  release: Release | null;
+  groups: ErrorGroup[];
+  occurrences: MonitorSeries;
+};
+// One group's page.
+export type ErrorView = {
+  window: MonitoringView<unknown>["window"];
+  group: ErrorGroup & { stack: string };
+  release: Release | null;
+  occurrences: MonitorSeries;
+};
+// The Configuration page: servers, their settings side by side (the
+// compared servers' values in their order), and warnings by ID.
+export type ConfigurationSections = {
+  servers: {
+    id: string;
+    hostname: string;
+    version: string;
+    startedAt: string;
+    lastSeenAt: string;
+    live: boolean;
+  }[];
+  compared: string[];
+  settings: { name: string; values: string[]; differs: boolean }[];
+  warnings: { id: string; count?: number }[];
 };

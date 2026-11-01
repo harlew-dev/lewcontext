@@ -25,7 +25,7 @@ CREATE INDEX events_actor_created_idx ON events(actor_id, created_at DESC) WHERE
 
 - **Set like `user_agent`:** `clientAddress` puts `clientIP(r)` in the context (`events.WithIP`), and `record` copies it into the column. It's the full address (an IPv6 /64 is only how limits count).
 - **The payloads' `ip` fields go** (decision 2): the column is the one place it lives. `TestPayloadsHoldNothingSensitive` gains a check that no payload has an `ip` field, so it can't come back.
-- **Personal data:** the same data already stored for half the catalogue, now for all of it. Retention is the events' 90 days; [compliance](../../admin/compliance.md) proposes shortening how long the IP itself is kept.
+- **Personal data:** the same data already stored for half the catalogue, now for all of it. Retention is the events' 90 days; [compliance](compliance.md) proposes shortening how long the IP itself is kept.
 
 ## Events page
 
@@ -111,7 +111,7 @@ Each row: `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `em
 
 Stat tiles for the queue, a bar chart of volume per hour, the asked-for-vs-sent pair, the top recipients table (each address links to Events `?email=`), the driver box, then the deliveries table with status tabs (Failed first when there are any).
 
-Retrying a failed delivery is an action ([actions](../../admin/actions.md)). When [email blocks](../email-blocks.md) ships, Mail gets a Blocked addresses tab listing `email_blocks`.
+Retrying a failed delivery is an action ([actions](actions.md)). When [email blocks](../email-blocks.md) ships, Mail gets a Blocked addresses tab listing `email_blocks`.
 
 ## Charts (decision 12)
 
@@ -149,7 +149,7 @@ Actor only, as the other admin reads.
 | `last_error` holds an SMTP reply naming the recipient | Admin-only, already cut to 500 characters, and never the SMTP password ([mail.md](../../../../docs/api/mail.md#smtp)) |
 | The audit trail drowns in its own reads | Admin reads hidden unless asked for, still recorded |
 | Looking someone up leaves no trace | Every list and detail read is recorded with its filters, so "who searched for this email" is answerable |
-| IPs are personal data | One column, the events' retention, and [compliance](../../admin/compliance.md)'s proposal to shorten it |
+| IPs are personal data | One column, the events' retention, and [compliance](compliance.md)'s proposal to shorten it |
 
 ## Tests
 
@@ -188,9 +188,9 @@ Actor only, as the other admin reads.
 
 - **Email bodies.** They aren't stored and won't be: they hold working reset and invitation links.
 - **Bounces and complaints** from the SMTP provider. They need a public webhook endpoint per provider, with its signature check. Worth a plan before volume grows, since sender reputation depends on acting on them.
-- **CSV export** of events: [compliance](../../admin/compliance.md) covers exports.
+- **CSV export** of events: [compliance](compliance.md) covers exports.
 - **Live tail / auto-refresh**: every refresh is a recorded read.
-- **Retrying a delivery**, and any other write: [actions](../../admin/actions.md).
+- **Retrying a delivery**, and any other write: [actions](actions.md).
 
 ## How the build differs
 

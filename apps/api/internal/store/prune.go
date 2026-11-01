@@ -12,13 +12,21 @@ import (
 type Prunable struct {
 	Model any    // the table's model, e.g. (*eventRecord)(nil)
 	Age   string // the column whose age counts, e.g. "created_at"
+	// Scope narrows the table to the rows this target looks after
+	// (optional): the events target the events that aren't audit events,
+	// audit_events the others.
+	Scope func(q *bun.SelectQuery) *bun.SelectQuery
 	// Keep narrows a query to old rows that must stay (optional).
 	Keep func(q *bun.SelectQuery) *bun.SelectQuery
 }
 
 // old selects the target's rows older than before.
 func (s *Store) old(p Prunable, before time.Time) *bun.SelectQuery {
-	return s.DB.NewSelect().Model(p.Model).Where("?TableAlias.? < ?", bun.Ident(p.Age), before)
+	q := s.DB.NewSelect().Model(p.Model).Where("?TableAlias.? < ?", bun.Ident(p.Age), before)
+	if p.Scope != nil {
+		q = q.WhereGroup(" AND ", p.Scope)
+	}
+	return q
 }
 
 // prunable is old minus the rows Keep holds back.

@@ -5,7 +5,9 @@ import { ErrorMessage } from "./fieldset";
 // A checkbox on BaseUI's Checkbox (its hidden input keeps the keyboard,
 // the form's `required` check and screen readers; we draw the box). The
 // whole row is its <label>: clicking the text ticks it, and a link in the
-// text opens without ticking it.
+// text opens without ticking it. A description goes under the label (the
+// label then in medium weight) and is read with the box. Inside a disabled
+// Fieldset the native input is disabled with it.
 const CheckboxRoot = slot(
   "label",
   "group flex cursor-default items-start gap-3 data-disabled:opacity-50",
@@ -58,6 +60,8 @@ export type CheckboxProps = {
   onChange: (checked: boolean) => void;
   // The label, which may hold links.
   children: ReactNode;
+  // A line under the label, read with the box (aria-describedby).
+  description?: ReactNode;
   name?: string;
   required?: boolean;
   disabled?: boolean;
@@ -68,12 +72,18 @@ export function Checkbox({
   checked,
   onChange,
   children,
+  description,
   name,
   required = false,
   disabled = false,
   invalid = false,
   "aria-describedby": describedBy,
 }: CheckboxProps) {
+  const descriptionId = useId();
+  const describedByIds =
+    [description ? descriptionId : undefined, describedBy]
+      .filter(Boolean)
+      .join(" ") || undefined;
   return (
     <BaseCheckbox
       checked={checked}
@@ -84,10 +94,22 @@ export function Checkbox({
       required={required}
       disabled={disabled}
       error={invalid}
-      aria-describedby={describedBy}
+      aria-describedby={describedByIds}
       overrides={overrides}
     >
-      {children}
+      {description ? (
+        <>
+          <span className="font-medium">{children}</span>
+          <span
+            id={descriptionId}
+            className="block text-zinc-500 dark:text-zinc-400"
+          >
+            {description}
+          </span>
+        </>
+      ) : (
+        children
+      )}
     </BaseCheckbox>
   );
 }

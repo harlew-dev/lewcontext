@@ -45,13 +45,15 @@ func TestMetricsSettings(t *testing.T) {
 		"[::%lo]:9090", "[::%eth0]:9090", "[0::0%1]:9090", "[::1%lo]:9090",
 		// Public and link-local addresses are reachable beyond a private
 		// network.
-		"203.0.113.5:9090", "[2001:db8::5]:9090", "[fe80::1]:9090", "169.254.0.5:9090"} {
+		"203.0.113.5:9090", "[2001:db8::5]:9090", "[fe80::1]:9090", "169.254.0.5:9090",
+		// A name, localhost too: the resolver could point it anywhere.
+		"localhost:9090"} {
 		vars := map[string]string{"METRICS_ADDR": addr}
 		for k, v := range production {
 			vars[k] = v
 		}
 		setEnv(t, vars)
-		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "METRICS_TOKEN") {
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "METRICS_TOKEN") || !strings.Contains(err.Error(), "127.0.0.1") {
 			t.Errorf("production %s without a token: %v", addr, err)
 		}
 		vars["METRICS_TOKEN"] = token
@@ -60,7 +62,7 @@ func TestMetricsSettings(t *testing.T) {
 			t.Errorf("production %s with a token: %v", addr, err)
 		}
 	}
-	for _, addr := range []string{"127.0.0.1:9090", "[::1]:9090", "10.0.0.5:9090", "192.168.1.5:9090", "172.16.0.5:9090", "[fd00::5]:9090", "[::ffff:10.0.0.5]:9090", "localhost:9090"} {
+	for _, addr := range []string{"127.0.0.1:9090", "[::1]:9090", "10.0.0.5:9090", "192.168.1.5:9090", "172.16.0.5:9090", "[fd00::5]:9090", "[::ffff:10.0.0.5]:9090"} {
 		vars := map[string]string{"METRICS_ADDR": addr}
 		for k, v := range production {
 			vars[k] = v
@@ -91,6 +93,8 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		"SMTP_PASSWORD":            "Hy4!Rk9wQz2#Lm7xVt5pBn3cJd8",
 		"DB_PASSWORD":              "Pq2Xz7Wk4Vm9Lt3Rn8Bc5Jh1Gd6",
 		"CAPTCHA_SECRET_KEY":       "0x4AAAAAAAk7Rq9ZtW2mXvB8nYc3HdF6jS",
+		// Public, but the summary keeps only whether it's set.
+		"CAPTCHA_SITE_KEY": "1x4BsitekeyPublicVq7Zr2",
 	}
 	setEnv(t, map[string]string{
 		"APP_KEY":                  secrets["APP_KEY"],
@@ -109,7 +113,7 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		"TRUSTED_PROXIES":          "10.0.0.0/8,192.168.0.0/16",
 		"DATABASE_URL":             "postgresql://dbuser:" + secrets["DB_PASSWORD"] + "@db.internal/app?sslmode=verify-full",
 		"CAPTCHA_PROVIDER":         "turnstile",
-		"CAPTCHA_SITE_KEY":         "1x4BsitekeyPublic",
+		"CAPTCHA_SITE_KEY":         secrets["CAPTCHA_SITE_KEY"],
 		"CAPTCHA_SECRET_KEY":       secrets["CAPTCHA_SECRET_KEY"],
 		"POLICIES":                 "on",
 	})
@@ -154,7 +158,7 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 	if !got.AdminRouteKey || !got.AdminRouteKeyPrev || got.AdminAllowedIPs != 1 || got.TrustedProxies != 2 || got.ClientIPHeader != "X-Forwarded-For" ||
 		!got.MetricsAddr || !got.MetricsToken || got.SMTP == nil || got.SMTP.Host != "smtp.example.com" || got.SMTP.Port != 587 ||
 		got.EmailVerification != "optional" || got.Migrations.Applied != 25 || got.SlowQueryMs != 500 ||
-		got.CaptchaProvider != "turnstile" || got.CaptchaSiteKey != "1x4BsitekeyPublic" || !got.CaptchaSecretKey ||
+		got.CaptchaProvider != "turnstile" || !got.CaptchaSiteKey || !got.CaptchaSecretKey ||
 		got.CaptchaTestKeys || got.PerIPLimits != "on" || got.Policies != "on" {
 		t.Fatalf("summary: %s", text)
 	}

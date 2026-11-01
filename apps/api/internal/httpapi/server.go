@@ -44,6 +44,9 @@ type Server struct {
 	adminRefusals *adminRefusals
 	// Summaries bound the admin dashboard's aggregates (summaries.go).
 	Summaries *Summaries
+	// ipBlocks are the live IP blocks, reloaded every IPBlocksReload, and
+	// what they refused (ip_blocks.go).
+	ipBlocks ipBlocks
 	// draining is set once shutdown has begun (Drain): readiness then
 	// answers 503.
 	draining atomic.Bool
@@ -80,4 +83,11 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 // unknown, so the answer takes as long as for a real account.
 func (s *Server) DummyHash() string {
 	return s.dummyHash
+}
+
+// EmailPseudonym is what events keep in place of email once they're 30
+// days old (auth.Keys.EmailPseudonym, keyed by APP_KEY): erasure and the
+// admin Events search match old events by it.
+func (s *Server) EmailPseudonym(email string) string {
+	return s.keys.EmailPseudonym(email)
 }

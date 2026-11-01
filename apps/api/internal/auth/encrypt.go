@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"strings"
 )
 
 // AppKeySize is the length of APP_KEY, decoded: 32 bytes.
@@ -34,14 +35,16 @@ var ErrUnsealable = errors.New("sealed value can't be opened")
 // Keys are the keys derived from APP_KEY: one for AES-256-GCM, which
 // seals secrets the server must read back (TOTP secrets), two for HMAC
 // digests of recovery codes and emailed codes, so they can't be guessed
-// offline from a database dump, and one for the admin build's assets pass
-// (admin_assets.go). Deriving each (HKDF, its own label) keeps any from being
-// another.
+// offline from a database dump, one for the admin build's assets pass
+// (admin_assets.go), and one for the pseudonyms old events keep in place of
+// email addresses (EmailPseudonym). Deriving each (HKDF, its own label)
+// keeps any from being another.
 type Keys struct {
-	aead        cipher.AEAD
-	recovery    []byte
-	emailCode   []byte
-	adminAssets []byte
+	aead           cipher.AEAD
+	recovery       []byte
+	emailCode      []byte
+	adminAssets    []byte
+	emailPseudonym []byte
 }
 
 // NewKeys derives the keys from the 32-byte APP_KEY.
@@ -65,6 +68,10 @@ func NewKeys(key []byte) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
+	emailPseudonym, err := hkdf.Key(sha256.New, key, nil, "lewcontext email-pseudonyms v1", 32)
+	if err != nil {
+		return nil, err
+	}
 	block, err := aes.NewCipher(sealKey)
 	if err != nil {
 		return nil, err
@@ -73,7 +80,7 @@ func NewKeys(key []byte) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Keys{aead: aead, recovery: recovery, emailCode: emailCode, adminAssets: adminAssets}, nil
+	return &Keys{aead: aead, recovery: recovery, emailCode: emailCode, adminAssets: adminAssets, emailPseudonym: emailPseudonym}, nil
 }
 
 // Seal encrypts plaintext for the row of owner (a user's internal ID): it
@@ -118,6 +125,24 @@ func (k *Keys) EmailCodeDigest(code string) string {
 	mac := hmac.New(sha256.New, k.emailCode)
 	mac.Write([]byte(code))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// EmailPseudonymPrefix starts every pseudonym EmailPseudonym makes, so a
+// minimised event's email is told from an address at a glance (an address
+// can't hold none of "@").
+const EmailPseudonymPrefix = "hmac:"
+
+// EmailPseudonym is what an event keeps in place of an email address once
+// it's 30 days old (docs/compliance.md#retention): "hmac:" and the first
+// 128 bits of an HMAC-SHA256 of the address, trimmed and lower-cased, in
+// hex. The same address always gives the same pseudonym, so old events
+// still match each other and a search for the address, but without
+// APP_KEY it can't be turned back into the address, nor checked against a
+// list of guesses.
+func (k *Keys) EmailPseudonym(email string) string {
+	mac := hmac.New(sha256.New, k.emailPseudonym)
+	mac.Write([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return EmailPseudonymPrefix + hex.EncodeToString(mac.Sum(nil)[:16])
 }
 
 // ownerData is the GCM additional data binding a sealed value to its row.

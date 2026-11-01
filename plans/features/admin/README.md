@@ -11,15 +11,15 @@ Admin access left out the Events, Mail and Monitoring pages, any write action, a
 | A1 | [events-and-mail](../implemented/admin/events-and-mail.md) | The **Events** page (the audit trail, filtered by name, account, workspace, email, IP and time) and the **Mail** page (the delivery queue, failures, volume per template and recipient). An `events.ip` column; project names and descriptions shown, with a projects list on the workspace page | admin access | **implemented 2026-10-31** |
 | A2 | [access-hardening](../implemented/admin/access-hardening.md) | `ADMIN_ALLOWED_IPS` (an IP allowlist), `ADMIN_ROUTE_KEY_PREVIOUS` (rotating the key without signing everyone out), an Admins page, admin roles (`viewer`, `operator`) | admin access | **implemented 2026-11-01** |
 | A3 | [observability](../implemented/admin/observability.md) | The groundwork: JSON logs with request IDs, panic recovery, grouped errors (`app_errors`), per-minute sums per route shared across servers (`request_minutes`, `metric_minutes`; never a row per request), server heartbeats (`server_instances`), slow-query logging, an optional Prometheus `/metrics` on a private port | none (A1 for the IP column it logs alongside) | **implemented 2026-11-01** |
-| A4 | [monitoring](monitoring.md) | The **Monitoring** pages: Overview, Security, Rate limits, IP addresses, Accounts, Workspaces, Usage, Data, Integrity, Performance, Errors, Configuration | A1, A3 | **part 1 of 3 implemented 2026-11-01** (Overview, Security, Rate limits); parts 2 and 3 to build |
+| A4 | [monitoring](monitoring.md) | The **Monitoring** pages: Overview, Security, Rate limits, IP addresses, Accounts, Workspaces, Usage, Data, Integrity, Performance, Errors, Configuration | A1, A3 | **parts 1–3 implemented 2026-11-01 apart from the Data page** (Overview, Security, Rate limits; IP addresses, Accounts, Workspaces, Usage; Integrity, Performance, Errors, Configuration); the Data page after A7's `prune.completed` is merged |
 | A5 | [alerts](alerts.md) | Alert rules checked every minute by one server, the Alerts page, email to admins and an optional webhook | A4 | decisions to confirm |
-| A6 | [actions](actions.md) | The first write actions, behind a fresh code (step-up), a written reason and the `operator` role: sign out everywhere, reset MFA, suspend an account, retry a delivery, block an IP, revoke a workspace's invitations, acknowledge an alert | A2 (roles), A1 (retry), A5 (acknowledge) | decisions to confirm |
-| A7 | [compliance](compliance.md) | Retention per kind of data, scrubbing a deleted account's email from the log, "Download my data", audit events shipped to the log, a data map (`docs/compliance.md`) and an incident runbook | A1, A3, A6 | decisions to confirm |
+| A6 | [actions](../implemented/admin/actions.md) | The write actions, behind a fresh code (step-up), a written reason and the `operator` role: sign out everywhere, reset MFA, suspend and unsuspend an account, revoke a workspace's invitations, retry deliveries, block an IP (an IP blocks page), sign another admin out; `admin sessions revoke-all`, `suspend` and `unsuspend` on the command line; a `Housekeeping` registration for the code-free tier. Acknowledging an alert comes with A5 | A2 (roles), A1 (retry), A5 (acknowledge) | **implemented 2026-11-01**, apart from acknowledging alerts (and silencing, resolving errors: A5, A4) |
+| A7 | [compliance](../implemented/admin/compliance.md) | Retention per kind of data, scrubbing a deleted account's email from the log, "Download my data", audit events shipped to the log, a data map (`docs/compliance.md`) and an incident runbook | A1, A3, A6 | **implemented 2026-11-01** (decision 9, inactive accounts, with A4's Usage page) |
 | A8 | [separate-build](../implemented/admin/separate-build.md) | The admin pages as their own build (`WEB_BUILD=admin`), out of the public bundle and served only behind the key: its scripts at `/admin-assets/` need an "assets pass" cookie that only the admin page gate sets. A build check that no admin code is left in the app build | admin access | **implemented 2026-11-01** |
 | A9 | [email-blocks](../implemented/admin/email-blocks.md) | The **Email blocks** page (the block list, from [email blocks](../implemented/email-blocks.md)) and Unblock, the first write: it builds A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` early, and waits for A2 only for the `operator` role | admin access, A1 | **implemented 2026-11-01** |
 | A10 | [events-page](../implemented/admin/events-page.md) | The **Events** page redesigned: one time range (windows and a custom range on a calendar), a Filters dialog with a grouped, searchable event picker and removable badges, failed checks (`outcome=failed`), and tiles and charts served with the newest page (`summary=include`: 7 days or less, a 5 s deadline, two at a time, the same recorded read); `make seed only=events` for volume | A1 | **implemented 2026-11-01** |
 
-**What can start now:** A1, A2, A8 and A9 are done, so A3 has everything it needs; A6 can reuse A9's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` once its other prerequisites ship. A3 is the groundwork A4, A5 and A7 wait for. A8 keeps A4's pages (rate-limit thresholds, abuse checks, alert rules) out of public view, as rule 7 says. A4 is large and can ship page by page in the order listed in it.
+**What can start now:** A1, A2, A8 and A9 are done, so A3 has everything it needs; A6 shipped with A9's step-up, reasons, `admin-action:per-user` and `AdminActionDialog`, apart from the housekeeping actions that wait for A4 and A5. A3 is the groundwork A4, A5 and A7 wait for. A8 keeps A4's pages (rate-limit thresholds, abuse checks, alert rules) out of public view, as rule 7 says. A4 is large and can ship page by page in the order listed in it.
 
 ## What the dashboard answers, and what it can't
 
@@ -56,6 +56,7 @@ Workspaces     (admin access)
 Events         A1
 Mail           A1
 Email blocks   A9
+IP blocks      A6   (until A4's IP addresses page)
 Monitoring     A4: Overview · Security · Rate limits · IPs · Accounts · Workspaces · Usage · Data · Integrity · Performance · Errors · Configuration
 Alerts         A5   (a count badge while any is open)
 Admins         A2
@@ -63,7 +64,7 @@ Admins         A2
 
 ## Later, not planned yet
 
-- **Workspace audit logs for owners.** Owners reading their own workspace's history, once we've decided, event by event, which data is available and safe for them to read (other members' IPs and emails, admins' reads). Until then, events are admin-only. Noted in [compliance](compliance.md#known-gaps-written-down).
+- **Workspace audit logs for owners.** Owners reading their own workspace's history, once we've decided, event by event, which data is available and safe for them to read (other members' IPs and emails, admins' reads). Until then, events are admin-only. Noted in [compliance](../implemented/admin/compliance.md#known-gaps-written-down).
 - **An `Idempotency-Key` for creates**, if [monitoring](monitoring.md#9-integrity)'s duplicate checks show it's needed.
 
 ## When these ship

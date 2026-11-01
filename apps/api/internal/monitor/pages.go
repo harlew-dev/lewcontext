@@ -10,7 +10,7 @@ import (
 type Page struct {
 	Name     string
 	Signals  func() []Signal
-	Sections func(ctx context.Context, env Env, w Window) (any, error)
+	Sections func(ctx context.Context, env Env, w Window) (Sections, error)
 }
 
 // pages are the pages built, in the sidebar's order (the plan ships them
@@ -19,6 +19,14 @@ var pages = []Page{
 	{Name: PageOverview, Signals: overviewSignals, Sections: overviewPage},
 	{Name: PageSecurity, Signals: func() []Signal { return SecuritySignals }, Sections: securityPage},
 	{Name: PageLimits, Signals: func() []Signal { return LimitsSignals }, Sections: limitsPage},
+	{Name: PageIPs, Signals: func() []Signal { return IPsSignals }, Sections: ipsPage},
+	{Name: PageAccounts, Signals: func() []Signal { return AccountsSignals }, Sections: accountsPage},
+	{Name: PageWorkspaces, Signals: func() []Signal { return WorkspacesSignals }, Sections: workspacesPage},
+	{Name: PageUsage, Signals: func() []Signal { return UsageSignals }, Sections: usagePage},
+	{Name: PageIntegrity, Signals: func() []Signal { return IntegritySignals }, Sections: integrityPage},
+	{Name: PagePerformance, Signals: func() []Signal { return PerformanceSignals }, Sections: performancePage},
+	{Name: PageErrors, Signals: func() []Signal { return ErrorsSignals }, Sections: errorsPage},
+	{Name: PageConfiguration, Signals: func() []Signal { return ConfigurationSignals }, Sections: configurationPage},
 }
 
 // PageNames are the pages built, in order.
@@ -40,17 +48,21 @@ func FindPage(name string) (Page, bool) {
 }
 
 // View is a page as its endpoint answers: its window, its signals as read
-// at env.Now, and its sections over the window.
+// at env.Now, its sections over the window, and the sections that couldn't
+// be read within their budget (by their key in sections).
 type View struct {
-	Page     string     `json:"page"`
-	Window   WindowEcho `json:"window"`
-	Signals  []Result   `json:"signals"`
-	Sections any        `json:"sections"`
+	Page        string     `json:"page"`
+	Window      WindowEcho `json:"window"`
+	Signals     []Result   `json:"signals"`
+	Sections    any        `json:"sections"`
+	Unavailable []string   `json:"unavailable"`
 }
 
-// Show reads page p over w.
+// Show reads page p over w, each signal and section under env's budget
+// (sections.go). ErrNothingRead when no part of it could be read.
 func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
-	signals, err := ReadAll(ctx, env, p.Signals())
+	env = env.withMemo()
+	signals, read, err := readSignals(ctx, env, p.Signals())
 	if err != nil {
 		return View{}, err
 	}
@@ -58,11 +70,19 @@ func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	return View{Page: p.Name, Window: w.Echo(), Signals: signals, Sections: sections}, nil
+	if read+sections.Read == 0 {
+		return View{}, ErrNothingRead
+	}
+	return View{Page: p.Name, Window: w.Echo(), Signals: signals, Sections: sections.Value, Unavailable: sections.Unavailable}, nil
 }
 
 // Signals are every signal defined, for the docs' list and the checks
 // (TestSignalsAreWellFormed).
 func Signals() []Signal {
-	return append(append(append([]Signal{}, SecuritySignals...), LimitsSignals...), OverviewSignals...)
+	var all []Signal
+	for _, list := range [][]Signal{SecuritySignals, LimitsSignals, IPsSignals, AccountsSignals, WorkspacesSignals, UsageSignals,
+		IntegritySignals, PerformanceSignals, ErrorsSignals, ConfigurationSignals, OverviewSignals} {
+		all = append(all, list...)
+	}
+	return all
 }

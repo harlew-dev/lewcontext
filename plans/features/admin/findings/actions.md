@@ -1,6 +1,6 @@
 # Findings: A6, admin actions
 
-Plan: [actions](../actions.md) (on the events branch it has moved to `implemented/admin/actions.md`). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), moved there from main to run in parallel. Every recommendation in its Decisions table was taken as accepted. Screenshots are in [actions/](actions/).
+Plan: [actions](../../implemented/admin/actions.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), moved there from main to run in parallel. Every recommendation in its Decisions table was taken as accepted. Screenshots are in [actions/](actions/).
 
 ## What shipped
 
@@ -100,4 +100,22 @@ The independent reviewer found **nothing high-severity**. It confirmed sound:
 
 **Design note (your call):** the IPv6 cap is a /32, which is a whole ISP's allocation and far wider than IPv4's /16. Blocking one could cut off an entire mobile carrier. The confirmed cap stays, but the dialog warns above /48 and suggests /64 for one person.
 
-_Fix results: filled in once committed._
+**Fix results:** all ten, in `fccd130`..`dbee74a` on the events branch. Each new test was also run against the old code and failed there.
+
+- **The key oracle:** closed. From a blocked address, the current key from outside the allowlist, the previous key, a pass from outside the allowlist and a wrong key all give byte-identical answers.
+- **The invitation race:** closed (5 rounds of simultaneous suspend and invite leave 0 invitations, 0 emails). This exposed a possible deadlock with account deletion, so **`DeleteAccount` now locks the user row before the workspaces**, and every path locks in the same order.
+- **DST:** the 30-day CHECK passes across a DST change. **Every database connection is now pinned to UTC.**
+- **Block-list loading:** retries every 1 s, doubling up to 30 s, until the first load succeeds; bad rows are skipped.
+- **Global sign-out** also ends sign-ins waiting for a code.
+- **Reset MFA** answers 409 for a setup that was never confirmed.
+- **The 1,000-block cap** holds under concurrency (an advisory lock; without it a test reached 1,007).
+- **The CLI's reason** follows the dashboard's character rule (`input.Reason`).
+- **The IPv6 warning** appears above /48.
+
+**Behaviour change to know:** an admin whose session is still under the previous key is blocked from a blocked address until they use the current key.
+
+All checks passed:
+- `make check`;
+- `make test`: 22 Go packages, 342 Vitest tests;
+- `make build`;
+- e2e: 24 of 24.

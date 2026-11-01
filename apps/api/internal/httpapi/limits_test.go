@@ -54,6 +54,7 @@ func TestRateLimitLevels(t *testing.T) {
 		"api:per-user":                 {0, 300},
 		"api-read:per-user":            {0, 1000},
 		"admin-read:per-user":          {0, 1000},
+		"sessions-revoke:per-user":     {0, 30},
 		"workspace:per-user":           {0, 10},
 		"project:per-user":             {0, 100},
 		"invitation:per-user":          {0, 20},
@@ -61,6 +62,7 @@ func TestRateLimitLevels(t *testing.T) {
 		"invitation:global":            {100, 200},
 		"client-error:per-user":        {0, 30},
 		"client-error:global":          {0, 500},
+		"export:per-user":              {0, 5},
 		"admin-action:per-user":        {0, 60},
 	}
 	if len(RateLimits) != len(want) {

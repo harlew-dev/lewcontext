@@ -44,7 +44,7 @@ type registration struct {
 
 // registers are the calls that register a route: ServeMux's, and the
 // route groups' (routeGroup).
-var registers = []string{"Handle", "HandleFunc", "Can", "Role", "Action", "OwnSessions"}
+var registers = []string{"Handle", "HandleFunc", "Can", "Role", "Action", "Housekeeping", "OwnSessions"}
 
 // routeRegistrations reads every route registered by a function (not a
 // method) in source. A controller is a local assigned a composite literal

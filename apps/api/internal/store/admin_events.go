@@ -26,9 +26,14 @@ type AdminEventFilter struct {
 	Account   string // usr_…: what the account did (actor) or is about (user)
 	Workspace string // wsp_…, matched in the payload, so it outlives the workspace
 	Email     string // lower-case, matched with the payload's email
-	IP        string // an address or a CIDR, matched with events.ip
-	From, To  *time.Time
-	Before    string // evt_…: only rows older than this one
+	// EmailPseudonym is Email's pseudonym (auth.Keys.EmailPseudonym), which
+	// events over 30 days old keep instead: they match too.
+	EmailPseudonym string
+	// IP is an address or a CIDR, matched with events.ip; an event over 30
+	// days old whose network (a /24 or /48) holds it matches too.
+	IP       string
+	From, To *time.Time
+	Before   string // evt_…: only rows older than this one
 }
 
 // ErrNoCursor means a cursor names an event that doesn't exist (pruned, or
@@ -110,9 +115,17 @@ type adminEventRow struct {
 func adminEvents(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().Model((*eventRecord)(nil)).
 		ColumnExpr("e.id, e.public_id, e.name, e.created_at, e.actor_id, e.user_id, e.workspace_id").
-		ColumnExpr("host(e.ip) AS ip, e.payload, e.user_agent").
+		ColumnExpr("?, e.payload, e.user_agent", eventIP).
 		ColumnExpr("? AS failed", failedCondition())
 }
+
+// eventIP is an event's IP as the dashboard shows it: the address, or once
+// minimised its network ("198.51.100.0/24").
+var eventIP = bun.SafeQuery("? AS ip", eventIPText)
+
+// eventIPText is an event's IP as text (the address, or a minimised
+// network), or null.
+var eventIPText = bun.SafeQuery("CASE WHEN masklen(e.ip) = CASE family(e.ip) WHEN 4 THEN 32 ELSE 128 END THEN host(e.ip) ELSE text(e.ip) END")
 
 // newestFirst orders events newest first; the id breaks ties, so rows
 // sharing a created_at never repeat or go missing across pages.
@@ -175,10 +188,20 @@ func (s *Store) filterAdminEvents(ctx context.Context, q *bun.SelectQuery, f Adm
 		q = q.Where(`e.payload \? 'workspace' AND e.payload->>'workspace' = ?`, f.Workspace)
 	}
 	if f.Email != "" {
-		q = q.Where(`e.payload \? 'email' AND lower(e.payload->>'email') = ?`, f.Email)
+		emails := []string{f.Email}
+		if f.EmailPseudonym != "" {
+			emails = append(emails, f.EmailPseudonym)
+		}
+		q = q.Where(`e.payload \? 'email' AND lower(e.payload->>'email') IN (?)`, bun.In(emails))
 	}
 	if f.IP != "" {
-		q = q.Where("e.ip IS NOT NULL AND e.ip <<= ?::inet", f.IP)
+		// A minimised event's IP is its network: equal to the filter's
+		// own, cut the same way, when the filter is narrower.
+		if network := minimiseIP(f.IP); network != f.IP {
+			q = q.Where("e.ip IS NOT NULL AND (e.ip <<= ?::inet OR e.ip = ?::inet)", f.IP, network)
+		} else {
+			q = q.Where("e.ip IS NOT NULL AND e.ip <<= ?::inet", f.IP)
+		}
 	}
 	if f.From != nil {
 		q = q.Where("e.created_at >= ?", *f.From)

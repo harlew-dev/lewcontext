@@ -17,9 +17,13 @@ type Summaries struct {
 	mu      sync.Mutex
 	running map[string]bool
 	// Wait is how long a summary waits for a slot before it's skipped
-	// (busy); Deadline how long it may run (too slow). Tests shorten them.
+	// (busy); Deadline how long it may run (too slow); Section how long
+	// one part of a Monitoring page (a signal or a section) may take
+	// within it before it's shown as not loaded, so one slow part can't
+	// take the page down. Tests shorten them.
 	Wait     time.Duration
 	Deadline time.Duration
+	Section  time.Duration
 }
 
 // Summary bounds, as docs/api/admin.md describes them.
@@ -27,10 +31,11 @@ const (
 	summarySlots    = 2
 	summaryWait     = time.Second
 	summaryDeadline = 5 * time.Second
+	sectionBudget   = 2 * time.Second
 )
 
 func newSummaries() *Summaries {
-	return &Summaries{slots: make(chan struct{}, summarySlots), running: map[string]bool{}, Wait: summaryWait, Deadline: summaryDeadline}
+	return &Summaries{slots: make(chan struct{}, summarySlots), running: map[string]bool{}, Wait: summaryWait, Deadline: summaryDeadline, Section: sectionBudget}
 }
 
 // Acquire takes a slot for admin, waiting at most Wait (or until ctx

@@ -94,6 +94,15 @@ var (
 	// The admin pages' own budget, as api-read:per-user is the app's.
 	AdminReadPerUser = ratelimit.Limit{Name: "admin-read:per-user", Block: ratelimit.Above(1000), Window: 5 * time.Minute, InMemory: true}
 
+	// SessionsRevokePerUser: requests to sign out the other sessions, counted
+	// per session (LimitSession), so each of a user's sessions has a budget
+	// of its own: a stolen session using its budget up can't stop the owner
+	// signing it out. The route skips the write budget (a recovery route),
+	// so this is its own limit. Its name keeps per-user, the user's own
+	// sessions: rate-limit names have no per-session kind (a new kind needs
+	// agreeing first, docs/checks.md).
+	SessionsRevokePerUser = ratelimit.Limit{Name: "sessions-revoke:per-user", Block: ratelimit.Above(30), Window: time.Hour}
+
 	// WorkspacePerUser: workspaces created by one user.
 	WorkspacePerUser = ratelimit.Limit{Name: "workspace:per-user", Block: ratelimit.Above(10), Window: time.Hour}
 	// ProjectPerUser: projects created by one user, across all of their workspaces.
@@ -135,6 +144,12 @@ var (
 		Busy:   "Error reports are busy. Try again later.",
 	}
 
+	// ExportPerUser: one user's data downloads (POST /api/auth/export).
+	// Counted once the password is right, so typos don't use it up; each
+	// export reads everything the account holds, so a stolen session and
+	// password can't make it a load or a feed.
+	ExportPerUser = ratelimit.Limit{Name: "export:per-user", Block: ratelimit.Above(5), Window: 24 * time.Hour}
+
 	// AdminActionPerUser: the admin dashboard's account-and-access actions taken by one admin.
 	// Unblocking an address, and A6's actions to come. Every attempt past the
 	// step-up counts, refused or not (an address that isn't blocked too), so a
@@ -149,9 +164,11 @@ var RateLimits = []ratelimit.Limit{
 	RegisterPerIP, RegisterPerEmail, RegisterGlobal,
 	EmailCodePerEmail, EmailVerificationPerEmail, EmailVerificationGlobal,
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
+	SessionsRevokePerUser,
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
 	ClientErrorPerUser, ClientErrorGlobal,
+	ExportPerUser,
 	AdminActionPerUser,
 }
 
@@ -319,6 +336,17 @@ func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, level st
 func (s *Server) Limit(l ratelimit.Limit, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.Allow(w, r, l, l.Key(Session(r).User.PublicID)) {
+			next(w, r)
+		}
+	}
+}
+
+// LimitSession is Limit counted per session rather than per user: by the
+// digest of the session's stored digest, so the key is never the
+// sessions table's own value.
+func (s *Server) LimitSession(l ratelimit.Limit, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.Allow(w, r, l, l.Key(s.SessionDigest(r))) {
 			next(w, r)
 		}
 	}

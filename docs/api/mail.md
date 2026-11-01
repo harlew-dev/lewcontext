@@ -15,7 +15,8 @@ err := mailer.Send(ctx, user.Email, mail.ForgotPassword, mail.ForgotPasswordData
 - **Listeners send mail, handlers don't.** A handler records an event, and a listener on it sends the email ([events.md](events.md#listeners)), so a slow or failing driver never holds up a request and is retried.
 - **`to`** must be a bare address (no display name) with no CR or LF, so it can't add headers. Anything else is refused before rendering.
 - **Rendered first, then delivered.** If either part fails to render (the wrong data struct, for example), nothing is sent.
-- **Never to a blocked address.** Every `Send` checks the block list first, whatever the template, and returns `mail.ErrBlocked` without sending ([Blocked addresses](#blocked-addresses)). `New` refuses to make a mailer without `Blocks`.
+- **Never to a blocked address.** Every `Send` checks the block list first, whatever the template, and returns `mail.ErrBlocked` without sending ([Blocked addresses](#blocked-addresses)). `New` refuses to make a mailer without `Blocks`. An admin's retry of a failed delivery ([admin.md](admin.md#retrying-deliveries)) runs its listener again, through `Send`, so a retry never reaches a blocked address either, and reset and invitation retries make a fresh link.
+- **Nothing for a suspended account's requests:** the reset listener finds no account for one ([auth.md](auth.md#suspended-accounts)).
 
 ## Who gets email, and how often
 

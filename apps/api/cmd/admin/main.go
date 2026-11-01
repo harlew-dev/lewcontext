@@ -40,6 +40,16 @@ func main() {
 		blocks(os.Args[2:])
 	case "unblock":
 		unblock(os.Args[2:])
+	case "suspend":
+		suspend(os.Args[2:])
+	case "unsuspend":
+		unsuspend(os.Args[2:])
+	case "sessions":
+		sessions(os.Args[2:])
+	case "erase":
+		erase(os.Args[2:])
+	case "export":
+		export(os.Args[2:])
 	case "app-key":
 		appKey(os.Args[2:])
 	case "route-key":
@@ -119,6 +129,16 @@ func usage() {
 	fmt.Fprintln(out, "  list                                    every admin, with their role and MFA")
 	fmt.Fprintln(out, "  blocks                                  every blocked email address, oldest first")
 	fmt.Fprintln(out, "  unblock -email <address> [-confirm]     take an address off the block list; previews without -confirm")
+	fmt.Fprintln(out, "  suspend -email <address> -reason <why> [-confirm]")
+	fmt.Fprintln(out, "                                          sign an account out and refuse its sign-ins (not an admin:")
+	fmt.Fprintln(out, "                                          revoke first); previews without -confirm")
+	fmt.Fprintln(out, "  unsuspend -email <address> -reason <why> [-confirm]")
+	fmt.Fprintln(out, "                                          let a suspended account sign in again")
+	fmt.Fprintln(out, "  sessions revoke-all [-confirm]          sign every account out, app and admin sessions alike")
+	fmt.Fprintln(out, "  erase -email <address> [-confirm]       delete an account for someone who can't (an erasure request), with")
+	fmt.Fprintln(out, "                                          its email in other events; not an admin, nor the only owner of a")
+	fmt.Fprintln(out, "                                          workspace with other members; previews without -confirm")
+	fmt.Fprintln(out, "  export -email <address> > file.json     an account's data, as Download my data gives it, to standard output")
 	fmt.Fprintln(out, "  app-key generate [-env path]            print a new APP_KEY, or write it into an .env file that has none")
 	fmt.Fprintln(out, "  route-key generate                      print a new ADMIN_ROUTE_KEY")
 }

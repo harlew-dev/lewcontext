@@ -138,12 +138,13 @@ type AdminLoggedOut struct {
 func (AdminLoggedOut) EventName() string { return "admin.logged_out" }
 
 // AdminUserListed: an admin loaded a page of the users list, with its
-// search, sort and page number.
+// search, sort and page number, and whether only suspended accounts.
 type AdminUserListed struct {
-	Admin string `json:"admin"`
-	Q     string `json:"q"`
-	Sort  string `json:"sort"`
-	Page  int    `json:"page"`
+	Admin     string `json:"admin"`
+	Q         string `json:"q"`
+	Sort      string `json:"sort"`
+	Page      int    `json:"page"`
+	Suspended bool   `json:"suspended,omitempty"`
 }
 
 func (AdminUserListed) EventName() string { return "admin.user.listed" }
@@ -221,8 +222,8 @@ type AdminMailViewed struct {
 func (AdminMailViewed) EventName() string { return "admin.mail.viewed" }
 
 // AdminMonitoringViewed: an admin loaded a Monitoring page (overview,
-// security, limits) for Window (1h, 24h or 7d): its signals, charts and
-// review lists together, one read.
+// security, limits, ips, accounts, workspaces, usage) for Window (1h, 24h
+// or 7d): its signals, charts and review lists together, one read.
 type AdminMonitoringViewed struct {
 	Admin  string `json:"admin"`
 	Page   string `json:"page"`
@@ -230,6 +231,29 @@ type AdminMonitoringViewed struct {
 }
 
 func (AdminMonitoringViewed) EventName() string { return "admin.monitoring.viewed" }
+
+// AdminIPViewed: an admin looked at what one address did (Monitoring's IP
+// addresses, one address's page) over Window. Address is the address
+// looked at (or an IPv6 /64), named apart from ip: the admin's own address
+// is the event's ip column, like every event's.
+type AdminIPViewed struct {
+	Admin   string `json:"admin"`
+	Address string `json:"address"`
+	Window  string `json:"window"`
+}
+
+func (AdminIPViewed) EventName() string { return "admin.ip.viewed" }
+
+// AdminErrorViewed: an admin looked at one grouped error (Monitoring's
+// Errors, one group's page) over Window: its message and stack. Error is
+// the group's err_ ID.
+type AdminErrorViewed struct {
+	Admin  string `json:"admin"`
+	Error  string `json:"error"`
+	Window string `json:"window"`
+}
+
+func (AdminErrorViewed) EventName() string { return "admin.error.viewed" }
 
 // AdminDeliveryListed: an admin loaded a page of the deliveries list, with
 // the filters used.
@@ -284,3 +308,157 @@ type AdminEmailUnblocked struct {
 }
 
 func (AdminEmailUnblocked) EventName() string { return "admin.email.unblocked" }
+
+// The dashboard's account-and-access actions (plans/features/admin/actions.md):
+// each recorded once, with the admin, what they acted on and the reason
+// they gave (10 to 500 characters), in the same transaction as the change,
+// beside the store's own events for it (auth.mfa.disabled,
+// workspace.invitation.revoked, …), which carry the admin as actor too.
+
+// AdminUserSignedOut: an admin signed every session of an account out
+// (Sign out everywhere).
+type AdminUserSignedOut struct {
+	Admin           string `json:"admin"`
+	User            string `json:"user"`
+	Reason          string `json:"reason"`
+	SessionsRevoked int    `json:"sessionsRevoked"`
+}
+
+func (AdminUserSignedOut) EventName() string { return "admin.user.signed_out" }
+
+// AdminUserMFAReset: an admin turned an account's two-factor
+// authentication off for someone who lost it, having confirmed who was
+// asking outside the app; auth.mfa.disabled (reason reset) is recorded
+// with it.
+type AdminUserMFAReset struct {
+	Admin           string `json:"admin"`
+	User            string `json:"user"`
+	Reason          string `json:"reason"`
+	SessionsRevoked int    `json:"sessionsRevoked"`
+}
+
+func (AdminUserMFAReset) EventName() string { return "admin.user.mfa_reset" }
+
+// AdminUserSuspended: an admin suspended an account; auth.suspended (by
+// admin) is recorded with it.
+type AdminUserSuspended struct {
+	Admin              string `json:"admin"`
+	User               string `json:"user"`
+	Reason             string `json:"reason"`
+	SessionsRevoked    int    `json:"sessionsRevoked"`
+	InvitationsRevoked int    `json:"invitationsRevoked"`
+}
+
+func (AdminUserSuspended) EventName() string { return "admin.user.suspended" }
+
+// AdminUserUnsuspended: an admin lifted an account's suspension;
+// auth.unsuspended (by admin) is recorded with it.
+type AdminUserUnsuspended struct {
+	Admin  string `json:"admin"`
+	User   string `json:"user"`
+	Reason string `json:"reason"`
+}
+
+func (AdminUserUnsuspended) EventName() string { return "admin.user.unsuspended" }
+
+// AdminWorkspaceInvitationsRevoked: an admin revoked every live invitation
+// of a workspace (Count of them), to stop an invitation-spam run;
+// workspace.invitation.revoked is recorded for each.
+type AdminWorkspaceInvitationsRevoked struct {
+	Admin     string `json:"admin"`
+	Workspace string `json:"workspace"`
+	Reason    string `json:"reason"`
+	Count     int    `json:"count"`
+}
+
+func (AdminWorkspaceInvitationsRevoked) EventName() string {
+	return "admin.workspace.invitations_revoked"
+}
+
+// AdminDeliveryRetried: an admin queued failed deliveries again: one
+// (Event and Listener), or every failed delivery of Listener since
+// FailedSince (at most 1,000), Count of them.
+type AdminDeliveryRetried struct {
+	Admin       string     `json:"admin"`
+	Reason      string     `json:"reason"`
+	Listener    string     `json:"listener"`
+	Event       string     `json:"event,omitempty"`
+	FailedSince *time.Time `json:"failedSince,omitempty"`
+	Count       int        `json:"count"`
+}
+
+func (AdminDeliveryRetried) EventName() string { return "admin.delivery.retried" }
+
+// AdminIPBlocked: an admin blocked a client address or range (Network, as
+// CIDR) until ExpiresAt; Block is its ipb_ ID.
+type AdminIPBlocked struct {
+	Admin     string    `json:"admin"`
+	Block     string    `json:"block"`
+	Network   string    `json:"network"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Reason    string    `json:"reason"`
+}
+
+func (AdminIPBlocked) EventName() string { return "admin.ip.blocked" }
+
+// AdminIPUnblocked: an admin lifted a block before it expired.
+type AdminIPUnblocked struct {
+	Admin   string `json:"admin"`
+	Block   string `json:"block"`
+	Network string `json:"network"`
+	Reason  string `json:"reason"`
+}
+
+func (AdminIPUnblocked) EventName() string { return "admin.ip.unblocked" }
+
+// AdminIPBlockListed: an admin loaded the IP blocks page.
+type AdminIPBlockListed struct {
+	Admin string `json:"admin"`
+}
+
+func (AdminIPBlockListed) EventName() string { return "admin.ip_block.listed" }
+
+// AdminAdminSignedOut: an admin signed another admin out, every admin and
+// app session of theirs (a lost laptop, a session that moved). The one
+// action on another admin: anything else stays on the command line.
+type AdminAdminSignedOut struct {
+	Admin                string `json:"admin"`
+	User                 string `json:"user"`
+	Reason               string `json:"reason"`
+	AdminSessionsRevoked int    `json:"adminSessionsRevoked"`
+	SessionsRevoked      int    `json:"sessionsRevoked"`
+}
+
+func (AdminAdminSignedOut) EventName() string { return "admin.admin.signed_out" }
+
+// AdminUserErased: the operator erased an account for someone who couldn't
+// (admin erase, docs/compliance.md#erasure): the same deletion as the
+// account's own, recorded beside auth.account_deleted. Workspaces is how
+// many workspaces only the account belonged to, deleted with it (each also
+// workspace.deleted). No actor or user scope: the CLI acts, and the
+// account is gone.
+type AdminUserErased struct {
+	User       string `json:"user"`
+	Workspaces int    `json:"workspaces"`
+}
+
+func (AdminUserErased) EventName() string { return "admin.user.erased" }
+
+// AdminUserExported: the operator exported an account's data for someone
+// who couldn't sign in (admin export), after verifying who was asking. No
+// actor; user_id is the account.
+type AdminUserExported struct {
+	User string `json:"user"`
+}
+
+func (AdminUserExported) EventName() string { return "admin.user.exported" }
+
+// AdminEventExported: an admin downloaded the Events list as CSV, with the
+// filters used and how many rows it held (at most 10,000).
+type AdminEventExported struct {
+	Admin   string       `json:"admin"`
+	Filters EventFilters `json:"filters"`
+	Rows    int          `json:"rows"`
+}
+
+func (AdminEventExported) EventName() string { return "admin.event.exported" }

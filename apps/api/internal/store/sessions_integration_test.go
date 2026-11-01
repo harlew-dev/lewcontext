@@ -21,7 +21,8 @@ func lastSeen(t *testing.T, s *Store, userID int64) *time.Time {
 }
 
 // The session check moves users.last_seen_at at most once an hour per
-// account, in the same statement, and never for a session that isn't live.
+// account, in the same statement, and never for a session that isn't live
+// nor a suspended account's.
 func TestSessionCheckMovesLastSeenHourly(t *testing.T) {
 	s, ctx := queueStore(t, nil)
 	f := factory.TestFaker(t)
@@ -85,5 +86,71 @@ func TestSessionCheckMovesLastSeenHourly(t *testing.T) {
 	}
 	if lastSeen(t, s, other.ID) != nil {
 		t.Fatal("an expired session moved last_seen_at")
+	}
+
+	// A suspended account's live session isn't found (the suspension's
+	// backstop, in the same statement), so it isn't seen either.
+	suspended, err := factory.Users.CreateOne(ctx, s.DB, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := factory.SessionFor(ctx, s.DB, f, suspended.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := factory.UserSuspensions.State(factory.SuspensionOf(suspended.ID)).CreateOne(ctx, s.DB, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FindSession(ctx, auth.Digest(live.Token)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("a suspended account's session: %v", err)
+	}
+	if lastSeen(t, s, suspended.ID) != nil {
+		t.Fatal("a suspended account's session moved last_seen_at")
+	}
+}
+
+// The session check never waits for the account's row: a transaction
+// holding it (as changing the password does, before deleting the
+// sessions) leaves last_seen_at alone, and the check answers at once.
+// Waiting would deadlock with that transaction's delete.
+func TestSessionCheckSkipsALockedAccount(t *testing.T) {
+	s, ctx := queueStore(t, nil)
+	f := factory.TestFaker(t)
+	user, err := factory.Users.CreateOne(ctx, s.DB, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := factory.SessionFor(ctx, s.DB, f, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", user.ID).For("UPDATE").Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	quick, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	found, err := s.FindSession(quick, auth.Digest(session.Token))
+	if err != nil || found.User.ID != user.ID {
+		t.Fatalf("session check under a locked account: %v", err)
+	}
+	if lastSeen(t, s, user.ID) != nil {
+		t.Fatal("last seen moved under someone else's lock")
+	}
+	// The holder goes on to delete the sessions, which FindSession's
+	// statement no longer holds, and commits.
+	if _, err := tx.NewDelete().Model((*sessionRecord)(nil)).Where("user_id = ?", user.ID).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	// Free again, the next check moves it.
+	if _, err := factory.SessionFor(ctx, s.DB, f, user.ID); err != nil {
+		t.Fatal(err)
 	}
 }

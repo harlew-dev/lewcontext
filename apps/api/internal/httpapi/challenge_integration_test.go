@@ -496,3 +496,25 @@ func TestSharedChallengeLimitsNeedAChallengeableRoute(t *testing.T) {
 		t.Fatalf("auth:per-ip refused on a route without an action: %d", w.Code)
 	}
 }
+
+// A blocked address is refused by ClientAddress before a challengeable
+// route is reached: 403, never a 428 and no CAPTCHA asked for, even above
+// the challenge level and with a token.
+func TestBlockedAddressBeforeTheChallenge(t *testing.T) {
+	s, fake := challengeServer(t)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	apitest.Must(factory.IPBlocks.State(factory.BlockOf("203.0.113.0/24")).CreateOne(ctx, s.Repo.DB, f))(t)
+	apitest.Must(0, s.ReloadIPBlocks(ctx))(t)
+	spend(t, s, "auth:per-ip", "203.0.113.70", 5)
+	h := router.New(s)
+	for _, token := range []string{"", "good"} {
+		w := sendFrom(h, "203.0.113.70", "POST", "/api/auth/login", loginUnknown, token)
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), httpapi.IPBlocked) {
+			t.Fatalf("token %q: %d %s", token, w.Code, w.Body)
+		}
+	}
+	if fake.calls() != 0 {
+		t.Fatalf("the provider was asked %d times", fake.calls())
+	}
+}

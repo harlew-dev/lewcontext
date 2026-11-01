@@ -42,10 +42,16 @@ export type Challenge = { provider: string; siteKey: string; action: string };
 export type Solve = (challenge: Challenge) => Promise<string>;
 // The header the resent request carries the token in.
 export const challengeTokenHeader = "X-Challenge-Token";
+// A GET answered with a file rather than JSON: its text, and the headers
+// that say more about it (the Events CSV's X-Export-Truncated).
+export type TextResponse = { text: string; headers: Headers };
 // How resource files reach the API.
 export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;
   send<T>(method: Method, path: string, body?: unknown): Promise<T>;
+  // A GET whose answer is a file rather than JSON (the admin Events CSV):
+  // its text and headers, refused as get is.
+  text(path: string): Promise<TextResponse>;
 };
 // Where and how requests go: the base URL, headers sent with every request,
 // cookies and a timeout. onResponse sees every response, answered or
@@ -68,6 +74,7 @@ export function httpWith(transport: Transport): Http {
   return {
     get: (path) => call("GET", path),
     send: (method, path, body) => call(method, path, body),
+    text: (path) => request(transport, "GET", path, undefined, true),
   };
 }
 // A request, and once more with the token when the API answers 428 and the
@@ -81,14 +88,15 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  asText = false,
 ): Promise<T> {
   try {
-    return await send<T>(transport, method, path, body);
+    return await send<T>(transport, method, path, body, asText);
   } catch (error) {
     const challenge = challengeOf(error);
     if (!challenge || !transport.solve) throw error;
     const token = await transport.solve(challenge);
-    return send<T>(transport, method, path, body, token);
+    return send<T>(transport, method, path, body, asText, token);
   }
 }
 // The challenge a 428 carries, or null for any other error.
@@ -106,7 +114,8 @@ async function send<T>(
   { base, headers, credentials, timeout, onResponse }: Transport,
   method: string,
   path: string,
-  body?: unknown,
+  body: unknown,
+  asText: boolean,
   token?: string,
 ): Promise<T> {
   const init = new Headers(headers);
@@ -131,6 +140,7 @@ async function send<T>(
   }
   // 204, and 202 for work done later (a password reset link), carry no body.
   const text = await response.text();
+  if (asText) return { text, headers: response.headers } as T;
   return (text === "" ? undefined : JSON.parse(text)) as T;
 }
 // Requests go to the same-origin /api (Go serves it; Vite proxies it in

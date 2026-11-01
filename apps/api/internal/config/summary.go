@@ -5,8 +5,9 @@ package config
 // for the admin dashboard to compare servers and spot a change. It names
 // which settings are set and their non-secret values; it never holds a
 // secret's value, part of one, or a digest of one (APP_KEY, the admin keys,
-// METRICS_TOKEN, the SMTP credentials, DATABASE_URL, CAPTCHA_SECRET_KEY). Fields are copied one
-// by one, never by walking Config, so a new secret can't slip in.
+// METRICS_TOKEN, the SMTP credentials, DATABASE_URL, CAPTCHA_SECRET_KEY).
+// Fields are copied one by one, never by walking Config, so a new secret
+// can't slip in.
 type Summary struct {
 	Production        bool         `json:"production"`
 	MailDriver        string       `json:"mailDriver"`
@@ -16,12 +17,12 @@ type Summary struct {
 	ClientIPHeader    string       `json:"clientIpHeader"`
 	TrustedProxies    int          `json:"trustedProxies"`
 	PerIPLimits       string       `json:"perIpLimits"`
-	// The CAPTCHA provider (CAPTCHA_PROVIDER) and its site key, which is
-	// public (every 428 sends it to the browser), so its value is kept to
-	// compare servers; the secret key only as set or not, and whether
-	// either is one of Cloudflare's published test keys.
+	// The CAPTCHA provider (CAPTCHA_PROVIDER: turnstile or off, the values
+	// config accepts); its keys only as set or not, never a value, part or
+	// digest (the site key is public, but nothing here needs it); and
+	// whether either is one of Cloudflare's published test keys.
 	CaptchaProvider   string `json:"captchaProvider"`
-	CaptchaSiteKey    string `json:"captchaSiteKey"`
+	CaptchaSiteKey    bool   `json:"captchaSiteKey"`
 	CaptchaSecretKey  bool   `json:"captchaSecretKey"`
 	CaptchaTestKeys   bool   `json:"captchaTestKeys"`
 	Policies          string `json:"policies"`
@@ -65,8 +66,8 @@ func (c Config) Summary(migrations MigrationsSummary) Summary {
 		ClientIPHeader:    c.ClientIPHeader,
 		TrustedProxies:    len(c.TrustedProxies),
 		PerIPLimits:       onOff(!c.PerIPLimitsOff),
-		CaptchaProvider:   c.CaptchaProvider,
-		CaptchaSiteKey:    c.CaptchaSiteKey,
+		CaptchaProvider:   captchaProvider(c.CaptchaProvider),
+		CaptchaSiteKey:    c.CaptchaSiteKey != "",
 		CaptchaSecretKey:  c.CaptchaSecretKey != "",
 		CaptchaTestKeys:   IsTurnstileTestKey(c.CaptchaSiteKey) || IsTurnstileTestKey(c.CaptchaSecretKey),
 		Policies:          onOff(c.Policies),
@@ -95,4 +96,13 @@ func onOff(on bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+// captchaProvider is CAPTCHA_PROVIDER as one of the values config accepts,
+// so the summary can't carry anything else.
+func captchaProvider(provider string) string {
+	if provider == CaptchaTurnstile {
+		return CaptchaTurnstile
+	}
+	return CaptchaOff
 }

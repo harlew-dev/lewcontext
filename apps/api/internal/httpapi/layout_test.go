@@ -54,6 +54,7 @@ var namedActions = map[string]string{
 	"Accept":        "/api/invitations/accept",
 	"Me":            "the admin door's /me, its session",
 	"Catalogue":     "the admin filters' names, /api/admin/catalogue",
+	"Retry":         "the admin dashboard's POST /deliveries/{event}/{listener}/retry and /deliveries/retry: queuing failed deliveries again",
 }
 
 // sourcePackage is one folder of the tree: its path under httpapi ("" for the

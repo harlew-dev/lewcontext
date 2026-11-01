@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { SWRConfig } from "swr";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Toaster } from "@/components/ui/toast";
 import AccountSettings from "@/pages/app/settings";
 import Login from "@/pages/auth/login";
@@ -704,5 +704,95 @@ describe("terms and privacy", () => {
     expect(
       screen.getByRole("link", { name: "Privacy Policy" }),
     ).toHaveAttribute("href", "/policy/privacy-policy");
+  });
+});
+// A saved file's text (jsdom's Blob has no text()).
+function blobText(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsText(blob);
+  });
+}
+describe("downloading your data", () => {
+  const workspaces = {
+    body: { data: [], pages: { current: 1, total: 1, perPage: 20, items: 0 } },
+  };
+  it("asks for the password, then saves the API's answer as a file", async () => {
+    const saved: Blob[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      saved.push(blob);
+      return "blob:export";
+    });
+    const { createObjectURL: realCreate, revokeObjectURL: realRevoke } = URL;
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    const exported = { account: { id: "usr_2yEHYLwiwPVhLW" }, events: [] };
+    const api = stubApi({
+      "GET /api/workspaces": workspaces,
+      "POST /api/auth/export": [
+        {
+          status: 422,
+          body: { error: "Current password is incorrect.", field: "password" },
+        },
+        { body: exported },
+      ],
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Download your data" }));
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: "Download" });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Your password"), {
+      target: { value: "wrong" },
+    });
+    fireEvent.click(confirm);
+    expect(
+      await within(dialog).findByText("Current password is incorrect."),
+    ).toBeInTheDocument();
+    expect(saved).toHaveLength(0);
+    fireEvent.change(within(dialog).getByLabelText("Your password"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(confirm);
+    expect(
+      await screen.findByText("Your data has been downloaded."),
+    ).toBeInTheDocument();
+    expect(api.sent("POST")[1]).toEqual({
+      method: "POST",
+      url: "/api/auth/export",
+      body: { password: "correct horse battery staple" },
+      csrf: "csrf-old",
+    });
+    expect(saved).toHaveLength(1);
+    expect(JSON.parse(await blobText(saved[0]))).toEqual(exported);
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockRestore();
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  });
+  it("keeps the dialog open with the limit's refusal", async () => {
+    stubApi({
+      "GET /api/workspaces": workspaces,
+      "POST /api/auth/export": {
+        status: 429,
+        body: { error: "Too many requests. Try again in 23 hours." },
+      },
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Download your data" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Your password"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download" }));
+    expect(
+      await within(dialog).findByText(
+        "Too many requests. Try again in 23 hours.",
+      ),
+    ).toBeInTheDocument();
   });
 });

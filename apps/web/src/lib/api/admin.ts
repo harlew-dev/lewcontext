@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useOptionalAdmin } from "@/lib/admin";
 import { url, type Page } from "@/lib/pagination";
-import { eventQuery, eventsUrl } from "@/lib/admin-routes";
+import { addressSegment, eventQuery, eventsUrl } from "@/lib/admin-routes";
 import type { Project, ProjectSort } from "@/types/projects";
 import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
@@ -27,12 +27,16 @@ import {
   type AdminWorkspace,
   type AdminWorkspaceDetail,
   type AdminWorkspaceSort,
+  type AddressView,
   type CursorPage,
   type DeliveryStatus,
   type EventFilters,
+  type IPBlockLifetime,
+  type AdminIPBlock,
   type MailWindow,
   type MonitoringPage,
   type MonitoringView,
+  type ErrorView,
   type MonitoringWindow,
   defaultMonitoringWindow,
 } from "@/types/admin";
@@ -46,6 +50,8 @@ export type AdminUserIndexQuery = {
   perPage?: number;
   q?: string;
   sort?: AdminUserSort;
+  // Only suspended accounts.
+  suspended?: boolean;
 };
 export type AdminWorkspaceIndexQuery = {
   page?: number;
@@ -83,6 +89,33 @@ export type AdminEmailBlockIndexQuery = {
 };
 // Unblocking an address: the address in the body (never a path), and why.
 export type AdminUnblock = { email: string; reason: string };
+// The Events CSV: the file's text, and whether rows were left out past
+// the 10,000 it holds (the API's X-Export-Truncated).
+export type EventExportFile = { csv: string; truncated: boolean };
+// Suspending an account: why, and whether to revoke the live invitations
+// it sent (the dialog's default).
+export type AdminSuspend = { reason: string; revokeInvitations: boolean };
+// What suspending ended.
+export type AdminSuspended = {
+  sessionsRevoked: number;
+  invitationsRevoked: number;
+};
+// Resetting an account's MFA: why, and that whoever asked was confirmed
+// outside the app.
+export type AdminResetMfa = { reason: string; confirmed: boolean };
+// Queuing a listener's failed deliveries again: since when (at most 7 days
+// ago), and why.
+export type AdminRetryFailed = {
+  listener: string;
+  failedSince: string;
+  reason: string;
+};
+// Blocking an address or a range for a while, and why.
+export type AdminBlockIP = {
+  network: string;
+  expiresIn: IPBlockLifetime;
+  reason: string;
+};
 // The door's password step: a code next, or (an admin without MFA, inside
 // the setup window) setting MFA up.
 export type AdminLoginStep = { mfaRequired: true } | { mfaSetupRequired: true };
@@ -99,13 +132,14 @@ export const adminPaths = {
   loginMfa: () => `${base}/login/mfa`,
   logout: () => `${base}/logout`,
   users: {
-    index: ({ page, perPage, q, sort }: AdminUserIndexQuery = {}) =>
+    index: ({ page, perPage, q, sort, suspended }: AdminUserIndexQuery = {}) =>
       path<Page<AdminUser>>(
         url(`${base}/users`, {
           page,
           perPage,
           q,
           sort: sort === defaultAdminUserSort ? undefined : sort,
+          suspended: suspended ? "true" : undefined,
         }),
       ),
     show: (id: string) => path<AdminUserDetail>(`${base}/users/${id}`),
@@ -146,6 +180,15 @@ export const adminPaths = {
       ),
     show: (id: string) => path<AdminEventDetail>(`${base}/events/${id}`),
   },
+  // The Events list's filters as a CSV file, at most 10,000 rows (recorded
+  // as admin.event.exported).
+  eventExport: {
+    show: (filters: EventFilters = {}) =>
+      eventsUrl(
+        `${base}/events/export`,
+        eventQuery({ ...filters, before: undefined }),
+      ),
+  },
   catalogue: () => path<AdminCatalogue>(`${base}/catalogue`),
   // The Mail summary; 24h is the default, so it's left out.
   mail: (window: MailWindow = "24h") =>
@@ -162,6 +205,26 @@ export const adminPaths = {
     show: <S>(page: MonitoringPage, window?: MonitoringWindow) =>
       path<MonitoringView<S>>(
         url(`${base}/monitoring/${page}`, {
+          window: window === defaultMonitoringWindow ? undefined : window,
+        }),
+      ),
+  },
+  // One address's page (or an IPv6 /64's, its slash escaped), read whole
+  // and recorded with the address; 24h is the default window.
+  ips: {
+    show: (ip: string, window?: MonitoringWindow) =>
+      path<AddressView>(
+        url(`${base}/ips/${addressSegment(ip)}`, {
+          window: window === defaultMonitoringWindow ? undefined : window,
+        }),
+      ),
+  },
+  // One grouped error's page, read whole and recorded with the group;
+  // 24h is the default window.
+  errors: {
+    show: (error: string, window?: MonitoringWindow) =>
+      path<ErrorView>(
+        url(`${base}/errors/${encodeURIComponent(error)}`, {
           window: window === defaultMonitoringWindow ? undefined : window,
         }),
       ),
@@ -187,6 +250,32 @@ export const adminPaths = {
   },
   // A fresh code opens this session's step-up window for the actions.
   stepUp: () => `${base}/step-up`,
+  // The account-and-access actions (each needs a fresh code and a reason;
+  // ids are public IDs, never an email).
+  userSessions: (user: string) => ({
+    destroy: () => `${base}/users/${user}/sessions`,
+  }),
+  userMfa: (user: string) => ({ destroy: () => `${base}/users/${user}/mfa` }),
+  userSuspension: (user: string) => ({
+    store: () => `${base}/users/${user}/suspension`,
+    destroy: () => `${base}/users/${user}/suspension`,
+  }),
+  workspaceInvitations: (workspace: string) => ({
+    destroy: () => `${base}/workspaces/${workspace}/invitations`,
+  }),
+  // Retrying one failed delivery, by its event and listener.
+  deliveryRetry: (event: string, listener: string) =>
+    `${base}/deliveries/${event}/${encodeURIComponent(listener)}/retry`,
+  failedDeliveries: { retry: () => `${base}/deliveries/retry` },
+  ipBlocks: {
+    index: () => path<{ data: AdminIPBlock[] }>(`${base}/ip-blocks`),
+    store: () => `${base}/ip-blocks`,
+    destroy: (id: string) => `${base}/ip-blocks/${id}`,
+  },
+  // Another admin's sessions (signing them out).
+  adminSessions: (user: string) => ({
+    destroy: () => `${base}/admins/${user}/sessions`,
+  }),
 };
 export function adminClient(http: Http) {
   return {
@@ -226,15 +315,32 @@ export function adminClient(http: Http) {
         http.get(adminPaths.events.index(query)),
       show: (id: string) => http.get(adminPaths.events.show(id)),
     }),
+    // The CSV's text, which the page saves as a file, and whether the API
+    // left rows out (X-Export-Truncated), never guessed from its length.
+    eventExport: () => ({
+      show: async (filters: EventFilters = {}): Promise<EventExportFile> => {
+        const { text, headers } = await http.text(
+          adminPaths.eventExport.show(filters),
+        );
+        return {
+          csv: text,
+          truncated: headers.get("X-Export-Truncated") === "true",
+        };
+      },
+    }),
     catalogue: () => http.get(adminPaths.catalogue()),
     mail: (window?: MailWindow) => http.get(adminPaths.mail(window)),
-    deliveries: () => ({
-      index: (query: AdminDeliveryIndexQuery = {}) =>
-        http.get(adminPaths.deliveries.index(query)),
-    }),
     monitoring: () => ({
       show: <S>(page: MonitoringPage, window?: MonitoringWindow) =>
         http.get(adminPaths.monitoring.show<S>(page, window)),
+    }),
+    ips: () => ({
+      show: (ip: string, window?: MonitoringWindow) =>
+        http.get(adminPaths.ips.show(ip, window)),
+    }),
+    errors: () => ({
+      show: (error: string, window?: MonitoringWindow) =>
+        http.get(adminPaths.errors.show(error, window)),
     }),
     admins: () => ({ index: () => http.get(adminPaths.admins.index()) }),
     // Signs out every other admin session of yours, keeping this one.
@@ -257,6 +363,82 @@ export function adminClient(http: Http) {
     // window for actions. A wrong code is an ApiError with field "code".
     stepUp: (code: string) =>
       http.send<void>("POST", adminPaths.stepUp(), { code }),
+    // The actions below are for operators, inside the step-up window
+    // (needsStepUp otherwise), each with a reason of 10 to 500 characters.
+    // Sign out everywhere: every session of an account that isn't an admin.
+    userSessions: (user: string) => ({
+      destroy: (reason: string) =>
+        http.send<void>("DELETE", adminPaths.userSessions(user).destroy(), {
+          reason,
+        }),
+    }),
+    // Turns an account's MFA off and signs it out (never an admin's).
+    userMfa: (user: string) => ({
+      destroy: ({ reason, confirmed }: AdminResetMfa) =>
+        http.send<void>("DELETE", adminPaths.userMfa(user).destroy(), {
+          reason,
+          confirmed,
+        }),
+    }),
+    userSuspension: (user: string) => ({
+      store: ({ reason, revokeInvitations }: AdminSuspend) =>
+        http.send<AdminSuspended>(
+          "POST",
+          adminPaths.userSuspension(user).store(),
+          { reason, revokeInvitations },
+        ),
+      destroy: (reason: string) =>
+        http.send<void>("DELETE", adminPaths.userSuspension(user).destroy(), {
+          reason,
+        }),
+    }),
+    // Revokes every live invitation of a workspace.
+    workspaceInvitations: (workspace: string) => ({
+      destroy: (reason: string) =>
+        http.send<void>(
+          "DELETE",
+          adminPaths.workspaceInvitations(workspace).destroy(),
+          { reason },
+        ),
+    }),
+    // Queues failed deliveries again: one, or a listener's since a time
+    // (at most 1,000; answers how many).
+    deliveries: () => ({
+      index: (query: AdminDeliveryIndexQuery = {}) =>
+        http.get(adminPaths.deliveries.index(query)),
+      retry: (event: string, listener: string, reason: string) =>
+        http.send<void>("POST", adminPaths.deliveryRetry(event, listener), {
+          reason,
+        }),
+    }),
+    failedDeliveries: () => ({
+      retry: ({ listener, failedSince, reason }: AdminRetryFailed) =>
+        http.send<{ count: number }>(
+          "POST",
+          adminPaths.failedDeliveries.retry(),
+          { listener, failedSince, reason },
+        ),
+    }),
+    ipBlocks: () => ({
+      index: () => http.get(adminPaths.ipBlocks.index()),
+      store: ({ network, expiresIn, reason }: AdminBlockIP) =>
+        http.send<AdminIPBlock>("POST", adminPaths.ipBlocks.store(), {
+          network,
+          expiresIn,
+          reason,
+        }),
+      destroy: (id: string, reason: string) =>
+        http.send<void>("DELETE", adminPaths.ipBlocks.destroy(id), {
+          reason,
+        }),
+    }),
+    // Signs another admin out of every admin and app session.
+    adminSessions: (user: string) => ({
+      destroy: (reason: string) =>
+        http.send<void>("DELETE", adminPaths.adminSessions(user).destroy(), {
+          reason,
+        }),
+    }),
   };
 }
 export type AdminApiClient = ReturnType<typeof adminClient>;

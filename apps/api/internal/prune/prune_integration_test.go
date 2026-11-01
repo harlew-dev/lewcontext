@@ -83,18 +83,48 @@ func TestConfirmDeletesOnlyOldEventsWithoutPendingDeliveries(t *testing.T) {
 	if r.Deleted != 9 || r.Kept != 1 || !strings.HasPrefix(r.String(), "events: deleted 9 ") {
 		t.Fatalf("report: %+v", r)
 	}
-	// Left: the old event with a pending delivery, and the recent one.
-	if n := count(t, s, "events"); n != 2 {
+	// Left: the old event with a pending delivery, and the recent one;
+	// and the run's evidence, prune.completed.
+	if n := countApp(t, s); n != 2 {
 		t.Fatalf("%d events left, want 2", n)
+	}
+	completed := completedRuns(t, s)
+	if len(completed) != 1 || completed[0] != `{"kept": 1, "cutoff": "`+now.Add(-90*day).UTC().Format(time.RFC3339)+`", "target": "events", "deleted": 9}` {
+		t.Fatalf("prune.completed: %v", completed)
 	}
 	if n := count(t, s, "event_deliveries"); n != 1 {
 		t.Fatalf("%d deliveries left, want only the pending one", n)
 	}
 	// A shorter age now reaches the recent event too.
 	r, err = Run(context.Background(), s, events, Options{Now: now, Confirm: true, Age: 24 * time.Hour})
-	if err != nil || r.Deleted != 1 || count(t, s, "events") != 1 {
+	if err != nil || r.Deleted != 1 || countApp(t, s) != 1 || len(completedRuns(t, s)) != 2 {
 		t.Fatalf("with 1d: %+v, %v", r, err)
 	}
+	// A preview records nothing.
+	if _, err := Run(context.Background(), s, events, Options{Now: now}); err != nil || len(completedRuns(t, s)) != 2 {
+		t.Fatalf("a preview recorded prune.completed: %v", err)
+	}
+}
+
+// countApp counts the events other than prune's own record.
+func countApp(t *testing.T, s *store.Store) int {
+	t.Helper()
+	n, err := s.DB.NewSelect().Table("events").Where("name <> 'prune.completed'").Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(n)
+}
+
+// completedRuns are the prune.completed payloads, oldest first.
+func completedRuns(t *testing.T, s *store.Store) []string {
+	t.Helper()
+	var payloads []string
+	err := s.DB.NewSelect().Table("events").ColumnExpr("payload::text").Where("name = 'prune.completed'").OrderExpr("id").Scan(context.Background(), &payloads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payloads
 }
 
 func TestRunRefusesAgesUnderAnHourAndStopsWhenCancelled(t *testing.T) {
@@ -108,8 +138,8 @@ func TestRunRefusesAgesUnderAnHourAndStopsWhenCancelled(t *testing.T) {
 	if _, err := Run(ctx, s, events, Options{Now: now, Confirm: true}); err == nil {
 		t.Fatal("a cancelled run reported success")
 	}
-	if n := count(t, s, "events"); n != 9 {
-		t.Fatalf("%d events left after refused runs, want all 9", n)
+	if n := count(t, s, "events"); n != 9 || len(completedRuns(t, s)) != 0 {
+		t.Fatalf("%d events left after refused runs, want all 9 and no prune.completed", n)
 	}
 }
 

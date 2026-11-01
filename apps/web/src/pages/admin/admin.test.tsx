@@ -46,6 +46,7 @@ function user(n: number, overrides: Partial<AdminUser> = {}): AdminUser {
     admin: false,
     workspaceCount: 1,
     lastSignedInAt: null,
+    suspended: false,
     ...overrides,
   };
 }

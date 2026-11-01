@@ -13,7 +13,8 @@ import { CodeField } from "./mfa-setup";
 // login and the admin door: a code from the authenticator app, or a recovery
 // code, sent with `verify`. Then it opens `destination`, or ?next= or /app
 // (useAuthSubmit). The challenge lives in a cookie, so a refresh starts over
-// at the password. A 401 means it ended: back to the password with the API's
+// at the password. A 401 means it ended, and a suspended account's right
+// code ends it too (403 suspended): back to the password with the API's
 // reason.
 export function CodeStep({
   verify,
@@ -31,7 +32,10 @@ export function CodeStep({
     verify,
     destination,
     (e) => {
-      if (e instanceof ApiError && e.status === 401) {
+      if (
+        e instanceof ApiError &&
+        (e.status === 401 || (e.status === 403 && e.details.suspended === true))
+      ) {
         onRestart(errorMessage(e));
         return true;
       }

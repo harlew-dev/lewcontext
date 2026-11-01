@@ -57,7 +57,10 @@ func (s *Server) refuseAdminAddress(r *http.Request, ip string) {
 	if !s.adminRefusals.seen.first(ratelimit.Subject(ip), time.Now()) {
 		return
 	}
-	s.adminRefusals.enqueue(adminRefusal{ip: ip, userAgent: events.UserAgent(r.Context()), requestID: observe.RequestID(r.Context())})
+	// Read from the request, not the context: security sets that only for
+	// the API, after ClientAddress, so a page or an IP block's check
+	// (both before it) would record none.
+	s.adminRefusals.enqueue(adminRefusal{ip: ip, userAgent: events.CutUserAgent(r.UserAgent()), requestID: observe.RequestID(r.Context())})
 }
 
 // adminRefusal is one refused address to record: the request's client

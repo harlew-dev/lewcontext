@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AppOrRecoveryCode } from "@/components/app/mfa/mfa-setup";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
@@ -23,7 +23,10 @@ import { adminRoutes } from "@/lib/admin-routes";
 // again. The reason (10 to 500 characters) is stored with the action's event.
 // A wrong code empties the code; a 401 (the session ended, e.g. after its
 // fifth wrong code) goes back to the admin sign-in. Key it per opening
-// (useOpenCount), so each starts empty.
+// (useOpenCount), so each starts empty. An action with fields of its own
+// (an address to block, a box to tick) passes them as children, shown
+// above the reason, with ready saying whether they're filled in, and
+// onError to put the API's answer on one of them.
 const minReason = 10;
 const maxReason = 500;
 // A reason's length as the API counts it: characters, once trimmed.
@@ -39,6 +42,9 @@ export function AdminActionDialog({
   variant = "default",
   action,
   onDone,
+  ready: fieldsReady = true,
+  onError,
+  children,
 }: {
   open: boolean;
   onClose: () => void;
@@ -52,6 +58,13 @@ export function AdminActionDialog({
   action: (reason: string) => Promise<unknown>;
   // After the dialog closed on success: a toast, a reload.
   onDone?: () => unknown;
+  // Whether the action's own fields (children) are filled in.
+  ready?: boolean;
+  // Handles a failure first (an error on one of the action's own fields);
+  // return true to keep it out of the dialog's error notice.
+  onError?: (error: unknown) => boolean;
+  // The action's own fields, above the reason.
+  children?: ReactNode;
 }) {
   const api = useAdminApi();
   const navigate = useNavigate();
@@ -62,6 +75,7 @@ export function AdminActionDialog({
   const [errors, setErrors] = useState<{ reason?: string; code?: string }>({});
   const length = reasonLength(reason);
   const ready =
+    fieldsReady &&
     length >= minReason &&
     length <= maxReason &&
     (!needsCode || code.trim() !== "");
@@ -86,6 +100,7 @@ export function AdminActionDialog({
       setCode("");
       return true;
     }
+    if (onError?.(error)) return true;
     if (
       error instanceof ApiError &&
       (error.field === "reason" || error.field === "code")
@@ -112,6 +127,7 @@ export function AdminActionDialog({
       onConfirmed={onDone}
     >
       <FieldGroup>
+        {children}
         <Field>
           <Label>Reason</Label>
           <Description>

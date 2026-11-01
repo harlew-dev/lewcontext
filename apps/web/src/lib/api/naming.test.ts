@@ -53,6 +53,7 @@ const ws = "wsp_2yEHYLwiwPVhLW";
 const stubHttp: Http = {
   get: () => Promise.reject(new Error("not called")),
   send: () => Promise.reject(new Error("not called")),
+  text: () => Promise.reject(new Error("not called")),
 };
 // A resource's methods: called with a workspace ID when it takes one.
 function methodsOf(value: unknown): string[][] {

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   AdminTableHead,
   type AdminColumn,
@@ -24,6 +26,10 @@ import { Link } from "@/components/ui/link";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import {
+  DangerAction,
+  SettingsSection,
+} from "@/components/ui/settings-section";
+import {
   Table,
   TableBody,
   TableCell,
@@ -31,18 +37,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { adminPaths } from "@/lib/api/admin";
-import { useAdminKey } from "@/lib/admin";
+import { toast } from "@/components/ui/toast";
+import { adminPaths, useAdminApi } from "@/lib/api/admin";
+import { adminCan, useAdminKey, useAdminSession } from "@/lib/admin";
 import { formatDate } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
 import { url } from "@/lib/pagination";
 import { adminRoutes } from "@/lib/admin-routes";
 import { useAdminResource } from "@/lib/use-admin-resource";
+import { useOpenCount } from "@/lib/use-open-count";
 import type { AdminWorkspaceDetail } from "@/types/admin";
 import type { Project, ProjectQuery, ProjectSortField } from "@/types/projects";
-// One workspace: its counts, its members and its projects. Opening it is
-// recorded in the audit trail (admin.workspace.viewed, and
-// admin.project.listed for the projects).
+// One workspace: its counts, its members and its projects, and for
+// operators Revoke pending invitations. Opening it is recorded in the audit
+// trail (admin.workspace.viewed, and admin.project.listed for the
+// projects).
 export default function AdminWorkspaceShow() {
   const id = parsePublicId("wsp", useParams().workspace);
   if (id === null) return <WorkspaceNotFound />;
@@ -67,14 +76,23 @@ function WorkspaceContent({ id }: { id: string }) {
         </Notice>
       )}
       {workspace.data ? (
-        <WorkspaceDetails workspace={workspace.data} />
+        <WorkspaceDetails
+          workspace={workspace.data}
+          onChanged={workspace.refresh}
+        />
       ) : (
         workspace.loading && <ListSkeleton label="Loading workspace" rows={1} />
       )}
     </>
   );
 }
-function WorkspaceDetails({ workspace }: { workspace: AdminWorkspaceDetail }) {
+function WorkspaceDetails({
+  workspace,
+  onChanged,
+}: {
+  workspace: AdminWorkspaceDetail;
+  onChanged: () => void;
+}) {
   const key = useAdminKey();
   return (
     <>
@@ -105,10 +123,15 @@ function WorkspaceDetails({ workspace }: { workspace: AdminWorkspaceDetail }) {
           <DescriptionDetails>{workspace.projectCount}</DescriptionDetails>
           <DescriptionTerm>Members</DescriptionTerm>
           <DescriptionDetails>{workspace.memberCount}</DescriptionDetails>
+          <DescriptionTerm>Pending invitations</DescriptionTerm>
+          <DescriptionDetails>
+            {workspace.pendingInvitations}
+          </DescriptionDetails>
         </DescriptionList>
       </div>
       <Members workspace={workspace} />
       <Projects workspace={workspace} />
+      <Actions workspace={workspace} onChanged={onChanged} />
     </>
   );
 }
@@ -261,5 +284,66 @@ function WorkspaceNotFound() {
         </Button>
       }
     />
+  );
+}
+
+// Revoking every pending invitation stops an invitation-spam run without
+// touching the workspace's data: operators only, behind a fresh code and a
+// reason.
+function Actions({
+  workspace,
+  onChanged,
+}: {
+  workspace: AdminWorkspaceDetail;
+  onChanged: () => void;
+}) {
+  const api = useAdminApi();
+  const [open, setOpen] = useState(false);
+  const opened = useOpenCount(open);
+  if (!adminCan(useAdminSession().role, "operator")) return null;
+  const pending = workspace.pendingInvitations;
+  return (
+    <div className="mt-12">
+      <SettingsSection
+        title="Actions"
+        description="Takes effect at once, needs a code from your authenticator and a reason, and is recorded with both."
+        variant="danger"
+      >
+        <DangerAction
+          title="Revoke pending invitations"
+          description={
+            pending === 0
+              ? "This workspace has no pending invitations."
+              : `Revokes all ${pending} so their links stop working. Members and projects stay as they are.`
+          }
+          action={
+            <Button
+              color="red"
+              disabled={pending === 0}
+              disabledReason="No pending invitations"
+              onClick={() => setOpen(true)}
+            >
+              Revoke pending invitations
+            </Button>
+          }
+        />
+      </SettingsSection>
+      <AdminActionDialog
+        key={opened}
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Revoke ${workspace.name}’s pending invitations?`}
+        description={`All ${pending} pending invitations are revoked, and their links stop working. Its members can invite people again.`}
+        confirm="Revoke invitations"
+        variant="danger"
+        action={(reason) =>
+          api.workspaceInvitations(workspace.id).destroy(reason)
+        }
+        onDone={() => {
+          toast.success(`${workspace.name}’s pending invitations are revoked.`);
+          onChanged();
+        }}
+      />
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { LevelBadge, type Level } from "@/components/ui/badge";
 import { BarChart, Meter, type ChartSeries } from "@/components/ui/chart";
@@ -6,7 +6,14 @@ import { ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Stat } from "@/components/ui/stat";
-import { Code, Text } from "@/components/ui/text";
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Code, Text, TextLink } from "@/components/ui/text";
 import { adminPaths } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
@@ -18,6 +25,7 @@ import {
   type MonitoringPage,
   type MonitoringView,
   type MonitoringWindow,
+  type MetricsStore,
   type MonitorSeries,
   type SharedLimit,
   type Signal,
@@ -63,27 +71,42 @@ export function MonitoringHeader({
   window,
   onWindow,
   view,
+  signals = true,
+  actions,
 }: {
   title: string;
   window: MonitoringWindow;
   onWindow: (w: MonitoringWindow) => void;
-  view?: MonitoringView<unknown>;
+  view?: { window: MonitoringView<unknown>["window"] };
+  // Signal tiles keep their own windows; a page without them says only
+  // what it counted over.
+  signals?: boolean;
+  // The page's action (one address's Block this address), right of the
+  // time range.
+  actions?: ReactNode;
 }) {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Heading>{title}</Heading>
-        <Listbox aria-label="Time range" value={window} onChange={onWindow}>
-          {monitoringWindows.map((w) => (
-            <ListboxOption key={w} value={w}>
-              <ListboxLabel>{monitoringWindowLabels[w]}</ListboxLabel>
-            </ListboxOption>
-          ))}
-        </Listbox>
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <Listbox aria-label="Time range" value={window} onChange={onWindow}>
+              {monitoringWindows.map((w) => (
+                <ListboxOption key={w} value={w}>
+                  <ListboxLabel>{monitoringWindowLabels[w]}</ListboxLabel>
+                </ListboxOption>
+              ))}
+            </Listbox>
+          </div>
+          {actions}
+        </div>
       </div>
       <Text className="mt-2">
         {view
-          ? `Charts and lists: ${spanLabel(view.window.from, view.window.to)} UTC. Each tile counts its own window, shown under it.`
+          ? signals
+            ? `Charts and lists: ${spanLabel(view.window.from, view.window.to)} UTC. Each tile counts its own window, shown under it.`
+            : `Counted over ${spanLabel(view.window.from, view.window.to)} UTC.`
           : " "}
       </Text>
     </>
@@ -95,23 +118,36 @@ function spanLabel(from: string, to: string): string {
   const b = new Date(to);
   return `${formatDay(a)}, ${formatClock(a)} – ${formatDay(b)}, ${formatClock(b)}`;
 }
+// The sections the server couldn't read in time, and how to try again,
+// for SectionGate.
+const MonitoringState = createContext<{
+  unavailable: string[];
+  retry: () => void;
+}>({ unavailable: [], retry: () => {} });
+// The parts a page couldn't read in time (a page's `unavailable`; none for
+// a page without parts).
+function unavailableParts(data: object): string[] {
+  return "unavailable" in data && Array.isArray(data.unavailable)
+    ? data.unavailable.filter((p): p is string => typeof p === "string")
+    : [];
+}
 // The page's states around its content: the failure (keeping what was
 // shown, with Retry), a skeleton while nothing has loaded, the content
 // dimmed while a new window loads.
-export function MonitoringBody<S>({
+export function MonitoringBody<V extends object>({
   resource,
   label,
   children,
 }: {
   resource: {
-    data?: MonitoringView<S>;
+    data?: V;
     error: string | null;
     loading: boolean;
     refreshing: boolean;
     refresh: () => void;
   };
   label: string;
-  children: (view: MonitoringView<S>) => ReactNode;
+  children: (view: V) => ReactNode;
 }) {
   return (
     <>
@@ -125,7 +161,14 @@ export function MonitoringBody<S>({
           aria-busy={resource.refreshing}
           className={cx(resource.refreshing && "opacity-60")}
         >
-          {children(resource.data)}
+          <MonitoringState.Provider
+            value={{
+              unavailable: unavailableParts(resource.data),
+              retry: resource.refresh,
+            }}
+          >
+            {children(resource.data)}
+          </MonitoringState.Provider>
         </div>
       ) : (
         resource.loading && <ListSkeleton label={label} rows={4} />
@@ -135,8 +178,12 @@ export function MonitoringBody<S>({
 }
 const counts = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 // A signal's value in its unit: "1,204", "52.3%", "1.8 s", "12 min".
-export function formatSignal(signal: Pick<Signal, "unit" | "value">): string {
+export function formatSignal(
+  signal: Pick<Signal, "unit" | "value"> & { sample?: number },
+): string {
   const v = signal.value;
+  // An age of nothing: there's nothing waiting.
+  if (signal.unit === "minutes" && signal.sample === 0) return "None waiting";
   switch (signal.unit) {
     case "percent":
       return `${counts.format(v)}%`;
@@ -156,7 +203,26 @@ export function signalWindow(signal: Signal): string {
   if (s === 3600) return "Last hour";
   if (s === 86400) return "Last 24 hours";
   if (s === 7 * 86400) return "Last 7 days";
+  if (s === 360) return "Last 6 minutes";
   return "Now";
+}
+// Said where metric numbers would be when the live servers don't store
+// them (METRICS_STORE=off): they read zero, which isn't "no traffic".
+export function MetricsStoreNotice({
+  store,
+  className,
+}: {
+  store: MetricsStore;
+  className?: string;
+}) {
+  if (store !== "off" && store !== "mixed") return null;
+  return (
+    <Notice variant="warning" className={className}>
+      {store === "off"
+        ? "Metric storage is off (METRICS_STORE=off): requests, latency, the pool and the worker read zero here. /metrics and the logs still have them."
+        : "Metric storage is off on some live servers (METRICS_STORE=off): their requests, latency, pool and worker aren't counted here."}
+    </Notice>
+  );
 }
 // Its thresholds, in words: "Warning at 100 · critical at 1,000".
 export function thresholds(signal: Signal): string | null {
@@ -194,6 +260,15 @@ export function SignalTile({
 }) {
   const drill = useDrillHref();
   const limits = thresholds(signal);
+  if (signal.unavailable) {
+    return (
+      <Stat title={signal.label} value="Not loaded">
+        <span className="text-zinc-500 dark:text-zinc-400">
+          It took too long to read. Try again in a moment.
+        </span>
+      </Stat>
+    );
+  }
   return (
     <Stat
       title={signal.label}
@@ -253,6 +328,29 @@ export function seriesRows(
     values: Object.fromEntries(m.series.map((s, i) => [s, b.counts[i] ?? 0])),
   }));
 }
+// A section that reads the parts named: when the server couldn't read one
+// in time (each part has its own budget, so the rest of the page still
+// shows), its heading and a notice with Try again in its place. Its
+// children aren't rendered then: their data is missing.
+export function SectionGate({
+  names,
+  title,
+  children,
+}: {
+  names: string[];
+  title: string;
+  children: ReactNode;
+}) {
+  const { unavailable, retry } = useContext(MonitoringState);
+  if (!names.some((n) => unavailable.includes(n))) return children;
+  return (
+    <MonitoringSection title={title}>
+      <Notice variant="error" onRetry={retry}>
+        This section took too long to load.
+      </Notice>
+    </MonitoringSection>
+  );
+}
 // A section of a page: its heading, a line saying what it shows, then its
 // content.
 export function MonitoringSection({
@@ -311,6 +409,45 @@ export function SeriesChart({
       series={chartSeries}
       tableToggle
     />
+  );
+}
+// A review list's or a count's table: a dense table with a header row.
+export function MonitoringTable({
+  head,
+  children,
+}: {
+  head: ReactNode[];
+  children: ReactNode;
+}) {
+  return (
+    <Table dense>
+      <TableHead>
+        <TableRow>
+          {head.map((h, i) => (
+            <TableHeader key={i}>{h}</TableHeader>
+          ))}
+        </TableRow>
+      </TableHead>
+      <TableBody>{children}</TableBody>
+    </Table>
+  );
+}
+// An address (or an IPv6 /64) linking to its page, over the window shown.
+export function AddressLink({
+  ip,
+  window,
+}: {
+  ip: string;
+  window?: MonitoringWindow;
+}) {
+  const key = useAdminKey();
+  return (
+    <TextLink
+      href={adminRoutes.monitoring.ip(key, ip, window)}
+      className="font-mono"
+    >
+      {ip}
+    </TextLink>
   );
 }
 // A short empty line for a review list with nothing in it.

@@ -294,3 +294,42 @@ describe("admin roles", () => {
     expect(adminCan("operator", unknown)).toBe(false);
   });
 });
+describe("signing another admin out", () => {
+  it("is in each other admin's ⋯ menu for an operator, never their own, behind a reason", async () => {
+    const api = stubApi({
+      "GET /api/admin/me": { body: me },
+      "GET /api/admin/admins": { body: { data: admins } },
+      "DELETE /api/admin/admins/usr_00000000000002/sessions": { status: 204 },
+    });
+    renderAdmin(`/admin/${key}/admins`);
+    await screen.findByText("Vic");
+    expect(
+      screen.queryByRole("button", { name: "Actions for Olive Admin" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Vic" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "Lost laptop, reported by Vic on a call." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign out" }));
+    expect(await screen.findByText("Vic is signed out.")).toBeInTheDocument();
+    expect(api.sent("DELETE")).toEqual([
+      expect.objectContaining({
+        url: "/api/admin/admins/usr_00000000000002/sessions",
+        body: { reason: "Lost laptop, reported by Vic on a call." },
+      }),
+    ]);
+  });
+  it("isn't offered to a viewer", async () => {
+    stubApi({
+      "GET /api/admin/me": { body: { ...me, role: "viewer" } },
+      "GET /api/admin/admins": { body: { data: admins } },
+    });
+    renderAdmin(`/admin/${key}/admins`);
+    await screen.findByText("Vic");
+    expect(
+      screen.queryByRole("button", { name: "Actions for Vic" }),
+    ).not.toBeInTheDocument();
+  });
+});

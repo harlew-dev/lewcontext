@@ -16,15 +16,23 @@ import (
 
 // MonitorSpan is a review list's window, [From, To), grouped in periods of
 // Per from From: an hour for "in an hour", or the whole span for a
-// signal's own window.
+// signal's own window. With Origin set, the periods are counted from it
+// instead: a day's periods from To, so the last one is the whole last day
+// rather than the minutes past the window's last whole day.
 type MonitorSpan struct {
 	From, To time.Time
 	Per      time.Duration
+	Origin   time.Time
 }
 
-// period is the span's grouping column: date_bin of Per from From.
+// period is the span's grouping column: date_bin of Per from From (or
+// Origin).
 func (sp MonitorSpan) period() (string, []any) {
-	return "date_bin(?::interval, e.created_at, ?)", []any{fmt.Sprintf("%d seconds", int(sp.Per.Seconds())), sp.From}
+	origin := sp.From
+	if !sp.Origin.IsZero() {
+		origin = sp.Origin
+	}
+	return "date_bin(?::interval, e.created_at, ?)", []any{fmt.Sprintf("%d seconds", int(sp.Per.Seconds())), origin}
 }
 
 // Review list thresholds (docs/api/monitoring.md#security), and how many
@@ -219,41 +227,67 @@ type TakeoverRow struct {
 	Network    string     `json:"network" bun:"network"`
 }
 
+// takeoverHistory is how many of an account's earlier sign-ins (within
+// TakeoverLookback) a sign-in's network is compared with: each sign-in
+// costs at most this many index entries, however often the account signs
+// in from new networks.
+const takeoverHistory = 50
+
+// takeovers is driven by the sign-ins (auth.logged_in) in [from-1h, to) of
+// the accounts that made a takeover change in [from, to)
+// (events_name_created_idx): an account that changed nothing costs
+// nothing. Each sign-in is compared with the account's last
+// takeoverHistory sign-ins in TakeoverLookback before it (one range of
+// events_logged_in_idx, which holds the address): it had a baseline, and
+// none from this network. Then the changes the account made within the
+// hour after it, in [from, to) (events_user_created_idx). One row per
+// change, with the latest such sign-in before it.
 func (s *Store) takeovers(from, to time.Time) *bun.SelectQuery {
 	lookback := fmt.Sprintf("%d seconds", int(TakeoverLookback.Seconds()))
-	earlier := func(alias string) *bun.SelectQuery {
-		return s.DB.NewSelect().TableExpr("events AS "+alias).ColumnExpr("1").
-			Where(alias+".name = 'auth.logged_in'").
-			Where(alias+".user_id = l.user_id").
-			Where(alias+".created_at < l.created_at").
-			Where(alias+".created_at >= l.created_at - ?::interval", lookback).
-			Where(alias + ".ip IS NOT NULL")
-	}
-	signIn := s.DB.NewSelect().TableExpr("events AS l").
-		ColumnExpr("l.created_at").
+	changers := s.eventsIn(from, to, takeoverChanges...).
+		ColumnExpr("DISTINCT e.user_id").
+		Where("e.user_id IS NOT NULL")
+	earlier := s.DB.NewSelect().TableExpr("events AS p").ColumnExpr("p.ip").
+		Where("p.name = 'auth.logged_in'").
+		Where("p.user_id = l.user_id").
+		Where("p.created_at < l.created_at").
+		Where("p.created_at >= l.created_at - ?::interval", lookback).
+		Where("p.ip IS NOT NULL").
+		OrderExpr("p.created_at DESC").
+		Limit(takeoverHistory)
+	history := s.DB.NewSelect().TableExpr("(?) AS p", earlier).
+		ColumnExpr("count(*) AS seen").
+		ColumnExpr("count(*) FILTER (WHERE p.ip <<= " + fmt.Sprintf(signInNetwork, "l") + ") AS same")
+	signIns := s.DB.NewSelect().TableExpr("events AS l").
+		Join("CROSS JOIN LATERAL (?) AS h", history).
+		ColumnExpr("l.user_id, l.created_at").
 		ColumnExpr("text("+fmt.Sprintf(signInNetwork, "l")+") AS network").
 		Where("l.name = 'auth.logged_in'").
-		Where("l.user_id = e.user_id").
-		Where("l.created_at <= e.created_at").
-		Where("l.created_at >= e.created_at - interval '1 hour'").
+		Where("l.user_id IN (?)", changers).
+		Where("l.created_at >= ?::timestamptz - interval '1 hour'", from).
+		Where("l.created_at < ?", to).
 		Where("l.ip IS NOT NULL").
-		// It had a baseline: signed in before, in the lookback,
-		Where("EXISTS (?)", earlier("b")).
-		// but never from this network.
-		Where("NOT EXISTS (?)", earlier("p").Where("p.ip <<= "+fmt.Sprintf(signInNetwork, "l"))).
-		OrderExpr("l.created_at DESC").
-		Limit(1)
-	return s.eventsIn(from, to, takeoverChanges...).
+		// It had a baseline, but never from this network.
+		Where("h.seen > 0 AND h.same = 0")
+	changes := s.DB.NewSelect().TableExpr("(?) AS si", signIns).
+		Join("JOIN events AS e ON e.user_id = si.user_id AND e.name IN (?) AND e.created_at >= si.created_at AND e.created_at <= si.created_at + interval '1 hour' AND e.created_at >= ? AND e.created_at < ?",
+			bun.In(takeoverChanges), from, to).
+		DistinctOn("e.id").
 		ColumnExpr("e.created_at AS changed_at, e.name AS change, e.public_id AS event, e.user_id").
 		ColumnExpr("si.created_at AS signed_in_at, si.network").
-		Join("JOIN LATERAL (?) AS si ON true", signIn).
-		Where("e.user_id IS NOT NULL")
+		OrderExpr("e.id, si.created_at DESC")
+	return s.DB.NewSelect().TableExpr("(?) AS t", changes).ColumnExpr("t.*")
 }
 
-// IndexTakeovers lists possible takeovers in [from, to), newest first.
+// IndexTakeovers lists possible takeovers in [from, to), one per account
+// (its newest change), newest first: one account can't fill the list.
 func (s *Store) IndexTakeovers(ctx context.Context, from, to time.Time) ([]TakeoverRow, error) {
+	perAccount := s.DB.NewSelect().TableExpr("(?) AS a", s.takeovers(from, to)).
+		DistinctOn("a.user_id").ColumnExpr("a.*").
+		OrderExpr("a.user_id, a.changed_at DESC, a.event")
 	rows := []TakeoverRow{}
-	if err := s.takeovers(from, to).OrderExpr("e.created_at DESC").Limit(maxReviewRows).Scan(ctx, &rows); err != nil {
+	if err := s.DB.NewSelect().TableExpr("(?) AS t", perAccount).ColumnExpr("t.*").
+		OrderExpr("t.changed_at DESC, t.event").Limit(maxReviewRows).Scan(ctx, &rows); err != nil {
 		return nil, err
 	}
 	ids := make([]int64, len(rows))
@@ -267,9 +301,9 @@ func (s *Store) IndexTakeovers(ctx context.Context, from, to time.Time) ([]Takeo
 	return rows, err
 }
 
-// CountTakeovers counts the changes IndexTakeovers finds.
+// CountTakeovers counts the accounts IndexTakeovers finds.
 func (s *Store) CountTakeovers(ctx context.Context, from, to time.Time) (int64, error) {
-	return s.countGroups(ctx, s.takeovers(from, to))
+	return s.countGroups(ctx, s.DB.NewSelect().TableExpr("(?) AS a", s.takeovers(from, to)).ColumnExpr("DISTINCT a.user_id"))
 }
 
 // FailedChecksRow is an account that failed a check (second-factor codes,
@@ -466,10 +500,19 @@ func (s *Store) IndexDoorEvents(ctx context.Context, from, to time.Time) ([]Door
 	return rows, err
 }
 
+// The admin door's chart series: failed guesses, refusals (of real
+// credentials, or of the key from outside the allowlist), moved sessions.
+// Three, not one per outcome: a chart stacks five at most.
+var DoorSeries = []string{"failed", "refused", "moved"}
+
+// doorSeriesKey puts an admin door event in its DoorSeries; a sign-in that
+// went on to its code is in none.
+const doorSeriesKey = "CASE WHEN e.name = 'admin.access_refused' THEN 'refused' WHEN e.name = 'admin.session.moved' THEN 'moved' WHEN e.payload->>'result' IN (?) THEN 'failed' WHEN e.payload->>'result' IN (?) THEN 'refused' END"
+
 // SummarizeDoor counts the admin door's failures, refusals and moved
-// sessions per bucket of w, by outcome (DoorOutcomes).
+// sessions per bucket of w (DoorSeries).
 func (s *Store) SummarizeDoor(ctx context.Context, w SummaryWindow) (MonitorSeries, error) {
-	return s.bucketedCounts(ctx, w, doorNames, DoorOutcomes, doorKey)
+	return s.bucketedCounts(ctx, w, doorNames, DoorSeries, doorSeriesKey, bun.In(DoorFailed), bun.In(DoorRefused))
 }
 
 // MaxSessionsPerAccount is how many sessions an account keeps at most

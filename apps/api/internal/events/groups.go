@@ -41,8 +41,11 @@ var groupLabels = map[string]string{
 	"rate_limit.*":              "Rate limits",
 	"server.*":                  "Servers",
 	"email.*":                   "Email addresses",
+	"prune.*":                   "Retention",
 	"admin.*":                   "Admin",
 	"admin.session.*":           "Admin sessions",
+	"admin.user.*":              "Actions on accounts",
+	"admin.ip.*":                "IP blocks",
 	AdminReadsGroup:             "Admin reads",
 }
 

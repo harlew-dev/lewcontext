@@ -47,7 +47,9 @@ func (s *Server) SessionDigest(r *http.Request) string {
 
 // StartSession signs u in on this browser, replacing the session its cookie
 // carried, records e (if any) with the new session, and responds with the
-// session in the shape of /api/auth/me.
+// session in the shape of /api/auth/me. A suspended account gets no session
+// (store.ErrSuspended, checked under its lock): Suspended answers it, so a
+// sign-in that reached here only after its password and code learns why.
 func (s *Server) StartSession(w http.ResponseWriter, r *http.Request, u store.User, status int, e events.Event) {
 	token, err := auth.Token()
 	if err != nil {
@@ -62,7 +64,12 @@ func (s *Server) StartSession(w http.ResponseWriter, r *http.Request, u store.Us
 	old := s.SessionDigest(r)
 	signedIn := time.Now()
 	expires := signedIn.Add(auth.SessionLifetime)
-	if err = s.Repo.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires, e); err != nil {
+	err = s.Repo.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires, e)
+	if errors.Is(err, store.ErrSuspended) {
+		s.Suspended(w, r, u)
+		return
+	}
+	if err != nil {
 		InternalError(w, r, err)
 		return
 	}
@@ -76,4 +83,21 @@ func (s *Server) ClearSessionCookie(w http.ResponseWriter) {
 	expired.MaxAge = -1
 	expired.Expires = time.Unix(0, 0)
 	http.SetCookie(w, expired)
+}
+
+// AccountSuspended is what a suspended account hears at sign-in, once its
+// password (and code) were right: someone who doesn't know the password
+// only ever gets the usual 401, so a suspension can't be probed.
+const AccountSuspended = "This account has been suspended. Contact support."
+
+// Suspended refuses a sign-in of the suspended account u whose password
+// (and code, with MFA on) were right: 403 {error, suspended: true}, and
+// auth.login_attempted with result suspended.
+func (s *Server) Suspended(w http.ResponseWriter, r *http.Request, u store.User) {
+	e := events.LoginAttempted{Email: u.Email, User: u.PublicID, Result: events.LoginSuspended}
+	if err := s.Repo.Record(r.Context(), e, store.EventScope{UserID: u.ID}); err != nil {
+		InternalError(w, r, err)
+		return
+	}
+	JSON(w, 403, map[string]any{"error": AccountSuspended, "suspended": true})
 }

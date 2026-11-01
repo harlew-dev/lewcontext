@@ -297,7 +297,7 @@ Docs updated: [observability.md](../../../../docs/api/observability.md) (Metrics
 | # | Question | Recommendation |
 | --- | --- | --- |
 | 1 | Log format | JSON by default in production, text in development, `LOG_FORMAT` to override |
-| 2 | The client IP in access logs | Logged: it's what ties abuse to a source. [deployment.md](../../../../docs/deployment.md) recommends keeping logs 30 days at most; [compliance](../../admin/compliance.md) lists it in the data map |
+| 2 | The client IP in access logs | Logged: it's what ties abuse to a source. [deployment.md](../../../../docs/deployment.md) recommends keeping logs 30 days at most; [compliance](compliance.md) lists it in the data map |
 | 3 | Request IDs | Made per request, believed from trusted proxies only, returned in `X-Request-ID` and in 500 bodies, shown in the web app, stored on events |
 | 4 | Where errors are grouped | In our database (`app_errors`), not Sentry or similar: no personal data goes to another processor and no new dependency. JSON logs let an operator add any log-based tool |
 | 5 | Metrics storage | Never a row per request. One row per route per minute per server (insert only), kept 48 hours by the server itself; hourly sums kept 90 days through `prune`. About 90 rows a minute per server at most, whatever the traffic |
@@ -311,7 +311,7 @@ Docs updated: [observability.md](../../../../docs/api/observability.md) (Metrics
 ## Not included
 
 - **Distributed tracing** (OpenTelemetry). Request IDs cover correlation in a single-process app; OTLP export is the next step if we split services.
-- **Shipping logs** anywhere: the operator's log driver does that (Docker → Loki, CloudWatch, Datadog …). [compliance](../../admin/compliance.md) asks that audit lines are among them.
+- **Shipping logs** anywhere: the operator's log driver does that (Docker → Loki, CloudWatch, Datadog …). [compliance](compliance.md) asks that audit lines are among them.
 - **`pprof` endpoints.** If wanted later, only on the metrics listener, behind its token.
 - **Real-user performance metrics** (web vitals) from browsers.
 - **An APM vendor** integration.

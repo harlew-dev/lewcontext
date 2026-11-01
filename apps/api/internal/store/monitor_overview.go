@@ -88,10 +88,11 @@ func (s *Store) SummarizeRequests(ctx context.Context, w SummaryWindow) ([]Reque
 	bin := "date_bin(?::interval, x.t, ?)"
 	interval := fmt.Sprintf("%d seconds", int(w.Bucket.Seconds()))
 	origin := starts[0]
-	source, err := s.requestRows(ctx, w.From, w.To, "m.requests, m.status_5xx")
+	rows, err := s.requestRows(ctx, w.From, w.To)
 	if err != nil {
 		return nil, err
 	}
+	source := rows("m.requests, m.status_5xx")
 	var totals []struct {
 		Bucket       time.Time `bun:"bucket"`
 		Requests     int64     `bun:"requests"`
@@ -111,10 +112,7 @@ func (s *Store) SummarizeRequests(ctx context.Context, w SummaryWindow) ([]Reque
 		}
 	}
 	// The histograms, summed slot by slot.
-	source, err = s.requestRows(ctx, w.From, w.To, "m.duration_buckets")
-	if err != nil {
-		return nil, err
-	}
+	source = rows("m.duration_buckets")
 	var slots []struct {
 		Bucket time.Time `bun:"bucket"`
 		Slot   int       `bun:"slot"`

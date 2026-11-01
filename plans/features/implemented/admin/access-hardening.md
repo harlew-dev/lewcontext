@@ -28,7 +28,7 @@ Admin access left four gaps that matter once the dashboard can see abuse data an
 
 1. **Anyone on the internet can reach the door** once they have the key. An allowlist of office, VPN or bastion addresses makes a leaked key useless from anywhere else.
 2. **Rotating the key signs every admin out at once.** A routine rotation (every 90 days, or when someone leaves) shouldn't interrupt people mid-investigation.
-3. **Every admin can do everything.** Once [actions](../../admin/actions.md) exist, most people who need to *look* (support, auditors) shouldn't be able to *act*. Least privilege is also what SOC 2 and ISO 27001 reviewers ask for first.
+3. **Every admin can do everything.** Once [actions](actions.md) exist, most people who need to *look* (support, auditors) shouldn't be able to *act*. Least privilege is also what SOC 2 and ISO 27001 reviewers ask for first.
 4. **Nobody can see who holds admin** without the CLI. An access review (who has it, when they last used it, with MFA) should be one page.
 
 ## IP allowlist: `ADMIN_ALLOWED_IPS`
@@ -75,7 +75,7 @@ role text NOT NULL DEFAULT 'viewer' CHECK (role IN ('viewer', 'operator')),
 | Role | Can |
 | --- | --- |
 | `viewer` | Every admin page and read |
-| `operator` | That, plus the [actions](../../admin/actions.md), each still behind a fresh code and a reason |
+| `operator` | That, plus the [actions](actions.md), each still behind a fresh code and a reason |
 
 - **Granted from the CLI only,** as admin itself: `admin grant -email … -role operator -confirm` (default `viewer`). Running `grant` on an existing admin with another role changes it, recording `admin.updated` (`user`, `changes.role`). There is no API route for it.
 - **`requireAdminRole(operator, …)`** wraps each action route in `adminRoutes`, as `ws.Can` names a permission. `TestAdminRoutesStayInTheAdminGroup` grows a check that every non-GET admin route other than sign-in and sign-out names a role.
@@ -100,7 +100,7 @@ Sessions aren't bound to an address (mobile networks change it), but `requireAdm
 `GET /api/admin/admins` (recorded as `admin.admin.listed`): every admin with `user` (`{id, name, email}`), `role`, `mfaEnabled`, `mfaSetupUntil`, `grantedAt`, `lastSignedInAt` (newest `admin.logged_in`), and their live admin sessions (`createdAt`, `lastSeenAt`, `ip`, `userAgent`, `current`, `previousKey`).
 
 - **Access review:** a "Download CSV" button builds the file in the browser from the same response (email, role, MFA, granted, last sign-in), for the quarterly review an auditor asks to see. It records nothing extra; the read already did.
-- **Sign out my other admin sessions:** `DELETE /api/admin/sessions` (CSRF, no code: it only removes access), recording `admin.sessions_revoked` (`count`). Signing out *another* admin is an [action](../../admin/actions.md).
+- **Sign out my other admin sessions:** `DELETE /api/admin/sessions` (CSRF, no code: it only removes access), recording `admin.sessions_revoked` (`count`). Signing out *another* admin is an [action](actions.md).
 - Badges for role, MFA and "setup window open"; a warning on admins who haven't signed in for 90 days ("consider revoking").
 
 ## Events

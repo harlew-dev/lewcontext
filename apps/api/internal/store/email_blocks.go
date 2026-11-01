@@ -148,20 +148,13 @@ func (s *Store) UnblockEmail(ctx context.Context, hash string) error {
 	})
 }
 
-// AdminUnblock is an admin taking an address off the block list from the
-// dashboard (UnblockEmailAddress), and why.
-type AdminUnblock struct {
-	Admin  User
-	Reason string
-}
-
 // UnblockEmailAddress takes email off the block list by its address, or
 // returns ErrEmailNotBlocked, recording nothing. With admin nil it's the
 // operator's command line: email.unblocked (by: cli), with no actor. With
 // an admin it's the dashboard's Unblock: email.unblocked (by: admin) and
 // admin.email.unblocked (the admin, the address and the reason), both with
 // the admin as actor, in the same transaction as the delete.
-func (s *Store) UnblockEmailAddress(ctx context.Context, email string, admin *AdminUnblock) error {
+func (s *Store) UnblockEmailAddress(ctx context.Context, email string, admin *AdminAction) error {
 	by, scope := events.UnblockedByCLI, EventScope{}
 	if admin != nil {
 		by, scope = events.UnblockedByAdmin, EventScope{ActorID: admin.Admin.ID}

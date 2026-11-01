@@ -37,6 +37,10 @@ type User struct {
 	TermsOfServiceVersion *time.Time `bun:"terms_of_service_version" json:"-"`
 	PrivacyPolicyVersion  *time.Time `bun:"privacy_policy_version" json:"-"`
 	PoliciesAcceptedAt    *time.Time `bun:"policies_accepted_at" json:"-"`
+	// Suspended says an admin suspended the account
+	// (docs/api/admin.md#suspending-an-account). Read only by FindUser, for
+	// sign-in's honest refusal after the password; never in a response.
+	Suspended bool `bun:"suspended,scanonly" json:"-"`
 	// LastSeenAt is when the account last used a session, to the hour
 	// (FindSession), or nil before its first signed-in request. Read by the
 	// monitoring pages; never in an app response.

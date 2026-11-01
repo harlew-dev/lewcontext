@@ -10,6 +10,7 @@ import {
   MonitoringHeader,
   MonitoringSection,
   NoneFound,
+  SectionGate,
   SeriesChart,
   SharedLimitMeter,
   SignalGrid,
@@ -64,15 +65,42 @@ function Security({ view }: { view: View }) {
   return (
     <>
       <SignalGrid className="mt-8" signals={view.signals} />
-      <SignIns view={view} />
-      <Stuffing view={view} />
-      <Guessing view={view} />
-      <SuccessAfterFailures view={view} />
-      <Takeovers view={view} />
-      <Checks view={view} />
-      <Flows view={view} />
-      <AdminDoor view={view} />
-      <Sessions view={view} />
+      <SectionGate names={["signIns", "unknown"]} title="Sign-in attempts">
+        <SignIns view={view} />
+      </SectionGate>
+      <SectionGate names={["stuffing"]} title="Credential stuffing">
+        <Stuffing view={view} />
+      </SectionGate>
+      <SectionGate names={["guessing"]} title="Distributed guessing">
+        <Guessing view={view} />
+      </SectionGate>
+      <SectionGate
+        names={["successAfterFailures"]}
+        title="Signed in after failures"
+      >
+        <SuccessAfterFailures view={view} />
+      </SectionGate>
+      <SectionGate names={["takeovers"]} title="Possible takeovers">
+        <Takeovers view={view} />
+      </SectionGate>
+      <SectionGate
+        names={["secondFactor", "reauthentication"]}
+        title="Second factor and password checks"
+      >
+        <Checks view={view} />
+      </SectionGate>
+      <SectionGate
+        names={["resets", "signUps"]}
+        title="Password resets and sign-ups"
+      >
+        <Flows view={view} />
+      </SectionGate>
+      <SectionGate names={["adminDoor"]} title="Admin door">
+        <AdminDoor view={view} />
+      </SectionGate>
+      <SectionGate names={["sessions"]} title="Sessions">
+        <Sessions view={view} />
+      </SectionGate>
     </>
   );
 }
@@ -425,6 +453,12 @@ const doorLabels: Record<DoorOutcome, string> = {
   access_refused: "Address not allowed",
   session_moved: "Session moved network",
 };
+// The chart's three series: failed guesses, refusals, moved sessions.
+const doorSeriesLabels: Record<string, string> = {
+  failed: "Failed sign-ins",
+  refused: "Refusals",
+  moved: "Sessions moved",
+};
 function AdminDoor({ view }: { view: View }) {
   const key = useAdminKey();
   const { counts, series, recent } = view.sections.adminDoor;
@@ -447,7 +481,7 @@ function AdminDoor({ view }: { view: View }) {
         <SeriesChart
           label="Admin door"
           series={series}
-          labels={doorLabels}
+          labels={doorSeriesLabels}
           bucketSeconds={view.window.bucketSeconds}
           noun={["event", "events"]}
         />

@@ -50,10 +50,12 @@ func AdminWorkspaceSortable(key string) bool {
 }
 
 // AdminFilter narrows an admin list: Search matches names (and users'
-// emails); an empty Sort is the default.
+// emails); an empty Sort is the default. Suspended keeps only suspended
+// accounts (the users list).
 type AdminFilter struct {
-	Search string
-	Sort   string
+	Search    string
+	Sort      string
+	Suspended bool
 }
 
 // AdminUser is an account as the admin dashboard lists it.
@@ -69,6 +71,9 @@ type AdminUser struct {
 	Admin           bool       `bun:"admin" json:"admin"`
 	WorkspaceCount  int        `bun:"workspace_count" json:"workspaceCount"`
 	LastSignedInAt  *time.Time `bun:"last_signed_in_at" json:"lastSignedInAt"`
+	// Suspended: an admin suspended the account (Suspension says why, on
+	// its page).
+	Suspended bool `bun:"suspended" json:"suspended"`
 }
 
 // AdminMembership is one of a user's workspaces, with their role in it.
@@ -79,11 +84,13 @@ type AdminMembership struct {
 }
 
 // AdminUserDetail is one user's page: the list's fields, their memberships
-// (at most 100, newest first) and how many app sessions they have live.
+// (at most 100, newest first), how many app sessions they have live, and
+// their suspension (why, by whom, when), or nil.
 type AdminUserDetail struct {
 	AdminUser
 	Memberships  []AdminMembership `json:"memberships"`
 	SessionCount int               `json:"sessionCount"`
+	Suspension   *UserSuspension   `json:"suspension"`
 }
 
 // AdminPerson names an account inside another record (a workspace's owners).
@@ -105,11 +112,13 @@ type AdminWorkspace struct {
 	Owners       []AdminPerson `bun:"owners,type:jsonb" json:"owners"`
 }
 
-// AdminWorkspaceDetail is one workspace's page: the list's fields and its
-// members, by role then name.
+// AdminWorkspaceDetail is one workspace's page: the list's fields, its
+// members, by role then name, and how many invitations are live (what
+// Revoke pending invitations would revoke).
 type AdminWorkspaceDetail struct {
 	AdminWorkspace
-	Members []Member `json:"members"`
+	Members            []Member `json:"members"`
+	PendingInvitations int      `json:"pendingInvitations"`
 }
 
 // maxAdminMemberships bounds the memberships a user's page lists.
@@ -131,7 +140,8 @@ func adminUsers(db bun.IDB) *bun.SelectQuery {
 		ColumnExpr("EXISTS (?) AS mfa_enabled", mfaOn).
 		ColumnExpr("EXISTS (?) AS admin", admin).
 		ColumnExpr("(?) AS workspace_count", workspaces).
-		ColumnExpr("(?) AS last_signed_in_at", lastSignIn)
+		ColumnExpr("(?) AS last_signed_in_at", lastSignIn).
+		ColumnExpr("EXISTS (?) AS suspended", suspendedUser(db, "u.id"))
 }
 
 // IndexAdminUsers returns one page of every account that matches f.
@@ -144,6 +154,9 @@ func (s *Store) IndexAdminUsers(ctx context.Context, f AdminFilter, req PageRequ
 	if f.Search != "" {
 		pattern := containsPattern(f.Search)
 		q = q.Where(`(u.name ILIKE ? ESCAPE '\' OR u.email ILIKE ? ESCAPE '\')`, pattern, pattern)
+	}
+	if f.Suspended {
+		q = q.Where("EXISTS (?)", suspendedUser(s.DB, "u.id"))
 	}
 	return Paginate[AdminUser](ctx, q, req)
 }
@@ -178,7 +191,11 @@ func (s *Store) FindAdminUser(ctx context.Context, publicID string) (AdminUserDe
 	sessions, err := s.DB.NewSelect().Model((*sessionRecord)(nil)).
 		Where("s.user_id = ? AND s.expires_at > now() AND s.last_seen_at > now() - interval '30 minutes'", d.ID).
 		Count(ctx)
+	if err != nil {
+		return d, err
+	}
 	d.SessionCount = int(sessions)
+	d.Suspension, err = findUserSuspension(ctx, s.DB, d.ID)
 	return d, err
 }
 
@@ -226,6 +243,13 @@ func (s *Store) FindAdminWorkspace(ctx context.Context, publicID string) (AdminW
 		OrderExpr(byRoleThenName, pgdialect.Array(roleNames())).
 		Limit(MaxWorkspaceMembers).
 		Scan(ctx, &d.Members)
+	if err != nil {
+		return d, err
+	}
+	pending, err := s.DB.NewSelect().Model((*invitationRecord)(nil)).
+		Where("i.workspace_id = ? AND i.expires_at > now()", d.ID).
+		Count(ctx)
+	d.PendingInvitations = int(pending)
 	return d, err
 }
 

@@ -8,6 +8,7 @@ package prune
 import (
 	"context"
 	"fmt"
+	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/store"
 	"regexp"
 	"slices"
@@ -27,6 +28,10 @@ type Pruner struct {
 	// KeptReason follows the count of rows kept on purpose, e.g. "with
 	// pending deliveries".
 	KeptReason string
+	// Minimises makes a confirmed run minimise the old rows
+	// (store.PseudonymiseEvents) instead of deleting them: the pseudonymise
+	// target. Table then says which rows are left to minimise.
+	Minimises bool
 }
 
 const day = 24 * time.Hour
@@ -95,7 +100,10 @@ type Options struct {
 	Age     time.Duration // the pruner's DefaultAge
 	Confirm bool          // false previews
 	Now     time.Time     // time.Now()
-	Batch   int           // rows per DELETE: 5000
+	Batch   int           // rows per DELETE: 5000 (per minimising transaction: 1000)
+	// Pseudonym is auth.Keys.EmailPseudonym, which a minimising target
+	// needs (from APP_KEY).
+	Pseudonym func(string) string
 }
 
 // Report is what a run found or did.
@@ -110,7 +118,12 @@ type Report struct {
 
 func (r Report) String() string {
 	verb := "would delete"
-	if r.Confirmed {
+	switch {
+	case r.Pruner.Minimises && r.Confirmed:
+		verb = "minimised"
+	case r.Pruner.Minimises:
+		verb = "would minimise"
+	case r.Confirmed:
 		verb = "deleted"
 	}
 	text := fmt.Sprintf("%s: %s %d older than %s (%s)", r.Pruner.Name, verb, r.Deleted, r.Before.UTC().Format("2006-01-02 15:04 UTC"), FormatAge(r.Age))
@@ -123,8 +136,19 @@ func (r Report) String() string {
 // Run previews or prunes. The cutoff is fixed when it starts, so rows created
 // meanwhile are never in scope. Deleting goes in batches, each its own short
 // statement; when ctx ends between batches it stops and the report counts
-// what was deleted so far, alongside ctx's error.
+// what was deleted so far, alongside ctx's error. A confirmed run that
+// finishes records prune.completed (the evidence retention runs).
 func Run(ctx context.Context, s *store.Store, p Pruner, o Options) (Report, error) {
+	r, err := run(ctx, s, p, o)
+	if err != nil || !r.Confirmed {
+		return r, err
+	}
+	e := events.PruneCompleted{Target: p.Name, Deleted: r.Deleted, Kept: r.Kept, Cutoff: r.Before.UTC().Format(time.RFC3339)}
+	return r, s.Record(ctx, e, store.EventScope{})
+}
+
+// run is Run without the record.
+func run(ctx context.Context, s *store.Store, p Pruner, o Options) (Report, error) {
 	if o.Age == 0 {
 		o.Age = p.DefaultAge
 	}
@@ -134,8 +158,14 @@ func Run(ctx context.Context, s *store.Store, p Pruner, o Options) (Report, erro
 	if o.Now.IsZero() {
 		o.Now = time.Now()
 	}
+	if p.Minimises && o.Pseudonym == nil {
+		return Report{}, fmt.Errorf("prune %s: needs the email pseudonyms' key (APP_KEY)", p.Name)
+	}
 	if o.Batch == 0 {
 		o.Batch = 5000
+		if p.Minimises {
+			o.Batch = 1000
+		}
 	}
 	r := Report{Pruner: p, Age: o.Age, Before: o.Now.Add(-o.Age), Confirmed: o.Confirm}
 	prunable, kept, err := s.CountPrunable(ctx, p.Table, r.Before)
@@ -148,7 +178,13 @@ func Run(ctx context.Context, s *store.Store, p Pruner, o Options) (Report, erro
 		if err := ctx.Err(); err != nil {
 			return r, err
 		}
-		n, err := s.Prune(ctx, p.Table, r.Before, o.Batch)
+		var n int
+		var err error
+		if p.Minimises {
+			n, err = s.PseudonymiseEvents(ctx, r.Before, o.Batch, o.Pseudonym)
+		} else {
+			n, err = s.Prune(ctx, p.Table, r.Before, o.Batch)
+		}
 		r.Deleted += n
 		// A short batch means nothing older is left (rows another run holds
 		// are that run's to delete).

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/observe"
@@ -117,4 +119,111 @@ func errorText(err error) string {
 		text = string([]rune(text)[:maxLastError])
 	}
 	return text
+}
+
+// MaxDeliveriesRetried is how many failed deliveries one bulk retry queues
+// again, at most: for after an SMTP outage.
+const MaxDeliveriesRetried = 1000
+
+var (
+	// ErrDeliveryNotFailed: a retry of a delivery that hasn't failed (it's
+	// pending or delivered).
+	ErrDeliveryNotFailed = errors.New("the delivery hasn't failed")
+	// ErrNothingToRetry: no failed delivery matches a bulk retry.
+	ErrNothingToRetry = errors.New("no failed delivery to retry")
+	// ErrDeliveryMinimised: a retry of a delivery whose event has been
+	// minimised (docs/compliance.md#retention): its email is a pseudonym
+	// now, so its listener couldn't send anything.
+	ErrDeliveryMinimised = errors.New("the delivery's event has been minimised")
+)
+
+// requeue is what queuing a failed delivery again sets: not failed, no
+// attempts yet, due now. Its listener runs as for a new event; reset,
+// invitation and sign-up listeners make a fresh link or code when they
+// run, so an old one is never sent again.
+func requeue(q *bun.UpdateQuery) *bun.UpdateQuery {
+	return q.Set("failed_at = NULL").Set("attempts = 0").Set("next_attempt_at = now()")
+}
+
+// RequeueDelivery queues the failed delivery of the event publicID to
+// listener again, recording admin.delivery.retried. sql.ErrNoRows when
+// there's no such delivery, ErrDeliveryNotFailed when it hasn't failed,
+// ErrDeliveryMinimised when its event has been minimised.
+//
+// The event's row is locked first (then the delivery's, the order a
+// cascade from the event takes): pseudonymise locks the rows it minimises
+// and skips locked ones, so it can't minimise the event between the check
+// and the commit, and an event it is minimising now is waited for and
+// refused.
+func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, a AdminAction) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var event struct {
+			ID          int64
+			MinimisedAt sql.NullTime
+		}
+		err := tx.NewSelect().Model((*eventRecord)(nil)).
+			Column("e.id", "e.minimised_at").
+			Where("e.public_id = ?", publicID).
+			For("UPDATE").
+			Scan(ctx, &event.ID, &event.MinimisedAt)
+		if err != nil {
+			return err
+		}
+		var d deliveryRecord
+		err = tx.NewSelect().Model(&d).
+			Where("d.event_id = ? AND d.listener = ?", event.ID, listener).
+			For("UPDATE").
+			Scan(ctx)
+		if err != nil {
+			return err
+		}
+		if d.FailedAt.IsZero() {
+			return ErrDeliveryNotFailed
+		}
+		if event.MinimisedAt.Valid {
+			return ErrDeliveryMinimised
+		}
+		if _, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).Where("event_id = ? AND listener = ?", d.EventID, listener).Exec(ctx); err != nil {
+			return err
+		}
+		e := events.AdminDeliveryRetried{Admin: a.Admin.PublicID, Reason: a.Reason, Listener: listener, Event: publicID, Count: 1}
+		return s.record(ctx, tx, e, EventScope{ActorID: a.Admin.ID})
+	})
+}
+
+// RequeueFailedDeliveries queues again every delivery to listener that
+// failed at or after since, the most recent MaxDeliveriesRetried of them,
+// recording admin.delivery.retried with how many. ErrNothingToRetry when
+// none did (nothing is recorded). Events already minimised are left out,
+// their rows locked with the deliveries' as RequeueDelivery locks one, so
+// pseudonymise can't minimise one meanwhile (one it is minimising now is
+// waited for, then left out).
+func (s *Store) RequeueFailedDeliveries(ctx context.Context, listener string, since time.Time, a AdminAction) (int, error) {
+	var count int
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		failed := tx.NewSelect().Model((*deliveryRecord)(nil)).
+			Column("d.event_id").
+			Join("JOIN events AS e ON e.id = d.event_id").
+			Where("d.listener = ? AND d.failed_at IS NOT NULL AND d.failed_at >= ?", listener, since).
+			Where("e.minimised_at IS NULL").
+			OrderExpr("d.failed_at DESC, d.event_id DESC").
+			Limit(MaxDeliveriesRetried).
+			For("UPDATE OF e, d")
+		res, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).
+			Where("listener = ? AND event_id IN (?)", listener, failed).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count = int(n); count == 0 {
+			return ErrNothingToRetry
+		}
+		e := events.AdminDeliveryRetried{Admin: a.Admin.PublicID, Reason: a.Reason, Listener: listener, FailedSince: &since, Count: count}
+		return s.record(ctx, tx, e, EventScope{ActorID: a.Admin.ID})
+	})
+	return count, err
 }

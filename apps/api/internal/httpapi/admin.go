@@ -75,7 +75,10 @@ func (s *Server) requireAdminKey(previousAllowed bool, next http.Handler) http.H
 			NotFound(w, r)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), adminKeyMatchKey{}, match)))
+		// Every event the dashboard records is marked as an admin
+		// request's (events.WithAdminRequest), sign-in steps included.
+		ctx := events.WithAdminRequest(context.WithValue(r.Context(), adminKeyMatchKey{}, match))
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

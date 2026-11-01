@@ -145,12 +145,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               </SidebarHeading>
               {adminMonitoringNavigation(key).map(
                 ({ label, href, icon: Icon }) => (
-                  // Each page is current on its own path only: Overview's
-                  // path is the others' prefix.
+                  // Each page is current on its own path and its detail
+                  // pages (IP addresses on one address's), never as the
+                  // prefix of another page: Overview's path is theirs.
                   <SidebarItem
                     key={href}
                     href={href}
-                    current={currentPath === href}
+                    current={
+                      currentPath === href ||
+                      (href !== adminRoutes.monitoring.index(key) &&
+                        currentPath.startsWith(`${href}/`))
+                    }
                   >
                     <Icon />
                     <SidebarLabel>{label}</SidebarLabel>

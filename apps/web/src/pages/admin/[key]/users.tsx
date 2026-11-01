@@ -4,12 +4,14 @@ import {
   AdminTableHead,
   EmailBadge,
   MfaBadge,
+  SuspendedBadge,
   adminListPath,
   adminListQuery,
   type AdminColumn,
 } from "@/components/app/admin/admin-list";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
+import { Navbar, NavbarItem, NavbarSection } from "@/components/ui/navbar";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -42,16 +44,30 @@ const columns: AdminColumn<(typeof adminUserSortable)[number]>[] = [
     className: "max-sm:hidden",
   },
 ];
-// Every account, newest first: search by name or email, sort by a column.
-// The state lives in the URL; each page loaded is recorded in the audit trail.
+// Every account, newest first: search by name or email, sort by a column,
+// all or only the suspended ones. The state lives in the URL; each page
+// loaded is recorded in the audit trail.
 export default function AdminUserIndex() {
   const key = useAdminKey();
   const [search] = useSearchParams();
   const goTo = useNavigate();
   const query = adminListQuery(search, adminUserSortable, defaultAdminUserSort);
-  const list = useAdminResource(adminPaths.users.index(query));
-  const pathFor = (q: AdminListQuery<AdminUserSort>) =>
-    adminListPath(adminRoutes.users.index(key), q, defaultAdminUserSort);
+  const suspended = search.get("suspended") === "true";
+  const list = useAdminResource(
+    adminPaths.users.index({ ...query, suspended }),
+  );
+  const pathFor = (
+    q: AdminListQuery<AdminUserSort>,
+    onlySuspended = suspended,
+  ) => {
+    const path = adminListPath(
+      adminRoutes.users.index(key),
+      q,
+      defaultAdminUserSort,
+    );
+    if (!onlySuspended) return path;
+    return `${path}${path.includes("?") ? "&" : "?"}suspended=true`;
+  };
   return (
     <>
       <Heading>Users</Heading>
@@ -67,6 +83,20 @@ export default function AdminUserIndex() {
           }
         />
       </div>
+      <Navbar aria-label="Accounts" className="mt-4">
+        <NavbarSection className="-ml-2">
+          {[false, true].map((only) => (
+            <NavbarItem
+              key={String(only)}
+              href={pathFor({ ...query, page: 1 }, only)}
+              current={suspended === only}
+              aria-current={suspended === only ? "page" : undefined}
+            >
+              {only ? "Suspended" : "All"}
+            </NavbarItem>
+          ))}
+        </NavbarSection>
+      </Navbar>
       {list.error && (
         <Notice variant="error" className="mt-6" onRetry={list.refresh}>
           {list.error}
@@ -89,11 +119,19 @@ export default function AdminUserIndex() {
         href={(page) => pathFor({ ...query, page })}
         empty={
           <EmptyState
-            title={query.q ? "No users match" : "No users yet"}
+            title={
+              query.q
+                ? "No users match"
+                : suspended
+                  ? "No suspended accounts"
+                  : "No users yet"
+            }
             description={
               query.q
                 ? "Try another name or email address."
-                : "Accounts appear here once people sign up."
+                : suspended
+                  ? "An account appears here when an operator suspends it."
+                  : "Accounts appear here once people sign up."
             }
           />
         }
@@ -114,6 +152,7 @@ function UserRow({ user }: { user: AdminUser }) {
           <MfaBadge enabled={user.mfaEnabled} />
           <EmailBadge verifiedAt={user.emailVerifiedAt} quiet />
           {user.admin && <AdminBadge />}
+          {user.suspended && <SuspendedBadge />}
         </div>
       </TableCell>
       <TableCell className="text-zinc-500 max-md:hidden">

@@ -353,7 +353,7 @@ Built 2026-11-01 on `admin-run/ui`. Where the build differs from the plan above:
 ## Not included
 
 - **Asking existing accounts to agree, or anyone to re-agree** after a change (decision 14), and emailing users about changes.
-- **A history of agreements**, or keeping proof of agreement after an account is deleted. Both are decisions for the re-acceptance plan and [compliance](../admin/compliance.md).
+- **A history of agreements**, or keeping proof of agreement after an account is deleted. Both are decisions for the re-acceptance plan and [compliance](admin/compliance.md).
 - **Showing agreement on the admin dashboard** (decision 17).
 - **More documents** (cookie policy, acceptable use, a DPA). The reader is generic, so another is a Markdown file, a page file and a `prerender` entry.
 - **A cookie banner.** The app sets only the cookies it needs to work (session, CSRF, sign-up, MFA, admin) and loads no tracking.
