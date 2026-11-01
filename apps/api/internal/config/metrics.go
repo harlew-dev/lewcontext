@@ -77,23 +77,28 @@ func (c *Config) loadMetricsAddr(addr string) error {
 	if addr == c.Address {
 		return errors.New("METRICS_ADDR must differ from API_ADDR: /metrics is never on the public listener")
 	}
-	if c.Production && c.MetricsToken == "" && everyInterface(host) {
-		return errors.New("METRICS_ADDR listens on every interface: set METRICS_TOKEN, or listen on a private address such as 127.0.0.1:9090")
+	if c.Production && c.MetricsToken == "" && !privateHost(host) {
+		return errors.New("METRICS_ADDR isn't a loopback or private address: set METRICS_TOKEN, or listen on a private address such as 127.0.0.1:9090")
 	}
 	c.MetricsAddr = addr
 	return nil
 }
 
-// everyInterface reports whether a listener on host takes connections on
-// every interface: no host, or an unspecified address (0.0.0.0, ::), or a
-// name rather than an address, which can't be told apart from one.
-func everyInterface(host string) bool {
-	if host == "" {
+// privateHost reports whether a listener on host takes connections only
+// from this machine or a private network: a loopback or private address
+// (127.0.0.1, ::1, 10.0.0.5, fd00::5), or localhost. Anything else could be
+// reachable from anywhere: no host, an unspecified address (0.0.0.0, ::,
+// with a zone or not, ::ffff:0.0.0.0), a public or link-local address, or
+// another name, which can't be told apart from one. A zone is refused
+// outright: [::%eth0] listens on every interface.
+func privateHost(host string) bool {
+	if host == "localhost" {
 		return true
 	}
 	addr, err := netip.ParseAddr(host)
-	if err != nil {
-		return host != "localhost"
+	if err != nil || addr.Zone() != "" {
+		return false
 	}
-	return addr.Unmap().IsUnspecified()
+	addr = addr.Unmap()
+	return addr.IsLoopback() || addr.IsPrivate()
 }
