@@ -11,8 +11,11 @@ import type { Role } from "./workspaces";
 export const adminRoles = ["viewer", "operator"] as const;
 export type AdminRole = (typeof adminRoles)[number];
 // The signed-in admin's session, as /api/admin/me answers.
+// The signed-in admin as the admin API sends them: the account's identity,
+// without its policy agreement.
+export type AdminSessionUser = Omit<User, "policies">;
 export type AdminSession = {
-  user: User;
+  user: AdminSessionUser;
   role: AdminRole;
   csrfToken: string;
   expiresAt: string;

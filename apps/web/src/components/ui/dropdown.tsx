@@ -234,7 +234,7 @@ const itemClasses = cx(
 );
 // Text and icon colours for each item variant (a focused default item's icon
 // darkens, as in the sidebar); "danger" is for destructive actions (Delete),
-// and for Sign out in the account menus.
+// never for Sign out, which isn't one.
 const itemVariants = {
   default:
     "text-zinc-950 *:data-[slot=icon]:text-zinc-500 focus:*:data-[slot=icon]:text-zinc-950 dark:text-white dark:*:data-[slot=icon]:text-zinc-400 dark:focus:*:data-[slot=icon]:text-white",

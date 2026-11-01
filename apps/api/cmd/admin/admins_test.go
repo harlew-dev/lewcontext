@@ -22,6 +22,8 @@ func TestNewRouteKeyPassesConfig(t *testing.T) {
 	t.Setenv("EMAIL_VERIFICATION_EXISTING", "")
 	t.Setenv("APP_KEY", "c3VwZXItc2VjcmV0LXRlc3Qta2V5LTMyLWJ5dGVzISE=")
 	t.Setenv("RATE_LIMITS", "")
+	t.Setenv("CAPTCHA_PROVIDER", "off")
+	t.Setenv("PER_IP_LIMITS", "")
 	t.Setenv("CLIENT_IP_HEADER", "")
 	t.Setenv("TRUSTED_PROXIES", "")
 	t.Setenv("ADMIN_ROUTE_KEY_PREVIOUS", "")

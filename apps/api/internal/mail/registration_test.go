@@ -46,9 +46,9 @@ func (s *signUps) IssueRegistrationCode(_ context.Context, request, codeHash str
 	return email, nil, nil
 }
 
-func (s *signUps) Allow(_ context.Context, key string, limit int, window time.Duration) (bool, bool, time.Time, error) {
+func (s *signUps) CountHit(_ context.Context, key string, window time.Duration) (int, time.Time, error) {
 	s.hits[key]++
-	return s.hits[key] <= limit, s.hits[key] == limit+1, time.Now().Add(window), nil
+	return s.hits[key], time.Now().Add(window), nil
 }
 
 func (s *signUps) Record(_ context.Context, e events.Event, _ store.EventScope) error {

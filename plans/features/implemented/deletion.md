@@ -56,7 +56,7 @@ Account   /app/settings → Danger zone → Delete account (red)
 | `GET /api/workspaces?canLeave=false` | Session | one page of the workspaces you can't leave: those where you're the **only** owner | 400 bad params |
 
 - **The name check is on the server too.** It compares the current name, so a tab opened before a rename can't delete the workspace under its old name.
-- **Password checks** work as `POST /api/auth/password/verify` does: `limitAuth` (`auth:per-ip`, one of the 4 hashing slots) and `auth:per-account`. These routes pass no CAPTCHA action, so they are never challenged ([CAPTCHA plan](../captcha-challenges.md)).
+- **Password checks** work as `POST /api/auth/password/verify` does: `limitAuth` (`auth:per-ip`, one of the 4 hashing slots) and `auth:per-account`. These routes pass no CAPTCHA action, so they are never challenged ([CAPTCHA plan](captcha-challenges.md)).
 - **DELETE with a body:** `security` today skips the JSON content-type check for DELETE. It changes to require `application/json` whenever a DELETE has a body. Bodies stay bounded (16 KiB).
 - **The 409 for a last owner** lists what to deal with, so the web app can switch to the warning dialog even when the pre-check was stale:
 

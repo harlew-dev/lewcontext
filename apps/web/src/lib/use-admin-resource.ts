@@ -10,7 +10,7 @@ import { adminRoutes } from "./admin-routes";
 // from the app's, and never holds the key. An ended admin session goes back
 // to the admin sign-in page. Every load is recorded in the audit trail, so
 // nothing reloads on its own (focus, reconnecting): only opening a page, a
-// new query, or Refresh.
+// new query, reloading the page, or Retry after a failure.
 export function useAdminResource<T>(path: ApiPath<T> | null) {
   const api = useAdminApi();
   const navigate = useNavigate();

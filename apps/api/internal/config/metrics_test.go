@@ -92,6 +92,9 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		"SMTP_USERNAME":            "zq8vkx3m7tpw@rl9.qmx",
 		"SMTP_PASSWORD":            "Hy4!Rk9wQz2#Lm7xVt5pBn3cJd8",
 		"DB_PASSWORD":              "Pq2Xz7Wk4Vm9Lt3Rn8Bc5Jh1Gd6",
+		"CAPTCHA_SECRET_KEY":       "0x4AAAAAAAk7Rq9ZtW2mXvB8nYc3HdF6jS",
+		// Public, but the summary keeps only whether it's set.
+		"CAPTCHA_SITE_KEY": "1x4BsitekeyPublicVq7Zr2",
 	}
 	setEnv(t, map[string]string{
 		"APP_KEY":                  secrets["APP_KEY"],
@@ -109,6 +112,10 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		"CLIENT_IP_HEADER":         "X-Forwarded-For",
 		"TRUSTED_PROXIES":          "10.0.0.0/8,192.168.0.0/16",
 		"DATABASE_URL":             "postgresql://dbuser:" + secrets["DB_PASSWORD"] + "@db.internal/app?sslmode=verify-full",
+		"CAPTCHA_PROVIDER":         "turnstile",
+		"CAPTCHA_SITE_KEY":         secrets["CAPTCHA_SITE_KEY"],
+		"CAPTCHA_SECRET_KEY":       secrets["CAPTCHA_SECRET_KEY"],
+		"POLICIES":                 "on",
 	})
 	c, err := Load()
 	if err != nil {
@@ -150,7 +157,9 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 	}
 	if !got.AdminRouteKey || !got.AdminRouteKeyPrev || got.AdminAllowedIPs != 1 || got.TrustedProxies != 2 || got.ClientIPHeader != "X-Forwarded-For" ||
 		!got.MetricsAddr || !got.MetricsToken || got.SMTP == nil || got.SMTP.Host != "smtp.example.com" || got.SMTP.Port != 587 ||
-		got.EmailVerification != "optional" || got.Migrations.Applied != 25 || got.SlowQueryMs != 500 {
+		got.EmailVerification != "optional" || got.Migrations.Applied != 25 || got.SlowQueryMs != 500 ||
+		got.CaptchaProvider != "turnstile" || !got.CaptchaSiteKey || !got.CaptchaSecretKey ||
+		got.CaptchaTestKeys || got.PerIPLimits != "on" || got.Policies != "on" {
 		t.Fatalf("summary: %s", text)
 	}
 }

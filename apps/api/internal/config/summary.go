@@ -5,8 +5,9 @@ package config
 // for the admin dashboard to compare servers and spot a change. It names
 // which settings are set and their non-secret values; it never holds a
 // secret's value, part of one, or a digest of one (APP_KEY, the admin keys,
-// METRICS_TOKEN, the SMTP credentials, DATABASE_URL). Fields are copied one
-// by one, never by walking Config, so a new secret can't slip in.
+// METRICS_TOKEN, the SMTP credentials, DATABASE_URL, CAPTCHA_SECRET_KEY).
+// Fields are copied one by one, never by walking Config, so a new secret
+// can't slip in.
 type Summary struct {
 	Production        bool         `json:"production"`
 	MailDriver        string       `json:"mailDriver"`
@@ -15,17 +16,27 @@ type Summary struct {
 	RateLimits        string       `json:"rateLimits"`
 	ClientIPHeader    string       `json:"clientIpHeader"`
 	TrustedProxies    int          `json:"trustedProxies"`
-	AdminRouteKey     bool         `json:"adminRouteKey"`
-	AdminRouteKeyPrev bool         `json:"adminRouteKeyPrevious"`
-	AdminAllowedIPs   int          `json:"adminAllowedIps"`
-	LogFormat         string       `json:"logFormat"`
-	LogLevel          string       `json:"logLevel"`
-	AccessLog         string       `json:"accessLog"`
-	MetricsStore      string       `json:"metricsStore"`
-	MetricsAddr       bool         `json:"metricsAddr"`
-	MetricsToken      bool         `json:"metricsToken"`
-	SlowQueryMs       int64        `json:"slowQueryMs"`
-	ShutdownDelayMs   int64        `json:"shutdownDelayMs"`
+	PerIPLimits       string       `json:"perIpLimits"`
+	// The CAPTCHA provider (CAPTCHA_PROVIDER: turnstile or off, the values
+	// config accepts); its keys only as set or not, never a value, part or
+	// digest (the site key is public, but nothing here needs it); and
+	// whether either is one of Cloudflare's published test keys.
+	CaptchaProvider   string `json:"captchaProvider"`
+	CaptchaSiteKey    bool   `json:"captchaSiteKey"`
+	CaptchaSecretKey  bool   `json:"captchaSecretKey"`
+	CaptchaTestKeys   bool   `json:"captchaTestKeys"`
+	Policies          string `json:"policies"`
+	AdminRouteKey     bool   `json:"adminRouteKey"`
+	AdminRouteKeyPrev bool   `json:"adminRouteKeyPrevious"`
+	AdminAllowedIPs   int    `json:"adminAllowedIps"`
+	LogFormat         string `json:"logFormat"`
+	LogLevel          string `json:"logLevel"`
+	AccessLog         string `json:"accessLog"`
+	MetricsStore      string `json:"metricsStore"`
+	MetricsAddr       bool   `json:"metricsAddr"`
+	MetricsToken      bool   `json:"metricsToken"`
+	SlowQueryMs       int64  `json:"slowQueryMs"`
+	ShutdownDelayMs   int64  `json:"shutdownDelayMs"`
 	// Migrations are the migrations the database has applied and those
 	// built into this binary: a server built ahead of its database shows.
 	Migrations MigrationsSummary `json:"migrations"`
@@ -54,6 +65,12 @@ func (c Config) Summary(migrations MigrationsSummary) Summary {
 		RateLimits:        c.RateLimits,
 		ClientIPHeader:    c.ClientIPHeader,
 		TrustedProxies:    len(c.TrustedProxies),
+		PerIPLimits:       onOff(!c.PerIPLimitsOff),
+		CaptchaProvider:   captchaProvider(c.CaptchaProvider),
+		CaptchaSiteKey:    c.CaptchaSiteKey != "",
+		CaptchaSecretKey:  c.CaptchaSecretKey != "",
+		CaptchaTestKeys:   IsTurnstileTestKey(c.CaptchaSiteKey) || IsTurnstileTestKey(c.CaptchaSecretKey),
+		Policies:          onOff(c.Policies),
 		AdminRouteKey:     c.AdminRouteKey != "",
 		AdminRouteKeyPrev: c.AdminRouteKeyPrevious != "",
 		AdminAllowedIPs:   len(c.AdminAllowedIPs),
@@ -71,4 +88,21 @@ func (c Config) Summary(migrations MigrationsSummary) Summary {
 		s.SMTP = &SMTPSummary{Host: c.SMTP.Host, Port: c.SMTP.Port, TLS: c.SMTP.TLS}
 	}
 	return s
+}
+
+// onOff is a switch as its variable says it: on or off.
+func onOff(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
+// captchaProvider is CAPTCHA_PROVIDER as one of the values config accepts,
+// so the summary can't carry anything else.
+func captchaProvider(provider string) string {
+	if provider == CaptchaTurnstile {
+		return CaptchaTurnstile
+	}
+	return CaptchaOff
 }

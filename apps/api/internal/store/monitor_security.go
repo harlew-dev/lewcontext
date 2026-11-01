@@ -405,8 +405,13 @@ const maxTopAddresses = 10
 // IndexTopAddresses lists the addresses that recorded the most events
 // named name in [from, to), most first.
 func (s *Store) IndexTopAddresses(ctx context.Context, name string, from, to time.Time) ([]AddressCount, error) {
+	return s.indexTopAddresses(ctx, s.eventsIn(from, to, name))
+}
+
+// indexTopAddresses groups q's events by address, most first.
+func (s *Store) indexTopAddresses(ctx context.Context, q *bun.SelectQuery) ([]AddressCount, error) {
 	rows := []AddressCount{}
-	err := s.eventsIn(from, to, name).
+	err := q.
 		ColumnExpr(ipNetwork+" AS ip").
 		ColumnExpr("count(*) AS count").
 		Where("e.ip IS NOT NULL").

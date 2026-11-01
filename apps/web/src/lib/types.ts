@@ -1,3 +1,4 @@
+import type { PolicyAgreement } from "@/types/policies";
 export type User = {
   id: string;
   name: string;
@@ -8,6 +9,9 @@ export type User = {
   // When the account proved it owns its email, or null if it never has
   // (made while email verification was off).
   emailVerifiedAt: string | null;
+  // The policy versions agreed to at sign-up, and when, or null (made
+  // while the policies weren't published).
+  policies: PolicyAgreement | null;
 };
 // The server's email verification setting (EMAIL_VERIFICATION and
 // EMAIL_VERIFICATION_EXISTING): off, optional (unverified accounts may

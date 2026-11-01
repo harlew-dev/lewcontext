@@ -297,7 +297,7 @@ func TestHashesScriptsAsBrowsersDo(t *testing.T) {
 			t.Errorf("hash %d = %s, want %s", i, got[i], want[i])
 		}
 	}
-	if p := policy(nil); !strings.Contains(p, "script-src 'self';") {
+	if p := policy(nil, ThirdParty{}); !strings.Contains(p, "script-src 'self';") {
 		t.Fatalf("no inline scripts should allow only 'self': %q", p)
 	}
 }

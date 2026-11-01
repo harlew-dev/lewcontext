@@ -22,13 +22,12 @@ var storeVerbs = []string{"Index", "Find", "Create", "Update", "Delete", "Check"
 // what it's for. Longer verbs come before their prefixes (StepUp, not Step).
 var domainVerbs = map[string]string{
 	"Accept":       "accepting an invitation, which joins its workspace",
-	"Allow":        "a rate limit's counter: whether one more request is allowed",
 	"Answer":       "answering an MFA challenge with a code",
 	"Block":        "putting an email address on the block list",
 	"Change":       "changing a password, which also ends other sessions",
 	"Cleanup":      "removing expired rows the requests left behind",
 	"Complete":     "completing a sign-up with its emailed code",
-	"Count":        "counting rows for a number shown elsewhere: what pruning would delete, what revoke-all would sign out, the deliveries waiting, the monitoring signals",
+	"Count":        "counting: rows for a number shown elsewhere (what pruning would delete, what revoke-all would sign out, the deliveries waiting, the monitoring signals), or a hit against a rate limit's counter (CountHit, CountHitUntil)",
 	"Disable":      "turning MFA off",
 	"Enable":       "turning MFA on, with the first recovery codes",
 	"Erase":        "the operator erasing an account for someone who can't (admin erase): a deletion with its own refusals",
@@ -45,7 +44,7 @@ var domainVerbs = map[string]string{
 	"Requeue":      "an admin queuing failed deliveries again (the worker's own Retry is events.Queue's)",
 	"Reset":        "resetting a password by link, or MFA from the CLI or the dashboard",
 	"Revoke":       "revoking an invitation, admin from the CLI, or sessions from the dashboard or CLI",
-	"Setup":        "existing; to fix: starting MFA setup (should be SetUp, a verb)",
+	"SetUp":        "starting MFA setup (SetUpMFA)",
 	"StepUp":       "opening an admin session's step-up window",
 	"Summarize":    "summing rows into totals: the admin Events page's chart counts, the metrics' hours, the monitoring pages' charts",
 	"Suspend":      "an admin suspending an account",
@@ -152,7 +151,7 @@ func TestStoreMethodNames(t *testing.T) {
 
 // The check itself: verbs pass, nouns and lookalikes don't.
 func TestBadStoreMethods(t *testing.T) {
-	good := []string{"IndexProjects", "FindUser", "CreateProject", "DeleteAccount", "CheckPasswordReset", "RenameWorkspace", "Allow", "StepUpAdminSession", "Claim"}
+	good := []string{"IndexProjects", "FindUser", "CreateProject", "DeleteAccount", "CheckPasswordReset", "RenameWorkspace", "CountHit", "StepUpAdminSession", "Claim"}
 	if bad := badStoreMethods(good, []string{"Claim"}); len(bad) > 0 {
 		t.Fatalf("refused: %v", bad)
 	}

@@ -23,7 +23,7 @@ import {
   DropdownMenu,
 } from "@/components/ui/dropdown";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text } from "@/components/ui/text";
 import { Toaster, toast } from "@/components/ui/toast";
@@ -69,13 +69,13 @@ function NewWorkspace() {
           {leftWorkspace && (
             <Notice variant="success">You left {leftWorkspace}.</Notice>
           )}
-          <div className="space-y-2">
+          <HeadingGroup>
             <Heading>New workspace</Heading>
             <Text>
               Projects live in a workspace. Name your first one — you can create
               more later.
             </Text>
-          </div>
+          </HeadingGroup>
           <ErrorNotice error={create.error} />
           <WorkspaceNameField
             label="Name"
@@ -131,7 +131,7 @@ function AccountMenu() {
             </Text>
           </DropdownHeader>
           <DropdownDivider />
-          <DropdownItem variant="danger" onClick={signOut}>
+          <DropdownItem onClick={signOut}>
             <ArrowRightStartOnRectangleIcon />
             <DropdownLabel>Sign out</DropdownLabel>
           </DropdownItem>

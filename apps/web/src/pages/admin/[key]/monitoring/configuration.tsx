@@ -86,6 +86,11 @@ const warningText: Record<
     action:
       "Production refuses this on a public address; on a private one only the firewall keeps /metrics in. Set METRICS_TOKEN.",
   }),
+  captcha_off: (n) => ({
+    title: `CAPTCHA_PROVIDER=off in production on ${servers(n)}.`,
+    action:
+      "Rate limits' challenge levels are skipped, so scripted sign-ins and sign-ups meet only the block levels. Set CAPTCHA_PROVIDER=turnstile with your own widget's keys.",
+  }),
   migrations_pending: (n) => ({
     title: `${servers(n)} built with migrations the database hasn't applied.`,
     action: "Run the migrations (make migrate), then restart the server.",

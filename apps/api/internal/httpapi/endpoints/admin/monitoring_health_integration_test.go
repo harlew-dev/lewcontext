@@ -518,7 +518,7 @@ type configurationSections struct {
 // nor a digest. Its warnings: mail off, an allowlist without the client
 // address header, migrations pending, two versions live, sessions under
 // the key being retired (counted under the server's own previous key),
-// and the proxy's address everywhere.
+// the proxy's address everywhere, and the CAPTCHA off in production.
 func TestAdminMonitoringConfiguration(t *testing.T) {
 	s, db := server(t)
 	previous := "previous-admin-key-0123456789abcdefghijklmnopqrstu"
@@ -528,7 +528,7 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	ctx := context.Background()
 	admin, session := adminSignedIn(t, db, f)
 	m := eventMaker{t, db, f}
-	secrets := []string{"AppKeyS3cretValue-0123456789", "hunter2-database-password", "MailPassw0rd-smtp-secret", "smtp-username-alice", previous, auth.Digest(previous), "metrics-token-0123456789abcdef0123"}
+	secrets := []string{"AppKeyS3cretValue-0123456789", "hunter2-database-password", "MailPassw0rd-smtp-secret", "smtp-username-alice", previous, auth.Digest(previous), "metrics-token-0123456789abcdef0123", "0x4AAAAAAAcaptcha-secret-Vq7Zr2Lm9"}
 	config := func(mail, version string, extra string) json.RawMessage {
 		return json.RawMessage(fmt.Sprintf(`{"production":true,"mailDriver":%q,"smtp":{"host":"smtp.example.test","port":587,"tls":"starttls","username":%q,"password":%q},
 			"emailVerification":"on","rateLimits":"on","clientIpHeader":"","trustedProxies":0,"adminRouteKey":true,"adminRouteKeyPrevious":true,
@@ -539,7 +539,10 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	}
 	apitest.Must(factory.ServerInstances.Sequence(func(i int, si *factory.ServerInstance) {
 		si.Version = []string{"abc1234def56", "def5678abc12"}[i]
-		si.Config = []json.RawMessage{config("smtp", "25", ""), config("off", "24", `,"note":"x"`)}[i]
+		si.Config = []json.RawMessage{
+			config("smtp", "25", `,"captchaProvider":"turnstile","captchaSiteKey":true,"captchaSecretKey":true,"captchaTestKeys":false,"perIpLimits":"on","policies":"on","captchaSecretValue":"`+secrets[7]+`"`),
+			config("off", "24", `,"note":"x","captchaProvider":"off","captchaSiteKey":false,"captchaSecretKey":false,"captchaTestKeys":false,"perIpLimits":"on","policies":"off"`),
+		}[i]
 	}).Create(ctx, db, f, 2))(t)
 	// Two admin sessions under the key being retired, one live.
 	other := withAdmin(t, db, f)
@@ -582,13 +585,34 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	if key := setting("ADMIN_ROUTE_KEY_PREVIOUS"); key.Values[0] != "set" {
 		t.Fatalf("previous key: %+v", key)
 	}
+	// The CAPTCHA's settings: the provider, its keys only as set or not.
+	// Values come in the compared servers' order; the first server (mail on)
+	// has the CAPTCHA on.
+	at := func(s monitor.Setting, mail string) string {
+		return s.Values[slices.Index(setting("MAIL_DRIVER").Values, mail)]
+	}
+	if captcha := setting("CAPTCHA_PROVIDER"); !captcha.Differs || at(captcha, "smtp") != "turnstile" || at(captcha, "off") != "off" {
+		t.Fatalf("captcha provider: %+v", captcha)
+	}
+	if key := setting("CAPTCHA_SECRET_KEY"); at(key, "smtp") != "set" || at(key, "off") != "not set" {
+		t.Fatalf("captcha secret key: %+v", key)
+	}
+	if test := setting("CAPTCHA test keys"); test.Values[0] != "not used" || test.Differs {
+		t.Fatalf("captcha test keys: %+v", test)
+	}
+	if perIP := setting("PER_IP_LIMITS"); perIP.Values[0] != "on" || perIP.Differs {
+		t.Fatalf("per-IP limits: %+v", perIP)
+	}
+	if policies := setting("POLICIES"); !policies.Differs || at(policies, "smtp") != "on" {
+		t.Fatalf("policies: %+v", policies)
+	}
 	warnings := map[string]float64{}
 	for _, w := range page.Warnings {
 		warnings[w.ID] = w.Count
 	}
 	want := map[string]float64{
 		monitor.WarnMailOff: 1, monitor.WarnAllowlistNoIP: 2, monitor.WarnMigrations: 1, monitor.WarnVersions: 2,
-		monitor.WarnPreviousKey: 1, monitor.WarnSharedAddress: 100,
+		monitor.WarnPreviousKey: 1, monitor.WarnSharedAddress: 100, monitor.WarnCaptchaOff: 1,
 	}
 	for id, n := range want {
 		if got, ok := warnings[id]; !ok || got != n {

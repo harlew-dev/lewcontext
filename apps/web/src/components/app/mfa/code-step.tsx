@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { BackButton } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextButton } from "@/components/ui/text";
 import { ApiError, errorMessage } from "@/lib/api";
@@ -27,19 +28,23 @@ export function CodeStep({
   const [recovery, setRecovery] = useState(false);
   const [code, setCode] = useState("");
   const [fieldError, setFieldError] = useState<string>();
-  const { loading, error, submit } = useAuthSubmit(verify, destination, (e) => {
-    if (
-      e instanceof ApiError &&
-      (e.status === 401 || (e.status === 403 && e.details.suspended === true))
-    ) {
-      onRestart(errorMessage(e));
-      return true;
-    }
-    if (e instanceof ApiError && e.field === "code") {
-      setFieldError(errorMessage(e));
-      return true;
-    }
-  });
+  const { busy, loading, error, submit } = useAuthSubmit(
+    verify,
+    destination,
+    (e) => {
+      if (
+        e instanceof ApiError &&
+        (e.status === 401 || (e.status === 403 && e.details.suspended === true))
+      ) {
+        onRestart(errorMessage(e));
+        return true;
+      }
+      if (e instanceof ApiError && e.field === "code") {
+        setFieldError(errorMessage(e));
+        return true;
+      }
+    },
+  );
   function switchMode() {
     setRecovery(!recovery);
     setCode("");
@@ -54,12 +59,17 @@ export function CodeStep({
       className="grid w-full max-w-sm grid-cols-1 gap-8"
     >
       <Logo href={routes.home} />
-      <Heading>Two-factor authentication</Heading>
-      <Text>
-        {recovery
-          ? "Enter one of your recovery codes. Each one works once."
-          : "Enter the code from your authenticator app."}
-      </Text>
+      {/* Back to the password, as whoever is signing in: off from the
+          moment a code is sent, not only once loading shows. */}
+      <BackButton onClick={() => onRestart("")} disabled={busy} />
+      <HeadingGroup>
+        <Heading>Two-factor authentication</Heading>
+        <Text>
+          {recovery
+            ? "Enter one of your recovery codes. Each one works once."
+            : "Enter the code from your authenticator app."}
+        </Text>
+      </HeadingGroup>
       <ErrorNotice error={error} />
       <CodeField
         key={recovery ? "recovery" : "app"}
@@ -75,22 +85,15 @@ export function CodeStep({
       <Button type="submit" className="w-full" loading={loading}>
         Verify
       </Button>
-      <div className="space-y-2">
-        <Text>
-          <TextButton onClick={switchMode} disabled={loading}>
-            <Strong>
-              {recovery
-                ? "Use your authenticator app instead"
-                : "Lost your device? Use a recovery code"}
-            </Strong>
-          </TextButton>
-        </Text>
-        <Text>
-          <TextButton onClick={() => onRestart("")} disabled={loading}>
-            Sign in as someone else
-          </TextButton>
-        </Text>
-      </div>
+      <Text>
+        <TextButton onClick={switchMode} disabled={loading}>
+          <Strong>
+            {recovery
+              ? "Use your authenticator app instead"
+              : "Lost your device? Use a recovery code"}
+          </Strong>
+        </TextButton>
+      </Text>
     </form>
   );
 }

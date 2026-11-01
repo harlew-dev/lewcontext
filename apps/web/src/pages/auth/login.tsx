@@ -1,21 +1,23 @@
 import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
-import { AuthLayout } from "@/components/layout/auth-layout";
+import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Field, Label } from "@/components/ui/fieldset";
+import { Description, Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
 import { CodeStep } from "@/components/app/mfa/code-step";
+import { PolicyLinks } from "@/components/app/policies/policy-links";
 import { needsMfa, useApi } from "@/lib/api";
 import type { Credentials } from "@/lib/api";
 import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
 import { useInvitation } from "@/lib/use-invitation";
+import { usePolicies } from "@/lib/use-policies";
 import type { Route } from "./+types/login";
 // Signed-in visitors go on to ?next= or /app.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
@@ -49,6 +51,7 @@ export default function Login() {
     return false;
   }
   const { loading, error, submit } = useAuthSubmit(signIn);
+  const policies = usePolicies();
   if (step === "code")
     return (
       <AuthLayout>
@@ -62,12 +65,13 @@ export default function Login() {
       </AuthLayout>
     );
   return (
-    <AuthLayout>
+    <AuthLayout footer={policies.enabled && <PolicyLinks />}>
       <form
         onSubmit={(event) => submit(event, { email, password })}
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
+        <BackButton href={routes.home} />
         <Heading>Sign in to your account</Heading>
         <InvitationCallout
           check={invitation}
@@ -120,13 +124,14 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
           />
+          {/* Under the input, as its description. The email goes along in
+              navigation state, not the URL. */}
+          <Description>
+            <TextLink href={routes.forgotPassword} state={{ email }}>
+              <Strong>Forgot password?</Strong>
+            </TextLink>
+          </Description>
         </Field>
-        {/* The email goes along in navigation state, not the URL. */}
-        <Text>
-          <TextLink href={routes.forgotPassword} state={{ email }}>
-            <Strong>Forgot password?</Strong>
-          </TextLink>
-        </Text>
         <Button type="submit" className="w-full" loading={loading}>
           Sign in
         </Button>

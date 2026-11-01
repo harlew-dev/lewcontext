@@ -14,8 +14,12 @@ CREATE TABLE pending_registrations (
  request_id text NOT NULL UNIQUE,
  code_hash text,
  attempts smallint NOT NULL DEFAULT 0,
+ -- The policy versions agreed to (POLICIES=on), copied to users by verify.
+ terms_of_service_version date,
+ privacy_policy_version date,
  created_at timestamptz NOT NULL DEFAULT now(),
- expires_at timestamptz NOT NULL
+ expires_at timestamptz NOT NULL,
+ CHECK ((terms_of_service_version IS NULL) = (privacy_policy_version IS NULL))
 );
 CREATE INDEX pending_registrations_email_idx ON pending_registrations(email);
 CREATE INDEX pending_registrations_expires_at_idx ON pending_registrations(expires_at);

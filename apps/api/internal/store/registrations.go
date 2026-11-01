@@ -20,32 +20,39 @@ import (
 // already has an account, the HMAC of a code nobody is sent.
 type pendingRegistration struct {
 	bun.BaseModel `bun:"table:pending_registrations,alias:preg"`
-	ID            int64     `bun:",pk,autoincrement"`
-	Email         string    `bun:",notnull"`
-	Name          string    `bun:",notnull"`
-	PasswordHash  string    `bun:",notnull"`
-	TokenHash     string    `bun:",notnull"`
-	RequestID     string    `bun:",notnull"`
-	CodeHash      string    `bun:",nullzero"`
-	Attempts      int       `bun:",notnull"`
-	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
-	ExpiresAt     time.Time `bun:",notnull"`
+	ID            int64  `bun:",pk,autoincrement"`
+	Email         string `bun:",notnull"`
+	Name          string `bun:",notnull"`
+	PasswordHash  string `bun:",notnull"`
+	TokenHash     string `bun:",notnull"`
+	RequestID     string `bun:",notnull"`
+	CodeHash      string `bun:",nullzero"`
+	Attempts      int    `bun:",notnull"`
+	// The policy versions agreed to (POLICIES=on), or nil.
+	TermsOfServiceVersion *time.Time
+	PrivacyPolicyVersion  *time.Time
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	ExpiresAt             time.Time `bun:",notnull"`
 }
 
 // ErrNoRegistration means a sign-up is unknown, expired, used up by wrong
 // codes, or already completed.
 var ErrNoRegistration = errors.New("no pending registration")
 
-// NewRegistration is a sign-up as typed, its password already hashed, and
-// the digest of the token in its browser's cookie.
+// NewRegistration is a sign-up as typed, its password already hashed, the
+// digest of the token in its browser's cookie, and the policy versions it
+// agreed to (POLICIES=on), or none.
 type NewRegistration struct {
 	Email, Name, PasswordHash, TokenHash string
+	Policies                             PolicyVersions
 }
 
 // PendingRegistration is what the sign-up's own browser may see of it.
 type PendingRegistration struct {
 	Email     string    `json:"email"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	// Agreed says whether the sign-up agreed to policy versions; never sent.
+	Agreed bool `json:"-"`
 }
 
 // RegistrationResult is a code checked against a sign-up. OK: the code was
@@ -72,6 +79,9 @@ func (s *Store) CreatePendingRegistration(ctx context.Context, in NewRegistratio
 			TokenHash: in.TokenHash, RequestID: request,
 			ExpiresAt: time.Now().Add(auth.EmailCodeLifetime),
 		}
+		if row.TermsOfServiceVersion, row.PrivacyPolicyVersion, err = in.Policies.dates(); err != nil {
+			return err
+		}
 		_, err = tx.NewInsert().Model(&row).Exec(ctx)
 		return err
 	})
@@ -82,8 +92,9 @@ func (s *Store) CreatePendingRegistration(ctx context.Context, in NewRegistratio
 func (s *Store) FindPendingRegistration(ctx context.Context, tokenHash string) (PendingRegistration, error) {
 	var p PendingRegistration
 	err := s.DB.NewSelect().Model((*pendingRegistration)(nil)).Column("email", "expires_at").
+		ColumnExpr("terms_of_service_version IS NOT NULL").
 		Where("token_hash = ? AND expires_at > now()", tokenHash).
-		Scan(ctx, &p.Email, &p.ExpiresAt)
+		Scan(ctx, &p.Email, &p.ExpiresAt, &p.Agreed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNoRegistration
 	}
@@ -195,6 +206,11 @@ func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest stri
 		}
 		verified := time.Now()
 		a := account{User: User{Name: row.Name, Email: row.Email, EmailVerifiedAt: &verified}, PasswordHash: row.PasswordHash}
+		// Agreed when the sign-up was submitted, not when the code came.
+		policies := row.policies()
+		if err := a.agreeTo(policies, row.CreatedAt); err != nil {
+			return err
+		}
 		res, err := tx.NewInsert().Model(&a).On("CONFLICT (email) DO NOTHING").Returning("*").Exec(ctx)
 		if err != nil {
 			return err
@@ -204,7 +220,7 @@ func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest stri
 			return err
 		}
 		result.User = a.User
-		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email, VerifiedBy: events.VerifiedByCode}
+		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email, VerifiedBy: events.VerifiedByCode, Policies: policies.event()}
 		return s.record(ctx, tx, e, EventScope{ActorID: a.ID, UserID: a.ID})
 	})
 	return result, err

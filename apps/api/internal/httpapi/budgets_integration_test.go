@@ -35,7 +35,7 @@ func TestReadBudget(t *testing.T) {
 	var publicID string
 	apitest.Must(0, db.NewSelect().TableExpr("users").Column("public_id").Where("id = ?", session.UserID).Scan(context.Background(), &publicID))(t)
 	for range 999 {
-		s.memoryLimits.Allow(APIReadPerUser.Key(publicID), APIReadPerUser.Max, APIReadPerUser.Window)
+		s.memoryLimits.Count(APIReadPerUser.Key(publicID), APIReadPerUser.Window)
 	}
 	apitest.Call(t, h, "GET", "/api/auth/me", "", "", session.Cookie(), 200)
 	refused := apitest.Call(t, h, "GET", "/api/workspaces", "", "", session.Cookie(), 429)
@@ -63,7 +63,7 @@ func TestAdminReadBudget(t *testing.T) {
 	apitest.Must(factory.Admins.State(factory.AdminFor(admin.ID)).CreateOne(ctx, db, f))(t)
 	session := apitest.Must(factory.AdminSessions.State(factory.AdminSessionFor(admin.ID)).CreateOne(ctx, db, f))(t)
 	for range 1000 {
-		s.memoryLimits.Allow(AdminReadPerUser.Key(admin.PublicID), AdminReadPerUser.Max, AdminReadPerUser.Window)
+		s.memoryLimits.Count(AdminReadPerUser.Key(admin.PublicID), AdminReadPerUser.Window)
 	}
 	r := httptest.NewRequest("GET", "/api/admin/users", nil)
 	r.Header.Set("X-Admin-Key", factory.AdminRouteKey)

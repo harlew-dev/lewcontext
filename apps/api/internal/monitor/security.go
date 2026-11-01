@@ -2,7 +2,9 @@ package monitor
 
 import (
 	"context"
+	"lewcontext/api/internal/httpapi/ratelimit"
 	"lewcontext/api/internal/store"
+	"slices"
 	"time"
 )
 
@@ -147,11 +149,9 @@ func sum(counts map[string]int64, keys ...string) int64 {
 	return n
 }
 
-// windowsReached counts the windows of a limit reached in sp.
+// windowsReached counts the windows of a limit reached in sp (block
+// levels only); with no limits named, of every limit.
 func windowsReached(ctx context.Context, env Env, sp Span, limits ...string) (int64, error) {
-	if len(limits) == 0 {
-		return 0, nil
-	}
 	rows, err := env.Store.IndexLimitsReached(ctx, sp.From, sp.To, limits...)
 	var n int64
 	for _, r := range rows {
@@ -161,23 +161,41 @@ func windowsReached(ctx context.Context, env Env, sp Span, limits ...string) (in
 }
 
 // limitUsed reads how much of a shared limit's live window is used, as a
-// percentage of its maximum, from its hits.
+// percentage of its block level, from what counts toward it (towardBlock).
 func limitUsed(ctx context.Context, env Env, name string) (Reading, error) {
 	limit, ok := limitNamed(env, name)
-	if !ok || limit.Max == 0 {
+	if !ok || !limit.Block.Set() || limit.Block.At() == 0 {
 		return Reading{}, nil
 	}
-	states, err := env.Store.FindLimitStates(ctx, []string{name})
-	hits := states[name].Hits
-	return Reading{Value: float64(hits) * 100 / float64(limit.Max), Sample: hits}, err
+	states, err := env.Store.FindLimitStates(ctx, []string{name, ratelimit.PassedKey(name)})
+	hits := towardBlock(limit, states)
+	return Reading{Value: float64(hits) * 100 / float64(limit.Block.At()), Sample: hits}, err
 }
 
-// SharedLimit is a limit shared by everyone: its cap, its live window, and
-// how often it was reached in a page's window. Reached, it's a feature
-// switched off for everyone until the window ends.
+// towardBlock is what counts toward a shared limit's block level in its
+// live window. Above its challenge level, with a CAPTCHA provider, that's
+// the challenge level's worth plus the requests that passed the challenge
+// (the limit's ":passed" counter, httpapi's admit), not every request:
+// unsolved ones never block anyone. Without that counter (no provider, or
+// still under the challenge level) it's the limit's hits.
+func towardBlock(l ratelimit.Limit, states map[string]store.LimitState) int64 {
+	hits := states[l.Name].Hits
+	passed, ok := states[ratelimit.PassedKey(l.Name)]
+	if !l.Challenge.Set() || !ok || hits <= int64(l.Challenge.At()) {
+		return hits
+	}
+	return min(hits, int64(l.Challenge.At())+passed.Hits)
+}
+
+// SharedLimit is a limit shared by everyone: its cap (its block level), its
+// challenge level (0 without one), its live window (Hits: what counts
+// toward the block level, towardBlock), and how often its block level was
+// reached in a page's window. Reached, it's a feature switched off for
+// everyone until the window ends.
 type SharedLimit struct {
 	Name          string     `json:"name"`
 	Max           int        `json:"max"`
+	Challenge     int        `json:"challenge"`
 	WindowSeconds int        `json:"windowSeconds"`
 	Hits          int64      `json:"hits"`
 	ResetsAt      *time.Time `json:"resetsAt"`
@@ -187,7 +205,11 @@ type SharedLimit struct {
 
 // sharedLimits reads the shared limits named, in that order.
 func sharedLimits(ctx context.Context, env Env, w Window, names []string) ([]SharedLimit, error) {
-	states, err := env.Store.FindLimitStates(ctx, names)
+	keys := slices.Clone(names)
+	for _, name := range names {
+		keys = append(keys, ratelimit.PassedKey(name))
+	}
+	states, err := env.Store.FindLimitStates(ctx, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -201,9 +223,9 @@ func sharedLimits(ctx context.Context, env Env, w Window, names []string) ([]Sha
 		if !ok {
 			continue
 		}
-		s := SharedLimit{Name: name, Max: limit.Max, WindowSeconds: int(limit.Window.Seconds())}
+		s := SharedLimit{Name: name, Max: limit.Block.At(), Challenge: limit.Challenge.At(), WindowSeconds: int(limit.Window.Seconds())}
 		if state, ok := states[name]; ok {
-			s.Hits, s.ResetsAt = state.Hits, &state.ResetsAt
+			s.Hits, s.ResetsAt = towardBlock(limit, states), &state.ResetsAt
 		}
 		for _, r := range reached {
 			if r.Limit == name {

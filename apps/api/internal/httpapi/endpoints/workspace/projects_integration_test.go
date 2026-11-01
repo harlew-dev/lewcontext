@@ -143,3 +143,41 @@ func TestProjectPagination(t *testing.T) {
 		apitest.Call(t, h, "GET", path+"?page=0", "", "", nil, 401)
 	})
 }
+
+// A NUL can't be stored by PostgreSQL, so it must be refused on its field
+// before it reaches the database, rather than failing there as a 500.
+func TestProjectRefusesControlCharacters(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	session := apitest.SignedIn(t, db, f)
+	workspace := apitest.OwnedWorkspace(t, db, f, session.UserID)
+	path := apitest.WorkspacePath(workspace.PublicID, "/projects")
+	project := apitest.Must(factory.ProjectsIn(workspace.ID).CreateOne(context.Background(), db, f))(t)
+	body := func(name, description string) string {
+		b, err := json.Marshal(map[string]string{"name": name, "description": description, "status": "Planned", "color": "violet"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	for _, c := range []struct{ field, body string }{
+		{"name", body("nul\u0000here", "")},
+		{"description", body("Fine", "nul\u0000here")},
+	} {
+		for _, req := range []struct{ method, path string }{
+			{"POST", path},
+			{"PATCH", path + "/" + project.PublicID},
+		} {
+			w := apitest.Call(t, h, req.method, req.path, c.body, session.CSRFToken, session.Cookie(), 422)
+			if got := apitest.ErrorField(t, w); got != c.field {
+				t.Fatalf("%s %s with NUL in %s: field %q", req.method, req.path, c.field, got)
+			}
+		}
+	}
+	if got := listProjects(t, h, session.Cookie(), path, ""); got.Pages.Items != 1 || got.Data[0].Name != project.Name {
+		t.Fatalf("want only the factory's project, unchanged, got %+v", got.Data)
+	}
+	// Line breaks and tabs are still fine in a description.
+	apitest.Call(t, h, "POST", path, body("Fine", "Line one\n\tline two"), session.CSRFToken, session.Cookie(), 201)
+}

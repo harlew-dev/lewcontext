@@ -87,6 +87,9 @@ const plainPages = [
   "register",
   "registerVerify",
   "forgotPassword",
+  // The policy pages: two fixed documents, prerendered, not a resource.
+  "termsOfService",
+  "privacyPolicy",
 ];
 // What's wrong with a routes object's keys.
 function badRouteNames(

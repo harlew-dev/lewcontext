@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useLocation } from "react-router";
-import { AuthLayout } from "@/components/layout/auth-layout";
+import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { Field, Label } from "@/components/ui/fieldset";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
-import { Strong, Text, TextLink } from "@/components/ui/text";
+import { Strong, Text } from "@/components/ui/text";
 import { useApi } from "@/lib/api";
 import { guestLoader } from "@/lib/loaders";
 import { authPageState, routes } from "@/lib/routes";
@@ -40,13 +40,14 @@ export default function ForgotPassword() {
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
-        <div>
+        <BackButton href={routes.login} state={{ email }} />
+        <HeadingGroup>
           <Heading>Reset your password</Heading>
-          <Text className="mt-2">
+          <Text>
             Enter your account’s email and we’ll send you a link to choose a new
             password.
           </Text>
-        </div>
+        </HeadingGroup>
         <ErrorNotice error={request.error} />
         <Field disabled={request.loading}>
           <Label>Email</Label>
@@ -64,12 +65,6 @@ export default function ForgotPassword() {
         <Button type="submit" className="w-full" loading={request.loading}>
           Send reset link
         </Button>
-        <Text>
-          Remembered it?{" "}
-          <TextLink href={routes.login}>
-            <Strong>Sign in</Strong>
-          </TextLink>
-        </Text>
       </form>
     </AuthLayout>
   );
@@ -85,30 +80,22 @@ function LinkSent({
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo href={routes.home} />
+        {/* Back to the form, with the email still in it, to try again. */}
+        <BackButton onClick={onTryAgain} />
         {/* Announced when it replaces the form. */}
-        <div role="status">
+        <HeadingGroup role="status">
           <Heading>Check your email</Heading>
-          <Text className="mt-2">
+          <Text>
             If an account uses this email, we’ve sent it a reset link:
           </Text>
-          <Text className="mt-1 break-all">
+          <Text className="break-all">
             <Strong>{email}</Strong>
           </Text>
-        </div>
+        </HeadingGroup>
         <Text>
           The link works once and expires in 30 minutes. Nothing after a few
-          minutes? Check your spam folder, or try again.
+          minutes? Check your spam folder, or go back and try again.
         </Text>
-        <div className="flex items-center justify-between gap-4">
-          <Button outline onClick={onTryAgain}>
-            Try again
-          </Button>
-          <Text>
-            <TextLink href={routes.login}>
-              <Strong>Back to sign in</Strong>
-            </TextLink>
-          </Text>
-        </div>
       </div>
     </AuthLayout>
   );

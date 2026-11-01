@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { appName } from "@/lib/app";
 import { stubApi } from "@/test/api";
@@ -10,19 +10,17 @@ import Register from "./register";
 // The three sign-in pages a password reset passes through, without their
 // route loaders (which only send signed-in visitors on).
 function renderAt(pathname: string, state?: unknown) {
-  render(
-    <MemoryRouter initialEntries={[{ pathname, state }]}>
-      <Routes>
-        <Route path="/auth/login" element={<Login />} />
-        <Route path="/auth/register" element={<Register />} />
-        <Route path="/auth/forgot-password" element={<ForgotPassword />} />
-        <Route
-          path="/auth/forgot-password/:token"
-          element={<ResetPassword />}
-        />
-      </Routes>
-    </MemoryRouter>,
-  );
+  const Stub = createRoutesStub([
+    { path: "/auth/login", Component: Login },
+    {
+      path: "/auth/register",
+      Component: Register,
+      loader: () => ({ policies: { enabled: false as const } }),
+    },
+    { path: "/auth/forgot-password", Component: ForgotPassword },
+    { path: "/auth/forgot-password/:token", Component: ResetPassword },
+  ]);
+  render(<Stub initialEntries={[{ pathname, state }]} />);
 }
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -41,9 +39,9 @@ describe("sign-in pages", () => {
     "/auth/register",
     "/auth/forgot-password",
     "/auth/forgot-password/not-a-token",
-  ])("%s links the logo to the homepage", (path) => {
+  ])("%s links the logo to the homepage", async (path) => {
     renderAt(path);
-    expect(screen.getByRole("link", { name: appName })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: appName })).toHaveAttribute(
       "href",
       "/",
     );
@@ -84,8 +82,8 @@ describe("asking for a reset link", () => {
         csrf: null,
       },
     ]);
-    // Trying again keeps the email.
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    // Back returns to the form to try again, keeping the email.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
   });
   it("shows a refusal and stays on the form", async () => {

@@ -29,3 +29,33 @@ describe("homepage", () => {
     expect(screen.queryByRole("link", { name: "Log in" })).toBeNull();
   });
 });
+describe("policy links", () => {
+  it("shows them below the card once the API says they're published", async () => {
+    stubApi({
+      "GET /api/auth/me": { status: 401, body: {} },
+      "GET /api/policies": {
+        body: {
+          enabled: true,
+          termsOfService: "2026-11-01",
+          privacyPolicy: "2026-11-01",
+        },
+      },
+    });
+    render(<Home />, { wrapper: MemoryRouter });
+    expect(
+      await screen.findByRole("link", { name: "Terms of Service" }),
+    ).toHaveAttribute("href", "/policy/terms-of-service");
+    expect(screen.getByRole("contentinfo")).toHaveTextContent(
+      "Terms of Service·Privacy Policy",
+    );
+  });
+  it("leaves them out while they aren't", async () => {
+    stubApi({
+      "GET /api/auth/me": { status: 401, body: {} },
+      "GET /api/policies": { body: { enabled: false } },
+    });
+    render(<Home />, { wrapper: MemoryRouter });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("link", { name: "Terms of Service" })).toBeNull();
+  });
+});

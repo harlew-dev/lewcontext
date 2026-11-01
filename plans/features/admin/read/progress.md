@@ -33,7 +33,7 @@ All were fixed before committing, apart from the few listed as accepted in each 
   1. Logs, request IDs, panic recovery, health checks: **committed `10797fd`**.
   2. Grouped errors (`app_errors`), errors from the browser: _building_.
   3. Metrics, server heartbeats, slow queries, `/metrics`.
-- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
+- **Plans written and committed:** [policies](../../implemented/policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
 
 
 > **Pause:** at about 10:00 every agent stopped on the account's 5-hour usage limit. They were resumed at 12:51, each from where it stopped. No work was lost.

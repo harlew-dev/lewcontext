@@ -123,17 +123,16 @@ describe("workspace settings", () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("wsp_2yEHYLwiwPVhLW"),
     );
-    expect(await screen.findByText("Copied")).toHaveAttribute("role", "status");
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Copied");
+    expect(screen.getByRole("status")).toHaveTextContent("Copied");
   });
   it("explains when the clipboard isn't available", async () => {
     vi.stubGlobal("navigator", {});
     renderAs("owner");
     fireEvent.click(screen.getByRole("button", { name: "Copy Workspace ID" }));
-    expect(
-      await screen.findByText(
-        "Couldn’t copy. Select the ID and copy it instead.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn’t copy. Select the ID and copy it instead.",
+    );
   });
   it("shows General and Members tabs only to owners and admins", () => {
     renderAs("admin");

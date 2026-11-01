@@ -73,7 +73,7 @@ function AccountDropdownMenu({
         <DropdownLabel>Account & security</DropdownLabel>
       </DropdownItem>
       <DropdownDivider />
-      <DropdownItem variant="danger" onClick={onSignOut}>
+      <DropdownItem onClick={onSignOut}>
         <ArrowRightStartOnRectangleIcon />
         <DropdownLabel>Sign out</DropdownLabel>
       </DropdownItem>

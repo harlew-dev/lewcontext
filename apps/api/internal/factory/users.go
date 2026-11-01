@@ -29,6 +29,11 @@ type User struct {
 	// EmailVerifiedAt is set: accounts made with EMAIL_VERIFICATION on are
 	// always verified. Unverified clears it.
 	EmailVerifiedAt *time.Time
+	// The policy versions agreed to at sign-up, and when: nil, as for an
+	// account made with POLICIES off, unless AgreedToPolicies.
+	TermsOfServiceVersion *time.Time
+	PrivacyPolicyVersion  *time.Time
+	PoliciesAcceptedAt    *time.Time
 	// LastSeenAt is nil (never signed in) unless a test sets it.
 	LastSeenAt *time.Time
 }
@@ -51,6 +56,25 @@ var Users = Define(func(f *gofakeit.Faker) User {
 // EMAIL_VERIFICATION was off.
 func Unverified(u *User) {
 	u.EmailVerifiedAt = nil
+}
+
+// AgreedToPolicies is an account that agreed to these versions (YYYY-MM-DD)
+// of the terms of service and privacy policy when it was created.
+func AgreedToPolicies(terms, privacy string) func(*User) {
+	return func(u *User) {
+		u.TermsOfServiceVersion, u.PrivacyPolicyVersion = mustDate(terms), mustDate(privacy)
+		accepted := u.CreatedAt
+		u.PoliciesAcceptedAt = &accepted
+	}
+}
+
+// mustDate parses a version, panicking on a typo in a test.
+func mustDate(version string) *time.Time {
+	d, err := time.Parse(time.DateOnly, version)
+	if err != nil {
+		panic(fmt.Sprintf("policy version %q: %v", version, err))
+	}
+	return &d
 }
 
 // WithPasswordHash signs a user in with another password's hash.

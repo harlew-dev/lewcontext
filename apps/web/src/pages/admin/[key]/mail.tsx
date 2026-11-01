@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import {
-  ArrowPathIcon,
-  EllipsisHorizontalIcon,
-} from "@heroicons/react/16/solid";
+import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   DeliveryStatusBadge,
@@ -67,10 +64,10 @@ import {
 // went out per hour, requests against emails sent, addresses asked for
 // often, how mail leaves, and every delivery by status. Opening it records
 // two reads: the summary (admin.mail.viewed) and the deliveries
-// (admin.delivery.listed). Nothing reloads on its own: Refresh does, and
-// so does a retry. Operators can retry a failed delivery from its row's ⋯
-// menu, or a listener's failures since a time from the header, each behind
-// a fresh code and a reason.
+// (admin.delivery.listed). Nothing reloads on its own: reloading the page
+// does, and so does a retry. Operators can retry a failed delivery from its
+// row's ⋯ menu, or a listener's failures since a time from the header, each
+// behind a fresh code and a reason.
 export default function AdminDeliveryIndex() {
   const key = useAdminKey();
   const navigate = useNavigate();
@@ -113,14 +110,6 @@ export default function AdminDeliveryIndex() {
               </ListboxOption>
             ))}
           </Listbox>
-          <Button
-            outline
-            onClick={summary.refresh}
-            loading={summary.refreshing && !summary.loading}
-          >
-            <ArrowPathIcon />
-            Refresh
-          </Button>
           {operator && (
             <RetryFailedButton mail={summary.data} onRetried={retried} />
           )}

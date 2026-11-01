@@ -337,16 +337,24 @@ func TestAdminMonitoringSecuritySignals(t *testing.T) {
 	// The shared limits: reset reached is critical; sign-ups at half
 	// register:global a warning, all of it critical.
 	level("auth.reset_limit_reached", monitor.LevelOK, 0)
+	// Its challenge level crossed only asks for a CAPTCHA: not reached.
+	m.make("rate_limit.reached", map[string]any{"limit": "password-reset:global:challenge", "window": 3600}, "192.0.2.1", 5*time.Minute)
+	level("auth.reset_limit_reached", monitor.LevelOK, 0)
 	m.make("rate_limit.reached", map[string]any{"limit": "password-reset:global:block", "window": 3600}, "192.0.2.1", 5*time.Minute)
 	m.make("rate_limit.reached", map[string]any{"limit": "password-reset:per-ip:block", "window": 3600}, "192.0.2.1", 5*time.Minute)
 	level("auth.reset_limit_reached", monitor.LevelCritical, 1)
-	half := httpapi.RegisterGlobal.Max / 2
+	half := httpapi.RegisterGlobal.Block.At() / 2
 	apitest.Must(factory.RateLimits.State(factory.ForLimit("register:global", "")).State(factory.Exhausted(half-1)).CreateOne(ctx, db, f))(t)
-	level("auth.sign_up_limit_used", monitor.LevelOK, float64(half-1)*100/float64(httpapi.RegisterGlobal.Max))
+	level("auth.sign_up_limit_used", monitor.LevelOK, float64(half-1)*100/float64(httpapi.RegisterGlobal.Block.At()))
 	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", half).Where("key = 'register:global'").Exec(ctx))(t)
 	level("auth.sign_up_limit_used", monitor.LevelWarn, 50)
-	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", httpapi.RegisterGlobal.Max+3).Where("key = 'register:global'").Exec(ctx))(t)
-	level("auth.sign_up_limit_used", monitor.LevelCritical, float64(httpapi.RegisterGlobal.Max+3)*100/float64(httpapi.RegisterGlobal.Max))
+	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", httpapi.RegisterGlobal.Block.At()+3).Where("key = 'register:global'").Exec(ctx))(t)
+	level("auth.sign_up_limit_used", monitor.LevelCritical, float64(httpapi.RegisterGlobal.Block.At()+3)*100/float64(httpapi.RegisterGlobal.Block.At()))
+	// Above the challenge level with a provider, only the requests that
+	// passed count toward the block level: unsolved ones block nobody.
+	apitest.Must(factory.RateLimits.State(factory.ForLimit("register:global:passed", "")).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+	through := httpapi.RegisterGlobal.Challenge.At() + 10
+	level("auth.sign_up_limit_used", monitor.LevelOK, float64(through)*100/float64(httpapi.RegisterGlobal.Block.At()))
 
 	// The admin door: a wrong password is a warning, a right password
 	// from a non-admin critical; a code step is neither.
@@ -564,6 +572,9 @@ func TestAdminMonitoringLimits(t *testing.T) {
 	reached("auth:per-ip", 40*time.Minute, 0)
 	reached("api:per-user", 5*time.Minute, scraper.ID)
 	reached("api-read:per-user", 2*time.Hour, scraper.ID)
+	// A challenge level crossed asks for a CAPTCHA and refuses nobody: not
+	// a window reached, and no shared limit reached.
+	m.make("rate_limit.reached", map[string]any{"limit": "register:global:challenge", "window": 3600}, "203.0.113.50", 3*time.Minute)
 	v := showMonitoring(t, h, session.Cookie(), "limits", "")
 	if got := v.signal(t, "limits.shared_reached"); got.Level != monitor.LevelOK {
 		t.Fatalf("shared reached: %+v", got)
@@ -572,12 +583,12 @@ func TestAdminMonitoringLimits(t *testing.T) {
 		t.Fatalf("windows reached in the hour: %+v", got)
 	}
 	reached("invitation:global", 20*time.Minute, 0)
-	apitest.Must(factory.RateLimits.State(factory.ForLimit("invitation:global", "")).State(factory.Exhausted(httpapi.InvitationGlobal.Max+1)).CreateOne(ctx, db, f))(t)
+	apitest.Must(factory.RateLimits.State(factory.ForLimit("invitation:global", "")).State(factory.Exhausted(httpapi.InvitationGlobal.Block.At()+1)).CreateOne(ctx, db, f))(t)
 	// Two addresses at auth:per-ip now, one under it, one whose window ended.
-	for i, hits := range []int{httpapi.AuthPerIP.Max, httpapi.AuthPerIP.Max + 5, httpapi.AuthPerIP.Max - 1} {
+	for i, hits := range []int{httpapi.AuthPerIP.Block.At(), httpapi.AuthPerIP.Block.At() + 5, httpapi.AuthPerIP.Block.At() - 1} {
 		apitest.Must(factory.RateLimits.State(factory.ForLimit("auth:per-ip", fmt.Sprintf("192.0.2.%d", i))).State(factory.Exhausted(hits)).CreateOne(ctx, db, f))(t)
 	}
-	apitest.Must(factory.RateLimits.State(factory.ForLimit("auth:per-ip", "192.0.2.99")).State(factory.Exhausted(httpapi.AuthPerIP.Max)).State(func(l *factory.RateLimit) {
+	apitest.Must(factory.RateLimits.State(factory.ForLimit("auth:per-ip", "192.0.2.99")).State(factory.Exhausted(httpapi.AuthPerIP.Block.At())).State(func(l *factory.RateLimit) {
 		l.ResetsAt = time.Now().Add(-time.Minute)
 	}).CreateOne(ctx, db, f))(t)
 	// Refusals, quotas and a route's 429s, from the minutes.
@@ -631,7 +642,7 @@ func TestAdminMonitoringLimits(t *testing.T) {
 			invitations = &got.Shared[i]
 		}
 	}
-	if len(got.Shared) < 4 || invitations == nil || invitations.Hits != int64(httpapi.InvitationGlobal.Max+1) || invitations.Max != httpapi.InvitationGlobal.Max || invitations.Reached != 1 || invitations.ResetsAt == nil {
+	if len(got.Shared) < 4 || invitations == nil || invitations.Hits != int64(httpapi.InvitationGlobal.Block.At()+1) || invitations.Max != httpapi.InvitationGlobal.Block.At() || invitations.Reached != 1 || invitations.ResetsAt == nil {
 		t.Fatalf("shared: %+v", got.Shared)
 	}
 	for _, b := range got.Blocked {

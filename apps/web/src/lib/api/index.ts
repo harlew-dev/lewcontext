@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useChallenge } from "@/lib/challenge/challenge";
 import { useOptionalSession } from "@/lib/session";
 import { browserHttp, type Http } from "./http";
 import type { ApiPath } from "./paths";
@@ -7,6 +8,7 @@ import { clientErrorRoutes, clientErrors } from "./client-errors";
 import { emailBlockRoutes, emailBlocks } from "./email-blocks";
 import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
+import { policies, policyRoutes } from "./policies";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
 export { ApiError, errorMessage, requestIdOf } from "./http";
@@ -48,6 +50,7 @@ export const paths = {
   auth: authRoutes,
   sessions: sessionRoutes,
   emailBlocks: () => emailBlockRoutes,
+  policies: policyRoutes,
   clientErrors: () => clientErrorRoutes,
 };
 // The API for components. Mutations send the current session's CSRF token.
@@ -56,7 +59,12 @@ export const paths = {
 //   await api.projects(workspace.id).store(input);
 export function useApi(): ApiClient {
   const csrfToken = useOptionalSession()?.csrfToken;
-  return useMemo(() => client(browserHttp(csrfToken)), [csrfToken]);
+  // A rate limit's challenge (428) opens the CAPTCHA and resends once.
+  const solve = useChallenge();
+  return useMemo(
+    () => client(browserHttp(csrfToken, solve)),
+    [csrfToken, solve],
+  );
 }
 // The API for route loaders, which run outside components. Reads only: it has
 // no CSRF token, so mutations go through useApi().
@@ -78,6 +86,8 @@ export function client(http: Http) {
     sessions: () => sessions(http),
     // A block link's check, block and unblock, by the token in the body.
     emailBlocks: () => emailBlocks(http),
+    // Whether the policies are published, and their versions.
+    policies: () => policies(http),
     // The web app's own errors (lib/client-errors.ts), signed in only.
     clientErrors: () => clientErrors(http),
   };

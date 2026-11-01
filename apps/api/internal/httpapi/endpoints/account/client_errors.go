@@ -46,6 +46,8 @@ func validClientError(in *clientErrorInput) bool {
 // observe.MaxClientErrorGroups.
 var clientRoutes = map[string]bool{
 	"/":                                 true,
+	"/policy/terms-of-service":          true,
+	"/policy/privacy-policy":            true,
 	"/auth/login":                       true,
 	"/auth/register":                    true,
 	"/auth/register/verify":             true,

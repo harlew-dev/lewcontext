@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
+	"time"
 )
 
 // maxLastOwnerWorkspaces bounds the workspaces a LastOwnerError lists.
@@ -26,10 +27,15 @@ func (e LastOwnerError) Error() string        { return ErrLastOwner.Error() }
 func (e LastOwnerError) Is(target error) bool { return target == ErrLastOwner }
 
 // CreateUser creates an account with its email unverified, for sign-up with
-// EMAIL_VERIFICATION off, and records auth.registered. ErrEmailBlocked for
-// an address on the block list, checked under the email's lock.
-func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User, error) {
+// EMAIL_VERIFICATION off, and records auth.registered. policies are the
+// versions agreed to (POLICIES=on), recorded as accepted now, or none.
+// ErrEmailBlocked for an address on the block list, checked under the
+// email's lock.
+func (s *Store) CreateUser(ctx context.Context, name, email, hash string, policies PolicyVersions) (User, error) {
 	a := account{User: User{Name: name, Email: email}, PasswordHash: hash}
+	if err := a.agreeTo(policies, time.Now()); err != nil {
+		return User{}, err
+	}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if err := refuseBlockedEmail(ctx, tx, email); err != nil {
 			return err
@@ -37,7 +43,7 @@ func (s *Store) CreateUser(ctx context.Context, name, email, hash string) (User,
 		if _, err := tx.NewInsert().Model(&a).Returning("*").Exec(ctx); err != nil {
 			return err
 		}
-		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email, VerifiedBy: events.VerifiedByNone}
+		e := events.Registered{User: a.PublicID, Name: a.Name, Email: a.Email, VerifiedBy: events.VerifiedByNone, Policies: policies.event()}
 		return s.record(ctx, tx, e, EventScope{ActorID: a.ID, UserID: a.ID})
 	})
 	return a.User, err

@@ -47,7 +47,7 @@ import {
   DangerAction,
   SettingsSection,
 } from "@/components/ui/settings-section";
-import { Text, TextButton } from "@/components/ui/text";
+import { Text, TextButton, TextLink } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -85,6 +85,7 @@ export default function AccountSettings() {
       <SettingsSection title="Sign-in sessions">
         <SessionControls />
       </SettingsSection>
+      <PoliciesSection />
       <Divider className="my-10" soft />
       <SettingsSection
         title="Your data"
@@ -1119,5 +1120,52 @@ function LastOwnerDialog({
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
+  );
+}
+// "Terms and privacy", only while the policies are published: what the
+// account agreed to at sign-up, a document updated since, or, without a
+// record (made before they were published), links to read them. Read-only.
+function PoliciesSection() {
+  const status = useResource(paths.policies.show());
+  const agreed = useSession().user.policies;
+  if (!status.data?.enabled) return null;
+  const current = status.data;
+  const terms = (
+    <TextLink href={routes.termsOfService}>Terms of Service</TextLink>
+  );
+  const privacy = (
+    <TextLink href={routes.privacyPolicy}>Privacy Policy</TextLink>
+  );
+  const updated = [
+    agreed && agreed.termsOfService !== current.termsOfService
+      ? `The Terms of Service were updated on ${formatDate(current.termsOfService, "long")}.`
+      : null,
+    agreed && agreed.privacyPolicy !== current.privacyPolicy
+      ? `The Privacy Policy was updated on ${formatDate(current.privacyPolicy, "long")}.`
+      : null,
+  ].filter(Boolean);
+  return (
+    <>
+      <Divider className="my-10" soft />
+      <SettingsSection title="Terms and privacy">
+        <div className="space-y-2">
+          {agreed ? (
+            <Text>
+              You agreed to the {terms} (
+              {formatDate(agreed.termsOfService, "long")}) and read the{" "}
+              {privacy} ({formatDate(agreed.privacyPolicy, "long")}) on{" "}
+              {formatDate(agreed.acceptedAt, "long")}.
+            </Text>
+          ) : (
+            <Text>
+              Read our {terms} and {privacy}.
+            </Text>
+          )}
+          {updated.map((line) => (
+            <Text key={line}>{line}</Text>
+          ))}
+        </div>
+      </SettingsSection>
+    </>
   );
 }
