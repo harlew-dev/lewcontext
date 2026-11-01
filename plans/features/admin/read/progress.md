@@ -44,7 +44,7 @@ You asked for every open plan to be built, with their recommendations accepted f
 
 | Line | Where | Branch | Order |
 | --- | --- | --- | --- |
-| Main | this checkout | `nimble-quartz-1f9` | A3 (**done**: phases 1–3, `10797fd`, `9ae4822`, `063d6d2`…`ec5ed7d`) → A4 monitoring (_part 1 of 3 building_: Overview, Security, Rate limits) → A5 alerts → A7 compliance |
+| Main | this checkout | `nimble-quartz-1f9` | A3 (**done**: phases 1–3, `10797fd`, `9ae4822`, `063d6d2`…`ec5ed7d`) → A4 monitoring (part 1 **committed**, under review; _part 2 building_; [findings](../findings/monitoring.md)) → A5 alerts |
 | ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (**done**, reviewed and fixed; [findings](../findings/notes-ui.md)) → policies (terms and privacy: **done**, reviewed and fixed; [findings](../findings/policies.md)) → captcha challenges (**done**: reviewed twice and fixed; [findings](../findings/captcha.md)) → _merging main into the ui branch, then into main_ |
 | events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (**done**, reviewed and fixed; [findings](../findings/events-page.md)) → convention checks (**done**; [findings](../findings/convention-checks.md)) → **A6 admin actions** (**done**, reviewed and fixed; [findings](../findings/actions.md); the housekeeping actions wait for A4 and A5) → **A7 compliance** (_building_; merges main first) |
 | Last, on main | after the merges | | page-folders (`plans/features/page-folders.md`, another session's untracked file): it moves every page file, so it would collide with everything else |
