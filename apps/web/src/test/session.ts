@@ -13,6 +13,7 @@ export function testSession(
       createdAt: "2026-10-30T00:00:00Z",
       mfaEnabledAt: null,
       emailVerifiedAt: "2026-10-30T00:00:00Z",
+      policies: null,
       ...user,
     },
     csrfToken: "csrf",

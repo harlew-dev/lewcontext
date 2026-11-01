@@ -26,6 +26,7 @@ const stateAttributes: Record<string, string> = {
   $isOpen: "data-open",
   $selected: "data-selected",
   $isLoading: "data-loading",
+  $checked: "data-checked",
 };
 function dataAttributes(state: State, ignore: string[] = []) {
   const attributes: Record<string, string> = {};

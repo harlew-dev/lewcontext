@@ -37,7 +37,12 @@ export type Policy = {
   blocks: Block[];
 };
 
+// The versions of the two documents (their updated dates).
+export type PolicyVersions = { termsOfService: string; privacyPolicy: string };
+
 // What GET /api/policies answers.
 export type PolicyStatus =
-  | { enabled: false }
-  | { enabled: true; termsOfService: string; privacyPolicy: string };
+  { enabled: false } | ({ enabled: true } & PolicyVersions);
+
+// What an account agreed to at sign-up, and when (the user's `policies`).
+export type PolicyAgreement = PolicyVersions & { acceptedAt: string };

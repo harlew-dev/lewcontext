@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
+import { PolicyLinks } from "@/components/app/policies/policy-links";
 import { StatusPage } from "@/components/layout/status-page";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/api";
 import { routes } from "@/lib/routes";
+import { usePolicies } from "@/lib/use-policies";
 // The public homepage, prerendered at build time (react-router.config.ts) so
 // its title, description and content are in the HTML. It is built without a
 // session, so it starts with "Log in" and offers the dashboard once the
 // browser finds the visitor signed in.
 export default function Home() {
   const signedIn = useSignedIn();
+  // Linked once the browser knows they're published: the prerendered page
+  // is built without asking.
+  const policies = usePolicies();
   return (
     <StatusPage
+      footer={policies.enabled && <PolicyLinks />}
       title="Context for AI agents."
       description="Built from the documents you already have: a structured, project-specific wiki your agents can search and reason over."
       action={

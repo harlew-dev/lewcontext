@@ -23,9 +23,11 @@ function Landed({ name }: { name: string }) {
 }
 // Register and its code page, with the code page's real loader (the API is
 // stubbed), login, and where a finished sign-up lands.
+// Register's loader data with the policies off (not published).
+const offPolicies = () => ({ policies: { enabled: false as const } });
 function renderAt(entry: string) {
   const Stub = createRoutesStub([
-    { path: "/auth/register", Component: Register },
+    { path: "/auth/register", Component: Register, loader: offPolicies },
     {
       path: "/auth/register/verify",
       Component: RegisterVerify,
@@ -48,7 +50,8 @@ function renderAt(entry: string) {
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
-function signUp() {
+async function signUp() {
+  await screen.findByRole("heading", { name: "Create your account" });
   type("Email", "ada@example.com");
   type("Full name", "Ada Lovelace");
   type("Password", "correct horse battery staple");
@@ -69,7 +72,7 @@ describe("signing up with an emailed code", () => {
       ],
     });
     renderAt("/auth/register");
-    signUp();
+    await signUp();
     expect(
       await screen.findByRole("heading", { name: "Check your email" }),
     ).toBeInTheDocument();
@@ -107,11 +110,11 @@ describe("signing up with an emailed code", () => {
     });
     renderAt(`/auth/register?next=${encodeURIComponent(link)}`);
     // Back on sign-up and on the code page keep the invitation in ?next=.
-    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Back" })).toHaveAttribute(
       "href",
       `/auth/login?next=${encodeURIComponent(link)}`,
     );
-    signUp();
+    await signUp();
     await screen.findByLabelText("Verification code");
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
       "href",

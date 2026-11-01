@@ -113,3 +113,20 @@ describe("signing in with two-factor authentication", () => {
     );
   });
 });
+describe("policy links", () => {
+  it("shows them below the form only while they're published", async () => {
+    stubApi({
+      "GET /api/policies": {
+        body: {
+          enabled: true,
+          termsOfService: "2026-11-01",
+          privacyPolicy: "2026-11-01",
+        },
+      },
+    });
+    renderLogin();
+    expect(
+      await screen.findByRole("link", { name: "Privacy Policy" }),
+    ).toHaveAttribute("href", "/policy/privacy-policy");
+  });
+});

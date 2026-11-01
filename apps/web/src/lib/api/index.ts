@@ -6,6 +6,7 @@ import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
 import { emailBlockRoutes, emailBlocks } from "./email-blocks";
 import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
+import { policies, policyRoutes } from "./policies";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
 export { ApiError, errorMessage } from "./http";
@@ -46,6 +47,7 @@ export const paths = {
   auth: authRoutes,
   sessions: sessionRoutes,
   emailBlocks: () => emailBlockRoutes,
+  policies: policyRoutes,
 };
 // The API for components. Mutations send the current session's CSRF token.
 // Call it in the component body and use the result in handlers:
@@ -75,6 +77,8 @@ export function client(http: Http) {
     sessions: () => sessions(http),
     // A block link's check, block and unblock, by the token in the body.
     emailBlocks: () => emailBlocks(http),
+    // Whether the policies are published, and their versions.
+    policies: () => policies(http),
   };
 }
 export type ApiClient = ReturnType<typeof client>;

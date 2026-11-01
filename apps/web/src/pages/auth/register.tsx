@@ -1,29 +1,43 @@
 import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
+import { PolicyLinks } from "@/components/app/policies/policy-links";
 import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
+import { CheckboxField } from "@/components/ui/checkbox";
 import { ErrorNotice } from "@/components/ui/feedback";
 import { Description, Field, Label } from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text, TextLink } from "@/components/ui/text";
-import { needsVerification, useApi, type Registration } from "@/lib/api";
+import {
+  ApiError,
+  errorMessage,
+  needsVerification,
+  useApi,
+  type Registration,
+} from "@/lib/api";
 import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
-import { guestLoader } from "@/lib/loaders";
+import { registerLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
 import { useInvitation } from "@/lib/use-invitation";
 import type { Route } from "./+types/register";
-// Signed-in visitors go on to ?next= or /app.
+// Signed-in visitors go on to ?next= or /app. It also asks whether sign-up
+// must agree to the policies.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
-  return guestLoader(request);
+  return registerLoader(request);
 }
-export default function Register() {
+export default function Register({ loaderData }: Route.ComponentProps) {
   const arrived = authPageState(useLocation().state);
   const [name, setName] = useState("");
   const [email, setEmail] = useState(arrived.email ?? "");
   const [password, setPassword] = useState("");
+  // The policies as this page offers them: published or not, and the
+  // versions agreeing sends back.
+  const [policies, setPolicies] = useState(loaderData.policies);
+  const [agreed, setAgreed] = useState(false);
+  const [agreeError, setAgreeError] = useState("");
   const api = useApi();
   const navigate = useNavigate();
   const [search] = useSearchParams();
@@ -34,6 +48,25 @@ export default function Register() {
   if (invitation.kind === "live" && !prefilled) {
     setPrefilled(true);
     if (email === "") setEmail(invitation.invitation.email);
+  }
+  // A 422 on "policies": the API says they're required (the page didn't
+  // know) or have changed since it opened. Either way, show what's current,
+  // unticked if the versions changed, with the API's reason under the box.
+  async function refusedAgreement(error: ApiError) {
+    setAgreeError(errorMessage(error));
+    const current = await api
+      .policies()
+      .show()
+      .catch(() => null);
+    if (!current) return;
+    if (
+      !policies.enabled ||
+      !current.enabled ||
+      current.termsOfService !== policies.termsOfService ||
+      current.privacyPolicy !== policies.privacyPolicy
+    )
+      setAgreed(false);
+    setPolicies(current);
   }
   // With email verification on there's no account yet: the code page
   // finishes, keeping ?next= and the invitation state.
@@ -50,11 +83,27 @@ export default function Register() {
   const { loading, error, submit } = useAuthSubmit(
     signUp,
     token ? undefined : routes.onboarding,
+    (e) => {
+      if (e instanceof ApiError && e.field === "policies") {
+        void refusedAgreement(e);
+        return true;
+      }
+    },
   );
+  const agreement =
+    policies.enabled && agreed
+      ? {
+          termsOfService: policies.termsOfService,
+          privacyPolicy: policies.privacyPolicy,
+        }
+      : undefined;
   return (
-    <AuthLayout>
+    <AuthLayout footer={policies.enabled && <PolicyLinks />}>
       <form
-        onSubmit={(event) => submit(event, { name, email, password })}
+        onSubmit={(event) => {
+          setAgreeError("");
+          return submit(event, { name, email, password, policies: agreement });
+        }}
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
@@ -109,6 +158,38 @@ export default function Register() {
             onChange={(e) => setPassword(e.currentTarget.value)}
           />
         </Field>
+        {policies.enabled && (
+          <CheckboxField
+            name="policies"
+            required
+            checked={agreed}
+            onChange={(checked) => {
+              setAgreed(checked);
+              setAgreeError("");
+            }}
+            disabled={loading}
+            error={agreeError}
+          >
+            {/* Each opens in a new tab, so the typed fields stay. */}I agree to
+            the{" "}
+            <TextLink
+              href={routes.termsOfService}
+              target="_blank"
+              rel="noopener"
+            >
+              Terms of Service
+            </TextLink>{" "}
+            and have read the{" "}
+            <TextLink
+              href={routes.privacyPolicy}
+              target="_blank"
+              rel="noopener"
+            >
+              Privacy Policy
+            </TextLink>
+            .
+          </CheckboxField>
+        )}
         <Button type="submit" className="w-full" loading={loading}>
           Create account
         </Button>

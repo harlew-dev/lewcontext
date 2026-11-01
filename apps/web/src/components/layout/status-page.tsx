@@ -10,13 +10,16 @@ export function StatusPage({
   title,
   description,
   action,
+  footer,
 }: {
   title: string;
   description: string;
   action: ReactNode;
+  // Below the card (the homepage's policy links).
+  footer?: ReactNode;
 }) {
   return (
-    <AuthLayout>
+    <AuthLayout footer={footer}>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo />
         <HeadingGroup>

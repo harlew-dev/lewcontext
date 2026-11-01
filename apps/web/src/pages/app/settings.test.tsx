@@ -645,3 +645,64 @@ describe("two-factor authentication", () => {
     ).toBeInTheDocument();
   });
 });
+describe("terms and privacy", () => {
+  const published = {
+    body: {
+      enabled: true,
+      termsOfService: "2026-11-01",
+      privacyPolicy: "2026-10-15",
+    },
+  };
+  const agreed = testSession({
+    user: {
+      policies: {
+        termsOfService: "2026-11-01",
+        privacyPolicy: "2026-10-15",
+        acceptedAt: "2026-11-03T09:00:00Z",
+      },
+    },
+  });
+  it("isn't there while the policies aren't published", async () => {
+    stubApi({ "GET /api/policies": { body: { enabled: false } } });
+    renderPage(agreed);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.queryByRole("heading", { name: "Terms and privacy" }),
+    ).toBeNull();
+  });
+  it("says what the account agreed to, and when", async () => {
+    stubApi({ "GET /api/policies": published });
+    renderPage(agreed);
+    expect(await screen.findByText(/^You agreed to the/)).toHaveTextContent(
+      "You agreed to the Terms of Service (November 1, 2026) and read the Privacy Policy (October 15, 2026) on November 3, 2026.",
+    );
+    expect(screen.queryByText(/were updated|was updated/)).toBeNull();
+  });
+  it("says when a document was updated since", async () => {
+    stubApi({
+      "GET /api/policies": {
+        body: {
+          enabled: true,
+          termsOfService: "2026-12-01",
+          privacyPolicy: "2026-10-15",
+        },
+      },
+    });
+    renderPage(agreed);
+    expect(
+      await screen.findByText(
+        "The Terms of Service were updated on December 1, 2026.",
+      ),
+    ).toBeInTheDocument();
+  });
+  it("links both for an account without a record", async () => {
+    stubApi({ "GET /api/policies": published });
+    renderPage();
+    expect(await screen.findByText(/^Read our/)).toHaveTextContent(
+      "Read our Terms of Service and Privacy Policy.",
+    );
+    expect(
+      screen.getByRole("link", { name: "Privacy Policy" }),
+    ).toHaveAttribute("href", "/policy/privacy-policy");
+  });
+});

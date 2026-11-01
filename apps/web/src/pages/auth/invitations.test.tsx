@@ -38,6 +38,8 @@ function Landed({ name }: { name: string }) {
 }
 // The invitation page (its loader provides `session`), the sign-in pages
 // without their guest loaders, and stand-ins for where they lead.
+// Register's loader data with the policies off (not published).
+const offPolicies = () => ({ policies: { enabled: false as const } });
 function renderAt(pathname: string, session: Session | null, state?: unknown) {
   const Stub = createRoutesStub([
     {
@@ -46,7 +48,7 @@ function renderAt(pathname: string, session: Session | null, state?: unknown) {
       loader: () => ({ session }),
     },
     { path: "/auth/login", Component: Login },
-    { path: "/auth/register", Component: Register },
+    { path: "/auth/register", Component: Register, loader: offPolicies },
     {
       path: "/app/:workspace/dashboard",
       Component: () => <Landed name="dashboard" />,
@@ -240,7 +242,8 @@ describe("signing in or up from an invitation", () => {
       await screen.findByRole("heading", { name: "Sign in to your account" }),
     ).toBeVisible();
     expect(screen.queryByRole("status")).toBeNull();
-    expect(api.sent()).toHaveLength(0);
+    // No invitation check; only login's question about the policy links.
+    expect(api.sent().map((r) => r.url)).toEqual(["/api/policies"]);
   });
   it("registering goes back to the invitation, accepting at once", async () => {
     const api = stubApi({
@@ -270,7 +273,7 @@ describe("signing in or up from an invitation", () => {
   it("registering without an invitation goes to onboarding", async () => {
     stubApi({ "POST /api/auth/register": { status: 201, body: bob } });
     renderAt("/auth/register", null);
-    fireEvent.change(screen.getByLabelText("Email"), {
+    fireEvent.change(await screen.findByLabelText("Email"), {
       target: { value: "bob@example.com" },
     });
     fireEvent.change(screen.getByLabelText("Full name"), {
