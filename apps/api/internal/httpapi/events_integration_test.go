@@ -310,7 +310,7 @@ func TestSessionsRevokeLimited(t *testing.T) {
 	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 204)
 	// The first request opened the session's window; use the rest of it up.
 	key := httpapi.SessionsRevokePerUser.Key(auth.Digest(session.Token))
-	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", httpapi.SessionsRevokePerUser.Max).Where("key = ?", key).Exec(ctx))(t)
+	apitest.Must(db.NewUpdate().Model((*factory.RateLimit)(nil)).Set("hits = ?", httpapi.SessionsRevokePerUser.Block.At()).Where("key = ?", key).Exec(ctx))(t)
 	apitest.Call(t, h, "DELETE", "/api/auth/sessions", "", session.CSRFToken, session.Cookie(), 429)
 	if e := apitest.OnlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "sessions-revoke:per-user:block" {
 		t.Fatalf("rate limited: %+v", e)

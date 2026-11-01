@@ -7,6 +7,7 @@ package httpapi
 
 import (
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/captcha"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/httpapi/ratelimit"
 	"lewcontext/api/internal/observe"
@@ -22,7 +23,15 @@ type Server struct {
 	Repo   *store.Store
 	Config config.Config
 	// Pages serves the web app (internal/web); nil serves the API only.
-	Pages     WebPages
+	Pages WebPages
+	// Policies are the current versions of the terms of service and privacy
+	// policy while POLICIES=on (cmd/server reads them from the web build),
+	// and empty while off: sign-up must agree to them (policies.md).
+	Policies store.PolicyVersions
+	// Captcha checks the CAPTCHA tokens a rate limit's challenge level asks
+	// for (challenge.go); nil with CAPTCHA_PROVIDER=off, which skips every
+	// challenge level. cmd/server sets it.
+	Captcha   captcha.Provider
 	dummyHash string
 	// keys seal MFA secrets, digest recovery codes and sign the admin
 	// assets pass (APP_KEY).

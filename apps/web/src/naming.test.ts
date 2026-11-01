@@ -3,16 +3,19 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 // Component, library, type and test-helper files are kebab-case
 // (docs/naming.md#web-app): button.tsx, use-admin-resource.ts,
-// confirmation-dialog.test.tsx. pages/ is shaped like the URLs instead
-// ([workspace]), so it isn't checked.
+// confirmation-dialog.test.tsx. A `.server` suffix is React Router's mark
+// for a module kept out of the browser's bundles (policies.server.ts, which
+// runs only at build time), so it may come before `.test` and the
+// extension. pages/ is shaped like the URLs instead ([workspace]), so it
+// isn't checked.
 const checked = ["components", "lib", "types", "test"];
-const kebab = /^[a-z0-9]+(-[a-z0-9]+)*(\.test)?\.(ts|tsx)$/;
+const kebab = /^[a-z0-9]+(-[a-z0-9]+)*(\.server)?(\.test)?\.(ts|tsx)$/;
 // What's wrong with a file's name, or null.
 export function badFileName(path: string): string | null {
   const name = path.split("/").at(-1)!;
   return kebab.test(name)
     ? null
-    : `${path}: files in ${checked.join(", ")} are kebab-case (.ts, .tsx, .test.ts(x)); see docs/naming.md#web-app`;
+    : `${path}: files in ${checked.join(", ")} are kebab-case (.ts, .tsx, .test.ts(x), .server before them); see docs/naming.md#web-app`;
 }
 function files(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
@@ -37,6 +40,8 @@ describe("file names", () => {
       "lib/use-admin-resource.ts",
       "components/ui/confirmation-dialog.test.tsx",
       "lib/api/index.ts",
+      "lib/policies.server.ts",
+      "lib/policies.server.test.ts",
     ])
       expect(badFileName(ok)).toBeNull();
     for (const bad of [
@@ -45,6 +50,8 @@ describe("file names", () => {
       "components/ui/project_table.tsx",
       "lib/routes.spec.ts",
       "lib/notes.md",
+      "lib/Policies.server.ts",
+      "lib/policies.client.ts",
     ])
       expect(badFileName(bad)).toContain("kebab-case");
   });

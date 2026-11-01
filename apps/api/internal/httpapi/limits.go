@@ -13,60 +13,65 @@ import (
 
 var (
 	// AuthPerIP: everything that signs in or checks a password, per client IP.
-	AuthPerIP = ratelimit.Limit{Name: "auth:per-ip", Max: 60, Window: 15 * time.Minute, Attempts: true}
+	// Above 5 a login, sign-up or reset request needs a solved CAPTCHA (the
+	// routes that name a challenge action), so scripted sign-ins pay almost
+	// at once; above 60 everything is refused.
+	AuthPerIP = ratelimit.Limit{Name: "auth:per-ip", Challenge: ratelimit.Above(5), Block: ratelimit.Above(60), Window: 15 * time.Minute, Attempts: true}
 	// AuthPerAccount: password guesses against one account, from any IP.
-	AuthPerAccount = ratelimit.Limit{Name: "auth:per-account", Max: 10, Window: 15 * time.Minute, Attempts: true}
+	AuthPerAccount = ratelimit.Limit{Name: "auth:per-account", Block: ratelimit.Above(10), Window: 15 * time.Minute, Attempts: true}
 	// MFAPerAccount: second-factor codes checked for one account, from any IP.
 	// Signing in, turning MFA on or off, new recovery codes. With one step of
 	// drift a guess covers 3 codes in a million, so this caps an attacker who
 	// already has the password at about 0.14% a day.
-	MFAPerAccount = ratelimit.Limit{Name: "mfa:per-account", Max: 5, Window: 15 * time.Minute, Attempts: true}
+	MFAPerAccount = ratelimit.Limit{Name: "mfa:per-account", Block: ratelimit.Above(5), Window: 15 * time.Minute, Attempts: true}
 
 	// PasswordResetPerIP: reset links requested from one IP.
 	// So one IP can't mail many people.
-	PasswordResetPerIP = ratelimit.Limit{Name: "password-reset:per-ip", Max: 10, Window: time.Hour, Attempts: true}
+	PasswordResetPerIP = ratelimit.Limit{Name: "password-reset:per-ip", Block: ratelimit.Above(10), Window: time.Hour, Attempts: true}
 	// PasswordResetPerEmail: reset links requested for one email, from any IP.
 	// Caps mail to one inbox.
-	PasswordResetPerEmail = ratelimit.Limit{Name: "password-reset:per-email", Max: 3, Window: time.Hour, Attempts: true}
+	PasswordResetPerEmail = ratelimit.Limit{Name: "password-reset:per-email", Block: ratelimit.Above(3), Window: time.Hour, Attempts: true}
 	// PasswordResetGlobal: reset links requested for any account.
 	// Caps mail during a distributed flood.
 	PasswordResetGlobal = ratelimit.Limit{
-		Name:   "password-reset:global",
-		Max:    100,
-		Window: time.Hour,
-		Busy:   "Password reset is busy. Try again later.",
+		Name:      "password-reset:global",
+		Challenge: ratelimit.Above(50),
+		Block:     ratelimit.Above(100),
+		Window:    time.Hour,
+		Busy:      "Password reset is busy. Try again later.",
 	}
 
 	// RegisterPerIP: accounts created from one IP.
-	RegisterPerIP = ratelimit.Limit{Name: "register:per-ip", Max: 10, Window: time.Hour}
+	RegisterPerIP = ratelimit.Limit{Name: "register:per-ip", Block: ratelimit.Above(10), Window: time.Hour}
 	// RegisterPerEmail: sign-ups for one email, from any IP, with verification on.
 	// Each one emails the address, a code or "you already have an account".
 	// Counted for every address alike, so a refusal says nothing about who has
 	// an account.
 	RegisterPerEmail = ratelimit.Limit{
 		Name:    "register:per-email",
-		Max:     3,
+		Block:   ratelimit.Above(3),
 		Window:  time.Hour,
 		TooMany: "This email address has had too many sign-up attempts recently.",
 	}
 	// RegisterGlobal: accounts created by everyone.
 	// Caps sign-ups during a distributed flood.
 	RegisterGlobal = ratelimit.Limit{
-		Name:   "register:global",
-		Max:    1000,
-		Window: time.Hour,
-		Busy:   "Sign-up is busy. Try again later.",
+		Name:      "register:global",
+		Challenge: ratelimit.Above(200),
+		Block:     ratelimit.Above(1000),
+		Window:    time.Hour,
+		Busy:      "Sign-up is busy. Try again later.",
 	}
 
 	// EmailCodePerEmail: emailed codes checked for one email, from any browser or IP.
 	// Signing up, or verifying an account's email. Each code also ends after 5
 	// wrong tries, so guessing one is about 1 in 100,000 a day.
-	EmailCodePerEmail = ratelimit.Limit{Name: "email-code:per-email", Max: 10, Window: 24 * time.Hour, Attempts: true}
+	EmailCodePerEmail = ratelimit.Limit{Name: "email-code:per-email", Block: ratelimit.Above(10), Window: 24 * time.Hour, Attempts: true}
 	// EmailVerificationPerEmail: codes a signed-in account asks for to verify its email.
 	// Each one emails the account's address, so this caps mail to one inbox.
 	EmailVerificationPerEmail = ratelimit.Limit{
 		Name:    "email-verification:per-email",
-		Max:     3,
+		Block:   ratelimit.Above(3),
 		Window:  time.Hour,
 		TooMany: "You’ve asked for too many codes recently.",
 	}
@@ -75,19 +80,19 @@ var (
 	// unverified account to verify at its next sign-in.
 	EmailVerificationGlobal = ratelimit.Limit{
 		Name:   "email-verification:global",
-		Max:    500,
+		Block:  ratelimit.Above(500),
 		Window: time.Hour,
 		Busy:   "Email verification is busy. Try again in a few minutes.",
 	}
 
 	// APIPerUser: every signed-in write except the recovery routes (RequireSession).
-	APIPerUser = ratelimit.Limit{Name: "api:per-user", Max: 300, Window: 15 * time.Minute}
+	APIPerUser = ratelimit.Limit{Name: "api:per-user", Block: ratelimit.Above(300), Window: 15 * time.Minute}
 	// APIReadPerUser: every signed-in read.
 	// About 3 a second sustained, with room for SWR's refreshes on focus.
-	APIReadPerUser = ratelimit.Limit{Name: "api-read:per-user", Max: 1000, Window: 5 * time.Minute, InMemory: true}
+	APIReadPerUser = ratelimit.Limit{Name: "api-read:per-user", Block: ratelimit.Above(1000), Window: 5 * time.Minute, InMemory: true}
 	// AdminReadPerUser: every admin dashboard read, per admin.
 	// The admin pages' own budget, as api-read:per-user is the app's.
-	AdminReadPerUser = ratelimit.Limit{Name: "admin-read:per-user", Max: 1000, Window: 5 * time.Minute, InMemory: true}
+	AdminReadPerUser = ratelimit.Limit{Name: "admin-read:per-user", Block: ratelimit.Above(1000), Window: 5 * time.Minute, InMemory: true}
 
 	// SessionsRevokePerUser: requests to sign out the other sessions, counted
 	// per session (LimitSession), so each of a user's sessions has a budget
@@ -96,44 +101,45 @@ var (
 	// so this is its own limit. Its name keeps per-user, the user's own
 	// sessions: rate-limit names have no per-session kind (a new kind needs
 	// agreeing first, docs/checks.md).
-	SessionsRevokePerUser = ratelimit.Limit{Name: "sessions-revoke:per-user", Max: 30, Window: time.Hour}
+	SessionsRevokePerUser = ratelimit.Limit{Name: "sessions-revoke:per-user", Block: ratelimit.Above(30), Window: time.Hour}
 
 	// WorkspacePerUser: workspaces created by one user.
-	WorkspacePerUser = ratelimit.Limit{Name: "workspace:per-user", Max: 10, Window: time.Hour}
+	WorkspacePerUser = ratelimit.Limit{Name: "workspace:per-user", Block: ratelimit.Above(10), Window: time.Hour}
 	// ProjectPerUser: projects created by one user, across all of their workspaces.
-	ProjectPerUser = ratelimit.Limit{Name: "project:per-user", Max: 100, Window: time.Hour}
+	ProjectPerUser = ratelimit.Limit{Name: "project:per-user", Block: ratelimit.Above(100), Window: time.Hour}
 
 	// InvitationPerUser: invitations sent by one user, across all of their workspaces.
 	// Each one emails an address the inviter chooses.
-	InvitationPerUser = ratelimit.Limit{Name: "invitation:per-user", Max: 20, Window: time.Hour}
+	InvitationPerUser = ratelimit.Limit{Name: "invitation:per-user", Block: ratelimit.Above(20), Window: time.Hour}
 	// InvitationPerEmail: invitations to one email, from any inviter and workspace.
 	// Caps mail to one inbox. Counted for every address, registered or not, so
 	// the message says nothing about who has an account.
 	InvitationPerEmail = ratelimit.Limit{
 		Name:    "invitation:per-email",
-		Max:     5,
+		Block:   ratelimit.Above(5),
 		Window:  time.Hour,
 		TooMany: "This email address has had too many invitations recently.",
 	}
 	// InvitationGlobal: invitations sent by everyone.
 	// Caps mail during an abuse wave.
 	InvitationGlobal = ratelimit.Limit{
-		Name:   "invitation:global",
-		Max:    200,
-		Window: time.Hour,
-		Busy:   "Invitations are busy. Try again later.",
+		Name:      "invitation:global",
+		Challenge: ratelimit.Above(100),
+		Block:     ratelimit.Above(200),
+		Window:    time.Hour,
+		Busy:      "Invitations are busy. Try again later.",
 	}
 
 	// ClientErrorPerUser: errors one user's browsers report (POST /api/client-errors).
 	// Each is grouped in memory, never stored per report; this caps how much
 	// one account can add. The route skips the write budget, so a page stuck
 	// in an error loop can't use it up: this is its only per-user limit.
-	ClientErrorPerUser = ratelimit.Limit{Name: "client-error:per-user", Max: 30, Window: time.Hour}
+	ClientErrorPerUser = ratelimit.Limit{Name: "client-error:per-user", Block: ratelimit.Above(30), Window: time.Hour}
 	// ClientErrorGlobal: errors every browser reports.
 	// Caps what many accounts together can add to app_errors in an hour.
 	ClientErrorGlobal = ratelimit.Limit{
 		Name:   "client-error:global",
-		Max:    500,
+		Block:  ratelimit.Above(500),
 		Window: time.Hour,
 		Busy:   "Error reports are busy. Try again later.",
 	}
@@ -142,13 +148,13 @@ var (
 	// Counted once the password is right, so typos don't use it up; each
 	// export reads everything the account holds, so a stolen session and
 	// password can't make it a load or a feed.
-	ExportPerUser = ratelimit.Limit{Name: "export:per-user", Max: 5, Window: 24 * time.Hour}
+	ExportPerUser = ratelimit.Limit{Name: "export:per-user", Block: ratelimit.Above(5), Window: 24 * time.Hour}
 
 	// AdminActionPerUser: the admin dashboard's account-and-access actions taken by one admin.
 	// Unblocking an address, and A6's actions to come. Every attempt past the
 	// step-up counts, refused or not (an address that isn't blocked too), so a
 	// stolen admin session can't act faster than this.
-	AdminActionPerUser = ratelimit.Limit{Name: "admin-action:per-user", Max: 60, Window: time.Hour}
+	AdminActionPerUser = ratelimit.Limit{Name: "admin-action:per-user", Block: ratelimit.Above(60), Window: time.Hour}
 )
 
 // RateLimits lists every limit, for TestRateLimitNames.
@@ -166,27 +172,104 @@ var RateLimits = []ratelimit.Limit{
 	AdminActionPerUser,
 }
 
-// Allow counts a request against l under key and answers 429 (503 with busy
-// for a limit shared by everyone) when it is used up, with Retry-After set to
-// the time left in the window. The first refusal in a window records
-// rate_limit.reached; the ones after it don't, so a flood writes one event.
-// With RATE_LIMITS=off it allows everything and counts nothing.
+// Allow counts a request against l under key. Above the block level it
+// answers 429 (503 with Busy for a limit shared by everyone), with
+// Retry-After set to the time left in the window. Above the challenge level,
+// on a route that names a challenge action (Challengeable) and with a
+// CAPTCHA provider, the request needs a solved CAPTCHA (passChallenge: 428
+// without one). A shared limit's block level counts only the requests that
+// got past its challenge level (admit), so requests nobody solved can't
+// refuse everyone else. The request that first crosses a level records
+// rate_limit.reached for it (challenge levels too with no provider), so a
+// flood writes one event per level per window. With RATE_LIMITS=off it
+// allows everything and counts nothing; with PER_IP_LIMITS=off every level
+// of a per-IP limit is never.
 func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit, key string) bool {
+	if !s.challengeableFor(w, r, l) {
+		return false
+	}
 	if s.Config.RateLimits == config.RateLimitsOff {
 		return true
 	}
-	allowed, firstRefusal, resetsAt, err := s.count(r, l, key)
-	if err == nil && firstRefusal {
-		err = s.recordLimitReached(r, l, resetsAt)
+	if s.Config.PerIPLimitsOff {
+		l = l.WithoutPerIP()
+	}
+	hits, resetsAt, err := s.count(r, l, key)
+	if err == nil && l.Challenge.Crossed(hits) {
+		err = s.recordLimitReached(r, l, "challenge", resetsAt)
 	}
 	if err != nil {
 		InternalError(w, r, err)
 		return false
 	}
-	if allowed {
-		return true
+	if l.Shared() && l.Challenge.Exceeds(hits) && s.Captcha != nil {
+		return s.admit(w, r, l, key, resetsAt)
 	}
-	// Every refusal is counted; only the first in a window is an event.
+	if l.Block.Crossed(hits) {
+		if err := s.recordLimitReached(r, l, "block", resetsAt); err != nil {
+			InternalError(w, r, err)
+			return false
+		}
+	}
+	if l.Block.Exceeds(hits) {
+		refuse(w, l, resetsAt)
+		return false
+	}
+	if l.Challenge.Exceeds(hits) {
+		return s.passChallenge(w, r, l)
+	}
+	return true
+}
+
+// admit decides a request to a limit shared by everyone (register:global)
+// above its challenge level. Its block level counts what got through: the
+// challenge level's worth of requests, plus each one since that passed the
+// challenge (solved, or on a route without an action), in a counter beside
+// the limit's that ends with its window (ratelimit.PassedKey). Requests
+// nobody solved, from any number of addresses, are counted only by the
+// limit itself, so they can't push it to its block level. A request counts
+// as passed only once its token is verified: every route counting a shared
+// limit with a challenge level is Challengeable (challengeableFor), so none
+// gets through without one. Per-subject limits don't need this: their
+// unsolved requests only hurt the requester. With no provider every request
+// passes, both counts are the same, and Allow keeps the first.
+func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit, key string, resetsAt time.Time) bool {
+	passedKey := ratelimit.PassedKey(key)
+	// Already refused: say so without asking for a CAPTCHA first.
+	passed, err := s.peekPassed(r, l, passedKey, resetsAt)
+	if err != nil {
+		InternalError(w, r, err)
+		return false
+	}
+	if l.Block.Exceeds(l.Challenge.At() + passed) {
+		refuse(w, l, resetsAt)
+		return false
+	}
+	if !s.solve(w, r, challengeOf(r), l) {
+		return false
+	}
+	// A late request counted in the next window takes that window's end.
+	passed, resetsAt, err = s.countPassed(r, l, passedKey, resetsAt)
+	through := l.Challenge.At() + passed
+	if err == nil && l.Block.Crossed(through) {
+		err = s.recordLimitReached(r, l, "block", resetsAt)
+	}
+	if err != nil {
+		InternalError(w, r, err)
+		return false
+	}
+	if l.Block.Exceeds(through) {
+		refuse(w, l, resetsAt)
+		return false
+	}
+	return true
+}
+
+// refuse answers a request above l's block level: 503 with Busy for a
+// limit shared by everyone, 429 otherwise, with Retry-After. Every refusal
+// is counted in rate_limit_refused_total (only the first in a window is an
+// event).
+func refuse(w http.ResponseWriter, l ratelimit.Limit, resetsAt time.Time) {
 	observe.RateLimitRefused.Inc(l.Name + ":block")
 	left := time.Until(resetsAt)
 	w.Header().Set("Retry-After", ratelimit.RetryAfter(left))
@@ -195,26 +278,45 @@ func (s *Server) Allow(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 	} else {
 		Fail(w, 429, l.Refusal(left))
 	}
-	return false
 }
 
-// count adds a hit to key's window, in memory or in the database.
-func (s *Server) count(r *http.Request, l ratelimit.Limit, key string) (allowed, firstRefusal bool, resetsAt time.Time, err error) {
+// count adds a hit to key's window, in memory or in the database, and
+// returns the window's hits so far and when it ends.
+func (s *Server) count(r *http.Request, l ratelimit.Limit, key string) (hits int, resetsAt time.Time, err error) {
 	if l.InMemory {
-		allowed, firstRefusal, resetsAt = s.memoryLimits.Allow(key, l.Max, l.Window)
-		return allowed, firstRefusal, resetsAt, nil
+		hits, resetsAt = s.memoryLimits.Count(key, l.Window)
+		return hits, resetsAt, nil
 	}
-	return s.Repo.Allow(r.Context(), key, l.Max, l.Window)
+	return s.Repo.CountHit(r.Context(), key, l.Window)
 }
 
-// recordLimitReached records rate_limit.reached for l, with the user and the
-// workspace when the request has them. Every limit has one level for now,
-// block (the CAPTCHA plan adds challenge).
-func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, resetsAt time.Time) error {
-	if l.Busy != "" {
-		slog.WarnContext(r.Context(), "a rate limit shared by everyone was reached", "limit", l.Name, "window", l.Window)
+// countPassed adds a hit to a shared limit's passed counter, in the
+// limit's window (ending at resetsAt), and returns its hits so far and when
+// the window it was counted in ends.
+func (s *Server) countPassed(r *http.Request, l ratelimit.Limit, passedKey string, resetsAt time.Time) (int, time.Time, error) {
+	if l.InMemory {
+		hits, counted := s.memoryLimits.CountUntil(passedKey, resetsAt)
+		return hits, counted, nil
 	}
-	e := events.RateLimitReached{Limit: l.Name + ":block", Window: int(l.Window.Seconds()), ResetsAt: resetsAt}
+	return s.Repo.CountHitUntil(r.Context(), passedKey, resetsAt)
+}
+
+// peekPassed is a shared limit's passed counter in the limit's window,
+// without adding a hit.
+func (s *Server) peekPassed(r *http.Request, l ratelimit.Limit, passedKey string, resetsAt time.Time) (int, error) {
+	if l.InMemory {
+		return s.memoryLimits.Peek(passedKey, resetsAt), nil
+	}
+	return s.Repo.FindHits(r.Context(), passedKey, resetsAt)
+}
+
+// recordLimitReached records rate_limit.reached for l's level ("challenge"
+// or "block"), with the user and the workspace when the request has them.
+func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, level string, resetsAt time.Time) error {
+	if l.Busy != "" {
+		slog.WarnContext(r.Context(), "a rate limit shared by everyone was reached", "limit", l.Name, "level", level, "window", l.Window)
+	}
+	e := events.RateLimitReached{Limit: l.Name + ":" + level, Window: int(l.Window.Seconds()), ResetsAt: resetsAt}
 	var scope store.EventScope
 	if session, ok := OptionalSession(r); ok {
 		e.User, scope.UserID = session.User.PublicID, session.User.ID

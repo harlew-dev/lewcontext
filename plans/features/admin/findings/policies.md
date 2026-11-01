@@ -1,6 +1,6 @@
 # Findings: terms of service and a privacy policy (policies)
 
-Plan: [policies](../../policies.md) (on the ui branch it has moved to `implemented/policies.md`). You asked for it in notes.md and then for every plan to be built, so it was built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`) with every recommendation in its 19-decision table taken as accepted. Screenshots are in [policies/](policies/).
+Plan: [policies](../../implemented/policies.md) (on the ui branch it has moved to `implemented/policies.md`). You asked for it in notes.md and then for every plan to be built, so it was built on the **ui** worktree (`../lewcontext-ui`, branch `admin-run/ui`) with every recommendation in its 19-decision table taken as accepted. Screenshots are in [policies/](policies/).
 
 ## What shipped
 

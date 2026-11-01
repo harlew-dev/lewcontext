@@ -6,6 +6,7 @@ import {
   formatSignal,
   MonitoringBody,
   MonitoringHeader,
+  PartialNote,
   signalWindow,
   thresholds,
   useDrillHref,
@@ -75,6 +76,8 @@ function usePageHref() {
         return adminRoutes.monitoring.limits(key, window);
       case "usage":
         return adminRoutes.monitoring.usage(key, window);
+      case "data":
+        return adminRoutes.monitoring.data(key, window);
       case "integrity":
         return adminRoutes.monitoring.integrity(key, window);
       case "performance":
@@ -149,6 +152,11 @@ function Tile({
           ))}
         </ul>
       )}
+      {signals
+        .filter((s) => s.partial)
+        .map((s) => (
+          <PartialNote key={s.name} signal={s} labelled />
+        ))}
       {metricsOff && (
         <div className="mt-2 font-medium text-zinc-950 dark:text-white">
           Metric storage is off.

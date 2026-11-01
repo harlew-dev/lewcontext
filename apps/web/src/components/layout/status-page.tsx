@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Reference } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Text } from "@/components/ui/text";
 import { routes } from "@/lib/routes";
@@ -12,18 +12,21 @@ export function StatusPage({
   title,
   description,
   action,
+  footer,
   requestId,
 }: {
   title: string;
   description: string;
   action: ReactNode;
+  // Below the card (the homepage's policy links).
+  footer?: ReactNode;
   requestId?: string;
 }) {
   return (
-    <AuthLayout>
+    <AuthLayout footer={footer}>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo />
-        <div className="space-y-2">
+        <HeadingGroup>
           <Heading>{title}</Heading>
           <Text>{description}</Text>
           {requestId && (
@@ -31,7 +34,7 @@ export function StatusPage({
               <Reference requestId={requestId} />
             </Text>
           )}
-        </div>
+        </HeadingGroup>
         <div>{action}</div>
       </div>
     </AuthLayout>

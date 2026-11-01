@@ -58,6 +58,22 @@ func TryLockMetricsRollup(ctx context.Context, tx bun.Tx) (bool, error) {
 	return locked, err
 }
 
+// tableStatsLock names the lock the daily table sizes take
+// (store.RecordTableStats), hashed with the current schema like the
+// rollup's.
+const tableStatsLock = "lewcontext:table-stats:"
+
+// TryLockTableStats tries to take the daily table sizes' advisory lock for
+// tx, held until it commits or rolls back, never waiting: false means
+// another server is writing them, so this one skips its turn.
+func TryLockTableStats(ctx context.Context, tx bun.Tx) (bool, error) {
+	var locked bool
+	err := tx.NewSelect().
+		ColumnExpr("pg_try_advisory_xact_lock(hashtextextended(? || current_schema(), 0))", tableStatsLock).
+		Scan(ctx, &locked)
+	return locked, err
+}
+
 // alertsLock names the session lock the server evaluating alerts holds,
 // and alertWritesLock the transaction lock each change to an alert takes.
 // Each key is a hash of the name and the current schema, as above.

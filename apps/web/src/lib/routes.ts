@@ -27,6 +27,10 @@ export const routes = {
   members: {
     index: (workspace: string) => `/app/${workspace}/settings/members`,
   },
+  // The terms of service and privacy policy, prerendered; Go serves them
+  // only with POLICIES=on.
+  termsOfService: "/policy/terms-of-service",
+  privacyPolicy: "/policy/privacy-policy",
   login: "/auth/login",
   register: "/auth/register",
   // A sign-up's code step, its own page so a reload (a phone switching to

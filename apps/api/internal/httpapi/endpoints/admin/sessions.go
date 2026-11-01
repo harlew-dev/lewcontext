@@ -291,7 +291,7 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 	}
 	clearCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
 	http.SetCookie(w, auth.AdminCookie(token, h.Config.Production))
-	body := map[string]any{"user": user, "role": role, "csrfToken": csrf, "expiresAt": expires}
+	body := map[string]any{"user": adminUser(user), "role": role, "csrfToken": csrf, "expiresAt": expires}
 	for key, value := range extra {
 		body[key] = value
 	}
@@ -314,8 +314,25 @@ func (h Sessions) Me(w http.ResponseWriter, r *http.Request) {
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	httpapi.JSON(w, 200, map[string]any{"user": session.User, "role": session.Role, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt,
+	httpapi.JSON(w, 200, map[string]any{"user": adminUser(session.User), "role": session.Role, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt,
 		"alertEmail": setting, "openAlerts": open})
+}
+
+// sessionUser is the signed-in admin as the admin pages see them: who they
+// are, and nothing else of the account (not its policy agreement, which the
+// admin queries don't load and the pages don't need).
+type sessionUser struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Email           string     `json:"email"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	EmailVerifiedAt *time.Time `json:"emailVerifiedAt"`
+	MFAEnabledAt    *time.Time `json:"mfaEnabledAt"`
+}
+
+func adminUser(u store.User) sessionUser {
+	return sessionUser{ID: u.PublicID, Name: u.Name, Email: u.Email, CreatedAt: u.CreatedAt, EmailVerifiedAt: u.EmailVerifiedAt, MFAEnabledAt: u.MFAEnabledAt}
+
 }
 
 // Logout ends the admin session (the app session, if any, stays), under

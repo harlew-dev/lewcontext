@@ -69,7 +69,7 @@ func (s *Store) VerifyEmail(ctx context.Context, userID int64, digest string) (E
 	var result EmailVerificationResult
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		u := &result.User
-		err := tx.NewSelect().Model(u).ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at").
+		err := tx.NewSelect().Model(u).ColumnExpr(userColumns).
 			ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(tx)).
 			Where("u.id = ?", userID).For("UPDATE OF u").Scan(ctx)
 		if err != nil {

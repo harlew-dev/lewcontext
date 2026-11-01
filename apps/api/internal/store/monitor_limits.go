@@ -16,21 +16,34 @@ import (
 // reached: auth:per-ip for auth:per-ip:block.
 const reachedLimit = "split_part(e.payload->>'limit', ':', 1) || ':' || split_part(e.payload->>'limit', ':', 2)"
 
+// blockReached keeps a limit's block level only: a limit "reached" here is
+// one refusing requests. A challenge level crossed (auth:per-ip:challenge)
+// only asks for a CAPTCHA, and register:global's at 200 an hour is an
+// ordinary busy hour, so it isn't counted as reached; the 428s are counted
+// in rate_limit_refused_total as <limit>:challenge.
+const blockReached = "split_part(e.payload->>'limit', ':', 3) = 'block'"
+
+// blockReachedLimit is reachedLimit for a block level, or ” (in no
+// series) for a challenge level.
+const blockReachedLimit = "CASE WHEN " + blockReached + " THEN " + reachedLimit + " ELSE '' END"
+
 // maxLimitSeries is how many limits a chart stacks; the rest are Other.
 const maxLimitSeries = 5
 
-// SummarizeLimitsReached counts the windows reached per bucket of w, by
+// SummarizeLimitsReached counts the windows reached (block levels only,
+// blockReached) per bucket of w, by
 // limit: the four limits reached most, then SeriesOther; with limits, a
 // series for each of those, in that order, and no others.
 func (s *Store) SummarizeLimitsReached(ctx context.Context, w SummaryWindow, limits ...string) (MonitorSeries, error) {
 	if len(limits) > 0 {
-		return s.bucketedCounts(ctx, w, []string{"rate_limit.reached"}, limits, reachedLimit)
+		return s.bucketedCounts(ctx, w, []string{"rate_limit.reached"}, limits, blockReachedLimit)
 	}
 	var rows []bucketCount
 	err := s.summaryBase(w).
 		ColumnExpr(reachedLimit+" AS key").
 		ColumnExpr("count(*) AS count").
 		Where("e.name = 'rate_limit.reached'").
+		Where(blockReached).
 		GroupExpr("1, 2").
 		Scan(ctx, &rows)
 	if err != nil {
@@ -47,7 +60,8 @@ type LimitReached struct {
 	LastReached time.Time `json:"lastReached" bun:"last_reached"`
 }
 
-// IndexLimitsReached lists every limit reached in [from, to), most
+// IndexLimitsReached lists every limit whose block level was reached in
+// [from, to), most
 // windows first; with limits, only those (by name).
 func (s *Store) IndexLimitsReached(ctx context.Context, from, to time.Time, limits ...string) ([]LimitReached, error) {
 	rows := []LimitReached{}
@@ -55,6 +69,7 @@ func (s *Store) IndexLimitsReached(ctx context.Context, from, to time.Time, limi
 		ColumnExpr(reachedLimit + " AS limit_name").
 		ColumnExpr("count(*) AS windows").
 		ColumnExpr("max(e.created_at) AS last_reached").
+		Where(blockReached).
 		GroupExpr("1").
 		OrderExpr("windows DESC, 1")
 	if len(limits) > 0 {
@@ -114,7 +129,7 @@ type AccountWindows struct {
 }
 
 // IndexTopAccountsReaching lists the accounts that reached the most
-// windows in [from, to); with limits, of those limits only, a row per
+// windows (block levels) in [from, to); with limits, of those limits only, a row per
 // account and limit.
 func (s *Store) IndexTopAccountsReaching(ctx context.Context, from, to time.Time, limits ...string) ([]AccountWindows, error) {
 	rows := []AccountWindows{}
@@ -122,6 +137,7 @@ func (s *Store) IndexTopAccountsReaching(ctx context.Context, from, to time.Time
 		ColumnExpr("e.user_id").
 		ColumnExpr("count(*) AS windows").
 		Where("e.user_id IS NOT NULL").
+		Where(blockReached).
 		OrderExpr("windows DESC, e.user_id").
 		Limit(maxTopSubjects)
 	if len(limits) > 0 {
@@ -144,9 +160,9 @@ func (s *Store) IndexTopAccountsReaching(ctx context.Context, from, to time.Time
 }
 
 // IndexTopAddressesReaching lists the addresses (an IPv6 /64) that reached
-// the most windows in [from, to).
+// the most windows in [from, to), block levels only.
 func (s *Store) IndexTopAddressesReaching(ctx context.Context, from, to time.Time) ([]AddressCount, error) {
-	return s.IndexTopAddresses(ctx, "rate_limit.reached", from, to)
+	return s.indexTopAddresses(ctx, s.eventsIn(from, to, "rate_limit.reached").Where(blockReached))
 }
 
 // RouteRefusals is how many requests to a route were refused with 429 in

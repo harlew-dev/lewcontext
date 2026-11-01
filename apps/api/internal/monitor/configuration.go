@@ -80,6 +80,8 @@ const (
 	WarnSharedAddress   = "shared_address"
 	WarnMetricsTokenOff = "metrics_without_token"
 	WarnNotProduction   = "not_production"
+	WarnPruneNotRunning = "prune_not_running"
+	WarnCaptchaOff      = "captcha_off"
 )
 
 // configurationSections are the Configuration page's tables.
@@ -125,13 +127,24 @@ func configurationPage(ctx context.Context, env Env, w Window) (Sections, error)
 				return nil
 			}
 			n, err := s.CountAdminSessionsUnder(ctx, env.AdminKeys.Previous)
+			if err != nil {
+				return err
+			}
 			out.Warnings = append(out.Warnings, Warning{ID: WarnPreviousKey, Count: float64(n)})
-			return err
+			return nil
 		}},
 		{"warnings", func(ctx context.Context) error {
 			n, err := s.CountAdminsWithMFA(ctx)
 			if err == nil && n == 0 {
 				out.Warnings = append(out.Warnings, Warning{ID: WarnNoAdminMFA})
+			}
+			return err
+		}},
+		{"warnings", func(ctx context.Context) error {
+			// data.prune_not_running's measure: the Data page lists which.
+			targets, err := readRetention(ctx, env)
+			if n := countTargets(targets, func(t RetentionTarget) bool { return t.NotRunning }); err == nil && n > 0 {
+				out.Warnings = append(out.Warnings, Warning{ID: WarnPruneNotRunning, Count: float64(n)})
 			}
 			return err
 		}},
@@ -180,6 +193,7 @@ func serverWarnings(compared, live []store.ServerInstance) []Warning {
 		{WarnMailOff, func(c config.Summary) bool { return c.MailDriver == config.MailOff }},
 		{WarnAllowlistNoIP, func(c config.Summary) bool { return c.AdminAllowedIPs > 0 && c.ClientIPHeader == "" }},
 		{WarnMetricsTokenOff, func(c config.Summary) bool { return c.MetricsAddr && !c.MetricsToken }},
+		{WarnCaptchaOff, func(c config.Summary) bool { return c.Production && c.CaptchaProvider == config.CaptchaOff }},
 		{WarnMigrations, func(c config.Summary) bool { return c.Migrations.Applied < c.Migrations.Embedded }},
 	} {
 		if n := countServers(compared, w.is); n > 0 {
@@ -213,6 +227,12 @@ var settings = []struct {
 	}},
 	{"EMAIL_VERIFICATION", func(c config.Summary) string { return c.EmailVerification }},
 	{"RATE_LIMITS", func(c config.Summary) string { return c.RateLimits }},
+	{"PER_IP_LIMITS", func(c config.Summary) string { return c.PerIPLimits }},
+	{"CAPTCHA_PROVIDER", func(c config.Summary) string { return c.CaptchaProvider }},
+	{"CAPTCHA_SITE_KEY", func(c config.Summary) string { return yesNo(c.CaptchaSiteKey, "set", "not set") }},
+	{"CAPTCHA_SECRET_KEY", func(c config.Summary) string { return yesNo(c.CaptchaSecretKey, "set", "not set") }},
+	{"CAPTCHA test keys", func(c config.Summary) string { return yesNo(c.CaptchaTestKeys, "in use", "not used") }},
+	{"POLICIES", func(c config.Summary) string { return c.Policies }},
 	{"CLIENT_IP_HEADER", func(c config.Summary) string { return orNotSet(c.ClientIPHeader) }},
 	{"TRUSTED_PROXIES", func(c config.Summary) string { return ranges(c.TrustedProxies) }},
 	{"ADMIN_ALLOWED_IPS", func(c config.Summary) string { return ranges(c.AdminAllowedIPs) }},

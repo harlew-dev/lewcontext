@@ -1,8 +1,14 @@
+import type { PolicyVersions } from "@/types/policies";
 import type { Session, User } from "@/lib/types";
 import { ApiError, type Http } from "./http";
 import { path } from "./paths";
 export type Credentials = { email: string; password: string };
-export type Registration = Credentials & { name: string };
+export type Registration = Credentials & {
+  name: string;
+  // With the policies published: the versions the page showed and the
+  // person agreed to (GET /api/policies).
+  policies?: PolicyVersions;
+};
 // Login and registration start a session and return its CSRF token.
 export type SignedIn = { user: User; csrfToken: string };
 // Registration with email verification on starts no account: a code goes to
@@ -106,11 +112,11 @@ export function auth(http: Http) {
     // Creates the account and signs in, or with email verification on
     // answers { verificationRequired } (needsVerification): the code goes to
     // the email, and registerVerify finishes.
-    register: ({ name, email, password }: Registration) =>
+    register: ({ name, email, password, policies }: Registration) =>
       http.send<SignedIn | VerificationRequired>(
         "POST",
         authRoutes.register(),
-        { name, email, password },
+        { name, email, password, ...(policies ? { policies } : {}) },
       ),
     // This browser's sign-up waiting for a code; a 401 means it ended.
     registerCheck: () =>

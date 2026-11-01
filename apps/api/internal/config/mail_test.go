@@ -83,6 +83,7 @@ func TestSMTPSettingsRefused(t *testing.T) {
 		"a header in the sender":  {"MAIL_FROM_ADDRESS": "no-reply@example.com\r\nBcc: eve@example.com"},
 		"a header in the name":    {"MAIL_FROM_NAME": "Acme\r\nBcc: eve@example.com"},
 		"a host with spaces":      {"SMTP_HOST": "smtp.example.com extra"},
+		"credentials in the host": {"SMTP_HOST": "alice:hunter2@smtp.example.com"},
 		"an unknown TLS mode":     {"SMTP_TLS": "ssl"},
 		"a port that isn't one":   {"SMTP_PORT": "smtp"},
 		"port zero":               {"SMTP_PORT": "0"},

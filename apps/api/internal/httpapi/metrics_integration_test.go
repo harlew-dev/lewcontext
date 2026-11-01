@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/ratelimit"
@@ -195,13 +196,38 @@ func metricLine(t *testing.T, sample string) string {
 // in a window (which is all rate_limit.reached records).
 func TestEveryRefusalIsCounted(t *testing.T) {
 	s, _ := server(t)
-	l := ratelimit.Limit{Name: "metrics-test:per-user", Max: 1, Window: time.Minute, InMemory: true}
+	l := ratelimit.Limit{Name: "metrics-test:per-user", Block: ratelimit.Above(1), Window: time.Minute, InMemory: true}
 	for range 4 {
 		r := httptest.NewRequest("GET", "/api/x", nil)
 		s.Allow(httptest.NewRecorder(), r, l, l.Key("usr_00000000000001"))
 	}
 	if got := metricLine(t, `rate_limit_refused_total{limit="metrics-test:per-user:block"}`); got != "3" {
 		t.Fatalf("refusals counted: %q", got)
+	}
+}
+
+// A 428 (or a 503 while the provider is down) at a challenge level is a
+// refusal too, counted as the limit's challenge level; a block, as its block
+// level. The level is the label's last segment, so the series stay bounded.
+func TestChallengeRefusalsAreCounted(t *testing.T) {
+	s, _ := challengeServer(t)
+	l := ratelimit.Limit{Name: "metrics-challenge-test:per-user", Challenge: ratelimit.Above(1), Block: ratelimit.Above(3), Window: time.Minute, InMemory: true}
+	h := s.Challengeable(httpapi.ChallengeLogin, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Allow(w, r, l, l.Key("usr_00000000000002"))
+	}))
+	codes := []int{}
+	for _, token := range []string{"", "", "down", "", ""} {
+		w := sendFrom(h, "203.0.113.90", "POST", "/api/x", "", token)
+		codes = append(codes, w.Code)
+	}
+	if fmt.Sprint(codes) != "[200 428 503 429 429]" {
+		t.Fatalf("answers: %v", codes)
+	}
+	if got := metricLine(t, `rate_limit_refused_total{limit="metrics-challenge-test:per-user:challenge"}`); got != "2" {
+		t.Fatalf("challenges counted: %q", got)
+	}
+	if got := metricLine(t, `rate_limit_refused_total{limit="metrics-challenge-test:per-user:block"}`); got != "2" {
+		t.Fatalf("blocks counted: %q", got)
 	}
 }
 

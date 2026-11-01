@@ -25,15 +25,16 @@ var LimitsSignals = []Signal{
 		Name: "limits.shared_reached", Page: PageLimits, Label: "Shared limits reached", Unit: UnitCount,
 		Window: time.Hour, Critical: 1,
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
-			return count(windowsReached(ctx, env, sp, globalLimits(env)...))
+			return count(sharedReached(ctx, env, sp))
 		},
 		Drill: drill("rate_limit.reached"),
 	},
 	{
+		// Block levels only, as everywhere on the page (store.blockReached).
 		Name: "limits.windows_reached", Page: PageLimits, Label: "Limit windows reached", Unit: UnitCount,
 		Window: time.Hour,
 		Measure: func(ctx context.Context, env Env, sp Span) (Reading, error) {
-			return count(env.Store.CountEvents(ctx, sp.From, sp.To, "rate_limit.reached"))
+			return count(windowsReached(ctx, env, sp))
 		},
 		Drill:      drill("rate_limit.reached"),
 		DrillExact: true,
@@ -120,13 +121,13 @@ func blocked(ctx context.Context, env Env) ([]blockedLimit, error) {
 		}
 		limits = append(limits, l)
 		if !l.InMemory {
-			max[l.Name] = l.Max
+			max[l.Name] = l.Block.At()
 		}
 	}
 	at, err := env.Store.CountSubjectsAt(ctx, max)
 	out := make([]blockedLimit, 0, len(limits))
 	for _, l := range limits {
-		b := blockedLimit{Name: l.Name, Max: l.Max}
+		b := blockedLimit{Name: l.Name, Max: l.Block.At()}
 		if !l.InMemory {
 			n := at[l.Name]
 			b.Subjects = &n
@@ -134,6 +135,16 @@ func blocked(ctx context.Context, env Env) ([]blockedLimit, error) {
 		out = append(out, b)
 	}
 	return out, err
+}
+
+// sharedReached counts the windows of a shared limit reached in sp: none
+// when there are no shared limits (windowsReached would count them all).
+func sharedReached(ctx context.Context, env Env, sp Span) (int64, error) {
+	names := globalLimits(env)
+	if len(names) == 0 {
+		return 0, nil
+	}
+	return windowsReached(ctx, env, sp, names...)
 }
 
 // isGlobal is a limit shared by everyone: counted by "global", its key is

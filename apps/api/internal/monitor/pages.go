@@ -23,6 +23,7 @@ var pages = []Page{
 	{Name: PageAccounts, Signals: func() []Signal { return AccountsSignals }, Sections: accountsPage},
 	{Name: PageWorkspaces, Signals: func() []Signal { return WorkspacesSignals }, Sections: workspacesPage},
 	{Name: PageUsage, Signals: func() []Signal { return UsageSignals }, Sections: usagePage},
+	{Name: PageData, Signals: func() []Signal { return DataSignals }, Sections: dataPage},
 	{Name: PageIntegrity, Signals: func() []Signal { return IntegritySignals }, Sections: integrityPage},
 	{Name: PagePerformance, Signals: func() []Signal { return PerformanceSignals }, Sections: performancePage},
 	{Name: PageErrors, Signals: func() []Signal { return ErrorsSignals }, Sections: errorsPage},
@@ -81,7 +82,7 @@ func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
 func Signals() []Signal {
 	var all []Signal
 	for _, list := range [][]Signal{SecuritySignals, LimitsSignals, IPsSignals, AccountsSignals, WorkspacesSignals, UsageSignals,
-		IntegritySignals, PerformanceSignals, ErrorsSignals, ConfigurationSignals, OverviewSignals} {
+		DataSignals, IntegritySignals, PerformanceSignals, ErrorsSignals, ConfigurationSignals, OverviewSignals} {
 		all = append(all, list...)
 	}
 	return all

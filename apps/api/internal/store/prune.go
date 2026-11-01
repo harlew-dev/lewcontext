@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"github.com/uptrace/bun"
 	"time"
 )
@@ -18,6 +19,10 @@ type Prunable struct {
 	Scope func(q *bun.SelectQuery) *bun.SelectQuery
 	// Keep narrows a query to old rows that must stay (optional).
 	Keep func(q *bun.SelectQuery) *bun.SelectQuery
+	// Oldest finds the oldest row the target would prune (optional), for
+	// the Monitoring Data page's retention: without it, the oldest Age in
+	// Scope minus Keep, read through an index leading with Age.
+	Oldest func(ctx context.Context, s *Store) (*time.Time, error)
 }
 
 // old selects the target's rows older than before.
@@ -63,4 +68,26 @@ func (s *Store) Prune(ctx context.Context, p Prunable, before time.Time, limit i
 	}
 	n, err := result.RowsAffected()
 	return int(n), err
+}
+
+// FindOldestPrunable is when the oldest row p would prune was made (by its
+// Age column), or nil when it has none: how far behind its retention it
+// is.
+func (s *Store) FindOldestPrunable(ctx context.Context, p Prunable) (*time.Time, error) {
+	if p.Oldest != nil {
+		return p.Oldest(ctx, s)
+	}
+	var oldest sql.NullTime
+	q := s.DB.NewSelect().Model(p.Model).ColumnExpr("min(?TableAlias.?)", bun.Ident(p.Age))
+	if p.Scope != nil {
+		q = q.WhereGroup(" AND ", p.Scope)
+	}
+	if p.Keep != nil {
+		q = q.WhereGroup(" AND NOT ", p.Keep)
+	}
+	if err := q.Scan(ctx, &oldest); err != nil || !oldest.Valid {
+		return nil, err
+	}
+	at := oldest.Time.UTC()
+	return &at, nil
 }

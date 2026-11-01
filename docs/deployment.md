@@ -10,7 +10,7 @@ One image (the root `Dockerfile`) holding four binaries:
 | --- | --- | --- |
 | `api` (the default `CMD`) | The Go server: the JSON API under `/api`, the web app built into the binary (and the admin dashboard's own build, served only behind its key), the event delivery worker, a 15-minute cleanup loop, each minute's metrics and the hourly rollup, and `/metrics` on its own listener when `METRICS_ADDR` is set | as a long-running service |
 | `migrate` | Applies database migrations, inside a transaction each, under an advisory lock | once per release, **before** starting the new `api` |
-| `prune` | Deletes old rows from log tables (`events`, `audit_events`, `app_errors`, `request_hours`, `metric_hours`) and minimises events over 30 days old (`pseudonymise`), recording `prune.completed` ([compliance.md](compliance.md#retention)) | from cron, daily |
+| `prune` | Deletes old rows from log tables (`events`, `audit_events`, `app_errors`, `request_hours`, `metric_hours`, `table_stats_daily`) and minimises events over 30 days old (`pseudonymise`), recording `prune.completed` ([compliance.md](compliance.md#retention)) | from cron, daily |
 | `seed` | Demo data | never: it refuses to run with `APP_ENV=production` |
 | `admin` | The operator's commands, previewing without `-confirm`: `admin grant` (with `-role viewer|operator`), `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin suspend -email … -reason … -confirm` and `unsuspend` suspend an account (not an admin's: `revoke` first) or lift it; `admin sessions revoke-all -confirm` signs every account out, app and admin sessions alike (a suspected leak of the session tables); `admin erase -email … -confirm` deletes an account for someone who can't (an erasure request: not an admin's, nor the only owner of a workspace with other members), and `admin export -email … > file.json` writes an account's data as Download my data gives it ([compliance.md](compliance.md)); `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa`, `erase` and `export` |
 
@@ -26,7 +26,7 @@ make build                                                     # or, without Doc
 - **PostgreSQL 15+** reachable over TLS with a verifiable certificate. Use dedicated roles, never a superuser: one that owns the tables for `migrate`, one with data access only for everything else ([Database roles](#database-roles)).
 - **Something that terminates HTTPS in front of the server.** The server only speaks plain HTTP, and production refuses an `http://` origin. That can be a reverse proxy (nginx, Caddy), a cloud load balancer, or Cloudflare. See [Behind a proxy](#behind-a-proxy-or-load-balancer).
 - **An SMTP provider** (Resend, Postmark, Amazon SES, Mailgun, …) and **outbound SMTP** from the server to it, on 587 or 465. Some hosts block outgoing SMTP ports on new accounts; ask them to open it. Or run with `MAIL_DRIVER=off` and no password reset or invitations. See [Email](#email).
-- **Outbound HTTPS** from the server to `challenges.cloudflare.com`, once CAPTCHA challenges are built (**Planned**).
+- **Outbound HTTPS** from the server to `challenges.cloudflare.com`, with `CAPTCHA_PROVIDER=turnstile` (a token check only while a limit is in challenge mode).
 
 ## Configuration
 
@@ -41,6 +41,10 @@ make build                                                     # or, without Doc
 | `MAIL_DRIVER` | `smtp` (the default), or `off` | `smtp` needs the settings below, or the server refuses to start. `off` runs without email: password reset and invitations answer 503, and it needs `EMAIL_VERIFICATION=off`. `log` (the development mailbox) is refused in production |
 | `EMAIL_VERIFICATION` | `on` (the default), or `off` | `on`: a new sign-up enters a 6-digit code emailed to it before its account exists, and sign-up no longer tells anyone whether an email has an account. `off`: sign-up as before. See [Turning on email verification](#turning-on-email-verification) |
 | `EMAIL_VERIFICATION_EXISTING` | `optional` (the default), or `required` | `required`: accounts that never verified (made while it was off) must verify at their next sign-in before anything else |
+| `CAPTCHA_PROVIDER` | `turnstile`, or `off` deliberately | **Required in production.** `turnstile`: above a rate limit's challenge level, sign-in, sign-up, reset requests and invitations ask for a Cloudflare Turnstile check ([rate-limits.md](api/rate-limits.md#challenges)). `off`: challenge levels are skipped (block levels still apply), with a warning at startup. Outside production it defaults to `turnstile` with Cloudflare's always-passing test keys |
+| `CAPTCHA_SITE_KEY`, `CAPTCHA_SECRET_KEY` | your Turnstile widget's keys | Required with `turnstile`. The site key is public (sent to browsers in the 428). **The secret key is a secret:** pass it through your secret store; it's never logged or sent anywhere but Cloudflare. Cloudflare's published test keys (`1x…`, `2x…`, `3x…`) are refused in production |
+| `PER_IP_LIMITS` | `on` (the default) | `off` only if the proxy can't send the client's address at all: every per-IP limit (both levels) is then off, with a warning. Set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` instead; production refuses `off` together with `CLIENT_IP_HEADER` |
+| `POLICIES` | `off` (the default), or `on` once the documents are yours | `on` publishes `/policy/terms-of-service` and `/policy/privacy-policy` and makes every sign-up agree to them. **Production refuses `on` while either document is still the template** (`boilerplate: true`). See [Terms of Service and Privacy Policy](#terms-of-service-and-privacy-policy) |
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | `no-reply@example.com`, `Example` | The sender. The address must be bare, on a domain your provider has verified. The name defaults to `APP_NAME` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS` | `smtp.resend.com`, `587`, `starttls` | `starttls` (port 587 by default) or `tls` (465). **`none` is refused in production.** Certificates are always verified |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | your provider's | Both or neither. **A secret:** pass it through your platform's secret store, not the image |
@@ -62,9 +66,7 @@ make build                                                     # or, without Doc
 
 | Variable | Plan | Notes |
 | --- | --- | --- |
-| `PER_IP_LIMITS` | [captcha-challenges](../plans/features/captcha-challenges.md) | `off` only if the proxy can't send the client's IP at all |
-| `CAPTCHA_PROVIDER`, `CAPTCHA_SITE_KEY`, `CAPTCHA_SECRET_KEY` | [captcha-challenges](../plans/features/captcha-challenges.md) | `turnstile` with real keys, or `off`. It must be set explicitly in production, and Cloudflare's test keys are refused |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID` | [captcha-challenges](../plans/features/captcha-challenges.md) (future use case) | Only for the edge-protection listener, which isn't built |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID` | [captcha-challenges](../plans/features/implemented/captcha-challenges.md) (future use case) | Only for the edge-protection listener, which isn't built |
 
 ## First deploy
 
@@ -73,7 +75,7 @@ make build                                                     # or, without Doc
 3. **Migrate:** `docker run --rm --env-file prod.env lewcontext migrate`. `migrate status` shows what's applied. It is safe to run from several machines at once, because of the advisory lock.
 4. **Start the server:** `docker run -d --env-file prod.env -p 10.0.0.5:3000:3000 lewcontext`.
 5. **Check it:** `GET /api/health` returns `{"status":"ok"}`, or 503 when the database is unreachable or the server is shutting down: use it for the load balancer's health check (readiness). `GET /api/health/live` answers without the database: use it for an orchestrator's liveness probe, so a database outage doesn't restart every server ([Logs and health checks](#logs-and-health-checks)). Then open `APP_ORIGIN` and register an account. New accounts start with no workspace and go to onboarding.
-6. **Schedule pruning:** daily, every target ([Retention and erasure](#retention-and-erasure)): `prune pseudonymise -confirm`, `prune events -confirm`, `prune audit_events -confirm`, `prune app_errors -confirm`, `prune request_hours -confirm` and `prune metric_hours -confirm`. `pseudonymise` cuts events' IPs to their network and replaces their emails with keyed pseudonyms at 30 days; `events` deletes events other than audit events at 90 days and `audit_events` audit events at a year, both keeping any with a pending delivery; then grouped errors not seen for 30 days, and hourly metric sums older than 90 days ([api/database.md](api/database.md#pruning)). All are allowed in production. Sessions, rate-limit windows, reset links, minute metrics (48 hours) and stopped servers' rows (a day) are cleaned up by the server itself.
+6. **Schedule pruning:** daily, every target ([Retention and erasure](#retention-and-erasure)): `prune pseudonymise -confirm`, `prune events -confirm`, `prune audit_events -confirm`, `prune app_errors -confirm`, `prune request_hours -confirm`, `prune metric_hours -confirm` and `prune table_stats_daily -confirm`. `pseudonymise` cuts events' IPs to their network and replaces their emails with keyed pseudonyms at 30 days; `events` deletes events other than audit events at 90 days and `audit_events` audit events at a year, both keeping any with a pending delivery; then grouped errors not seen for 30 days, hourly metric sums older than 90 days, and daily table sizes older than 400 days ([api/database.md](api/database.md#pruning)). All are allowed in production. Sessions, rate-limit windows, reset links, minute metrics (48 hours) and stopped servers' rows (a day) are cleaned up by the server itself.
 
 ## Admin dashboard
 
@@ -136,9 +138,10 @@ The retention schedule is in [compliance.md](compliance.md#retention). Every age
 30 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune app_errors -confirm
 35 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune request_hours -confirm
 40 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune metric_hours -confirm
+45 3 * * *  docker run --rm --env-file /etc/lewcontext/prod.env lewcontext prune table_stats_daily -confirm
 ```
 
-- **Evidence:** each confirmed run records `prune.completed` (its target, how many rows, the cutoff), an audit event kept a year: filter Events by **Retention** to show an auditor it runs. A run that fails exits non-zero; have cron mail or page on it.
+- **Evidence:** each confirmed run records `prune.completed` (its target, how many rows, the cutoff), an audit event kept a year: filter Events by **Retention** to show an auditor it runs; the Monitoring **Data** page shows each target's last run and warns when one hasn't run in two days. A run that fails exits non-zero; have cron mail or page on it.
 - **Logs:** keep the server's log **30 days**, and ship it off the host to storage the servers can't change (S3 Object Lock, a SIEM, your provider's immutable archive). The **audit lines** in it (`msg: "audit"`, one per audit event, never an email or name, the IP cut to its /24 or /48) are the evidence that the `events` table hasn't been altered, so route them (filter on `msg`) to a store kept **a year**, as long as the audit events ([compliance.md](compliance.md#audit-lines)); everything else goes at 30 days. Keep `LOG_LEVEL` at `info` or below, or they aren't written (the server says so at startup, at `error`, so even `LOG_LEVEL=error` shows it).
 - **Backups:** 30 days' rotation is recommended. Erased accounts leave them as they expire; say so in the privacy notice.
 - **Requests from people** ([compliance.md](compliance.md)): someone who can't sign in asks for their data (`admin export -email … > file.json`) or for their account to be erased (`admin erase -email …`, then `-confirm`). Confirm who is asking outside the app first; both are recorded. Self-service: Account & security's **Download your data** and **Delete account**.
@@ -197,7 +200,7 @@ Everything that must be shared lives in PostgreSQL, so several `api` processes b
 | IP blocks | `ip_blocks`, reloaded into memory every 30 seconds | a new block applies on the server that made it at once, and on every other within 30 seconds; a server started while the database was down blocks nothing until its retries (every second, doubling to 30) load the list, and logs an error meanwhile |
 | The admin assets pass | an HMAC in the cookie, under `APP_KEY` and the admin key's digest | any server accepts another's, **if every server has the same `APP_KEY` and `ADMIN_ROUTE_KEY`** (and `ADMIN_ROUTE_KEY_PREVIOUS` and `ADMIN_ALLOWED_IPS`, or a session works on one server and not the next) |
 | Sign-ups and email codes | `pending_registrations`, `email_verifications`: HMACs under `APP_KEY` | any server can check a code, **if every server has the same `APP_KEY`** |
-| CAPTCHA tokens (**Planned**) | single use enforced by Cloudflare | no table needed |
+| CAPTCHA tokens | single use enforced by Cloudflare | no table needed |
 
 Things that are per process:
 
@@ -228,7 +231,7 @@ To fix that, set `CLIENT_IP_HEADER` to the header your proxy writes the client's
 - **Refused at startup:** one variable without the other, a header other than `X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP` (any case; not RFC 7239 `Forwarded`), a range that doesn't parse, an IPv4-mapped IPv6 range (write it as IPv4), and `0.0.0.0/0` or `::/0`, which would be the same as believing the header from anyone. The server logs the header it uses when it starts.
 - **A header that doesn't parse** as an address falls back to the last trusted hop (or the connection), never to a value the client chose. At most 20 `X-Forwarded-For` entries are read; a single-value header with more than one value is ignored.
 - **IPv6 clients** are counted by their /64 in every per-IP limit, with or without a proxy. Events record the full address.
-- **Only use `PER_IP_LIMITS=off`** (**Planned**, [captcha-challenges](../plans/features/captcha-challenges.md)) if the proxy can't send the client's address at all. It switches every per-IP limit off, and sign-in then relies on per-account limits and the edge.
+- **Only use `PER_IP_LIMITS=off`** ([rate-limits.md](api/rate-limits.md#behind-a-proxy-per_ip_limits)) if the proxy can't send the client's address at all. It switches every per-IP limit off, and sign-in then relies on per-account limits and the edge. With `CLIENT_IP_HEADER` set the proxy does send it, so production refuses the two together (development warns).
 
 Proxy timeouts should be at least the server's own: 15 s to read a request and 20 s to write a response.
 
@@ -241,12 +244,12 @@ These notes apply when the domain is proxied through Cloudflare.
   - the browser gets Cloudflare's clearance cookie when a page load is challenged, and sends it on API calls;
   - an API call without clearance gets Cloudflare's page instead of JSON, and the app shows "Unable to connect. Please try again."
 - **Exclude any public API from bot and challenge rules.** A future programmatic API, for example `/api/v1/*` called with API keys, can't solve a challenge. Rules must exclude it, for example `starts_with(http.request.uri.path, "/api/") and not starts_with(http.request.uri.path, "/api/v1/")`. Protect it with its keys, its own rate limits, and edge rules that count and block, never challenge. **This is configured by the site owner in Cloudflare**, not by the app.
-- **Turnstile (Planned):**
+- **Turnstile** (`CAPTCHA_PROVIDER=turnstile`; it works without proxying the domain through Cloudflare too):
   - **Keys:** create a widget in the Cloudflare dashboard for `APP_ORIGIN`'s hostname, then set `CAPTCHA_PROVIDER=turnstile`, `CAPTCHA_SITE_KEY` and `CAPTCHA_SECRET_KEY`.
-  - **When it loads:** the Turnstile script loads only while a rate limit is in challenge mode, and only from `https://challenges.cloudflare.com` (allowed in the page CSP).
-  - **What it can read:** while loaded, it runs in our login and register pages, as any CAPTCHA does. The reset and invitation link pages never load it.
+  - **When it loads:** the Turnstile script loads only when a request is challenged (a rate limit in challenge mode), and only from `https://challenges.cloudflare.com`, which the app pages' CSP allows in `script-src` and `frame-src` only while the provider is set. The admin pages never load it.
+  - **What it can read:** while loaded, it runs in our login and register pages, as any CAPTCHA does. No token page (the reset and invitation links) triggers loading it; once loaded on another page, it stays until a full reload.
   - **If Cloudflare is unreachable** while a limit is in challenge mode, those requests get 503 (the check fails closed). Normal traffic never calls Cloudflare.
-- **Edge protection from rate-limit events (Planned, future use case):** a listener on `rate_limit.reached` could enable a pre-made, disabled Cloudflare rule for the route under attack, and disable it when the window ends. It needs an API token with only "Zone WAF: Edit" on one zone. See [captcha-challenges](../plans/features/captcha-challenges.md#future-use-case-turning-on-cloudflare-edge-protection-not-built).
+- **Edge protection from rate-limit events (Planned, future use case):** a listener on `rate_limit.reached` could enable a pre-made, disabled Cloudflare rule for the route under attack, and disable it when the window ends. It needs an API token with only "Zone WAF: Edit" on one zone. See [captcha-challenges](../plans/features/implemented/captcha-challenges.md#future-use-case-turning-on-cloudflare-edge-protection-not-built).
 
 ## Turning on email verification
 
@@ -257,6 +260,17 @@ These notes apply when the domain is proxied through Cloudflare.
 3. A completed password reset also verifies an account's email: the link went only to that inbox.
 
 Someone whose old address no longer receives mail can't get past the verify page under `required`, and there's no way to change an email yet. Turning `required` off again lets them back in.
+
+## Terms of Service and Privacy Policy
+
+The app ships two documents as templates: `apps/web/content/policy/terms-of-service.md` and `privacy-policy.md`. They are a starting point for a small SaaS, **not legal advice**; you are responsible for what yours say.
+
+1. **Edit both files.** Replace every `[bracketed]` placeholder, check the privacy policy against what your deployment really does (providers, regions, retention), and have them reviewed. Markdown is limited to `##`–`####` headings, paragraphs, bold, italic, inline code, lists, tables, `---` and links to `https:`, `mailto:` or a path on the site; anything else (raw HTML, images, code blocks, quotes, strikethrough, other links, and reference-style link definitions such as `[name]: https://…`) fails the build, naming the file and line.
+2. **Set `updated`** in each file's front matter to the date it takes effect (`YYYY-MM-DD`). That date is the document's version: what the page shows as "Last updated", and what each new account is recorded as agreeing to. Change it whenever you change the text.
+3. **Delete the `boilerplate: true` line**, then rebuild the image (`make build` or `docker build`): the pages are prerendered from the files at build time.
+4. **Set `POLICIES=on`** and restart. The server checks the build holds both documents, and in production that neither is still a template. Home, login and sign-up then link both, sign-up needs the box ticked, and the API refuses a sign-up without agreement to the current versions.
+
+Accounts made before you turn it on, or while it's off, have no agreement on record and aren't asked; neither is anyone after you change a document. Asking them is a later plan. To try it out locally first, `POLICIES=on` works with the templates outside production, showing a "Template text" warning on each page.
 
 ## Email
 
@@ -284,19 +298,20 @@ Check each provider's own docs for current values.
 - [ ] The database roles aren't superusers: `migrate` as the owner, the servers, `prune` and `admin` as a runtime role without DDL ([Database roles](#database-roles)); the database isn't reachable from the internet.
 - [ ] The server's port is reachable only by the proxy (private interface, firewall, or Tunnel).
 - [ ] Migrations frozen (append-only) before the first real data.
-- [ ] `prune` scheduled daily for every target (`pseudonymise`, `events`, `audit_events`, `app_errors`, `alerts`, `request_hours`, `metric_hours`), its failures reported, and `prune.completed` showing on Events ([Retention and erasure](#retention-and-erasure)).
+- [ ] `prune` scheduled daily for every target (`pseudonymise`, `events`, `audit_events`, `app_errors`, `alerts`, `request_hours`, `metric_hours`, `table_stats_daily`), its failures reported, and `prune.completed` showing on Events ([Retention and erasure](#retention-and-erasure)).
 - [ ] Alerts: an admin with `critical` or `all` email on, working SMTP, `ALERT_HEARTBEAT_URL` set to a dead man's switch that pages someone, and an external uptime check; any webhook is https with `ALERT_WEBHOOK_SECRET`, and `ALERT_ALLOW_PRIVATE_TARGETS` unset unless it must reach an internal relay ([Alerts](#alerts)).
 - [ ] `METRICS_ADDR` unset, or on a private address the public can't reach, with `METRICS_TOKEN` (32+ random characters) in the secret store; `/metrics` never routed through the public proxy.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
 - [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `ADMIN_ROUTE_KEY_PREVIOUS` unset outside a rotation; `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; `ADMIN_ALLOWED_IPS` set to your own addresses where possible (with `CLIENT_IP_HEADER` behind a proxy), or Cloudflare Access or a VPN in front of `/admin/`; admins granted only to people who need it, as viewers unless they must act (`admin list`, the Admins page), and reviewed quarterly.
 - [ ] `seed` never run (it refuses in production anyway).
+- [ ] With sign-up open to the public: both policy documents edited, reviewed, dated and without `boilerplate`, and `POLICIES=on`.
 - [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.
 - [ ] Email: `MAIL_DRIVER=smtp` with `SMTP_TLS` `starttls` or `tls`, a verified sending domain with SPF, DKIM and DMARC, and `SMTP_PASSWORD` in the secret store; or `MAIL_DRIVER=off` and `EMAIL_VERIFICATION=off` deliberately.
 - [ ] Every server on the database has the same `APP_KEY`.
+- [ ] `CAPTCHA_PROVIDER` set: `turnstile` with your own widget's keys (the secret in the secret store), or `off` deliberately.
 - [ ] Logs shipped off the server to storage the servers can't change, at `LOG_LEVEL=info` (the audit lines), kept 30 days at most (the audit lines a year) and readable only by those who need them; an external uptime check on `/api/health` and `/`, and one on the certificate's expiry.
 - [ ] A privacy notice naming the processors (hosting, SMTP, Cloudflare), the retention schedule and how to ask for data or erasure; a breach register; the [incident runbook](incident-response.md) known to whoever is on call.
-- [ ] Turnstile keys are real (not Cloudflare's test keys), once built.
 - [ ] No secrets in the image or the repository: pass them as environment variables or through your platform's secret store.
 - [ ] The server's own security headers aren't stripped or overridden by the proxy: CSP with script hashes, `X-Frame-Options: DENY`, HSTS, `no-store` caching on the app shell and API.
 

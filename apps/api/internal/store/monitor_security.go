@@ -62,8 +62,9 @@ const (
 )
 
 // takeoverChanges are what someone holding an account changes first: its
-// password, its second factor, its recovery codes, its other sessions.
-var takeoverChanges = []string{"auth.password_changed", "auth.mfa.disabled", "auth.recovery_codes.created", "auth.other_sessions_revoked"}
+// password, its second factor (off, or on with their own authenticator,
+// locking the owner out), its recovery codes, its other sessions.
+var takeoverChanges = []string{"auth.password_changed", "auth.mfa.disabled", "auth.mfa.enabled", "auth.recovery_codes.created", "auth.other_sessions_revoked"}
 
 // StuffingRow is an address (an IPv6 /64) that tried StuffingEmails or more
 // distinct emails in a period.
@@ -404,8 +405,13 @@ const maxTopAddresses = 10
 // IndexTopAddresses lists the addresses that recorded the most events
 // named name in [from, to), most first.
 func (s *Store) IndexTopAddresses(ctx context.Context, name string, from, to time.Time) ([]AddressCount, error) {
+	return s.indexTopAddresses(ctx, s.eventsIn(from, to, name))
+}
+
+// indexTopAddresses groups q's events by address, most first.
+func (s *Store) indexTopAddresses(ctx context.Context, q *bun.SelectQuery) ([]AddressCount, error) {
 	rows := []AddressCount{}
-	err := s.eventsIn(from, to, name).
+	err := q.
 		ColumnExpr(ipNetwork+" AS ip").
 		ColumnExpr("count(*) AS count").
 		Where("e.ip IS NOT NULL").

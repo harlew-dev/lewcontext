@@ -9,7 +9,6 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http"
 	"time"
-	"unicode/utf8"
 )
 
 // Sign-up with EMAIL_VERIFICATION on (plans/features/email-verification.md):
@@ -29,20 +28,52 @@ const (
 	// the address was blocked after its code was sent.
 	registrationBlocked = "This address has been blocked. To use it, unblock it from the link in an email we sent, then sign up again."
 	registrationRefused = "Unable to create this account. Try signing in or use a different email."
+	// With POLICIES=on: no agreement, or one to versions this server no
+	// longer has (the page was opened before a deploy changed a document).
+	policiesRequired = "Agree to the Terms of Service to create an account."
+	policiesChanged  = "Our Terms of Service or Privacy Policy changed since this page opened. Read them again, then agree."
 )
+
+// registration is a sign-up's body: the credentials, and with POLICIES=on
+// the versions of the terms and privacy policy it agreed to. Its own type,
+// so login and the admin login (httpapi.Credentials) keep refusing a
+// "policies" field.
+type registration struct {
+	httpapi.Credentials
+	Policies *store.PolicyVersions `json:"policies"`
+}
+
+// agreedPolicies checks a sign-up's agreement against the server's current
+// versions (Server.Policies) and returns what to record: none with
+// POLICIES=off, whatever was sent. It reads only the body and the server's
+// versions, so it answers the same for every email; 422 on "policies".
+func (h Registrations) agreedPolicies(w http.ResponseWriter, in registration) (store.PolicyVersions, bool) {
+	if !h.Policies.Set() {
+		return store.PolicyVersions{}, true
+	}
+	switch {
+	case in.Policies == nil || !in.Policies.Set():
+		httpapi.FailField(w, 422, "policies", policiesRequired)
+	case *in.Policies != h.Policies:
+		httpapi.FailField(w, 422, "policies", policiesChanged)
+	default:
+		return h.Policies, true
+	}
+	return store.PolicyVersions{}, false
+}
 
 type Registrations struct{ *httpapi.Server }
 
 // beginRegistration saves a valid sign-up until its code is entered, ties it
 // to this browser with the registration cookie, and answers 202 the same for
 // every email.
-func (h Registrations) beginRegistration(w http.ResponseWriter, r *http.Request, in httpapi.Credentials, hash string) {
+func (h Registrations) beginRegistration(w http.ResponseWriter, r *http.Request, in httpapi.Credentials, policies store.PolicyVersions, hash string) {
 	token, err := auth.Token()
 	if err != nil {
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	pending := store.NewRegistration{Email: in.Email, Name: in.Name, PasswordHash: hash, TokenHash: auth.Digest(token)}
+	pending := store.NewRegistration{Email: in.Email, Name: in.Name, PasswordHash: hash, TokenHash: auth.Digest(token), Policies: policies}
 	if err := h.Repo.CreatePendingRegistration(r.Context(), pending); err != nil {
 		httpapi.InternalError(w, r, err)
 		return
@@ -108,6 +139,14 @@ func (h Registrations) Verify(w http.ResponseWriter, r *http.Request) {
 	}
 	pending, digest, ok := h.pendingRegistration(w, r)
 	if !ok || !h.Allow(w, r, httpapi.EmailCodePerEmail, httpapi.EmailCodePerEmail.Key(pending.Email)) {
+		return
+	}
+	// POLICIES was turned on after this sign-up began: it agreed to
+	// nothing, so it can't make an account. It starts again, as an expired
+	// one does; that reads only the sign-up's own row, the same for every
+	// address.
+	if h.Policies.Set() && !pending.Agreed {
+		h.endRegistration(w, registrationEnded)
 		return
 	}
 	result, err := h.Repo.CompleteRegistration(r.Context(), digest, h.EmailCodeDigest(in.Code))
@@ -177,12 +216,24 @@ func (h Registrations) registrationLimit(w http.ResponseWriter, r *http.Request,
 }
 
 func (h Registrations) Register(w http.ResponseWriter, r *http.Request) {
-	var in httpapi.Credentials
-	if !httpapi.Decode(w, r, &in) {
+	var body registration
+	if !httpapi.Decode(w, r, &body) {
 		return
 	}
-	if !httpapi.ValidCredentials(&in) || !httpapi.StrongPassword(in.Password) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
+	in := body.Credentials
+	if !httpapi.ValidCredentials(&in) || !httpapi.StrongPassword(in.Password) {
 		httpapi.Fail(w, 422, "Use a name, a valid email, and a password of 12–128 characters.")
+		return
+	}
+	// The same rule as the profile's (NUL would otherwise be a 500, and
+	// bidi overrides would reach users.name and auth.registered).
+	if !validName(in.Name) {
+		httpapi.FailField(w, 422, "name", invalidProfile)
+		return
+	}
+	// Before any limit or lookup, like the checks above.
+	policies, ok := h.agreedPolicies(w, body)
+	if !ok {
 		return
 	}
 	if !h.AccountLimit(w, r, in.Email) || !h.registrationLimit(w, r, in.Email) {
@@ -194,12 +245,12 @@ func (h Registrations) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.Config.Verify {
-		h.beginRegistration(w, r, in, hash)
+		h.beginRegistration(w, r, in, policies, hash)
 		return
 	}
 	// With verification off a taken email is refused, and a blocked one
 	// looks taken: that says no more than this mode already does.
-	user, err := h.Repo.CreateUser(r.Context(), in.Name, in.Email, hash)
+	user, err := h.Repo.CreateUser(r.Context(), in.Name, in.Email, hash, policies)
 	var pgErr *pgconn.PgError
 	if errors.Is(err, store.ErrEmailBlocked) || errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		httpapi.Fail(w, 409, registrationRefused)

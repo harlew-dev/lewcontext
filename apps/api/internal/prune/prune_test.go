@@ -67,7 +67,7 @@ func TestRegister(t *testing.T) {
 	for _, p := range Pruners() {
 		names = append(names, p.Name)
 	}
-	if !slices.Equal(names, []string{"aaa", "alerts", "app_errors", "audit_events", "events", "metric_hours", "pseudonymise", "request_hours"}) {
+	if !slices.Equal(names, []string{"aaa", "alerts", "app_errors", "audit_events", "events", "metric_hours", "pseudonymise", "request_hours", "table_stats_daily"}) {
 		t.Fatalf("Pruners(): %v", names)
 	}
 }

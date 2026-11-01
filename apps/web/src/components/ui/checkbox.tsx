@@ -1,88 +1,138 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ChangeEvent, type ReactNode } from "react";
 import { Checkbox as BaseCheckbox } from "baseui/checkbox";
 import { slot } from "@/lib/baseui";
-// A checkbox and its label on top of BaseUI's Checkbox, which keeps the
-// native input (hidden, but focusable and announced) and tracks hover and
-// keyboard focus. The label is the children; a description goes under it
-// and is read with the box (aria-describedby). Inside a disabled Fieldset
-// the native input is disabled with it.
-const checkedAttribute = (state: Record<string, unknown>) => ({
-  "data-checked": state.$checked ? "" : undefined,
-});
+import { ErrorMessage } from "./fieldset";
+// A checkbox on BaseUI's Checkbox (its hidden input keeps the keyboard,
+// the form's `required` check and screen readers; we draw the box). The
+// whole row is its <label>: clicking the text ticks it, and a link in the
+// text opens without ticking it. A description goes under the label (the
+// label then in medium weight) and is read with the box. Inside a disabled
+// Fieldset the native input is disabled with it.
 const CheckboxRoot = slot(
   "label",
   "group flex cursor-default items-start gap-3 data-disabled:opacity-50",
-  { props: checkedAttribute },
 );
-// The box: white with a zinc border, dark when checked, a focus ring for
-// the keyboard.
-const CheckboxMark = slot(
+const CheckmarkSlot = slot(
   "span",
-  "relative mt-0.5 flex size-4.5 shrink-0 items-center justify-center rounded-[0.3125rem] border border-zinc-950/15 bg-white shadow-sm data-checked:border-transparent data-checked:bg-zinc-900 data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-blue-500 data-hover:border-zinc-950/30 sm:size-4 dark:border-white/15 dark:bg-white/5 dark:data-checked:bg-zinc-600 dark:data-hover:border-white/30",
-  { props: checkedAttribute },
+  [
+    "relative mt-0.75 flex size-4.5 shrink-0 items-center justify-center rounded-[0.3125rem] border sm:mt-1 sm:size-4",
+    "border-zinc-950/15 bg-white shadow-sm data-hover:border-zinc-950/30",
+    "dark:border-white/15 dark:bg-white/5 dark:data-hover:border-white/30",
+    "data-checked:border-zinc-900 data-checked:bg-zinc-900 dark:data-checked:border-white/10 dark:data-checked:bg-zinc-600",
+    "data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-blue-500",
+    "data-invalid:border-red-500 dark:data-invalid:border-red-500",
+    "forced-colors:data-checked:bg-[Highlight]",
+  ].join(" "),
 );
+// The box, with its check mark drawn when ticked.
+function CheckboxCheckmark(props: Record<string, unknown>) {
+  return (
+    <CheckmarkSlot {...props}>
+      <svg
+        viewBox="0 0 14 14"
+        fill="none"
+        aria-hidden="true"
+        className="size-3.5 stroke-white opacity-0 group-has-checked:opacity-100 sm:size-3"
+      >
+        <path
+          d="M3 8L6 11L11 3.5"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </CheckmarkSlot>
+  );
+}
 const CheckboxInput = slot("input", "sr-only");
 const CheckboxLabel = slot(
   "span",
   "text-base/6 text-zinc-950 select-none sm:text-sm/6 dark:text-white",
 );
-// The tick, shown only while checked.
-const tick = (
-  <svg
-    viewBox="0 0 14 14"
-    fill="none"
-    aria-hidden="true"
-    className="size-3.5 stroke-white opacity-0 group-data-checked:opacity-100 sm:size-3"
-  >
-    <path
-      d="M3 8L6 11L11 3.5"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
+const overrides = {
+  Root: { component: CheckboxRoot },
+  Checkmark: { component: CheckboxCheckmark },
+  Input: { component: CheckboxInput },
+  Label: { component: CheckboxLabel },
+};
+export type CheckboxProps = {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  // The label, which may hold links.
+  children: ReactNode;
+  // A line under the label, read with the box (aria-describedby).
+  description?: ReactNode;
+  name?: string;
+  required?: boolean;
+  disabled?: boolean;
+  invalid?: boolean;
+  "aria-describedby"?: string;
+};
 export function Checkbox({
   checked,
   onChange,
-  name,
-  description,
-  disabled,
   children,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  name?: string;
-  // A line under the label, read with the box.
-  description?: ReactNode;
-  disabled?: boolean;
-  // The label.
-  children: ReactNode;
-}) {
+  description,
+  name,
+  required = false,
+  disabled = false,
+  invalid = false,
+  "aria-describedby": describedBy,
+}: CheckboxProps) {
   const descriptionId = useId();
+  const describedByIds =
+    [description ? descriptionId : undefined, describedBy]
+      .filter(Boolean)
+      .join(" ") || undefined;
   return (
     <BaseCheckbox
       checked={checked}
-      onChange={(event) => onChange(event.currentTarget.checked)}
+      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+        onChange(e.currentTarget.checked)
+      }
       name={name}
+      required={required}
       disabled={disabled}
-      aria-describedby={description ? descriptionId : undefined}
-      overrides={{
-        Root: { component: CheckboxRoot },
-        Checkmark: { component: CheckboxMark, props: { children: tick } },
-        Input: { component: CheckboxInput },
-        Label: { component: CheckboxLabel },
-      }}
+      error={invalid}
+      aria-describedby={describedByIds}
+      overrides={overrides}
     >
-      <span className="font-medium">{children}</span>
-      {description && (
-        <span
-          id={descriptionId}
-          className="block text-zinc-500 dark:text-zinc-400"
-        >
-          {description}
-        </span>
+      {description ? (
+        <>
+          <span className="font-medium">{children}</span>
+          <span
+            id={descriptionId}
+            className="block text-zinc-500 dark:text-zinc-400"
+          >
+            {description}
+          </span>
+        </>
+      ) : (
+        children
       )}
     </BaseCheckbox>
+  );
+}
+// A checkbox with its error under the label, read with it (an API's 422 on
+// the field). Pass the label as children.
+export function CheckboxField({
+  error,
+  className,
+  ...props
+}: CheckboxProps & { error?: string; className?: string }) {
+  const errorId = useId();
+  return (
+    <div className={className}>
+      <Checkbox
+        {...props}
+        invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+      />
+      {error && (
+        <ErrorMessage id={errorId} role="alert" className="mt-2 pl-7.5 sm:pl-7">
+          {error}
+        </ErrorMessage>
+      )}
+    </div>
   );
 }

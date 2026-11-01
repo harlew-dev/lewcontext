@@ -7,6 +7,7 @@ import (
 	"lewcontext/api/internal/auth"
 	"net/netip"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,10 +15,15 @@ import (
 // reads, in this process's memory (Memory). Its name,
 // "<feature>:<counted by>", is the key's prefix and, with the level reached,
 // rate_limit.reached's limit.
+// Limit is a limit on requests in fixed windows, with two optional levels
+// (docs/api/rate-limits.md): above Challenge, a route that names a
+// challenge action needs a solved CAPTCHA (428); above Block, every
+// request is refused (429, or 503 with Busy). Either may be Never.
 type Limit struct {
-	Name   string
-	Max    int
-	Window time.Duration
+	Name      string
+	Challenge Threshold
+	Block     Threshold
+	Window    time.Duration
 	// Busy is the refusal message of a limit shared by everyone, answered
 	// with 503 because it isn't the requester's doing. Limits per subject
 	// leave it empty and answer 429.
@@ -35,6 +41,28 @@ type Limit struct {
 
 // Key is the rate_limits key for one subject (an IP, an email or a user's
 // public ID), stored as a digest so the table holds no addresses or IDs.
+// PerIP reports whether the limit counts client IPs (its name ends in
+// ":per-ip").
+func (l Limit) PerIP() bool {
+	return strings.HasSuffix(l.Name, ":per-ip")
+}
+
+// Shared reports whether the limit is shared by everyone (its name ends in
+// ":global"), so one requester can push it up for all.
+func (l Limit) Shared() bool {
+	return strings.HasSuffix(l.Name, ":global")
+}
+
+// WithoutPerIP is l with both levels Never when it counts client IPs, for
+// PER_IP_LIMITS=off (a proxy that can't send the client's address), and l
+// unchanged otherwise.
+func (l Limit) WithoutPerIP() Limit {
+	if l.PerIP() {
+		l.Challenge, l.Block = Never, Never
+	}
+	return l
+}
+
 func (l Limit) Key(subject string) string {
 	return l.Name + ":" + auth.Digest(subject)
 }
@@ -48,6 +76,13 @@ func (l Limit) IPKey(ip string) string {
 // Everyone is the rate_limits key of a limit shared by all requests.
 func (l Limit) Everyone() string {
 	return l.Name
+}
+
+// PassedKey is the counter, beside key's, of a shared limit's requests
+// that got past its challenge level (Shared): its block level counts those,
+// not the requests nobody solved.
+func PassedKey(key string) string {
+	return key + ":passed"
 }
 
 // Refusal is the 429 message for a window that ends in left.

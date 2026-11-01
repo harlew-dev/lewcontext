@@ -15,7 +15,7 @@ The naming rules in [naming.md](naming.md) and the docs' links are checked by or
 | API client names | Each resource's client methods and typed paths are the API's actions, plus listed verbs (`leave`, `check`, `accept`), `matches` and listed singleton paths ([naming.md](naming.md#web-app)) | `apps/web/src/lib/api/naming.test.ts` | `clientVerbs`, `pathExtras`, `namedActionResources` (`auth`, `sessions`) |
 | Page route constants | A resource group in `routes` holds only `index`, `show`, `create` and `edit`; every other key is a listed page that isn't a resource ([naming.md](naming.md#web-app)) | `apps/web/src/lib/routes.test.ts` | `plainPages` |
 | Page export names | A resource page's default export is `<Resource><Action>` (`routes.projects.show`'s page is `ProjectShow`) ([naming.md](naming.md#web-app)) | `apps/web/src/pages/naming.test.ts` | `irregular` plurals |
-| File names | Files in `components/`, `lib/`, `types/` and `test/` are kebab-case; `pages/` is shaped like URLs ([naming.md](naming.md#web-app)) | `apps/web/src/naming.test.ts` | none |
+| File names | Files in `components/`, `lib/`, `types/` and `test/` are kebab-case (React Router's `.server` suffix allowed, for a module kept out of the browser); `pages/` is shaped like URLs ([naming.md](naming.md#web-app)) | `apps/web/src/naming.test.ts` | none |
 | Doc links | Every relative link in the markdown git tracks or has staged (an untracked file may be another session's work in progress; stage a new doc to check it) points at a file that exists, and every `#anchor` at a heading in it (GitHub's ids); a tracked file linking an untracked one is a warning | `scripts/check-doc-links.mjs`, run by `make check` (with its `--test`) | `allowedDeadLinks` |
 
 ## Terminology

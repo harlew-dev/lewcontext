@@ -31,6 +31,9 @@ type ConfirmationDialogProps = {
   // Handles a failure itself, as useAction's onError (an error on a field);
   // return true to keep it out of the dialog's error notice.
   onError?: (error: unknown) => boolean | void;
+  // More to read that isn't a field (the sign-up's word on blocked
+  // addresses), below the description.
+  body?: ReactNode;
   // Extra fields (type-to-confirm, password), disabled while confirming.
   children?: ReactNode;
 };
@@ -50,6 +53,7 @@ export function ConfirmationDialog({
   onConfirm,
   onConfirmed,
   onError,
+  body,
   children,
 }: ConfirmationDialogProps) {
   const action = useAction(onConfirm, { onError });
@@ -66,9 +70,12 @@ export function ConfirmationDialog({
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
         <ErrorNotice error={action.error} className="mt-6" />
-        {children && (
-          <DialogBody>
-            <Fieldset disabled={action.loading}>{children}</Fieldset>
+        {(body || children) && (
+          <DialogBody className="space-y-6">
+            {body}
+            {children && (
+              <Fieldset disabled={action.loading}>{children}</Fieldset>
+            )}
           </DialogBody>
         )}
         <DialogActions>

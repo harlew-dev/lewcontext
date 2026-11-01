@@ -293,7 +293,7 @@ func TestBlockRacingSignUp(t *testing.T) {
 		pending := apitest.Must(factory.PendingRegistrations.State(factory.RegistrationFor(email)).CreateOne(ctx, db, f))(t)
 		create := func() error {
 			if round%2 == 0 {
-				_, err := s.Repo.CreateUser(ctx, "Ada", email, "hash")
+				_, err := s.Repo.CreateUser(ctx, "Ada", email, "hash", store.PolicyVersions{})
 				return err
 			}
 			result, err := s.Repo.CompleteRegistration(ctx, auth.Digest(pending.Token), factory.Keys.EmailCodeDigest(pending.Code))

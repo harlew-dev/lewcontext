@@ -40,13 +40,19 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	// orchestrators; both log at debug.
 	mux.HandleFunc("GET /api/health", health(s))
 	mux.HandleFunc("GET /api/health/live", live)
+	policies := account.Policies{Server: s}
+	mux.HandleFunc("GET /api/policies", policies.Show)
 	registrations := account.Registrations{Server: s}
 	sessions := account.Sessions{Server: s}
 	me := account.Me{Server: s}
 	password := account.Password{Server: s}
 	passwordResets := account.PasswordResets{Server: s}
-	mux.Handle("POST /api/auth/register", s.LimitAuth(http.HandlerFunc(registrations.Register)))
-	mux.Handle("POST /api/auth/login", s.LimitAuth(http.HandlerFunc(sessions.Login)))
+	// Sign-up, sign-in and asking for a reset link may be asked to solve a
+	// CAPTCHA above a limit's challenge level (Challengeable, outside the
+	// counting); no other route is, least of all one on a page with a token
+	// in its URL.
+	mux.Handle("POST /api/auth/register", s.Challengeable(httpapi.ChallengeRegister, s.LimitAuth(http.HandlerFunc(registrations.Register))))
+	mux.Handle("POST /api/auth/login", s.Challengeable(httpapi.ChallengeLogin, s.LimitAuth(http.HandlerFunc(sessions.Login))))
 	// A login's second factor, with the challenge in its cookie (mfa.go).
 	mux.HandleFunc("POST /api/auth/login/mfa", sessions.LoginMFA)
 	// An account that must verify its email first (mustVerify) may only read
@@ -81,7 +87,7 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	mux.Handle("POST /api/auth/mfa/recovery-codes", s.RequireSessionUnmetered(s.LimitAuth(http.HandlerFunc(recoveryCodes.Store))))
 	// Password reset by link, signed out (password_reset.go). Requesting a
 	// link and checking one don't hash, so they take only the IP quota.
-	mux.HandleFunc("POST /api/auth/password-reset", passwordResets.Request)
+	mux.Handle("POST /api/auth/password-reset", s.Challengeable(httpapi.ChallengePasswordReset, http.HandlerFunc(passwordResets.Request)))
 	mux.HandleFunc("POST /api/auth/password-reset/check", passwordResets.Check)
 	mux.Handle("PATCH /api/auth/password-reset", s.LimitAuth(http.HandlerFunc(passwordResets.Reset)))
 	if s.Config.Verify {
@@ -123,7 +129,9 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	registrations := account.Registrations{Server: s}
 	mux.HandleFunc("POST /api/auth/register/check", registrations.Check)
-	mux.HandleFunc("POST /api/auth/register/resend", registrations.Resend)
+	// A new code is counted like a sign-up (register:global), so it can be
+	// challenged like one; its page holds a cookie, not a token in the URL.
+	mux.Handle("POST /api/auth/register/resend", s.Challengeable(httpapi.ChallengeRegister, http.HandlerFunc(registrations.Resend)))
 	mux.HandleFunc("POST /api/auth/register/verify", registrations.Verify)
 	verification := account.EmailVerification{Server: s}
 	mux.Handle("POST /api/auth/email-verification", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(verification.Store))))
@@ -318,7 +326,7 @@ func workspaceRoutes(s *httpapi.Server, ws routeGroup) {
 	// Invitations email an address the inviter chooses, so sending has its
 	// own limit (and invitation:global in the handler).
 	ws.Can("GET", "/invitations", auth.WorkspaceInvitationIndex, invitations.Index)
-	ws.Can("POST", "/invitations", auth.WorkspaceInvitationStore, s.Limit(httpapi.InvitationPerUser, invitations.Store))
+	ws.Can("POST", "/invitations", auth.WorkspaceInvitationStore, s.ChallengeableFunc(httpapi.ChallengeInvitation, s.Limit(httpapi.InvitationPerUser, invitations.Store)))
 	ws.Can("DELETE", "/invitations/{invitation}", auth.WorkspaceInvitationDestroy, invitations.Destroy)
 	// Your own membership: anyone may leave, apart from the last owner.
 	ws.Can("DELETE", "/membership", auth.AnyMember, membership.Destroy)

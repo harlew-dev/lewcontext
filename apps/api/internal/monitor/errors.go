@@ -74,7 +74,7 @@ type errorsSections struct {
 func errorsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
 	out := &errorsSections{Groups: []store.ErrorGroup{}}
-	return readSections(ctx, env, out, []section{
+	read, err := readSections(ctx, env, out, []section{
 		{"groups", func(ctx context.Context) (err error) {
 			out.Groups, err = s.IndexErrorGroups(ctx, w.From, w.To)
 			return
@@ -88,6 +88,16 @@ func errorsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 			return
 		}},
 	})
+	for i := range out.Groups {
+		out.Groups[i].New = newInRelease(out.Groups[i], out.Release)
+	}
+	return read, err
+}
+
+// newInRelease reports whether g was first seen since release started:
+// did the release break it?
+func newInRelease(g store.ErrorGroup, release *store.Release) bool {
+	return release != nil && !g.FirstSeenAt.Before(release.StartedAt)
 }
 
 // currentRelease is the release now running, or nil when no server
@@ -133,6 +143,7 @@ func ShowError(ctx context.Context, env Env, id string, w Window) (ErrorView, er
 	if out.Release, err = currentRelease(ctx, env); err != nil {
 		return ErrorView{}, err
 	}
+	out.Group.New = newInRelease(out.Group.ErrorGroup, out.Release)
 	match := map[string]string{"source": group.Source, "route": group.Route}
 	out.Occurrences, err = env.Store.SummarizeMetric(ctx, "errors_total", "source", match, w.SummaryWindow)
 	return out, err

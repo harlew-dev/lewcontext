@@ -90,7 +90,7 @@ function Group({ view }: { view: ErrorView }) {
   return (
     <>
       <div className="mt-8">
-        <GroupBadges group={g} release={view.release} />
+        <GroupBadges group={g} />
         <p className="mt-3 text-base/7 break-words text-zinc-950 sm:text-sm/6 dark:text-white">
           {g.message}
         </p>

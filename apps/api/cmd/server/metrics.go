@@ -125,7 +125,8 @@ func runMinutes(flush *observe.MinuteFlush) (stopMinutes func()) {
 // summarizeMetrics runs the hourly rollup until ctx is done: a minute after
 // startup, then every hour. Each server runs it; the advisory lock lets one
 // at a time do the work, and the others skip their turn. It also deletes
-// the rows of servers silent for a day.
+// the rows of servers silent for a day, and writes the day's table sizes
+// once a day (store.RecordTableStats, under a lock of its own).
 func summarizeMetrics(ctx context.Context, repository *store.Store) {
 	wait := firstRollup
 	for {
@@ -141,14 +142,19 @@ func summarizeMetrics(ctx context.Context, repository *store.Store) {
 		if ctx.Err() != nil {
 			return
 		}
-		// Whatever the rollup did, servers silent for a day go.
+		// Whatever the rollup did, servers silent for a day go, and the
+		// day's table sizes are written if they aren't yet.
 		gone, goneErr := deleteSilentServers(ctx, repository)
-		err = errors.Join(err, goneErr)
+		stats, statsErr := recordTableStats(ctx, repository)
+		err = errors.Join(err, goneErr, statsErr)
+		if stats.Rows > 0 {
+			slog.Debug("table sizes recorded", "tables", stats.Rows)
+		}
 		if rollup.Locked || gone > 0 {
 			slog.Debug("metrics rolled up", "locked", rollup.Locked, "hours", rollup.Hours, "minutesDeleted", rollup.MinutesDeleted, "serversDeleted", gone)
 		}
 		if err != nil && ctx.Err() == nil {
-			slog.Warn("rolling up metrics failed; trying again in an hour", observe.ErrorAttr(err))
+			slog.Warn("the hourly rollup or table sizes failed; trying again in an hour", observe.ErrorAttr(err))
 			observe.Report(ctx, observe.Problem{Source: observe.SourceBackground, Route: "metrics rollup", Err: err})
 		}
 	}
@@ -165,6 +171,17 @@ func deleteSilentServers(ctx context.Context, repository *store.Store) (int, err
 	run, cancel := context.WithTimeout(ctx, silentServersTimeout)
 	defer cancel()
 	return repository.DeleteSilentServerInstances(run, silentServer)
+}
+
+// tableStatsTimeout bounds writing the day's table sizes.
+const tableStatsTimeout = 30 * time.Second
+
+// recordTableStats writes today's table sizes (table_stats_daily) unless
+// another server is, or they're written already.
+func recordTableStats(ctx context.Context, repository *store.Store) (store.TableStatsRun, error) {
+	run, cancel := context.WithTimeout(ctx, tableStatsTimeout)
+	defer cancel()
+	return repository.RecordTableStats(run)
 }
 
 // rollUp runs summarizeMetrics until stopRollup is called, which waits for

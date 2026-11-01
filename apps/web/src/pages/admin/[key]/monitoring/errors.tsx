@@ -77,7 +77,7 @@ function Groups({ view }: { view: View }) {
           {groups.map((g) => (
             <TableRow key={g.id}>
               <TableCell className="max-w-md whitespace-normal">
-                <GroupBadges group={g} release={release} />
+                <GroupBadges group={g} />
                 {/* Always text: a browser's message is a user's. */}
                 <div className="mt-1 break-words text-zinc-950 dark:text-white">
                   {g.message}

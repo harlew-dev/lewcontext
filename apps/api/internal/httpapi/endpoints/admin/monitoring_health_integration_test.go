@@ -336,6 +336,10 @@ func TestAdminMonitoringPerformance(t *testing.T) {
 	if db1.Waits.Waits != 18 || db1.Waits.Minutes != 6 || db1.Statements == nil {
 		t.Fatalf("waits: %+v", db1)
 	}
+	// The test database hasn't pg_stat_statements: unavailable, saying why.
+	if st := db1.Statements; st.Available == (st.Unavailable != "") {
+		t.Fatalf("statements: %+v", st)
+	}
 	if len(page.Worker.Lag) != 1 || page.Worker.Deliveries.Series[0] != "delivered" || page.SlotsBusy != 2 {
 		t.Fatalf("worker: %+v", page.Worker)
 	}
@@ -363,7 +367,18 @@ func TestSafeStatement(t *testing.T) {
 	for query, want := range map[string]bool{
 		"SELECT u.id FROM users AS u WHERE u.email = $1":                   true,
 		"  with x AS (SELECT $1)\n SELECT * FROM x":                        true,
-		"(SELECT 1) UNION (SELECT 2)":                                      true,
+		"(SELECT $1) UNION (SELECT $2)":                                    true,
+		"SELECT t1.id FROM t1 LIMIT $1":                                    true,
+		`INSERT INTO "events" (name) VALUES ($1)`:                          true,
+		"WITH x AS (SELECT $1) INSERT INTO t SELECT * FROM x":              true,
+		"(SELECT 1) UNION (SELECT 2)":                                      false,
+		"SELECT * FROM users WHERE id = 42":                                false,
+		"select * from users where id = 12345678":                          false,
+		`SELECT 1 AS "ada@example.test"`:                                   false,
+		`SELECT $1 AS "Ada"`:                                               false,
+		`SELECT $1 AS "unterminated`:                                       false,
+		"SELECT * INTO tmp FROM users WHERE id = $1":                       false,
+		"WITH x AS (SELECT $1) SELECT * INTO tmp FROM x":                   false,
 		`UPDATE "sessions" SET last_seen_at = now() WHERE token_hash = $1`: true,
 		"SELECT * FROM users WHERE email = 'ada@example.test'":             false,
 		"SET application_name = 'x'":                                       false,
@@ -442,6 +457,11 @@ func TestAdminMonitoringErrors(t *testing.T) {
 	if client.Source != "client" || client.LastVersion != "" {
 		t.Fatalf("a browser's group: %+v", client)
 	}
+	// New since the release started (2 hours ago), by time: the first
+	// group, 30 minutes old, not the browser's, 3 hours old.
+	if !first.New || client.New {
+		t.Fatalf("new in the release: %v %v", first.New, client.New)
+	}
 	var occurrences int
 	for _, b := range page.Occurrences.Buckets {
 		for _, n := range b.Counts {
@@ -458,7 +478,7 @@ func TestAdminMonitoringErrors(t *testing.T) {
 	// One group: its stack and its route's occurrences, recorded.
 	w := adminCall(t, h, "GET", "/api/admin/errors/"+id+"?window=1h", "", "", 200, session.Cookie())
 	one := decodeAdmin[monitor.ErrorView](t, w.Body.Bytes())
-	if one.Group.ID != id || !strings.Contains(one.Group.Stack, "projects.go") || one.Release == nil || one.Window.Name != "1h" {
+	if one.Group.ID != id || !strings.Contains(one.Group.Stack, "projects.go") || one.Release == nil || one.Window.Name != "1h" || !one.Group.New {
 		t.Fatalf("one group: %+v", one)
 	}
 	if len(one.Occurrences.Series) != 1 || one.Occurrences.Series[0] != "request" {
@@ -498,7 +518,7 @@ type configurationSections struct {
 // nor a digest. Its warnings: mail off, an allowlist without the client
 // address header, migrations pending, two versions live, sessions under
 // the key being retired (counted under the server's own previous key),
-// and the proxy's address everywhere.
+// the proxy's address everywhere, and the CAPTCHA off in production.
 func TestAdminMonitoringConfiguration(t *testing.T) {
 	s, db := server(t)
 	previous := "previous-admin-key-0123456789abcdefghijklmnopqrstu"
@@ -508,7 +528,7 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	ctx := context.Background()
 	admin, session := adminSignedIn(t, db, f)
 	m := eventMaker{t, db, f}
-	secrets := []string{"AppKeyS3cretValue-0123456789", "hunter2-database-password", "MailPassw0rd-smtp-secret", "smtp-username-alice", previous, auth.Digest(previous), "metrics-token-0123456789abcdef0123"}
+	secrets := []string{"AppKeyS3cretValue-0123456789", "hunter2-database-password", "MailPassw0rd-smtp-secret", "smtp-username-alice", previous, auth.Digest(previous), "metrics-token-0123456789abcdef0123", "0x4AAAAAAAcaptcha-secret-Vq7Zr2Lm9"}
 	config := func(mail, version string, extra string) json.RawMessage {
 		return json.RawMessage(fmt.Sprintf(`{"production":true,"mailDriver":%q,"smtp":{"host":"smtp.example.test","port":587,"tls":"starttls","username":%q,"password":%q},
 			"emailVerification":"on","rateLimits":"on","clientIpHeader":"","trustedProxies":0,"adminRouteKey":true,"adminRouteKeyPrevious":true,
@@ -519,7 +539,10 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	}
 	apitest.Must(factory.ServerInstances.Sequence(func(i int, si *factory.ServerInstance) {
 		si.Version = []string{"abc1234def56", "def5678abc12"}[i]
-		si.Config = []json.RawMessage{config("smtp", "25", ""), config("off", "24", `,"note":"x"`)}[i]
+		si.Config = []json.RawMessage{
+			config("smtp", "25", `,"captchaProvider":"turnstile","captchaSiteKey":true,"captchaSecretKey":true,"captchaTestKeys":false,"perIpLimits":"on","policies":"on","captchaSecretValue":"`+secrets[7]+`"`),
+			config("off", "24", `,"note":"x","captchaProvider":"off","captchaSiteKey":false,"captchaSecretKey":false,"captchaTestKeys":false,"perIpLimits":"on","policies":"off"`),
+		}[i]
 	}).Create(ctx, db, f, 2))(t)
 	// Two admin sessions under the key being retired, one live.
 	other := withAdmin(t, db, f)
@@ -562,13 +585,34 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	if key := setting("ADMIN_ROUTE_KEY_PREVIOUS"); key.Values[0] != "set" {
 		t.Fatalf("previous key: %+v", key)
 	}
+	// The CAPTCHA's settings: the provider, its keys only as set or not.
+	// Values come in the compared servers' order; the first server (mail on)
+	// has the CAPTCHA on.
+	at := func(s monitor.Setting, mail string) string {
+		return s.Values[slices.Index(setting("MAIL_DRIVER").Values, mail)]
+	}
+	if captcha := setting("CAPTCHA_PROVIDER"); !captcha.Differs || at(captcha, "smtp") != "turnstile" || at(captcha, "off") != "off" {
+		t.Fatalf("captcha provider: %+v", captcha)
+	}
+	if key := setting("CAPTCHA_SECRET_KEY"); at(key, "smtp") != "set" || at(key, "off") != "not set" {
+		t.Fatalf("captcha secret key: %+v", key)
+	}
+	if test := setting("CAPTCHA test keys"); test.Values[0] != "not used" || test.Differs {
+		t.Fatalf("captcha test keys: %+v", test)
+	}
+	if perIP := setting("PER_IP_LIMITS"); perIP.Values[0] != "on" || perIP.Differs {
+		t.Fatalf("per-IP limits: %+v", perIP)
+	}
+	if policies := setting("POLICIES"); !policies.Differs || at(policies, "smtp") != "on" {
+		t.Fatalf("policies: %+v", policies)
+	}
 	warnings := map[string]float64{}
 	for _, w := range page.Warnings {
 		warnings[w.ID] = w.Count
 	}
 	want := map[string]float64{
 		monitor.WarnMailOff: 1, monitor.WarnAllowlistNoIP: 2, monitor.WarnMigrations: 1, monitor.WarnVersions: 2,
-		monitor.WarnPreviousKey: 1, monitor.WarnSharedAddress: 100,
+		monitor.WarnPreviousKey: 1, monitor.WarnSharedAddress: 100, monitor.WarnCaptchaOff: 1,
 	}
 	for id, n := range want {
 		if got, ok := warnings[id]; !ok || got != n {
@@ -582,5 +626,40 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 	}
 	if got := v.signal(t, "servers.versions"); got.Level != monitor.LevelWarn {
 		t.Fatalf("versions: %+v", got)
+	}
+}
+
+// The Overview reads its Integrity tile last, the cheapest checks first:
+// with the workspace checks stuck (workspace_user locked), the security
+// tiles still load, and the Integrity tile counts the checks it read,
+// marked partial, rather than going missing.
+func TestAdminMonitoringOverviewIntegrityLast(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	ctx := context.Background()
+	_, session := adminSignedIn(t, db, f)
+	m := eventMaker{t, db, f}
+	m.many(5, "auth.login_attempted", func(int) map[string]any { return map[string]any{"result": "wrong_password"} }, same("192.0.2.1"), time.Minute)
+	owner := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	workspace := apitest.Must(factory.WorkspaceFor(ctx, db, f, owner.ID))(t)
+	m.make("project.created", map[string]any{"workspace": workspace.PublicID}, "", time.Hour, func(e *factory.Event) { e.WorkspaceID = workspace.ID })
+	s.Summaries.Section = 300 * time.Millisecond
+	tx := apitest.Must(db.BeginTx(ctx, nil))(t)
+	defer func() { _ = tx.Rollback() }()
+	apitest.Must(tx.NewAddColumn().Model((*factory.WorkspaceUser)(nil)).ColumnExpr("blocker int").Exec(ctx))(t)
+
+	v := showMonitoring(t, h, session.Cookie(), "overview", "")
+	if got := v.signal(t, "auth.failed_sign_ins"); got.Unavailable || got.Value != 5 {
+		t.Fatalf("failed sign-ins: %+v", got)
+	}
+	for name, read := range map[string]int64{"integrity.critical_checks": 2, "integrity.warning_checks": 5} {
+		got := v.signal(t, name)
+		if got.Unavailable || !got.Partial || got.Sample != read || got.Value != 0 {
+			t.Fatalf("%s: %+v, want %d checks read, partial", name, got, read)
+		}
+	}
+	if last := v.Signals[len(v.Signals)-1]; last.Name != "integrity.warning_checks" {
+		t.Fatalf("read last: %s", last.Name)
 	}
 }

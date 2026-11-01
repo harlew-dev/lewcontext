@@ -34,6 +34,14 @@ export function errorMessage(error: unknown): string {
     : "Something went wrong. Please try again.";
 }
 export type Method = "POST" | "PATCH" | "DELETE";
+// What a 428 asks the browser to show: a rate limit's challenge level wants
+// a solved CAPTCHA (docs/api/rate-limits.md#challenges).
+export type Challenge = { provider: string; siteKey: string; action: string };
+// Shows the challenge and resolves with its token, or rejects (cancelled,
+// failed): ChallengeProvider's solve (lib/challenge/challenge.tsx).
+export type Solve = (challenge: Challenge) => Promise<string>;
+// The header the resent request carries the token in.
+export const challengeTokenHeader = "X-Challenge-Token";
 // A GET answered with a file rather than JSON: its text, and the headers
 // that say more about it (the Events CSV's X-Export-Truncated).
 export type TextResponse = { text: string; headers: Headers };
@@ -54,6 +62,9 @@ export type Transport = {
   credentials?: RequestCredentials;
   timeout: number;
   onResponse?: (response: Response) => void;
+  // Answers a 428 by showing the CAPTCHA; without it a 428 is an error, as
+  // for the loaders' read-only client.
+  solve?: Solve;
 };
 // An Http on a transport: browserHttp below, and the admin dashboard's
 // adminHttp (lib/api/admin.ts).
@@ -66,15 +77,50 @@ export function httpWith(transport: Transport): Http {
     text: (path) => request(transport, "GET", path, undefined, true),
   };
 }
+// A request, and once more with the token when the API answers 428 and the
+// transport can solve challenges: the awaited promise stays pending while
+// the dialog is open, so callers (useAction, useAuthSubmit, direct calls)
+// see one request that took longer. Each check runs before any side effect
+// on the server, so resending is safe; it happens at most once, and a
+// second 428 is an error like any other. The timeout is per fetch.
 async function request<T>(
-  { base, headers, credentials, timeout, onResponse }: Transport,
+  transport: Transport,
   method: string,
   path: string,
   body?: unknown,
   asText = false,
 ): Promise<T> {
+  try {
+    return await send<T>(transport, method, path, body, asText);
+  } catch (error) {
+    const challenge = challengeOf(error);
+    if (!challenge || !transport.solve) throw error;
+    const token = await transport.solve(challenge);
+    return send<T>(transport, method, path, body, asText, token);
+  }
+}
+// The challenge a 428 carries, or null for any other error.
+function challengeOf(error: unknown): Challenge | null {
+  if (!(error instanceof ApiError) || error.status !== 428) return null;
+  const challenge = error.details.challenge as Partial<Challenge> | undefined;
+  return challenge &&
+    typeof challenge.provider === "string" &&
+    typeof challenge.siteKey === "string" &&
+    typeof challenge.action === "string"
+    ? (challenge as Challenge)
+    : null;
+}
+async function send<T>(
+  { base, headers, credentials, timeout, onResponse }: Transport,
+  method: string,
+  path: string,
+  body: unknown,
+  asText: boolean,
+  token?: string,
+): Promise<T> {
   const init = new Headers(headers);
   if (body !== undefined) init.set("Content-Type", "application/json");
+  if (token !== undefined) init.set(challengeTokenHeader, token);
   const response = await fetch(base + path, {
     method,
     headers: init,
@@ -99,12 +145,14 @@ async function request<T>(
 }
 // Requests go to the same-origin /api (Go serves it; Vite proxies it in
 // development) with the session cookie; mutations add the session's CSRF
-// token when one is given.
-export function browserHttp(csrfToken?: string): Http {
+// token when one is given. With `solve` (useApi passes the page's
+// ChallengeProvider), a 428 shows the CAPTCHA and resends once.
+export function browserHttp(csrfToken?: string, solve?: Solve): Http {
   return httpWith({
     base: "",
     headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
     credentials: "same-origin",
     timeout: 12000,
+    solve,
   });
 }

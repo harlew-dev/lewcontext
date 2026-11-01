@@ -271,12 +271,12 @@ function ChartTable<K extends string>({
   total: (row: ChartRow<K>) => number;
   visible?: boolean;
 }) {
-  return (
+  const table = (
     <table
       className={
         visible
           ? "mt-4 w-full text-left text-sm/6 tabular-nums *:*:*:border-b *:*:*:border-zinc-950/5 *:*:*:py-1 *:*:*:pr-4 dark:*:*:*:border-white/5"
-          : "sr-only"
+          : undefined
       }
     >
       <caption>{label}</caption>
@@ -304,6 +304,10 @@ function ChartTable<K extends string>({
       </tbody>
     </table>
   );
+  // Hidden, inside a box that clips it: a table is never narrower than
+  // its text (sr-only keeps it on one line), so on its own it would widen
+  // a phone's page.
+  return visible ? table : <div className="sr-only">{table}</div>;
 }
 export type BarListItem = {
   key: string;
@@ -432,23 +436,26 @@ export function Sparkline({
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <table className="sr-only">
-        <caption>{label}</caption>
-        <thead>
-          <tr>
-            <th scope="col">Time</th>
-            <th scope="col">{label}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((p) => (
-            <tr key={p.label}>
-              <th scope="row">{p.label}</th>
-              <td>{format(p.value)}</td>
+      {/* In a clipping box, as ChartTable's: a table is never narrower than its text. */}
+      <div className="sr-only">
+        <table>
+          <caption>{label}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">{label}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {points.map((p) => (
+              <tr key={p.label}>
+                <th scope="row">{p.label}</th>
+                <td>{format(p.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

@@ -84,6 +84,12 @@ func (c *Config) loadSMTP() error {
 	if strings.ContainsAny(c.MailFromName, "\r\n") || strings.ContainsAny(c.SMTP.Host, " \t\r\n/") {
 		return errors.New("MAIL_FROM_NAME and SMTP_HOST can't contain line breaks")
 	}
+	// A host only: user:password@host would put a secret where the
+	// configuration's summary (and the admin Configuration page) shows
+	// the host.
+	if strings.Contains(c.SMTP.Host, "@") {
+		return errors.New("SMTP_HOST is a host name only: put the account in SMTP_USERNAME and SMTP_PASSWORD")
+	}
 	c.SMTP.TLS = env("SMTP_TLS", SMTPStartTLS)
 	if err := c.loadSMTPPort(); err != nil {
 		return err

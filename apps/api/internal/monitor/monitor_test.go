@@ -16,7 +16,7 @@ import (
 func TestSignalsAreWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	groups := events.GroupNames()
-	units := []string{UnitCount, UnitPercent, UnitMs, UnitMinutes, UnitPerMin}
+	units := []string{UnitCount, UnitPercent, UnitMs, UnitMinutes, UnitPerMin, UnitBytes}
 	for _, sig := range Signals() {
 		if sig.Name == "" || seen[sig.Name] || !strings.Contains(sig.Name, ".") {
 			t.Errorf("%q: names are unique and dotted", sig.Name)
@@ -63,7 +63,7 @@ func TestSignalsAreWellFormed(t *testing.T) {
 			}
 		}
 	}
-	if len(overviewSignals()) == 0 || len(PageNames()) != 11 {
+	if len(overviewSignals()) == 0 || len(PageNames()) != 12 {
 		t.Fatal("pages")
 	}
 }
@@ -96,11 +96,11 @@ func TestLevelOf(t *testing.T) {
 		r    Reading
 		want Level
 	}{
-		{Reading{49.9, 10}, LevelOK},
-		{Reading{50, 10}, LevelWarn},
-		{Reading{99.9, 10}, LevelWarn},
-		{Reading{100, 10}, LevelCritical},
-		{Reading{100, 9}, LevelOK},
+		{Reading{Value: 49.9, Sample: 10}, LevelOK},
+		{Reading{Value: 50, Sample: 10}, LevelWarn},
+		{Reading{Value: 99.9, Sample: 10}, LevelWarn},
+		{Reading{Value: 100, Sample: 10}, LevelCritical},
+		{Reading{Value: 100, Sample: 9}, LevelOK},
 	} {
 		if got := sig.LevelOf(c.r); got != c.want {
 			t.Errorf("%+v: %v, want %v", c.r, got, c.want)

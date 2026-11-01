@@ -24,6 +24,10 @@ func TestReason(t *testing.T) {
 		{"Spam from\u2028this account", "", false},
 		{"Spam from\x00this account", "", false},
 		{"\ufeffSpam from this account", "", false},
+		{"Spam \u2066from\u2069 this account", "", false},
+		{"Spam from this account \xff", "", false},
+		// What ordinary text needs stays (input.ValidText): an emoji's joiner.
+		{"Spam from 👩\u200d💻 accounts", "Spam from 👩\u200d💻 accounts", true},
 	} {
 		got := tc.reason
 		if ok := Reason(&got); ok != tc.ok || (ok && got != tc.want) {

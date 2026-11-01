@@ -22,11 +22,11 @@ Pinned at `baseui` 18.2.0 with React 18.3.1. BaseUI 18 needs React 18, which is 
 | `Input`, `Textarea` | `Input`, `Textarea` | The input; `Field` wires id, description and disabled state |
 | `Select` | `Listbox` | Combobox keyboard handling, option highlighting, popover positioning |
 | `Select` (`multi`, `searchable`) | `Combobox` (`combobox.tsx`) | Typing to search, ↑ ↓ and Enter, toggling an option chosen twice, the popover; kept open while picking (`closeOnSelect={false}`), the search kept (`onSelectResetsInput={false}`), Backspace removing nothing |
-| `Checkbox` | `Checkbox` (`checkbox.tsx`) | The native input (hidden but focusable), hover and focus-visible tracking, the label's click; `slot()` maps `$checked` to `data-checked` |
 | `Calendar` (`baseui/datepicker`) | `Calendar` (`calendar.tsx`) | The month grid, arrow keys, picking a day or a range, `minDate` / `maxDate` |
 | `Popover` (`StatefulPopover`) | `Dropdown` | Click trigger, positioning, focus lock, Escape and outside-click dismissal, menu ARIA |
 | `Tooltip` (`StatefulTooltip`) | `Tooltip` (`tooltip.tsx`) | Hover and keyboard-focus trigger with delays, positioning, Escape, `role="tooltip"` and `aria-describedby` |
 | `Modal` | `Dialog` | Focus lock, Escape, backdrop click, enter/leave timing |
+| `Checkbox` | `Checkbox`, `CheckboxField` (`checkbox.tsx`) | The hidden native input (keyboard, `required`, `aria-invalid`, `aria-describedby`) inside the row's `<label>`; hover and focus-visible tracking, the label's click; `slot()` maps `$checked` to `data-checked`; we draw the box and its check |
 | `Drawer` | the mobile sidebar (`sidebar-layout.tsx`) | The same as `Modal`, sliding from the left |
 | `toaster` | `toast`, `Toaster` | Timer (paused on hover/focus) and the stack |
 

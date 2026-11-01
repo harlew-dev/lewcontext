@@ -41,6 +41,7 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `auth().mfa()` | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 | `emailBlocks()` | `check(token)` (`{email, registered, blocked}`), `store(token)` (blocks; a 409 for an address with an account), `destroy(token)` (unblocks): the block link's page, by the token in the body. `paths.emailBlocks()` names the three paths |
+| `policies()` | `show()`: `{enabled: false}` or `{enabled: true, termsOfService, privacyPolicy}` (`paths.policies.show()`). `auth().register` sends `policies` (the versions) when given |
 | `clientErrors()` | `store({ message, stack, route, release })`: the web app's own error, signed in only (`lib/client-errors.ts` calls it; components don't). `paths.clientErrors().store()` |
 
 The admin dashboard has its own client, `lib/api/admin.ts`, which only admin code imports (`lib/api/index.ts` holds nothing of it, so the app build doesn't either): `const api = useAdminApi()` (inside `AdminProvider`) sends the URL's key in `X-Admin-Key` and the admin session's CSRF token, never the app's; `api.login`, `.loginMfaSetup()`, `.loginMfa(code)`, `.logout()`, `.users().index(query)`, `.show(id)`, `.workspaces().index(query)`, `.show(id)`, `.projects(workspace).index(query)`, `.events().index(filters)`, `.show(id)`, `.eventExport().show(filters)` (the Events CSV as `{ csv, truncated }`: the text, through `Http.text`, the one call answered with a file rather than JSON, which returns the text with the response's headers; `truncated` is the API's `X-Export-Truncated`, never guessed from the row count), `.catalogue()`, `.mail(window)`, `.deliveries().index(query)` (`adminPaths.events.index(...)` returns a `CursorPage`), `.admins().index()`, `.sessions().destroyOthers()`, `.emailBlocks().index(query)`, `.emailBlocks().destroy({ email, reason })` (the address only in the body), `.stepUp(code)`, and the actions, each taking the reason: `.userSessions(id).destroy(reason)`, `.userMfa(id).destroy({ reason, confirmed })`, `.userSuspension(id).store({ reason, revokeInvitations })`, `.destroy(reason)`, `.workspaceInvitations(id).destroy(reason)`, `.deliveries().retry(event, listener, reason)`, `.failedDeliveries().retry({ listener, failedSince, reason })`, `.ipBlocks().index()`, `.store({ network, expiresIn, reason })`, `.destroy(id, reason)`, `.adminSessions(id).destroy(reason)` (ids are public IDs; addresses and reasons only in bodies), with `needsStepUp(error)` recognising the 403 that asks for a code (`AdminActionDialog`); typed paths in `adminPaths` (the key is never in one); `adminHttp(key, csrf, onPreviousKey)`, its transport, which calls `onPreviousKey` on any answer with `X-Admin-Key-Status: previous` (through the transport's `onResponse`, which sees every response); `loaderAdminApi(key, onPreviousKey)` for its loaders. Pages read with `useAdminResource(path)`, whose SWR key is `["admin", adminUserId, path]`, which doesn't reload on focus or reconnect (every load is a recorded read), and whose 401 goes back to `/admin/<key>` ([../api/admin.md](../api/admin.md#web-app)).
@@ -72,13 +73,14 @@ list.loading     // nothing loaded for this path yet → <ListSkeleton />
 list.error       // message → <Notice variant="error"> with Retry
 list.missing     // the API answered 404 → render "not found"
 list.refreshing  // revalidating in the background
-list.refresh()   // Retry, refresh, or after a mutation
+list.refresh()   // Retry, or after a mutation
 ```
 
 - **SWR key** is `[path, userId]`, with the user ID from the session context, so one user never sees another's cached data.
 - **Pages fetch their own data**: there is no server rendering, so a page renders at once with skeletons. `useResource(path, fallback)` shows `fallback` (e.g. a record from an already loaded list) until the fetch returns; a `null` path fetches nothing.
 - **Polling:** `useResource(path, fallback, { refreshInterval: (data) => ms })` refreshes again after `ms`, or stops at 0: the pending invitations poll every 3 s only while one is "Sending…".
 - **Changing path** keeps the previous data in `data` while `loading` is true, and keeps it if the new request fails. Show it, dimmed, with an error `Notice` that offers Retry.
+- **No Refresh buttons.** Lists refresh on their own (focus, after a mutation, polling) and the admin pages on opening or a page reload ([../api/admin.md](../api/admin.md#web-app)); a page reload does the rest. The only reload button is Retry, on a failed load's error `Notice`.
 - **`loading`** is true only when there is no data yet for this path. `refreshing` is true while revalidating.
 - **401** redirects to `/auth/login?next=<this page>` ([pages.md](pages.md#returning-after-sign-in-next)); a 403 with `verificationRequired` to `/app/verify-email?next=<this page>`.
 - **Retries:** a failed read is retried twice (`swrConfig`, `lib/swr.ts`, set in `root.tsx`), except a 4xx: a 403 or 404 won't change, and retrying a 429 would spend more of the rate limit ([../api/rate-limits.md](../api/rate-limits.md)). The API's message ("Too many requests. Try again in 12 minutes.") shows in the error `Notice`, and Retry asks again.
@@ -110,6 +112,15 @@ list.refresh()   // Retry, refresh, or after a mutation
 - **After signing out or deleting the account,** navigate away, then call `useClearCache()`'s function (`lib/use-clear-cache.ts`), which empties SWR's cache, infinite lists included, so none of the account's data stays in memory.
 - **After deleting a project,** `ProjectActions` clears its `show` key without refetching (so Back shows "not found", not stale data) and revalidates every key `projects.matches()`.
 - **Success messages are toasts:** `toast.success("Workspace renamed.")` ([design.md](design.md#toasts)), not a `done` state and an inline Notice.
+
+## Challenges
+
+A rate limit's challenge level answers 428 with `{challenge: {provider, siteKey, action}}` ([../api/rate-limits.md](../api/rate-limits.md#challenges)). **No page handles it:** `request()` in `lib/api/http.ts` calls the transport's `solve` (`useApi()` passes `useChallenge()`'s, from `ChallengeProvider` in `root.tsx`), which opens `ChallengeDialog` and resolves with the CAPTCHA's token; the request is then resent once, same method, path and body, with `X-Challenge-Token`.
+
+- **Pending state is unchanged:** the awaited promise stays pending while the dialog is open, so `useAction`'s `busy` and `loading` stay true, the button keeps spinning and a double submit is ignored.
+- **Cancel** throws `ApiError("Check cancelled.", 428)`, shown in the form's `ErrorNotice` like any failure, with the form still filled in. A second 428 is an error too: the client never loops.
+- **Loaders** use `loaderApi()`, which has no `solve`, and are never challenged (no GET has a challenge level). The admin client has none either.
+- The 12-second timeout is per fetch; time in the dialog doesn't count.
 
 ## Reporting the app's own errors
 

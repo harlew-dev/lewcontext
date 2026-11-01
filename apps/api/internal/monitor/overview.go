@@ -116,6 +116,7 @@ var overviewTiles = []Tile{
 	{ID: "server_errors", Label: "Server errors", Page: PagePerformance, Signals: []string{"http.server_error_share"}},
 	{ID: "latency", Label: "Latency", Page: PagePerformance, Signals: []string{"http.latency_p95"}},
 	{ID: "database", Label: "Database", Page: PagePerformance, Signals: []string{"db.round_trip", "db.pool_wait_minutes"}},
+	{ID: "data", Label: "Data", Page: PageData, Signals: []string{"data.database_size", "data.prune_not_running", "data.retention_overdue"}},
 	{ID: "mail", Label: "Mail", Page: pageMail, Signals: []string{"mail.oldest_pending", "mail.failed_deliveries"}},
 	{ID: "errors", Label: "Errors", Page: PageErrors, Signals: []string{"errors.new", "errors.new_panics", "errors.open"}},
 	{ID: "integrity", Label: "Integrity", Page: PageIntegrity, Signals: []string{integrityCritical, integrityWarning}},
@@ -125,17 +126,29 @@ var overviewTiles = []Tile{
 	{ID: "sign_ups", Label: "Sign-ups", Page: PageUsage, Signals: []string{"usage.sign_ups", "usage.active_accounts"}},
 }
 
-// overviewSignals are every tile's signals, in tile order.
+// readLast are the tiles whose signals are read after every other's:
+// the integrity summaries run every check, the costliest reads on the
+// page, so a slow check uses up their own budgets and never the security
+// tiles' time.
+var readLast = []string{"integrity"}
+
+// overviewSignals are every tile's signals, in tile order apart from
+// readLast's, which come after the rest (the page shows tiles by their
+// signals' names, in tile order).
 func overviewSignals() []Signal {
-	var out []Signal
+	var first, last []Signal
 	all := Signals()
 	for _, t := range overviewTiles {
 		for _, name := range t.Signals {
 			i := slices.IndexFunc(all, func(s Signal) bool { return s.Name == name })
-			out = append(out, all[i])
+			if slices.Contains(readLast, t.ID) {
+				last = append(last, all[i])
+			} else {
+				first = append(first, all[i])
+			}
 		}
 	}
-	return out
+	return append(first, last...)
 }
 
 // overviewPage reads the tiles' sparklines over w.
@@ -172,6 +185,11 @@ func overviewPage(ctx context.Context, env Env, w Window) (Sections, error) {
 				points[i] = Point{Start: p.Start, Value: p.Value}
 			}
 			series["database"] = &TileSeries{Label: "Connections in use", Unit: UnitCount, Points: points}
+			return err
+		}},
+		{"data", func(ctx context.Context) error {
+			recorded, err := s.SummarizeEventsRecorded(ctx, w.SummaryWindow)
+			series["data"] = eventSeries("Events recorded", recorded, "events")
 			return err
 		}},
 		{"failed_sign_ins", func(ctx context.Context) error {

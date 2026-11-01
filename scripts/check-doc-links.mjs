@@ -19,6 +19,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const allowedDeadLinks = {
   "plans/README.md → future/framework.md":
     "existing; to fix: a plan that is untracked in the main checkout (plans/future/), not in the repository",
+  "apps/web/content/policy/terms-of-service.md → /policy/privacy-policy":
+    "site content, not a doc: the privacy policy page's URL, the only link form the policy renderer allows besides https: and mailto: (lib/policies.server.ts allowedHref checks it)",
 };
 
 // GitHub's id for a heading: lowercase, punctuation other than - and _

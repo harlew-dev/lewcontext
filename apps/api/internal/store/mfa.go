@@ -105,9 +105,9 @@ func mfaEnabledAt(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().Model((*mfaTOTP)(nil)).Column("t.confirmed_at").Where("t.user_id = u.id")
 }
 
-// SetupMFA stores a new sealed secret, waiting for its first code, replacing
+// SetUpMFA stores a new sealed secret, waiting for its first code, replacing
 // any setup already pending. ErrMFAEnabled while MFA is on.
-func (s *Store) SetupMFA(ctx context.Context, userID int64, sealed []byte) error {
+func (s *Store) SetUpMFA(ctx context.Context, userID int64, sealed []byte) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if err := lockUser(ctx, tx, userID); err != nil {
 			return err
@@ -336,7 +336,7 @@ func (s *Store) AnswerMFAChallenge(ctx context.Context, hash, purpose string, us
 		}
 		result.OK, result.FactorUsed = true, *used
 		return tx.NewSelect().Model(&result.User).
-			ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at").
+			ColumnExpr(userColumns).
 			ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(tx)).
 			Where("u.id = ?", userID).Scan(ctx)
 	})

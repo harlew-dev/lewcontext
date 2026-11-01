@@ -16,7 +16,7 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 | `update` | PATCH | `/things/{thing}` | change, 200 with the record | `Things.Update` |
 | `destroy` | DELETE | `/things/{thing}` | delete, 204 | `Things.Destroy` |
 
-- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes, and so does `/api/client-errors` (`account.ClientErrors`, the signed-in browser's own errors), one route.
+- **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes, and so do `/api/client-errors` (`account.ClientErrors`, the signed-in browser's own errors), one route, and `GET /api/policies` (`account.Policies.Show`, a public singleton), rather than a `policy` area for one route.
 - **One controller per file, named after its resource:** `type Projects struct{ *httpapi.Server }` in `endpoints/workspace/projects.go`, `WorkspaceProjects` in `workspace_projects.go`. The file holds the controller, its input types and its validation. An area exports only its controllers.
 - **Its methods are the actions, exported**, each a `func(http.ResponseWriter, *http.Request)`. Helpers stay unexported:
 
@@ -50,7 +50,7 @@ Every method starts with a verb:
 | `Index<Resources>` | one page of a list, search and filters included (a filter is a field on the query, not a new method) | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
 | `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindUser`, `FindProject`, `FindWorkspace` |
 | `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject` |
-| a domain verb | when it says more than create, update or delete | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation`, `Allow` |
+| a domain verb | when it says more than create, update or delete | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation`, `CountHit` |
 | `Check<Thing>` | a yes/no question about a record | `CheckPasswordReset` |
 
 - There are no noun-only methods (`Project`, `Session`).
@@ -82,7 +82,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 
 ## Rate limits (`httpapi/limits.go`)
 
-`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. Counted by is `per-ip`, `per-account`, `per-email`, `per-user` or `global` (a limit shared by everyone); `TestRateLimitNames` checks it. In `rate_limit.reached`, the level reached follows the name: `register:global:block`. Every limit has only `block` for now; the CAPTCHA plan adds `:challenge`. The declarations are grouped by feature ([Lists of declarations](#lists-of-declarations)).
+`<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. Counted by is `per-ip`, `per-account`, `per-email`, `per-user` or `global` (a limit shared by everyone); `TestRateLimitNames` checks it. In `rate_limit.reached`, the level reached follows the name: `auth:per-ip:challenge`, `register:global:block`. A limit's levels are `Challenge` and `Block`, each `ratelimit.Above(n)` or `ratelimit.Never`; challenge actions (`httpapi.ChallengeLogin`, …) are the route's verb in snake_case (`password_reset`). The declarations are grouped by feature ([Lists of declarations](#lists-of-declarations)).
 
 ## Web app
 
@@ -90,7 +90,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 | --- | --- | --- |
 | API client (`lib/api/<resource>.ts`), calls and typed paths | the API's actions, plus named verbs | `api.projects(ws).index()`, `.show(id)`, `.store(input)`, `.update(id, input)`, `.destroy(id)`; `paths.projects(ws).store()`; `api.invitations().accept(token)` |
 | Page route constants (`lib/routes.ts`) | grouped by resource, with the page actions `index`, `show`, `create`, `edit` | `routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`, `routes.members.index(ws)` |
-| Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)` |
+| Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)`, `routes.termsOfService`, `routes.privacyPolicy` |
 | Resource pages' default exports | `<Resource><Action>` | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex`; the admin dashboard's add `Admin` (`AdminUserIndex`, `AdminWorkspaceShow`), its route constants are `adminRoutes` in `lib/admin-routes.ts` and take the key (`adminRoutes.users.show(key, usr)`), and its API paths are `adminPaths` in `lib/api/admin.ts` |
 | Other pages' default exports | what the page is | `Login`, `Onboarding`, `AccountSettings`, `Dashboard` |
 
@@ -98,6 +98,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 - **URLs read naturally and don't follow the action names:** the workspace `edit` page is `/app/<wsp>/settings`.
 - **Page files are shaped like the URL** (`pages/app/[workspace]/projects/[project].tsx`).
 - **Component files** are kebab-case, grouping a family of named exports (`button.tsx`, `confirmation-dialog.tsx`); see AGENTS.md rule 6.
+- **Files in `components/`, `lib/`, `types/` and `test/`** are kebab-case; a module that must never reach the browser keeps React Router's `.server` suffix before its extension (`lib/policies.server.ts`, run only at build time).
 - **Checked** ([checks.md](checks.md)): the API client's names, page route constants, resource pages' export names and kebab-case files.
 - **Variants:** components with alternatives take a `variant` prop (`<Notice variant="error">`, `<ConfirmationDialog variant="danger">`), never `tone`, and never one component per alternative.
 

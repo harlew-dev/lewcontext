@@ -125,10 +125,10 @@ Every invitation sends an email to an address the inviter chooses. That makes in
 | Name | Limit | Refusal | Purpose |
 | --- | --- | --- | --- |
 | `invitation:per-user` | 20 / hour (the inviter) | 429 | one account, across all of its workspaces |
-| `invitation:global` | challenge above 100, block above 200 / hour ([CAPTCHA challenges](../captcha-challenges.md)) | 428 challenge, then 503 "Invitations are busy. Try again later." | caps total mail during an abuse wave |
+| `invitation:global` | challenge above 100, block above 200 / hour ([CAPTCHA challenges](captcha-challenges.md)) | 428 challenge, then 503 "Invitations are busy. Try again later." | caps total mail during an abuse wave |
 | pending cap | 50 live invitations per workspace | 422 | bounds the unpaginated list and standing links |
 
-Until the [CAPTCHA plan](../captcha-challenges.md) is built, `invitation:global` has only its block level (503 above 200). Both are `rateLimit`s in `httpapi/limits.go`, applied with `s.limit` on the route, as the [rate-limits plan](rate-limits.md) (implemented) does for projects; accepting gets the signed-in write budget.
+Until the [CAPTCHA plan](captcha-challenges.md) is built, `invitation:global` has only its block level (503 above 200). Both are `rateLimit`s in `httpapi/limits.go`, applied with `s.limit` on the route, as the [rate-limits plan](rate-limits.md) (implemented) does for projects; accepting gets the signed-in write budget.
 
 **Member quota.** This plan also adds the [rate-limits plan](rate-limits.md#quotas)'s quota of **100 members plus pending invitations per workspace** (`store.MaxWorkspaceMembers` in `store/quotas.go`), checked in `CreateInvitation` and `AcceptInvitation` under the workspace lock and returned as a `QuotaError` (422 "A workspace can have up to 100 members, counting pending invitations."). Accepting turns a pending invitation into a member, so it counts members only, excluding the invitation being accepted.
 

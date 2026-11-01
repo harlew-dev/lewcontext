@@ -18,25 +18,16 @@ export function releaseText(release: Release | null): string {
   const version = release.version || "an unknown version";
   return `The current release, ${version}, started ${formatEventTime(release.startedAt)} UTC. Groups first seen since are marked New.`;
 }
-// A group first seen since the current release started: did it break?
-export function newInRelease(group: ErrorGroup, release: Release | null) {
-  return release !== null && group.firstSeenAt >= release.startedAt;
-}
 // The badges beside a group: its source (a browser's in words that say
-// whose text it is), new in this release, resolved.
-export function GroupBadges({
-  group,
-  release,
-}: {
-  group: ErrorGroup;
-  release: Release | null;
-}) {
+// whose text it is), new in this release (first seen since it started:
+// the server's flag), resolved.
+export function GroupBadges({ group }: { group: ErrorGroup }) {
   return (
     <span className="flex flex-wrap items-center gap-2">
       <Badge color={group.source === "client" ? "purple" : "zinc"}>
         {sourceLabels[group.source]}
       </Badge>
-      {newInRelease(group, release) && <Badge color="pink">New</Badge>}
+      {group.new && <Badge color="pink">New</Badge>}
       {group.resolvedAt && <Badge color="zinc">Resolved</Badge>}
     </span>
   );

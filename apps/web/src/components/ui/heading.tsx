@@ -27,3 +27,13 @@ export function Subheading({ className, level = 2, ...props }: HeadingProps) {
     />
   );
 }
+// A heading with the line under it that describes it, kept close (8px) so
+// the line reads as its subheading rather than the next section of a form or
+// page laid out with a wider gap: the sign-in pages, status pages. Pass the
+// Heading and its Text as children.
+export function HeadingGroup({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<"hgroup">) {
+  return <hgroup {...props} className={cx(className, "space-y-2")} />;
+}

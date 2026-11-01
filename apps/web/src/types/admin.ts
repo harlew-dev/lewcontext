@@ -11,8 +11,11 @@ import type { Role } from "./workspaces";
 export const adminRoles = ["viewer", "operator"] as const;
 export type AdminRole = (typeof adminRoles)[number];
 // The signed-in admin's session, as /api/admin/me answers.
+// The signed-in admin as the admin API sends them: the account's identity,
+// without its policy agreement.
+export type AdminSessionUser = Omit<User, "policies">;
 export type AdminSession = {
-  user: User;
+  user: AdminSessionUser;
   role: AdminRole;
   csrfToken: string;
   expiresAt: string;
@@ -336,6 +339,7 @@ export const monitoringPages = [
   "accounts",
   "workspaces",
   "usage",
+  "data",
   "integrity",
   "performance",
   "errors",
@@ -352,7 +356,7 @@ export type Level = "ok" | "warn" | "critical";
 export type Signal = {
   name: string;
   label: string;
-  unit: "count" | "percent" | "ms" | "minutes" | "per_minute";
+  unit: "count" | "percent" | "ms" | "minutes" | "per_minute" | "bytes";
   value: number;
   sample: number;
   level: Level;
@@ -363,6 +367,9 @@ export type Signal = {
   drill?: Record<string, string>;
   // It couldn't be read in time: its value and level mean nothing.
   unavailable?: boolean;
+  // Only part of it was read in time (the integrity summaries: the
+  // checks read, cheapest first, in `sample`); value and level count that.
+  partial?: boolean;
 };
 // A Monitoring page's answer: its window as resolved, its signals, its
 // own sections, and the sections that couldn't be read in time (by their
@@ -674,9 +681,10 @@ export type ServerRow = {
   measuredAt: string | null;
 };
 // pg_stat_statements' statements, as PostgreSQL normalised them ($1 for
-// every constant); available false when the database doesn't have it.
+// every constant); available false when they can't be read, and why.
 export type StatementStats = {
   available: boolean;
+  unavailable?: "not_installed" | "not_loaded" | "unreadable";
   statements: {
     query: string;
     calls: number;
@@ -725,6 +733,9 @@ export type ErrorGroup = {
   // Only in a release's shape (a revision, or dev); empty otherwise.
   lastVersion: string;
   resolvedAt: string | null;
+  // First seen since the current release started (the server compares
+  // the times).
+  new: boolean;
 };
 export type Release = { version: string; startedAt: string };
 export type ErrorsSections = {
@@ -753,6 +764,79 @@ export type ConfigurationSections = {
   compared: string[];
   settings: { name: string; values: string[]; differs: boolean }[];
   warnings: { id: string; count?: number }[];
+};
+// The Data page (docs/api/monitoring.md#data): the database's size and
+// what's connected now (counts and durations only), each known table,
+// growth from the daily sizes, what fills the events table, and each
+// prune target against its retention.
+export type DataSections = {
+  database: {
+    sizeBytes: number;
+    maxConnections: number;
+    // By state; "hidden" counts another role's connections.
+    connections: { state: string; count: number }[];
+    longestQuerySeconds: number;
+    longestTransactionSeconds: number;
+    idleInTransaction: number;
+    lockWaits: number;
+    // Percent; null before any read.
+    cacheHitShare: number | null;
+  };
+  tables: {
+    name: string;
+    totalBytes: number;
+    tableBytes: number;
+    indexBytes: number;
+    liveRows: number;
+    deadRows: number;
+    lastVacuum: string | null;
+    lastAnalyze: string | null;
+    seqScans: number;
+    indexScans: number;
+    deadShare: number;
+    // Read mostly by sequential scans at a size an index would matter.
+    scanned: boolean;
+    // Dead rows past their level, waiting for a vacuum.
+    bloated: boolean;
+  }[];
+  growth: {
+    days: { day: string; liveRows: number; totalBytes: number }[];
+    tables: {
+      name: string;
+      liveRows: number;
+      totalBytes: number;
+      rowsPerDay: number;
+      bytesPerDay: number;
+    }[];
+    bytesPerDay: number;
+    projectionDays: number;
+    projectedBytes: number | null;
+  };
+  log: {
+    chart: MonitorSeries;
+    names: { name: string; count: number }[];
+    total: number;
+  };
+  retention: RetentionTarget[];
+};
+// A prune target: its age, its oldest row a run would prune, and its last
+// confirmed run (prune.completed).
+export type RetentionTarget = {
+  target: string;
+  description: string;
+  keepDays: number;
+  minimises: boolean;
+  oldest: string | null;
+  overdue: boolean;
+  lastRun: {
+    target: string;
+    at: string;
+    event: string;
+    deleted: number;
+    kept: number;
+    cutoff: string;
+  } | null;
+  notRunning: boolean;
 };
 
 // An alert as the Alerts page shows it: a signal that stayed at its level.

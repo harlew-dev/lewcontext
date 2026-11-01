@@ -123,6 +123,8 @@ func TestSensitiveKeys(t *testing.T) {
 		"occurrences": false, "groups": false,
 		"operation": false, "table": false, "server": false, "version": false, "metricsStore": false, "auth": false,
 		"locked": false, "hours": false, "minutesDeleted": false, "serversDeleted": false,
+		"level": false, "provider": false, "siteverifyErrors": false, "hostname": false, "action": false,
+		"want": false, "testing": false, "termsOfService": false, "privacyPolicy": false,
 	} {
 		if got := sensitive(key) && !safeKeys[key]; got != want {
 			t.Errorf("%q: redacted %v, want %v", key, got, want)

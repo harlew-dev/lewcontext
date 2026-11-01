@@ -1,4 +1,5 @@
 import { redirect } from "react-router";
+import type { PolicyStatus } from "@/types/policies";
 import type { Workspace } from "@/types/workspaces";
 import {
   ApiError,
@@ -102,6 +103,21 @@ export async function onboardingLoader(): Promise<
   }
   if (items > 0) throw redirect(routes.app);
   return { session };
+}
+// Register: guestLoader, and whether sign-up must agree to the policies
+// (GET /api/policies), asked at the same time. If that can't be answered
+// the form renders without the checkbox; the API's 422 brings it back.
+export async function registerLoader(
+  request: Request,
+): Promise<{ policies: PolicyStatus }> {
+  const [, policies] = await Promise.all([
+    guestLoader(request),
+    loaderApi()
+      .policies()
+      .show()
+      .catch((): PolicyStatus => ({ enabled: false })),
+  ]);
+  return { policies };
 }
 // A sign-up's code page: the sign-up this browser's cookie holds, or ended
 // when there's none (expired, finished, or never started). Signed-in

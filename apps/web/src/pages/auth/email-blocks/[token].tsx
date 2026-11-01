@@ -3,7 +3,7 @@ import { useParams } from "react-router";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
-import { Heading } from "@/components/ui/heading";
+import { Heading, HeadingGroup } from "@/components/ui/heading";
 import { Logo } from "@/components/ui/logo";
 import { Strong, Text } from "@/components/ui/text";
 import { ApiError, errorMessage, useApi } from "@/lib/api";
@@ -145,23 +145,23 @@ function BlockForm({
   return (
     <div className="grid grid-cols-1 gap-8">
       {link.blocked ? (
-        <div>
+        <HeadingGroup>
           <Heading>This address is blocked</Heading>
-          <Text className="mt-2">
+          <Text>
             <Strong>{link.email}</Strong> is blocked. You won’t receive email
             from {appName}, and it can’t be used to sign up. Keep this email:
             its link lets you unblock this address for a year.
           </Text>
-        </div>
+        </HeadingGroup>
       ) : (
-        <div>
+        <HeadingGroup>
           <Heading>Block this address?</Heading>
-          <Text className="mt-2">
+          <Text>
             Block <Strong>{link.email}</Strong>? You won’t receive any more
             email from {appName}, and this address can’t be used to sign up. You
             can undo this from this link for a year.
           </Text>
-        </div>
+        </HeadingGroup>
       )}
       {done && <Notice variant="success">{done}</Notice>}
       <ErrorNotice error={change.error} />
@@ -181,14 +181,14 @@ function BlockForm({
 function Registered({ email }: { email: string }) {
   return (
     <>
-      <div>
+      <HeadingGroup>
         <Heading>This address has an account</Heading>
-        <Text className="mt-2">
+        <Text>
           <Strong>{email}</Strong> has a {appName} account. To stop email from{" "}
           {appName}, delete your account first: sign in, then Account &amp;
           security.
         </Text>
-      </div>
+      </HeadingGroup>
       <Button href={routes.login} className="w-full">
         Sign in
       </Button>

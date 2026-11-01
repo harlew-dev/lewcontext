@@ -33,7 +33,7 @@ All were fixed before committing, apart from the few listed as accepted in each 
   1. Logs, request IDs, panic recovery, health checks: **committed `10797fd`**.
   2. Grouped errors (`app_errors`), errors from the browser: _building_.
   3. Metrics, server heartbeats, slow queries, `/metrics`.
-- **Plans written and committed:** [policies](../../policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
+- **Plans written and committed:** [policies](../../implemented/policies.md) (terms and privacy, `0a08ab5`) and the [Events page redesign](../../implemented/admin/events-page.md) (A10, `e1cd3b4`).
 
 
 > **Pause:** at about 10:00 every agent stopped on the account's 5-hour usage limit. They were resumed at 12:51, each from where it stopped. No work was lost.
@@ -44,7 +44,7 @@ You asked for every open plan to be built, with their recommendations accepted f
 
 | Line | Where | Branch | Order |
 | --- | --- | --- | --- |
-| Main | this checkout | `nimble-quartz-1f9` | A3 (**done**: phases 1–3, `10797fd`, `9ae4822`, `063d6d2`…`ec5ed7d`) → A4 monitoring (parts 1–3 **committed**; part 3 under review; _Data page building_; [findings](../findings/monitoring.md)) → A5 alerts |
+| Main | this checkout | `nimble-quartz-1f9` | A3 (**done**: phases 1–3, `10797fd`, `9ae4822`, `063d6d2`…`ec5ed7d`) → A4 monitoring (**complete**, all 12 pages; Data page under review; [findings](../findings/monitoring.md)) |
 | ui | `../lewcontext-ui` | `admin-run/ui` | the notes.md UI fixes (**done**, reviewed and fixed; [findings](../findings/notes-ui.md)) → policies (terms and privacy: **done**, reviewed and fixed; [findings](../findings/policies.md)) → captcha challenges (**done**: reviewed twice and fixed; [findings](../findings/captcha.md)) → _merging main into the ui branch, then into main_ |
 | events | `../lewcontext-events` | `admin-run/events` | the [Events page redesign](../../implemented/admin/events-page.md) (**done**, reviewed and fixed; [findings](../findings/events-page.md)) → convention checks (**done**; [findings](../findings/convention-checks.md)) → **A6 admin actions** (**done**, reviewed and fixed; [findings](../findings/actions.md); the housekeeping actions wait for A4 and A5) → **A7 compliance** (**done**, reviewed and fixed; [findings](../findings/compliance.md)) → integrated with main and **fast-forwarded into main** (`31bd50c`) → **A5 alerts** and A6's housekeeping actions (_building_) |
 | Last, on main | after the merges | | page-folders (`plans/features/page-folders.md`, another session's untracked file): it moves every page file, so it would collide with everything else |

@@ -11,17 +11,27 @@ import (
 	"golang.org/x/net/html"
 )
 
+// ThirdParty are origins the app's pages may load from besides their own:
+// the CAPTCHA provider's script and frame while one is configured
+// (Pages.AllowThirdParty), nothing otherwise. Exact origins, never a
+// keyword.
+type ThirdParty struct{ Script, Frame []string }
+
 // policy is the Content-Security-Policy for one HTML file. Scripts load only
 // from this origin, plus the file's own inline scripts by hash: React Router
 // writes a few (hydration context, module bootstrap, scroll restoration) into
 // the HTML it builds. Styles allow inline CSS because BaseUI's Styletron
-// writes <style> tags.
-func policy(hashes []string) string {
+// writes <style> tags. extra adds exact third-party origins to script-src
+// and a frame-src (never an inline script).
+func policy(hashes []string, extra ThirdParty) string {
 	script := "script-src 'self'"
 	for _, hash := range hashes {
 		script += " 'sha256-" + hash + "'"
 	}
-	return strings.Join([]string{
+	for _, origin := range extra.Script {
+		script += " " + origin
+	}
+	directives := []string{
 		"default-src 'self'",
 		script,
 		"style-src 'self' 'unsafe-inline'",
@@ -32,7 +42,11 @@ func policy(hashes []string) string {
 		"base-uri 'self'",
 		"form-action 'self'",
 		"frame-ancestors 'none'",
-	}, "; ")
+	}
+	if len(extra.Frame) > 0 {
+		directives = append(directives, "frame-src 'self' "+strings.Join(extra.Frame, " "))
+	}
+	return strings.Join(directives, "; ")
 }
 
 // scriptHashes returns the base64 SHA-256 of every inline <script> in an HTML

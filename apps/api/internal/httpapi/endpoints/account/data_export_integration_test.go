@@ -14,6 +14,7 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -187,7 +188,17 @@ func TestDownloadMyData(t *testing.T) {
 	}
 	refused := apitest.Call(t, h, "POST", "/api/auth/export", exportBody(factory.DefaultPassword), session.CSRFToken, session.Cookie(), 429)
 	apitest.RetryWithin(t, refused, 24*time.Hour)
-	apitest.Reached(t, db, "export:per-user:block")
+	// The seven requests from one address also cross auth:per-ip's
+	// challenge level, which a signed-in route skips (it names no
+	// challenge action) but records.
+	var reached []string
+	for _, e := range apitest.EventsNamed(t, db, "rate_limit.reached") {
+		reached = append(reached, fmt.Sprint(e.Payload["limit"]))
+	}
+	slices.Sort(reached)
+	if !slices.Equal(reached, []string{"auth:per-ip:challenge", "export:per-user:block"}) {
+		t.Fatalf("rate_limit.reached: %v", reached)
+	}
 	if n := len(apitest.EventsNamed(t, db, "auth.data_exported")); n != 5 {
 		t.Fatalf("%d exports recorded", n)
 	}

@@ -27,9 +27,9 @@ func NewMemory() *Memory {
 	return &Memory{windows: map[string]memoryWindow{}, now: time.Now}
 }
 
-// Allow counts a hit against key, like Store.Allow: allowed while the window
-// holds at most limit hits, and firstRefusal for the hit that first goes over.
-func (m *Memory) Allow(key string, limit int, window time.Duration) (allowed, firstRefusal bool, resetsAt time.Time) {
+// Count adds a hit to key's window, like Store.CountHit, and returns the
+// window's hits so far and when it ends.
+func (m *Memory) Count(key string, window time.Duration) (hits int, resetsAt time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
@@ -40,7 +40,36 @@ func (m *Memory) Allow(key string, limit int, window time.Duration) (allowed, fi
 	}
 	w.hits++
 	m.windows[key] = w
-	return w.hits <= limit, w.hits == limit+1, w.resetsAt
+	return w.hits, w.resetsAt
+}
+
+// CountUntil adds a hit to key's window that ends at resetsAt (another
+// key's, as Store.CountHitUntil), and returns its hits so far and when the
+// window it was counted in ends. A window that ended earlier starts again;
+// a late hit from an earlier window counts in the later one.
+func (m *Memory) CountUntil(key string, resetsAt time.Time) (int, time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sweep(m.now())
+	w, ok := m.windows[key]
+	if !ok || w.resetsAt.Before(resetsAt) {
+		w = memoryWindow{resetsAt: resetsAt}
+	}
+	w.hits++
+	m.windows[key] = w
+	return w.hits, w.resetsAt
+}
+
+// Peek is key's hits in the window that ends at resetsAt (or a later one),
+// without adding one: 0 for an earlier window or none.
+func (m *Memory) Peek(key string, resetsAt time.Time) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w, ok := m.windows[key]
+	if !ok || w.resetsAt.Before(resetsAt) {
+		return 0
+	}
+	return w.hits
 }
 
 // sweep drops ended windows, at most once a minute. The caller holds mu.

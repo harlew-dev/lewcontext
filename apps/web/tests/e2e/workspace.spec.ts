@@ -779,8 +779,12 @@ test("sign-up: the code survives a reload, and a taken email is told it has an a
     page.getByRole("heading", { name: "Check your email" }),
   ).toBeVisible();
   await expect(page.getByText(signUpEmail)).toBeVisible();
-  // A new code replaces the first.
-  await page.getByRole("button", { name: "Send a new code" }).click();
+  // A new code replaces the first, from the "Didn’t receive" dialog.
+  await page.getByRole("button", { name: "Didn’t receive the email?" }).click();
+  await page
+    .getByRole("dialog", { name: "Didn’t receive the email?" })
+    .getByRole("button", { name: "Resend code" })
+    .click();
   await expect(
     page.getByText(`We sent a new code to ${signUpEmail}.`),
   ).toBeVisible();

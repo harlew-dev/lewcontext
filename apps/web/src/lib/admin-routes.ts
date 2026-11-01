@@ -1,6 +1,7 @@
 import {
   BuildingOffice2Icon,
   ChartBarIcon,
+  CircleStackIcon,
   GlobeAltIcon,
   RectangleStackIcon,
   UserGroupIcon,
@@ -101,6 +102,8 @@ export const adminRoutes = {
       monitoringUrl(`/admin/${key}/monitoring/workspaces`, window),
     usage: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/usage`, window),
+    data: (key: string, window?: MonitoringWindow) =>
+      monitoringUrl(`/admin/${key}/monitoring/data`, window),
     integrity: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/integrity`, window),
     performance: (key: string, window?: MonitoringWindow) =>
@@ -109,7 +112,10 @@ export const adminRoutes = {
       monitoringUrl(`/admin/${key}/monitoring/errors`, window),
     // One grouped error.
     error: (key: string, error: string, window?: MonitoringWindow) =>
-      monitoringUrl(`/admin/${key}/monitoring/errors/${error}`, window),
+      monitoringUrl(
+        `/admin/${key}/monitoring/errors/${encodeURIComponent(error)}`,
+        window,
+      ),
     configuration: (key: string, window?: MonitoringWindow) =>
       monitoringUrl(`/admin/${key}/monitoring/configuration`, window),
   },
@@ -126,7 +132,7 @@ function monitoringUrl(path: string, window?: MonitoringWindow): string {
   });
 }
 // The Monitoring heading's items in the sidebar: the pages built so far
-// (plans/features/admin/monitoring.md ships them one by one).
+// (plans/features/implemented/admin/monitoring.md shipped them one by one).
 export function adminMonitoringNavigation(key: string) {
   return [
     {
@@ -163,6 +169,11 @@ export function adminMonitoringNavigation(key: string) {
       label: "Usage",
       href: adminRoutes.monitoring.usage(key),
       icon: ChartBarIcon,
+    },
+    {
+      label: "Data",
+      href: adminRoutes.monitoring.data(key),
+      icon: CircleStackIcon,
     },
     {
       label: "Integrity",

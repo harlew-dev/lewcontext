@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
 )
 
 // The Integrity page's queries (docs/api/monitoring.md#integrity): things
@@ -67,29 +68,45 @@ func checkOf(ids []string) CheckResult {
 	return out
 }
 
-// CountOwnerlessWorkspaces finds the workspaces with an event in
-// [from, to) that have no owner: a membership change or deletion bug.
-func (s *Store) CountOwnerlessWorkspaces(ctx context.Context, from, to time.Time) (CheckResult, error) {
+// IndexActiveWorkspaces lists the internal IDs of the workspaces with an
+// event in [from, to), for the workspace checks: read once per page and
+// passed to each (never shown).
+func (s *Store) IndexActiveWorkspaces(ctx context.Context, from, to time.Time) ([]int64, error) {
+	ids := []int64{}
+	err := s.activeWorkspaces(from, to).Scan(ctx, &ids)
+	return ids, err
+}
+
+// CountOwnerlessWorkspaces finds the workspaces of workspaces (internal
+// IDs: those with an event in the window) that have no owner: a
+// membership change or deletion bug.
+func (s *Store) CountOwnerlessWorkspaces(ctx context.Context, workspaces []int64) (CheckResult, error) {
+	if len(workspaces) == 0 {
+		return checkOf(nil), nil
+	}
 	owner := s.DB.NewSelect().TableExpr("workspace_user AS m").ColumnExpr("1").
 		Where("m.workspace_id = w.id AND m.role = 'owner'")
 	return checkRows(ctx, s.DB.NewSelect().TableExpr("workspaces AS w").
 		ColumnExpr("w.public_id").
-		Where("w.id IN (?)", s.activeWorkspaces(from, to)).
+		Where("w.id = ANY(?)", pgdialect.Array(workspaces)).
 		Where("NOT EXISTS (?)", owner).
 		OrderExpr("w.id"))
 }
 
-// CountWorkspacesOverQuota finds the workspaces with an event in
-// [from, to) holding more than a quota allows (projects; members and live
-// invitations; live invitations): the quota's lock was bypassed, or the
-// quota was lowered (existing rows are kept).
-func (s *Store) CountWorkspacesOverQuota(ctx context.Context, from, to time.Time) (CheckResult, error) {
+// CountWorkspacesOverQuota finds the workspaces of workspaces holding
+// more than a quota allows (projects; members and live invitations; live
+// invitations): the quota's lock was bypassed, or the quota was lowered
+// (existing rows are kept).
+func (s *Store) CountWorkspacesOverQuota(ctx context.Context, workspaces []int64) (CheckResult, error) {
+	if len(workspaces) == 0 {
+		return checkOf(nil), nil
+	}
 	counts := s.DB.NewSelect().TableExpr("workspaces AS w").
 		ColumnExpr("w.id, w.public_id").
 		ColumnExpr("(SELECT count(*) FROM projects AS p WHERE p.workspace_id = w.id) AS projects").
 		ColumnExpr("(SELECT count(*) FROM workspace_user AS m WHERE m.workspace_id = w.id) AS members").
 		ColumnExpr("(SELECT count(*) FROM workspace_invitations AS i WHERE i.workspace_id = w.id AND i.expires_at > now()) AS invitations").
-		Where("w.id IN (?)", s.activeWorkspaces(from, to))
+		Where("w.id = ANY(?)", pgdialect.Array(workspaces))
 	quotas := []any{MaxWorkspaceProjects, MaxWorkspaceMembers, MaxPendingInvitations}
 	return checkRows(ctx, s.DB.NewSelect().TableExpr("(?) AS q", counts).
 		ColumnExpr("q.public_id").
@@ -97,17 +114,20 @@ func (s *Store) CountWorkspacesOverQuota(ctx context.Context, from, to time.Time
 		OrderExpr("q.id"))
 }
 
-// CountMemberInvitations finds live invitations, in the workspaces with an
-// event in [from, to), to someone already a member: accepting didn't
-// consume one. Samples are the workspaces.
-func (s *Store) CountMemberInvitations(ctx context.Context, from, to time.Time) (CheckResult, error) {
+// CountMemberInvitations finds live invitations, in the workspaces of
+// workspaces, to someone already a member: accepting didn't consume one.
+// Samples are the workspaces.
+func (s *Store) CountMemberInvitations(ctx context.Context, workspaces []int64) (CheckResult, error) {
+	if len(workspaces) == 0 {
+		return checkOf(nil), nil
+	}
 	member := s.DB.NewSelect().TableExpr("users AS u").ColumnExpr("1").
 		Join("JOIN workspace_user AS m ON m.user_id = u.id").
 		Where("u.email = i.email AND m.workspace_id = i.workspace_id")
 	return checkRows(ctx, s.DB.NewSelect().TableExpr("workspace_invitations AS i").
 		ColumnExpr("w.public_id").
 		Join("JOIN workspaces AS w ON w.id = i.workspace_id").
-		Where("i.workspace_id IN (?)", s.activeWorkspaces(from, to)).
+		Where("i.workspace_id = ANY(?)", pgdialect.Array(workspaces)).
 		Where("i.expires_at > now()").
 		Where("EXISTS (?)", member).
 		OrderExpr("i.id"))

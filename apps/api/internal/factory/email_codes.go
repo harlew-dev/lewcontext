@@ -19,8 +19,11 @@ type PendingRegistration struct {
 	RequestID     string
 	CodeHash      string `bun:",nullzero"`
 	Attempts      int
-	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
-	ExpiresAt     time.Time `bun:",notnull"`
+	// The policy versions agreed to: nil unless RegistrationAgreedTo.
+	TermsOfServiceVersion *time.Time
+	PrivacyPolicyVersion  *time.Time
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	ExpiresAt             time.Time `bun:",notnull"`
 	// Token is the raw token in the browser's cookie, and Code the code
 	// emailed; only their digests are stored (Code's under Keys).
 	Token string `bun:"-"`
@@ -47,6 +50,13 @@ var PendingRegistrations = Define(func(f *gofakeit.Faker) PendingRegistration {
 // RegistrationFor signs up email.
 func RegistrationFor(email string) func(*PendingRegistration) {
 	return func(p *PendingRegistration) { p.Email = email }
+}
+
+// RegistrationAgreedTo is a sign-up that agreed to these policy versions.
+func RegistrationAgreedTo(terms, privacy string) func(*PendingRegistration) {
+	return func(p *PendingRegistration) {
+		p.TermsOfServiceVersion, p.PrivacyPolicyVersion = mustDate(terms), mustDate(privacy)
+	}
 }
 
 // ExpiredRegistration is past its expiry.

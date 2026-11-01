@@ -22,6 +22,16 @@ type Config struct {
 	// EmailVerification is whether emails are verified with a code
 	// (verification.go).
 	EmailVerification
+	// Captcha is the CAPTCHA provider for rate limits' challenge levels
+	// (captcha.go).
+	Captcha
+	// PerIPLimitsOff is PER_IP_LIMITS=off (on is the default, and the zero
+	// value): every level of every per-IP limit is never, for a proxy that
+	// can't send the client's address.
+	PerIPLimitsOff bool
+	// Policies (POLICIES=on) publishes the terms of service and privacy
+	// policy and makes sign-up agree to them (policies.go). Off by default.
+	Policies bool
 	// AppKey (APP_KEY, 32 bytes) seals MFA secrets at rest
 	// (encryption.go, auth.Keys).
 	AppKey []byte
@@ -71,6 +81,12 @@ func Load() (Config, error) {
 	if err := c.loadEmailVerification(); err != nil {
 		return c, err
 	}
+	if err := c.loadCaptcha(); err != nil {
+		return c, err
+	}
+	if err := c.loadPolicies(); err != nil {
+		return c, err
+	}
 	if err := c.loadAppKey(); err != nil {
 		return c, err
 	}
@@ -86,6 +102,9 @@ func Load() (Config, error) {
 	}
 	if err := c.loadClientIP(); err != nil {
 		return c, err
+	}
+	if c.Production && c.PerIPLimitsOff && c.ClientIPHeader != "" {
+		return c, errors.New("PER_IP_LIMITS=off with CLIENT_IP_HEADER set: the proxy sends each client's address, so per-IP limits can count it; remove PER_IP_LIMITS=off (it's only for a proxy that can't send the address)")
 	}
 	logging, err := LoadLogging()
 	if err != nil {

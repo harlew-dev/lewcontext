@@ -23,14 +23,13 @@ var storeVerbs = []string{"Index", "Find", "Create", "Update", "Delete", "Check"
 var domainVerbs = map[string]string{
 	"Accept":       "accepting an invitation, which joins its workspace",
 	"Acknowledge":  "an admin acknowledging an alert, which stops its reminders",
-	"Allow":        "a rate limit's counter: whether one more request is allowed",
 	"Answer":       "answering an MFA challenge with a code",
 	"Block":        "putting an email address on the block list",
 	"Change":       "changing a password, which also ends other sessions",
 	"Cleanup":      "removing expired rows the requests left behind",
 	"Digest":       "gathering alert openings past the burst limit into one email",
 	"Complete":     "completing a sign-up with its emailed code",
-	"Count":        "counting rows for a number shown elsewhere: what pruning would delete, what revoke-all would sign out, the deliveries waiting, the monitoring signals",
+	"Count":        "counting: rows for a number shown elsewhere (what pruning would delete, what revoke-all would sign out, the deliveries waiting, the monitoring signals), or a hit against a rate limit's counter (CountHit, CountHitUntil)",
 	"Disable":      "turning MFA off",
 	"Enable":       "turning MFA on, with the first recovery codes",
 	"Escalate":     "raising an open alert from warn to critical",
@@ -42,7 +41,7 @@ var domainVerbs = map[string]string{
 	"Open":         "opening an alert when a signal stayed at its level",
 	"Prune":        "deleting old rows from log tables",
 	"Pseudonymise": "minimising old events: IPs cut to a network, emails replaced by keyed pseudonyms",
-	"Record":       "recording what happened without changing app data: an event, the error collector's groups, a minute's metrics, a server's start and stop",
+	"Record":       "recording what happened without changing app data: an event, the error collector's groups, a minute's metrics, a server's start and stop, a day's table sizes",
 	"Remove":       "removing a member from a workspace",
 	"Remind":       "emailing an open, unacknowledged critical alert again",
 	"Rename":       "renaming a workspace",
@@ -51,7 +50,7 @@ var domainVerbs = map[string]string{
 	"Reset":        "resetting a password by link, or MFA from the CLI or the dashboard",
 	"Resolve":      "resolving an alert (its signal back at ok), or an error group (an admin)",
 	"Revoke":       "revoking an invitation, admin from the CLI, or sessions from the dashboard or CLI",
-	"Setup":        "existing; to fix: starting MFA setup (should be SetUp, a verb)",
+	"SetUp":        "starting MFA setup (SetUpMFA)",
 	"Silence":      "an admin silencing an alert's signal for up to a day",
 	"StepUp":       "opening an admin session's step-up window",
 	"Summarize":    "summing rows into totals: the admin Events page's chart counts, the metrics' hours, the monitoring pages' charts",
@@ -159,7 +158,7 @@ func TestStoreMethodNames(t *testing.T) {
 
 // The check itself: verbs pass, nouns and lookalikes don't.
 func TestBadStoreMethods(t *testing.T) {
-	good := []string{"IndexProjects", "FindUser", "CreateProject", "DeleteAccount", "CheckPasswordReset", "RenameWorkspace", "Allow", "StepUpAdminSession", "Claim"}
+	good := []string{"IndexProjects", "FindUser", "CreateProject", "DeleteAccount", "CheckPasswordReset", "RenameWorkspace", "CountHit", "StepUpAdminSession", "Claim"}
 	if bad := badStoreMethods(good, []string{"Claim"}); len(bad) > 0 {
 		t.Fatalf("refused: %v", bad)
 	}

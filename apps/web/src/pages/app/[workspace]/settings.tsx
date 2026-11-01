@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { CheckIcon, DocumentDuplicateIcon } from "@heroicons/react/16/solid";
 import { PasswordField } from "@/components/app/account/password-fields";
 import { WorkspaceNameField } from "@/components/app/workspaces/workspace-form";
 import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { CopyButton, CopyFailure, useCopy } from "@/components/ui/copy-button";
 import { Divider } from "@/components/ui/divider";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import {
@@ -13,21 +13,14 @@ import {
   FieldGroup,
   Label,
 } from "@/components/ui/fieldset";
-import {
-  Input,
-  InputActions,
-  InputButton,
-  InputGroup,
-} from "@/components/ui/input";
+import { Input, InputActions, InputGroup } from "@/components/ui/input";
 import {
   DangerAction,
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { Code } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
 import { ApiError, errorMessage, useApi } from "@/lib/api";
-import { cx } from "@/lib/cx";
 import { routes, type OnboardingState } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
@@ -121,16 +114,7 @@ function CopyField({
   value: string;
   lock: string;
 }) {
-  const [status, setStatus] = useState("");
-  const copied = status === "Copied";
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setStatus("Copied");
-    } catch {
-      setStatus("Couldn’t copy. Select the ID and copy it instead.");
-    }
-  }
+  const copy = useCopy(value);
   return (
     <div className="space-y-2">
       <Field locked={lock}>
@@ -142,24 +126,13 @@ function CopyField({
             onFocus={(e) => e.currentTarget.select()}
           />
           <InputActions>
-            <Tooltip content={copied ? "Copied" : "Copy"}>
-              <InputButton aria-label={`Copy ${label}`} onClick={copy}>
-                {copied ? <CheckIcon /> : <DocumentDuplicateIcon />}
-              </InputButton>
-            </Tooltip>
+            <CopyButton copy={copy} label={`Copy ${label}`} />
           </InputActions>
         </InputGroup>
       </Field>
-      {/* "Copied" shows in the tooltip; screen readers hear it from here. */}
-      <p
-        role="status"
-        className={cx(
-          "text-sm/6 text-zinc-500 dark:text-zinc-400",
-          copied && "sr-only",
-        )}
-      >
-        {status}
-      </p>
+      <CopyFailure copy={copy}>
+        Couldn’t copy. Select the ID and copy it instead.
+      </CopyFailure>
     </div>
   );
 }

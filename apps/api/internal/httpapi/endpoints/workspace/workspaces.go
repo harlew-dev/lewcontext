@@ -11,21 +11,20 @@ import (
 	"lewcontext/api/internal/store"
 	"net/http"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
 const (
-	invalidWorkspace   = "Use a workspace name of 1–80 characters."
+	invalidWorkspace   = "Use a workspace name of 1–80 characters, without invisible formatting characters."
 	wrongWorkspaceName = "Type the workspace’s name to confirm."
 )
 
-// validWorkspace trims the name and requires 1–80 characters without control
-// characters, matching the column's CHECK.
+// validWorkspace trims the name and requires 1–80 characters without
+// invisible formatting characters (input.ValidText).
 func validWorkspace(in *store.WorkspaceInput) bool {
 	in.Name = strings.TrimSpace(in.Name)
 	n := utf8.RuneCountInString(in.Name)
-	return n >= 1 && n <= 80 && !strings.ContainsFunc(in.Name, unicode.IsControl)
+	return n >= 1 && n <= 80 && input.ValidText(in.Name, false)
 }
 
 // Workspaces are the /api/workspaces routes (router/routes.go).
