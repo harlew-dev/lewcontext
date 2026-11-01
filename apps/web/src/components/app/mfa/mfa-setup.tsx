@@ -1,12 +1,11 @@
 import { useRef, useState } from "react";
 import {
   ArrowDownTrayIcon,
-  CheckIcon,
-  DocumentDuplicateIcon,
   EyeIcon,
   EyeSlashIcon,
 } from "@heroicons/react/16/solid";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Description,
   ErrorMessage,
@@ -25,7 +24,6 @@ import { Text, TextButton } from "@/components/ui/text";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { MfaSetup } from "@/lib/api";
 import { appName } from "@/lib/app";
-import { cx } from "@/lib/cx";
 import { QrCode } from "./qr-code";
 // Setting up two-factor authentication, shared by account settings and (the
 // admin access plan) an admin's first sign-in. The page around it supplies
@@ -95,22 +93,11 @@ export function MfaScanStep({
 function SetupKey({ secret }: { secret: string }) {
   const [shown, setShown] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [status, setStatus] = useState("");
   const show = useRef<HTMLElement>(null);
-  const copied = status === "Copied";
   const groups = secret.match(/.{1,4}/g) ?? [secret];
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(secret);
-      setStatus("Copied");
-    } catch {
-      setStatus("Couldn’t copy. Show the key and copy it by hand instead.");
-    }
-  }
   function hide() {
     setShown(false);
     setVisible(false);
-    setStatus("");
     // Back to the link that showed it, once it's rendered.
     requestAnimationFrame(() => show.current?.focus());
   }
@@ -139,11 +126,11 @@ function SetupKey({ secret }: { secret: string }) {
             onFocus={(e) => visible && e.currentTarget.select()}
           />
           <InputActions>
-            <Tooltip content={copied ? "Copied" : "Copy"}>
-              <InputButton aria-label="Copy setup key" onClick={copy}>
-                {copied ? <CheckIcon /> : <DocumentDuplicateIcon />}
-              </InputButton>
-            </Tooltip>
+            <CopyButton
+              value={secret}
+              label="Copy setup key"
+              failed="Couldn’t copy. Show the key and copy it by hand instead."
+            />
             <Tooltip content={visible ? "Mask" : "Show"}>
               <InputButton
                 aria-label={visible ? "Mask the key" : "Show the key"}
@@ -156,16 +143,6 @@ function SetupKey({ secret }: { secret: string }) {
           </InputActions>
         </InputGroup>
       </Field>
-      {/* "Copied" shows in the tooltip; screen readers hear it from here. */}
-      <p
-        role="status"
-        className={cx(
-          "text-sm/6 text-zinc-500 dark:text-zinc-400",
-          copied && "sr-only",
-        )}
-      >
-        {status}
-      </p>
       <Text className="text-center">
         <TextButton onClick={hide}>Hide setup key</TextButton>
       </Text>
@@ -325,8 +302,10 @@ export function RecoveryCodeList({
       </Reveal>
       <div className="flex flex-wrap justify-center gap-3">
         <CopyButton
+          variant="button"
           value={codes.join("\n")}
           label="Copy codes"
+          failed="Couldn’t copy. Reveal the codes and copy them by hand instead."
           onCopied={onSaved}
         />
         <Button outline onClick={download}>
@@ -347,38 +326,5 @@ function CodeGrid({ codes }: { codes: string[] }) {
         <li key={i}>{code}</li>
       ))}
     </ul>
-  );
-}
-// Copies value, saying whether it worked (where the clipboard isn't
-// available, the text can still be selected by hand).
-function CopyButton({
-  value,
-  label,
-  onCopied,
-}: {
-  value: string;
-  label: string;
-  onCopied?: () => void;
-}) {
-  const [status, setStatus] = useState("");
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setStatus("Copied.");
-      onCopied?.();
-    } catch {
-      setStatus("Couldn’t copy. Reveal it and copy it by hand instead.");
-    }
-  }
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <Button outline onClick={copy}>
-        <DocumentDuplicateIcon />
-        {label}
-      </Button>
-      <p role="status" className="text-sm/6 text-zinc-500 dark:text-zinc-400">
-        {status}
-      </p>
-    </div>
   );
 }

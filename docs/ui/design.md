@@ -50,8 +50,9 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `toast.tsx` | `Toaster` (mounted once by the signed-in pages) · `toast.success(message, { duration })`, `toast.error(…)` ([Toasts](#toasts)) |
 | `highlight.tsx` | `Highlight className slide` (the sliding background; `slide={false}` draws it in place) · `useHighlightGroup`, `HighlightProvider`, `useHighlight` ([Sliding highlight](#sliding-highlight)) |
 | `fieldset.tsx` | `Fieldset`, `Legend`, `FieldGroup`, `Field disabled locked` ([Locked fields](#locked-fields)), `Label`, `Description`, `ErrorMessage` (wired to the control for labels and errors; a `Label className="sr-only"` adds no space above the control, so a field beside a `SettingsSection` title lines up with it) |
-| `input.tsx` / `textarea.tsx` | `Input blurred onReveal` (a sensitive value drawn blurred over the input, `data-blurred`; with `onReveal`, a click anywhere on it, or on its "Click to reveal" tooltip, reveals it; [Secrets and sensitive values](#secrets-and-sensitive-values)), `InputGroup` (leading icon, or `InputActions` at the end: `InputButton aria-label onClick` for an icon action such as Copy, then a locked `Field`'s lock; at most two) · `Textarea` |
+| `input.tsx` / `textarea.tsx` | `Input blurred onReveal` (a sensitive value drawn blurred over the input, `data-blurred`; with `onReveal`, a click anywhere on it, or on its "Click to reveal" tooltip, reveals it; [Secrets and sensitive values](#secrets-and-sensitive-values)), `InputGroup` (leading icon, or `InputActions` at the end: `InputButton aria-label onClick` for an icon action (Copy is `CopyButton`), then a locked `Field`'s lock; at most two) · `Textarea` |
 | `otp-input.tsx` | `OtpInput value onChange invalid autoSubmit autoFocus name`: a 6-digit code (an authenticator app's) drawn as six boxes, 3 + 3, over **one** invisible BaseUI input, so a pasted "123 456", a password manager's fill (`autocomplete="one-time-code"`), the `Field` label and screen readers see one field. Keeps only digits, at most six; the caret stays after the last digit unless everything is selected. `autoSubmit` submits the form (`requestSubmit`, in an effect so the handler sees the new value) whenever a complete code goes in, never for one shown already full. Not BaseUI's `PinCode`: six inputs with one label, and a paste with a space is dropped |
+| `copy-button.tsx` | `CopyButton value label failed onCopied variant` (`icon`: an `InputButton` for an `InputGroup`'s `InputActions`, with a "Copy" tooltip on hover; `button`: an outline `Button` reading `label`). Every Copy in the app is one ([Copying](#copying)) |
 | `tooltip.tsx` | `Tooltip content placement onClick disabled open` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref. `onClick` makes the tooltip itself a pointer shortcut (it stays open while hovered), never the only way to do something; `disabled` keeps it closed without remounting the child; `open` holds it open whatever the pointer and focus do (a locked field's lock after a try at typing) |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
@@ -101,6 +102,15 @@ Two kinds of value stay unreadable until asked for, in case the screen is shared
 
 - **Secrets** let someone into the account: a QR code, a setup key, recovery codes. They stay out of the page until shown: `Reveal` renders only a decoy placeholder, and a masked field holds bullets, never the value. Never blur a secret; a screenshot of a blur can be undone.
 - **Sensitive** values are personal but grant nothing alone: your email address in account settings. They're in the page, drawn blurred with `Input blurred`, so the field still reads as a normal field (not a password) and screen readers read it. Pass `onReveal` so a click on the field reveals it, and add an eye `InputButton` (tooltip "Reveal" / "Hide", `aria-pressed`) first in its `InputActions` for the keyboard. The blur is drawn over the input, not as a text shadow, which the input would clip to its line.
+
+## Copying
+
+Every Copy button is a `CopyButton` (`components/ui/copy-button.tsx`): the workspace ID in workspace settings, the setup key and the recovery codes in two-factor setup (account settings and the admin sign-in). Don't write a clipboard call or a "Copied" message by hand.
+
+- **The answer is a tooltip on the button, never text on the page.** After a click it shows "Copied" for 3 seconds and hides itself (the icon turns to a check meanwhile); hovering or focusing the icon variant shows "Copy" as usual. It's `Tooltip open` held for that time, as a locked field's lock does.
+- **Where the clipboard isn't available** (an insecure origin, a refused permission), the tooltip says what to do instead, `failed` ("Couldn’t copy. Select the ID and copy it instead."), for 6 seconds, long enough to read.
+- **Screen readers** hear the same from a `sr-only` `role="status"` region beside the button, emptied before each copy so a second one is announced again.
+- `onCopied` runs after each copy that worked (the recovery codes count as saved).
 
 ## Confirmations
 

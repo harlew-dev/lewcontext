@@ -113,7 +113,7 @@ describe("RecoveryCodeList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy codes" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(writeText).toHaveBeenCalledWith("k7p2m-x9qfr\na1b2c-d3e4f");
-    expect(screen.getByText("Copied.")).toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Copied");
     expect(document.body).not.toHaveTextContent("k7p2m-x9qfr");
   });
   it("downloads them as a text file", async () => {
