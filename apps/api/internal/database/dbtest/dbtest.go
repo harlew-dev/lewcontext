@@ -7,6 +7,7 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/database"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,4 +52,40 @@ func Open(t *testing.T) *bun.DB {
 		t.Fatalf("test schema not active: got %q (%v)", current, err)
 	}
 	return db
+}
+
+// Explain is PostgreSQL's plan for q (a Bun query, written out by its
+// String), one line per node, with sequential scans discouraged as on a
+// table big enough to matter (a test's few rows would otherwise be read
+// whole), so a test can check that a query finds its rows through an
+// index. Nothing runs: EXPLAIN without ANALYZE only plans, inside a
+// transaction rolled back.
+func Explain(t *testing.T, db *bun.DB, q fmt.Stringer) string {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := tx.QueryContext(ctx, "EXPLAIN "+q.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, line)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(plan, "\n")
 }

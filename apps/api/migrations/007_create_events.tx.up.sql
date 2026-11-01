@@ -43,6 +43,11 @@ CREATE INDEX events_payload_workspace_idx ON events((payload->>'workspace'), cre
 CREATE INDEX events_actor_created_idx ON events(actor_id, created_at DESC) WHERE actor_id IS NOT NULL;
 -- An event's detail lists the events naming it in their request field.
 CREATE INDEX events_request_idx ON events((payload->>'request')) WHERE payload ? 'request';
+-- Erasure's (docs/compliance.md#erasure): an admin's Events search for an
+-- address (filters.email) and an admin's list search (q), found inside the
+-- account deletion's transaction without reading every admin read.
+CREATE INDEX events_search_email_idx ON events((lower(payload #>> '{filters,email}'))) WHERE payload->'filters' ? 'email';
+CREATE INDEX events_search_q_idx ON events((lower(payload->>'q'))) WHERE payload ? 'q';
 -- What the pseudonymise target has still to minimise: the last 30 days,
 -- and nothing more once it runs daily.
 CREATE INDEX events_unminimised_idx ON events(created_at) WHERE minimised_at IS NULL;

@@ -176,31 +176,38 @@ func (s *Store) eraseAccount(ctx context.Context, tx bun.Tx, target accountToEra
 
 // redactEmail replaces email (as typed, lower-cased, or as its pseudonym,
 // for events already minimised) with Redacted wherever an event keeps an
-// address: the payload's email, with the name beside it; an admin's
-// Events search (filters.email); an admin's search of a list (q), when
-// it is the whole address.
+// address (redactions).
 func redactEmail(ctx context.Context, tx bun.Tx, email string, pseudonym func(string) string) error {
+	for _, q := range redactions(tx, email, pseudonym) {
+		if _, err := q.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// redactions are erasure's updates, one per place an event keeps an
+// address: the payload's email, with the name beside it; an admin's Events
+// search (filters.email); an admin's search of a list (q), when it is the
+// whole address. They run inside the deletion's transaction, under the
+// request's timeout, so each finds its rows through a partial expression
+// index (events_email_created_idx, events_search_email_idx,
+// events_search_q_idx; TestErasureUsesItsIndexes) rather than reading
+// every admin read in the trail.
+func redactions(db bun.IDB, email string, pseudonym func(string) string) []*bun.UpdateQuery {
 	matches := bun.In([]string{strings.ToLower(email), pseudonym(email)})
-	_, err := tx.NewUpdate().Model((*eventRecord)(nil)).
-		Set(`payload = e.payload || jsonb_build_object('email', ?::text) || CASE WHEN e.payload \? 'name' THEN jsonb_build_object('name', ?::text) ELSE '{}'::jsonb END`, Redacted, Redacted).
-		Where(`e.payload \? 'email' AND lower(e.payload->>'email') IN (?)`, matches).
-		Exec(ctx)
-	if err != nil {
-		return err
-	}
 	searches := bun.In([]string{events.AdminEventListed{}.EventName(), events.AdminEventExported{}.EventName()})
-	_, err = tx.NewUpdate().Model((*eventRecord)(nil)).
-		Set(`payload = jsonb_set(e.payload, '{filters,email}', to_jsonb(?::text))`, Redacted).
-		Where("e.name IN (?)", searches).
-		Where(`lower(e.payload #>> '{filters,email}') IN (?)`, matches).
-		Exec(ctx)
-	if err != nil {
-		return err
+	return []*bun.UpdateQuery{
+		db.NewUpdate().Model((*eventRecord)(nil)).
+			Set(`payload = e.payload || jsonb_build_object('email', ?::text) || CASE WHEN e.payload \? 'name' THEN jsonb_build_object('name', ?::text) ELSE '{}'::jsonb END`, Redacted, Redacted).
+			Where(`e.payload \? 'email' AND lower(e.payload->>'email') IN (?)`, matches),
+		db.NewUpdate().Model((*eventRecord)(nil)).
+			Set(`payload = jsonb_set(e.payload, '{filters,email}', to_jsonb(?::text))`, Redacted).
+			Where("e.name IN (?)", searches).
+			Where(`e.payload->'filters' \? 'email' AND lower(e.payload #>> '{filters,email}') IN (?)`, matches),
+		db.NewUpdate().Model((*eventRecord)(nil)).
+			Set(`payload = jsonb_set(e.payload, '{q}', to_jsonb(?::text))`, Redacted).
+			Where("e.name IN (?)", bun.In(events.AdminReadNames())).
+			Where(`e.payload \? 'q' AND lower(e.payload->>'q') IN (?)`, matches),
 	}
-	_, err = tx.NewUpdate().Model((*eventRecord)(nil)).
-		Set(`payload = jsonb_set(e.payload, '{q}', to_jsonb(?::text))`, Redacted).
-		Where("e.name IN (?)", bun.In(events.AdminReadNames())).
-		Where(`lower(e.payload->>'q') IN (?)`, matches).
-		Exec(ctx)
-	return err
 }
