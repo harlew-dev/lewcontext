@@ -4,6 +4,7 @@ import {
   KeyIcon,
   NoSymbolIcon,
   QueueListIcon,
+  ShieldExclamationIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
 import {
@@ -48,6 +49,10 @@ export const adminRoutes = {
   emailBlocks: {
     index: (key: string) => `/admin/${key}/email-blocks`,
   },
+  // Client addresses and ranges every server refuses, each until it ends.
+  ipBlocks: {
+    index: (key: string) => `/admin/${key}/ip-blocks`,
+  },
   // Who holds admin: roles, MFA, last sign-in, live sessions.
   admins: {
     index: (key: string) => `/admin/${key}/admins`,
@@ -76,6 +81,11 @@ export function adminNavigation(key: string) {
       label: "Email blocks",
       href: adminRoutes.emailBlocks.index(key),
       icon: NoSymbolIcon,
+    },
+    {
+      label: "IP blocks",
+      href: adminRoutes.ipBlocks.index(key),
+      icon: ShieldExclamationIcon,
     },
     { label: "Admins", href: adminRoutes.admins.index(key), icon: KeyIcon },
   ];

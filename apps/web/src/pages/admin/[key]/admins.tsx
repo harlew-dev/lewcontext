@@ -1,8 +1,19 @@
 import { useState } from "react";
-import { ArrowDownTrayIcon } from "@heroicons/react/16/solid";
+import {
+  ArrowDownTrayIcon,
+  EllipsisHorizontalIcon,
+} from "@heroicons/react/16/solid";
+import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import { MfaBadge } from "@/components/app/admin/admin-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dropdown,
+  DropdownButton,
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+} from "@/components/ui/dropdown";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import {
@@ -17,10 +28,11 @@ import { Code, Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api";
 import { adminPaths, useAdminApi } from "@/lib/api/admin";
-import { useAdminSession } from "@/lib/admin";
+import { adminCan, useAdminSession } from "@/lib/admin";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { useAction } from "@/lib/use-action";
 import { useAdminResource } from "@/lib/use-admin-resource";
+import { useOpenCount } from "@/lib/use-open-count";
 import type {
   AdminAccount,
   AdminAccountSession,
@@ -29,8 +41,10 @@ import type {
 // Who holds admin, for an access review: each admin's role, MFA, when they
 // were granted admin and last signed in to the dashboard, and every live
 // admin session. Opening it records one read (admin.admin.listed). Roles
-// change only from the command line; the one action here signs out your own
-// other admin sessions, which any admin may do.
+// change only from the command line. Any admin may sign their own other
+// admin sessions out; an operator may sign another admin out (a lost
+// laptop, a session that moved), behind a fresh code and a reason: the one
+// action on another admin.
 export default function AdminAdminIndex() {
   const list = useAdminResource(adminPaths.admins.index());
   const admins = list.data?.data;
@@ -59,7 +73,7 @@ export default function AdminAdminIndex() {
       )}
       {admins ? (
         <>
-          <AdminTable admins={admins} />
+          <AdminTable admins={admins} onChanged={list.refresh} />
           <Subheading className="mt-12">Live sessions</Subheading>
           <SessionTable admins={admins} />
           <OtherSessions admins={admins} onDone={list.refresh} />
@@ -97,9 +111,18 @@ function setupOpen(admin: AdminAccount, now: number): boolean {
     new Date(admin.mfaSetupUntil).getTime() > now
   );
 }
-function AdminTable({ admins }: { admins: AdminAccount[] }) {
+function AdminTable({
+  admins,
+  onChanged,
+}: {
+  admins: AdminAccount[];
+  onChanged: () => void;
+}) {
   // When the page opened: what "90 days" and "open" are measured from.
   const [now] = useState(Date.now);
+  const me = useAdminSession();
+  const operator = adminCan(me.role, "operator");
+  const [signingOut, setSigningOut] = useState<AdminAccount | null>(null);
   if (admins.length === 0)
     return (
       <div className="mt-10">
@@ -110,42 +133,111 @@ function AdminTable({ admins }: { admins: AdminAccount[] }) {
       </div>
     );
   return (
-    <Table className="mt-10">
-      <TableHead>
-        <TableRow>
-          <TableHeader>Admin</TableHeader>
-          <TableHeader className="max-sm:hidden">Granted</TableHeader>
-          <TableHeader>Last sign-in</TableHeader>
-          <TableHeader className="max-md:hidden">Sessions</TableHeader>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {admins.map((admin) => (
-          <TableRow key={admin.user.id}>
-            <TableCell>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{admin.user.name}</span>
-                <Badge color={roleBadges[admin.role].color}>
-                  {roleBadges[admin.role].label}
-                </Badge>
-                <MfaBadge enabled={admin.mfaEnabled} />
-                {setupOpen(admin, now) && <Badge>Setup window open</Badge>}
-              </div>
-              <div className="text-zinc-500">{admin.user.email}</div>
-            </TableCell>
-            <TableCell className="text-zinc-500 max-sm:hidden">
-              {formatDate(admin.grantedAt, "long")}
-            </TableCell>
-            <TableCell>
-              <LastSignIn admin={admin} stale={stale(admin, now)} />
-            </TableCell>
-            <TableCell className="max-md:hidden">
-              {admin.sessions.length}
-            </TableCell>
+    <>
+      <Table className="mt-10">
+        <TableHead>
+          <TableRow>
+            <TableHeader>Admin</TableHeader>
+            <TableHeader className="max-sm:hidden">Granted</TableHeader>
+            <TableHeader>Last sign-in</TableHeader>
+            <TableHeader className="max-md:hidden">Sessions</TableHeader>
+            {operator && (
+              <TableHeader className="w-0">
+                <span className="sr-only">Actions</span>
+              </TableHeader>
+            )}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHead>
+        <TableBody>
+          {admins.map((admin) => (
+            <TableRow key={admin.user.id}>
+              <TableCell>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{admin.user.name}</span>
+                  <Badge color={roleBadges[admin.role].color}>
+                    {roleBadges[admin.role].label}
+                  </Badge>
+                  <MfaBadge enabled={admin.mfaEnabled} />
+                  {setupOpen(admin, now) && <Badge>Setup window open</Badge>}
+                </div>
+                <div className="text-zinc-500">{admin.user.email}</div>
+              </TableCell>
+              <TableCell className="text-zinc-500 max-sm:hidden">
+                {formatDate(admin.grantedAt, "long")}
+              </TableCell>
+              <TableCell>
+                <LastSignIn admin={admin} stale={stale(admin, now)} />
+              </TableCell>
+              <TableCell className="max-md:hidden">
+                {admin.sessions.length}
+              </TableCell>
+              {operator && (
+                <TableCell className="w-0 text-right">
+                  {admin.user.id !== me.user.id && (
+                    <Dropdown>
+                      <DropdownButton
+                        plain
+                        aria-label={`Actions for ${admin.user.name}`}
+                      >
+                        <EllipsisHorizontalIcon />
+                      </DropdownButton>
+                      <DropdownMenu anchor="bottom end">
+                        <DropdownItem
+                          variant="danger"
+                          onClick={() => setSigningOut(admin)}
+                        >
+                          <DropdownLabel>Sign out</DropdownLabel>
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </Dropdown>
+                  )}
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <SignOutDialog
+        admin={signingOut}
+        onClose={() => setSigningOut(null)}
+        onDone={onChanged}
+      />
+    </>
+  );
+}
+// Signing another admin out of every admin and app session: they keep
+// admin and can sign in again with their password and code. For anything
+// more (revoking admin, resetting their MFA), the command line.
+function SignOutDialog({
+  admin,
+  onClose,
+  onDone,
+}: {
+  admin: AdminAccount | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const api = useAdminApi();
+  const opened = useOpenCount(admin !== null);
+  // The last one stays rendered while the dialog animates out.
+  const [shown, setShown] = useState<AdminAccount | null>(null);
+  if (admin && admin !== shown) setShown(admin);
+  if (!shown) return null;
+  return (
+    <AdminActionDialog
+      key={opened}
+      open={admin !== null}
+      onClose={onClose}
+      title={`Sign ${shown.user.name} out?`}
+      description="Every admin session and app session of theirs ends at once. They stay an admin and can sign in again with their password and a code; to take admin away, use the command line (admin revoke)."
+      confirm="Sign out"
+      variant="danger"
+      action={(reason) => api.adminSessions(shown.user.id).destroy(reason)}
+      onDone={() => {
+        toast.success(`${shown.user.name} is signed out.`);
+        onDone();
+      }}
+    />
   );
 }
 function LastSignIn({ admin, stale }: { admin: AdminAccount; stale: boolean }) {

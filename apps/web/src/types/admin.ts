@@ -51,15 +51,26 @@ export type AdminUser = {
   admin: boolean;
   workspaceCount: number;
   lastSignedInAt: string | null;
+  // An admin suspended it: it can't sign in (AdminUserDetail.suspension
+  // says why).
+  suspended: boolean;
 };
 export type AdminMembership = {
   workspace: { id: string; name: string };
   role: Role;
   addedAt: string;
 };
+// Why an account is suspended, by whom (null from the command line, or once
+// that admin's account is gone) and since when. Shown to admins only.
+export type AdminSuspension = {
+  reason: string;
+  suspendedBy: AdminPerson | null;
+  suspendedAt: string;
+};
 export type AdminUserDetail = AdminUser & {
   memberships: AdminMembership[];
   sessionCount: number;
+  suspension: AdminSuspension | null;
 };
 export type AdminPerson = { id: string; name: string; email: string };
 export type AdminWorkspace = {
@@ -72,7 +83,11 @@ export type AdminWorkspace = {
   owners: AdminPerson[];
 };
 export type AdminMember = AdminPerson & { role: Role; addedAt: string };
-export type AdminWorkspaceDetail = AdminWorkspace & { members: AdminMember[] };
+export type AdminWorkspaceDetail = AdminWorkspace & {
+  members: AdminMember[];
+  // Live invitations: what Revoke pending invitations would revoke.
+  pendingInvitations: number;
+};
 // Sorts the lists accept; "-field" sorts descending. Mirror adminUserSorts
 // and adminWorkspaceSorts in apps/api/internal/store/admin_views.go.
 export const adminUserSortable = ["created", "name", "email"] as const;
@@ -97,6 +112,21 @@ export type AdminEmailBlockSort = Sort<
 export const defaultAdminEmailBlockSort: AdminEmailBlockSort = "-created";
 // A list page's state, kept in its URL.
 export type AdminListQuery<S> = { page: number; q: string; sort: S };
+// A client address or range every server refuses (403) until expiresAt,
+// as CIDR ("203.0.113.7/32"); createdBy is null once that admin's account
+// is gone.
+export type AdminIPBlock = {
+  id: string;
+  network: string;
+  reason: string;
+  createdBy: AdminPerson | null;
+  createdAt: string;
+  expiresAt: string;
+};
+// How long a new block lasts: at most 30 days. Mirrors ipBlockLifetimes in
+// apps/api/internal/httpapi/endpoints/admin/ip_blocks.go.
+export const ipBlockLifetimes = ["1h", "24h", "7d", "30d"] as const;
+export type IPBlockLifetime = (typeof ipBlockLifetimes)[number];
 
 // An account or workspace named inside an event: name (and an account's
 // email) are missing once it's deleted, leaving the ID from the payload.

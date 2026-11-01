@@ -94,6 +94,10 @@ export function EmailBadge({
 export function AdminBadge() {
   return <Badge color="purple">Admin</Badge>;
 }
+// An account an admin suspended: it can't sign in.
+export function SuspendedBadge() {
+  return <Badge color="red">Suspended</Badge>;
+}
 // A delivery's status, the word always beside the colour.
 const deliveryBadges: Record<
   DeliveryStatus,
