@@ -126,17 +126,29 @@ var overviewTiles = []Tile{
 	{ID: "sign_ups", Label: "Sign-ups", Page: PageUsage, Signals: []string{"usage.sign_ups", "usage.active_accounts"}},
 }
 
-// overviewSignals are every tile's signals, in tile order.
+// readLast are the tiles whose signals are read after every other's:
+// the integrity summaries run every check, the costliest reads on the
+// page, so a slow check uses up their own budgets and never the security
+// tiles' time.
+var readLast = []string{"integrity"}
+
+// overviewSignals are every tile's signals, in tile order apart from
+// readLast's, which come after the rest (the page shows tiles by their
+// signals' names, in tile order).
 func overviewSignals() []Signal {
-	var out []Signal
+	var first, last []Signal
 	all := Signals()
 	for _, t := range overviewTiles {
 		for _, name := range t.Signals {
 			i := slices.IndexFunc(all, func(s Signal) bool { return s.Name == name })
-			out = append(out, all[i])
+			if slices.Contains(readLast, t.ID) {
+				last = append(last, all[i])
+			} else {
+				first = append(first, all[i])
+			}
 		}
 	}
-	return out
+	return append(first, last...)
 }
 
 // overviewPage reads the tiles' sparklines over w.

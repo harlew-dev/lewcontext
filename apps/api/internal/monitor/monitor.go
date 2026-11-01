@@ -49,8 +49,9 @@ type Env struct {
 	// (httpapi.Server.AdminKeys), for the Configuration page's count of
 	// sessions under the key being retired.
 	AdminKeys store.AdminKeys
-	// checks keeps the integrity checks run while one page is read
-	// (integrity.go); Show sets it.
+	// checks keeps the integrity checks run while one page is read, and
+	// the workspaces with an event they look at (integrity.go); Show sets
+	// it.
 	checks *checkMemo
 }
 
@@ -66,6 +67,10 @@ type Span struct {
 type Reading struct {
 	Value  float64
 	Sample int64
+	// Partial: only some of what it counts could be read in time (the
+	// integrity summaries: the checks read, cheapest first); Value counts
+	// those.
+	Partial bool
 }
 
 // A Signal is one number worth watching, with the levels at which it's a
@@ -110,6 +115,9 @@ type Result struct {
 	// Unavailable: it couldn't be read within its budget; its value and
 	// level mean nothing.
 	Unavailable bool `json:"unavailable,omitempty"`
+	// Partial: only part of it was read within its budget; its value and
+	// level count that part (Reading.Partial).
+	Partial bool `json:"partial,omitempty"`
 }
 
 // LevelOf is the level of value read from sample.
@@ -142,7 +150,7 @@ func Read(ctx context.Context, env Env, sig Signal) (Result, error) {
 		Name: sig.Name, Label: sig.Label, Unit: sig.Unit,
 		Value: reading.Value, Sample: reading.Sample, Level: sig.LevelOf(reading),
 		Warn: sig.Warn, Critical: sig.Critical, MinSample: sig.MinSample,
-		WindowSeconds: int(sig.Window.Seconds()), DrillExact: sig.DrillExact,
+		WindowSeconds: int(sig.Window.Seconds()), DrillExact: sig.DrillExact, Partial: reading.Partial,
 	}
 	if sig.Drill != nil {
 		out.Drill = map[string]string{"window": windowName(sig.Window)}

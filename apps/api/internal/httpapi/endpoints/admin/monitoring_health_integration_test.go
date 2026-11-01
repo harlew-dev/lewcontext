@@ -584,3 +584,38 @@ func TestAdminMonitoringConfiguration(t *testing.T) {
 		t.Fatalf("versions: %+v", got)
 	}
 }
+
+// The Overview reads its Integrity tile last, the cheapest checks first:
+// with the workspace checks stuck (workspace_user locked), the security
+// tiles still load, and the Integrity tile counts the checks it read,
+// marked partial, rather than going missing.
+func TestAdminMonitoringOverviewIntegrityLast(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	f := factory.TestFaker(t)
+	ctx := context.Background()
+	_, session := adminSignedIn(t, db, f)
+	m := eventMaker{t, db, f}
+	m.many(5, "auth.login_attempted", func(int) map[string]any { return map[string]any{"result": "wrong_password"} }, same("192.0.2.1"), time.Minute)
+	owner := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	workspace := apitest.Must(factory.WorkspaceFor(ctx, db, f, owner.ID))(t)
+	m.make("project.created", map[string]any{"workspace": workspace.PublicID}, "", time.Hour, func(e *factory.Event) { e.WorkspaceID = workspace.ID })
+	s.Summaries.Section = 300 * time.Millisecond
+	tx := apitest.Must(db.BeginTx(ctx, nil))(t)
+	defer func() { _ = tx.Rollback() }()
+	apitest.Must(tx.NewAddColumn().Model((*factory.WorkspaceUser)(nil)).ColumnExpr("blocker int").Exec(ctx))(t)
+
+	v := showMonitoring(t, h, session.Cookie(), "overview", "")
+	if got := v.signal(t, "auth.failed_sign_ins"); got.Unavailable || got.Value != 5 {
+		t.Fatalf("failed sign-ins: %+v", got)
+	}
+	for name, read := range map[string]int64{"integrity.critical_checks": 2, "integrity.warning_checks": 5} {
+		got := v.signal(t, name)
+		if got.Unavailable || !got.Partial || got.Sample != read || got.Value != 0 {
+			t.Fatalf("%s: %+v, want %d checks read, partial", name, got, read)
+		}
+	}
+	if last := v.Signals[len(v.Signals)-1]; last.Name != "integrity.warning_checks" {
+		t.Fatalf("read last: %s", last.Name)
+	}
+}

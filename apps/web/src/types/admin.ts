@@ -356,6 +356,9 @@ export type Signal = {
   drill?: Record<string, string>;
   // It couldn't be read in time: its value and level mean nothing.
   unavailable?: boolean;
+  // Only part of it was read in time (the integrity summaries: the
+  // checks read, cheapest first, in `sample`); value and level count that.
+  partial?: boolean;
 };
 // A Monitoring page's answer: its window as resolved, its signals, its
 // own sections, and the sections that couldn't be read in time (by their
