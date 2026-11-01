@@ -50,6 +50,10 @@ func (h Monitoring) Show(w http.ResponseWriter, r *http.Request) {
 	}
 	admin := httpapi.Admin(r).User.PublicID
 	view, err := h.show(r.Context(), admin, page, window, now)
+	if err != nil && r.Context().Err() != nil {
+		// The admin went away: no 500, no grouped error (ClientGone).
+		err = errors.Join(r.Context().Err(), err)
+	}
 	switch {
 	case errors.Is(err, errMonitoringBusy):
 		w.Header().Set("Retry-After", "1")
@@ -77,7 +81,8 @@ var (
 )
 
 // show reads the page within its bounds: a slot (httpapi.Summaries), then
-// the deadline.
+// the deadline, each signal and section on its own budget within it
+// (monitor/sections.go). Too slow only when nothing at all was read.
 func (h Monitoring) show(ctx context.Context, admin string, page monitor.Page, window monitor.Window, now time.Time) (monitor.View, error) {
 	release, ok := h.Summaries.Acquire(ctx, admin)
 	if !ok {
@@ -89,9 +94,9 @@ func (h Monitoring) show(ctx context.Context, admin string, page monitor.Page, w
 	defer release()
 	bounded, cancel := context.WithTimeout(ctx, h.Summaries.Deadline)
 	defer cancel()
-	env := monitor.Env{Store: h.Repo, Limits: httpapi.RateLimits, Now: now}
+	env := monitor.Env{Store: h.Repo, Limits: httpapi.RateLimits, Now: now, Budget: h.Summaries.Section}
 	view, err := monitor.Show(bounded, env, page, window)
-	if err != nil && ctx.Err() == nil && bounded.Err() != nil {
+	if err != nil && ctx.Err() == nil && (bounded.Err() != nil || errors.Is(err, monitor.ErrNothingRead)) {
 		return monitor.View{}, errMonitoringTooSlow
 	}
 	return view, err

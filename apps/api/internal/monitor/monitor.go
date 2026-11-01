@@ -41,6 +41,9 @@ type Env struct {
 	Store  *store.Store
 	Limits []ratelimit.Limit
 	Now    time.Time
+	// Budget is how long a page's signal or section may take before it's
+	// shown as not loaded (sections.go); zero: no budget of its own.
+	Budget time.Duration
 }
 
 // Span is what a signal is counted over: [From, To). From is its window
@@ -90,6 +93,9 @@ type Result struct {
 	MinSample     int64             `json:"minSample,omitempty"`
 	WindowSeconds int               `json:"windowSeconds"`
 	Drill         map[string]string `json:"drill,omitempty"`
+	// Unavailable: it couldn't be read within its budget; its value and
+	// level mean nothing.
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 // LevelOf is the level of value read from sample.

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { LevelBadge, type Level } from "@/components/ui/badge";
 import { BarChart, Meter, type ChartSeries } from "@/components/ui/chart";
@@ -97,6 +97,12 @@ function spanLabel(from: string, to: string): string {
   const b = new Date(to);
   return `${formatDay(a)}, ${formatClock(a)} – ${formatDay(b)}, ${formatClock(b)}`;
 }
+// The sections the server couldn't read in time, and how to try again,
+// for SectionGate.
+const MonitoringState = createContext<{
+  unavailable: string[];
+  retry: () => void;
+}>({ unavailable: [], retry: () => {} });
 // The page's states around its content: the failure (keeping what was
 // shown, with Retry), a skeleton while nothing has loaded, the content
 // dimmed while a new window loads.
@@ -127,7 +133,14 @@ export function MonitoringBody<S>({
           aria-busy={resource.refreshing}
           className={cx(resource.refreshing && "opacity-60")}
         >
-          {children(resource.data)}
+          <MonitoringState.Provider
+            value={{
+              unavailable: resource.data.unavailable ?? [],
+              retry: resource.refresh,
+            }}
+          >
+            {children(resource.data)}
+          </MonitoringState.Provider>
         </div>
       ) : (
         resource.loading && <ListSkeleton label={label} rows={4} />
@@ -200,6 +213,15 @@ export function SignalTile({
 }) {
   const drill = useDrillHref();
   const limits = thresholds(signal);
+  if (signal.unavailable) {
+    return (
+      <Stat title={signal.label} value="Not loaded">
+        <span className="text-zinc-500 dark:text-zinc-400">
+          It took too long to read. Try again in a moment.
+        </span>
+      </Stat>
+    );
+  }
   return (
     <Stat
       title={signal.label}
@@ -258,6 +280,29 @@ export function seriesRows(
     label: bucketLabel(b.start, bucketSeconds),
     values: Object.fromEntries(m.series.map((s, i) => [s, b.counts[i] ?? 0])),
   }));
+}
+// A section that reads the parts named: when the server couldn't read one
+// in time (each part has its own budget, so the rest of the page still
+// shows), its heading and a notice with Try again in its place. Its
+// children aren't rendered then: their data is missing.
+export function SectionGate({
+  names,
+  title,
+  children,
+}: {
+  names: string[];
+  title: string;
+  children: ReactNode;
+}) {
+  const { unavailable, retry } = useContext(MonitoringState);
+  if (!names.some((n) => unavailable.includes(n))) return children;
+  return (
+    <MonitoringSection title={title}>
+      <Notice variant="error" onRetry={retry}>
+        This section took too long to load.
+      </Notice>
+    </MonitoringSection>
+  );
 }
 // A section of a page: its heading, a line saying what it shows, then its
 // content.

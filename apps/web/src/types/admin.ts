@@ -312,9 +312,12 @@ export type Signal = {
   minSample?: number;
   windowSeconds: number;
   drill?: Record<string, string>;
+  // It couldn't be read in time: its value and level mean nothing.
+  unavailable?: boolean;
 };
-// A Monitoring page's answer: its window as resolved, its signals, and its
-// own sections.
+// A Monitoring page's answer: its window as resolved, its signals, its
+// own sections, and the sections that couldn't be read in time (by their
+// key in `sections`; their data is missing).
 export type MonitoringView<S> = {
   page: MonitoringPage;
   window: {
@@ -325,6 +328,7 @@ export type MonitoringView<S> = {
   };
   signals: Signal[];
   sections: S;
+  unavailable: string[];
 };
 // A chart's numbers: a column per bucket, counts lining up with series.
 export type MonitorSeries = { series: string[]; buckets: SummaryBucket[] };

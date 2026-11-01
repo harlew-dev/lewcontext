@@ -57,7 +57,9 @@ const levelOrder: Level[] = ["ok", "warn", "critical"];
 function worst(signals: Signal[]): Level {
   return signals.reduce<Level>(
     (level, s) =>
-      levelOrder.indexOf(s.level) > levelOrder.indexOf(level) ? s.level : level,
+      !s.unavailable && levelOrder.indexOf(s.level) > levelOrder.indexOf(level)
+        ? s.level
+        : level,
     "ok",
   );
 }
@@ -97,7 +99,7 @@ function Tile({
   return (
     <Stat
       title={tile.label}
-      value={formatSignal(first)}
+      value={first.unavailable ? "Not loaded" : formatSignal(first)}
       level={worst(signals)}
       href={href}
       chart={
@@ -123,7 +125,7 @@ function Tile({
           {rest.map((s) => (
             <li key={s.name} className="flex items-center gap-2">
               <span className="font-medium text-zinc-950 tabular-nums dark:text-white">
-                {formatSignal(s)}
+                {s.unavailable ? "Not loaded" : formatSignal(s)}
               </span>
               <span className="text-zinc-500 dark:text-zinc-400">
                 {s.label}

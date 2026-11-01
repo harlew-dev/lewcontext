@@ -235,47 +235,64 @@ func overviewSignals() []Signal {
 }
 
 // overviewPage reads the tiles' sparklines over w.
-func overviewPage(ctx context.Context, env Env, w Window) (any, error) {
+func overviewPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
-	requests, err := s.SummarizeRequests(ctx, w.SummaryWindow)
+	series := map[string]*TileSeries{}
+	// Each sparkline is a part of its own, named by its tile (the request
+	// totals feed three); a tile whose part timed out has none.
+	read, err := readSections(ctx, env, nil, []section{
+		{"requests", func(ctx context.Context) error {
+			requests, err := s.SummarizeRequests(ctx, w.SummaryWindow)
+			if err != nil {
+				return err
+			}
+			series["requests"] = requestSeries("Requests", UnitCount, requests, func(b store.RequestBucket) float64 { return float64(b.Requests) })
+			series["server_errors"] = requestSeries("Server errors", UnitPercent, requests, func(b store.RequestBucket) float64 {
+				return share(b.ServerErrors, b.Requests).Value
+			})
+			series["latency"] = requestSeries("95th percentile", UnitMs, requests, func(b store.RequestBucket) float64 {
+				return Percentile(b.Durations, 0.95)
+			})
+			return nil
+		}},
+		{"failed_sign_ins", func(ctx context.Context) error {
+			signIns, err := s.SummarizeSignIns(ctx, w.SummaryWindow)
+			series["failed_sign_ins"] = eventSeries("Failed sign-ins", signIns, "wrong_password", "unknown_account")
+			return err
+		}},
+		{"limits", func(ctx context.Context) error {
+			limits, err := s.SummarizeLimitsReached(ctx, w.SummaryWindow, globalLimits(env)...)
+			series["limits"] = eventSeries("Shared limits reached", limits, limits.Series...)
+			return err
+		}},
+		{"admin_door", func(ctx context.Context) error {
+			door, err := s.SummarizeDoor(ctx, w.SummaryWindow)
+			series["admin_door"] = eventSeries("Failures and refusals", door, "failed", "refused")
+			return err
+		}},
+		{"sign_ups", func(ctx context.Context) error {
+			signUps, err := s.SummarizeEventNames(ctx, w.SummaryWindow, "auth.registered")
+			series["sign_ups"] = eventSeries("Sign-ups", signUps, "auth.registered")
+			return err
+		}},
+	})
 	if err != nil {
-		return nil, err
+		return Sections{}, err
 	}
-	signIns, err := s.SummarizeSignIns(ctx, w.SummaryWindow)
-	if err != nil {
-		return nil, err
-	}
-	limits, err := s.SummarizeLimitsReached(ctx, w.SummaryWindow, globalLimits(env)...)
-	if err != nil {
-		return nil, err
-	}
-	door, err := s.SummarizeDoor(ctx, w.SummaryWindow)
-	if err != nil {
-		return nil, err
-	}
-	signUps, err := s.SummarizeEventNames(ctx, w.SummaryWindow, "auth.registered")
-	if err != nil {
-		return nil, err
-	}
-	series := map[string]*TileSeries{
-		"requests": requestSeries("Requests", UnitCount, requests, func(b store.RequestBucket) float64 { return float64(b.Requests) }),
-		"server_errors": requestSeries("Server errors", UnitPercent, requests, func(b store.RequestBucket) float64 {
-			return share(b.ServerErrors, b.Requests).Value
-		}),
-		"latency": requestSeries("95th percentile", UnitMs, requests, func(b store.RequestBucket) float64 {
-			return Percentile(b.Durations, 0.95)
-		}),
-		"failed_sign_ins": eventSeries("Failed sign-ins", signIns, "wrong_password", "unknown_account"),
-		"limits":          eventSeries("Shared limits reached", limits, limits.Series...),
-		"admin_door":      eventSeries("Failures and refusals", door, "failed", "refused"),
-		"sign_ups":        eventSeries("Sign-ups", signUps, "auth.registered"),
+	for _, name := range read.Unavailable {
+		delete(series, name)
+		if name == "requests" {
+			delete(series, "server_errors")
+			delete(series, "latency")
+		}
 	}
 	tiles := make([]Tile, len(overviewTiles))
 	for i, t := range overviewTiles {
 		t.Series = series[t.ID]
 		tiles[i] = t
 	}
-	return overviewSections{Tiles: tiles}, nil
+	read.Value = overviewSections{Tiles: tiles}
+	return read, nil
 }
 
 // requestSeries is a sparkline of a value per request bucket.

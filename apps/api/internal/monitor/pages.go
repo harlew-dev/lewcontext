@@ -10,7 +10,7 @@ import (
 type Page struct {
 	Name     string
 	Signals  func() []Signal
-	Sections func(ctx context.Context, env Env, w Window) (any, error)
+	Sections func(ctx context.Context, env Env, w Window) (Sections, error)
 }
 
 // pages are the pages built, in the sidebar's order (the plan ships them
@@ -40,17 +40,20 @@ func FindPage(name string) (Page, bool) {
 }
 
 // View is a page as its endpoint answers: its window, its signals as read
-// at env.Now, and its sections over the window.
+// at env.Now, its sections over the window, and the sections that couldn't
+// be read within their budget (by their key in sections).
 type View struct {
-	Page     string     `json:"page"`
-	Window   WindowEcho `json:"window"`
-	Signals  []Result   `json:"signals"`
-	Sections any        `json:"sections"`
+	Page        string     `json:"page"`
+	Window      WindowEcho `json:"window"`
+	Signals     []Result   `json:"signals"`
+	Sections    any        `json:"sections"`
+	Unavailable []string   `json:"unavailable"`
 }
 
-// Show reads page p over w.
+// Show reads page p over w, each signal and section under env's budget
+// (sections.go). ErrNothingRead when no part of it could be read.
 func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
-	signals, err := ReadAll(ctx, env, p.Signals())
+	signals, read, err := readSignals(ctx, env, p.Signals())
 	if err != nil {
 		return View{}, err
 	}
@@ -58,7 +61,10 @@ func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	return View{Page: p.Name, Window: w.Echo(), Signals: signals, Sections: sections}, nil
+	if read+sections.Read == 0 {
+		return View{}, ErrNothingRead
+	}
+	return View{Page: p.Name, Window: w.Echo(), Signals: signals, Sections: sections.Value, Unavailable: sections.Unavailable}, nil
 }
 
 // Signals are every signal defined, for the docs' list and the checks

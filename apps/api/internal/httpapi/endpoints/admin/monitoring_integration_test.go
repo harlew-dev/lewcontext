@@ -191,6 +191,37 @@ func TestAdminMonitoringBounds(t *testing.T) {
 	}
 }
 
+// A section that can't be read within its budget is listed as
+// unavailable, and the rest of the page still answers: here the sessions
+// table is locked (a column being added in an open transaction), so the
+// Sessions section waits past its budget. One read is recorded, as for any
+// page served.
+func TestAdminMonitoringSectionsFailAlone(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	_, session := adminSignedIn(t, db, factory.TestFaker(t))
+	s.Summaries.Section = 300 * time.Millisecond
+	tx := apitest.Must(db.BeginTx(ctx, nil))(t)
+	defer func() { _ = tx.Rollback() }()
+	apitest.Must(tx.NewAddColumn().Model((*factory.Session)(nil)).ColumnExpr("blocker int").Exec(ctx))(t)
+	v := showMonitoring(t, h, session.Cookie(), "security", "")
+	var unavailable struct {
+		Unavailable []string `json:"unavailable"`
+	}
+	raw := adminCall(t, h, "GET", "/api/admin/monitoring/security", "", "", 200, session.Cookie())
+	apitest.Must(0, json.Unmarshal(raw.Body.Bytes(), &unavailable))(t)
+	if len(unavailable.Unavailable) != 1 || unavailable.Unavailable[0] != "sessions" {
+		t.Fatalf("unavailable: %v", unavailable.Unavailable)
+	}
+	if len(v.Signals) == 0 || v.signal(t, "auth.failed_sign_ins").Unavailable {
+		t.Fatalf("signals: %+v", v.Signals)
+	}
+	if n := len(apitest.EventsNamed(t, db, "admin.monitoring.viewed")); n != 2 {
+		t.Fatalf("%d reads recorded for two pages served", n)
+	}
+}
+
 // Each Security signal is ok just under its threshold and at its level
 // just over it, and its drill-down lists exactly the rows it counted.
 func TestAdminMonitoringSecuritySignals(t *testing.T) {

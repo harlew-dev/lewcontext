@@ -271,57 +271,69 @@ type sessions struct {
 	store.SessionCounts
 }
 
-// securityPage reads the Security page's sections over w.
-func securityPage(ctx context.Context, env Env, w Window) (any, error) {
+// securityPage reads the Security page's sections over w, each on its
+// own budget (its key in the sections names it).
+func securityPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
-	var out securitySections
-	var err error
-	steps := []func() error{
-		func() (err error) { out.SignIns, err = s.SummarizeSignIns(ctx, w.SummaryWindow); return },
-		func() (err error) { out.Stuffing, err = s.IndexStuffing(ctx, w.hourly()); return },
-		func() (err error) { out.Guessing, err = s.IndexGuessing(ctx, w.hourly()); return },
-		func() (err error) { out.Unknown, err = s.CountUnknownAccounts(ctx, w.From, w.To); return },
-		func() (err error) {
+	out := &securitySections{}
+	return readSections(ctx, env, out, []section{
+		{"signIns", func(ctx context.Context) (err error) {
+			out.SignIns, err = s.SummarizeSignIns(ctx, w.SummaryWindow)
+			return
+		}},
+		{"stuffing", func(ctx context.Context) (err error) { out.Stuffing, err = s.IndexStuffing(ctx, w.hourly()); return }},
+		{"guessing", func(ctx context.Context) (err error) { out.Guessing, err = s.IndexGuessing(ctx, w.hourly()); return }},
+		{"unknown", func(ctx context.Context) (err error) {
+			out.Unknown, err = s.CountUnknownAccounts(ctx, w.From, w.To)
+			return
+		}},
+		{"successAfterFailures", func(ctx context.Context) (err error) {
 			out.SuccessAfterFailures, err = s.IndexSuccessAfterFailures(ctx, w.hourly())
 			return
-		},
-		func() (err error) { out.Takeovers, err = s.IndexTakeovers(ctx, w.From, w.To); return },
-		func() (err error) {
+		}},
+		{"takeovers", func(ctx context.Context) (err error) {
+			out.Takeovers, err = s.IndexTakeovers(ctx, w.From, w.To)
+			return
+		}},
+		{"secondFactor", func(ctx context.Context) (err error) {
 			out.SecondFactor.Failures, err = s.IndexFailedChecks(ctx, store.CheckSecondFactor, w.hourly())
 			return
-		},
-		func() (err error) { out.SecondFactor.BackupCodes, err = s.CountBackupCodes(ctx, w.From, w.To); return },
-		func() (err error) {
+		}},
+		{"secondFactor", func(ctx context.Context) (err error) {
+			out.SecondFactor.BackupCodes, err = s.CountBackupCodes(ctx, w.From, w.To)
+			return
+		}},
+		{"reauthentication", func(ctx context.Context) (err error) {
 			out.Reauthentication, err = s.IndexFailedChecks(ctx, store.CheckPassword, w.hourly())
 			return
-		},
-		func() (err error) {
+		}},
+		{"resets", func(ctx context.Context) (err error) {
 			out.Resets, err = readFlow(ctx, env, w, passwordResetGlobal, "auth.password_reset.requested", "auth.password_reset.sent", "auth.password_reset.requested")
 			return
-		},
-		func() (err error) {
+		}},
+		{"signUps", func(ctx context.Context) (err error) {
 			out.SignUps, err = readFlow(ctx, env, w, registerGlobal, "auth.registration.requested", "auth.registered", "auth.registered")
 			return
-		},
-		func() error {
+		}},
+		{"adminDoor", func(ctx context.Context) error {
 			counts, err := s.CountDoor(ctx, w.From, w.To)
 			out.AdminDoor.Counts = outcomes(counts, store.DoorOutcomes)
 			return err
-		},
-		func() (err error) { out.AdminDoor.Series, err = s.SummarizeDoor(ctx, w.SummaryWindow); return },
-		func() (err error) { out.AdminDoor.Recent, err = s.IndexDoorEvents(ctx, w.From, w.To); return },
-		func() (err error) {
+		}},
+		{"adminDoor", func(ctx context.Context) (err error) {
+			out.AdminDoor.Series, err = s.SummarizeDoor(ctx, w.SummaryWindow)
+			return
+		}},
+		{"adminDoor", func(ctx context.Context) (err error) {
+			out.AdminDoor.Recent, err = s.IndexDoorEvents(ctx, w.From, w.To)
+			return
+		}},
+		{"sessions", func(ctx context.Context) (err error) {
 			out.Sessions.Series, err = s.SummarizeEventNames(ctx, w.SummaryWindow, "auth.logged_in")
 			return
-		},
-		func() (err error) { out.Sessions.SessionCounts, err = s.CountSessions(ctx); return },
-	}
-	for _, step := range steps {
-		if err = step(); err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
+		}},
+		{"sessions", func(ctx context.Context) (err error) { out.Sessions.SessionCounts, err = s.CountSessions(ctx); return }},
+	})
 }
 
 // readFlow reads a flow: asked for and done per bucket, the top addresses
