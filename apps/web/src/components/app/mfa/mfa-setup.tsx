@@ -227,6 +227,57 @@ export function CodeField({
     </Field>
   );
 }
+// A code from the authenticator app (six boxes) or, after "Lost your
+// device?", a recovery code, where either one works: account settings'
+// disabling MFA and replacing the recovery codes, and the admin dashboard's
+// step-up (AdminActionDialog). Switching clears what was typed.
+export function AppOrRecoveryCode({
+  value,
+  onChange,
+  error,
+  disabled,
+  autoFocus = false,
+  description,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  disabled: boolean;
+  // Focus the code when it appears (a step asked for after the fact).
+  autoFocus?: boolean;
+  // Why the code is asked for, read with the field.
+  description?: string;
+}) {
+  const [recovery, setRecovery] = useState(false);
+  return (
+    <div className="space-y-3">
+      <CodeField
+        key={recovery ? "recovery" : "app"}
+        label={recovery ? "Recovery code" : "Authentication code"}
+        value={value}
+        onChange={onChange}
+        error={error}
+        disabled={disabled}
+        recovery={recovery}
+        autoFocus={autoFocus}
+        description={description}
+      />
+      <Text>
+        <TextButton
+          disabled={disabled}
+          onClick={() => {
+            setRecovery(!recovery);
+            onChange("");
+          }}
+        >
+          {recovery
+            ? "Use your authenticator app instead"
+            : "Lost your device? Use a recovery code"}
+        </TextButton>
+      </Text>
+    </div>
+  );
+}
 // New recovery codes, shown once: hidden until revealed, with Copy and
 // Download (which work hidden too). onSaved runs the first time the codes
 // are revealed, copied or downloaded, so the page can let the visitor go on.

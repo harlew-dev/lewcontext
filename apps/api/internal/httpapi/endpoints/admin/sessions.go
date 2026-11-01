@@ -252,7 +252,7 @@ func (h Sessions) endAdminChallenge(w http.ResponseWriter, r *http.Request, hash
 			return
 		}
 	}
-	h.clearAdminCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
+	clearCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
 	httpapi.Fail(w, 401, message)
 }
 
@@ -287,7 +287,7 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 		httpapi.InternalError(w, err)
 		return
 	}
-	h.clearAdminCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
+	clearCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
 	http.SetCookie(w, auth.AdminCookie(token, h.Config.Production))
 	body := map[string]any{"user": user, "role": role, "csrfToken": csrf, "expiresAt": expires}
 	for key, value := range extra {
@@ -310,7 +310,7 @@ func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
 		httpapi.InternalError(w, err)
 		return
 	}
-	h.clearAdminCookie(w, auth.AdminCookie("", h.Config.Production))
+	clearCookie(w, auth.AdminCookie("", h.Config.Production))
 	w.WriteHeader(204)
 }
 
@@ -326,9 +326,9 @@ func (h Sessions) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-// clearAdminCookie tells the browser to drop cookie (an admin session or
+// clearCookie tells the browser to drop cookie (an admin session or
 // challenge cookie, built empty).
-func (h Sessions) clearAdminCookie(w http.ResponseWriter, cookie *http.Cookie) {
+func clearCookie(w http.ResponseWriter, cookie *http.Cookie) {
 	cookie.MaxAge = -1
 	cookie.Expires = time.Unix(0, 0)
 	http.SetCookie(w, cookie)

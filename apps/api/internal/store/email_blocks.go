@@ -143,26 +143,45 @@ func (s *Store) UnblockEmail(ctx context.Context, hash string) error {
 		if err != nil {
 			return err
 		}
-		_, err = s.unblock(ctx, tx, email, events.UnblockedByLink)
+		_, err = s.unblock(ctx, tx, email, events.UnblockedByLink, EventScope{})
 		return err
 	})
 }
 
-// UnblockEmailAddress takes email off the block list for the command line,
-// recording email.unblocked, or returns ErrEmailNotBlocked.
-func (s *Store) UnblockEmailAddress(ctx context.Context, email string) error {
+// AdminUnblock is an admin taking an address off the block list from the
+// dashboard (UnblockEmailAddress), and why.
+type AdminUnblock struct {
+	Admin  User
+	Reason string
+}
+
+// UnblockEmailAddress takes email off the block list by its address, or
+// returns ErrEmailNotBlocked, recording nothing. With admin nil it's the
+// operator's command line: email.unblocked (by: cli), with no actor. With
+// an admin it's the dashboard's Unblock: email.unblocked (by: admin) and
+// admin.email.unblocked (the admin, the address and the reason), both with
+// the admin as actor, in the same transaction as the delete.
+func (s *Store) UnblockEmailAddress(ctx context.Context, email string, admin *AdminUnblock) error {
+	by, scope := events.UnblockedByCLI, EventScope{}
+	if admin != nil {
+		by, scope = events.UnblockedByAdmin, EventScope{ActorID: admin.Admin.ID}
+	}
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		removed, err := s.unblock(ctx, tx, email, events.UnblockedByCLI)
+		removed, err := s.unblock(ctx, tx, email, by, scope)
 		if err == nil && !removed {
 			return ErrEmailNotBlocked
 		}
-		return err
+		if err != nil || admin == nil {
+			return err
+		}
+		e := events.AdminEmailUnblocked{Admin: admin.Admin.PublicID, Email: email, Reason: admin.Reason}
+		return s.record(ctx, tx, e, scope)
 	})
 }
 
 // unblock deletes email's block and, when there was one, records
-// email.unblocked by by.
-func (s *Store) unblock(ctx context.Context, tx bun.Tx, email, by string) (bool, error) {
+// email.unblocked by by, with scope.
+func (s *Store) unblock(ctx context.Context, tx bun.Tx, email, by string, scope EventScope) (bool, error) {
 	res, err := tx.NewDelete().Model((*emailBlock)(nil)).Where("email = ?", email).Exec(ctx)
 	if err != nil {
 		return false, err
@@ -170,7 +189,7 @@ func (s *Store) unblock(ctx context.Context, tx bun.Tx, email, by string) (bool,
 	if n, err := res.RowsAffected(); err != nil || n == 0 {
 		return false, err
 	}
-	return true, s.record(ctx, tx, events.EmailUnblocked{Email: email, By: by}, EventScope{})
+	return true, s.record(ctx, tx, events.EmailUnblocked{Email: email, By: by}, scope)
 }
 
 // FindEmailBlock is email's block, or ErrEmailNotBlocked.

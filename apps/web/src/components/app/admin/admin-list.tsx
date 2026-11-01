@@ -16,7 +16,7 @@ import type {
   AdminListQuery,
   DeliveryStatus,
 } from "@/types/admin";
-// Shared by the admin dashboard's Users and Workspaces lists: their URL
+// Shared by the admin dashboard's Users, Workspaces and Email blocks lists: their URL
 // state (?q=&sort=&page=), a sortable header row, and the account badges;
 // and by Events and Mail: a delivery's status badge.
 
@@ -47,6 +47,8 @@ export type AdminColumn<F extends string> = {
   field?: F;
   first?: SortDirection;
   className?: string;
+  // Named for screen readers only (the ⋯ menus' column).
+  hidden?: boolean;
 };
 // A header row whose sortable columns link to their sort.
 export function AdminTableHead<F extends string>({
@@ -60,14 +62,14 @@ export function AdminTableHead<F extends string>({
 }) {
   return (
     <TableRow>
-      {columns.map(({ label, field, first, className }) => (
+      {columns.map(({ label, field, first, className, hidden }) => (
         <TableHeader
           key={label}
           className={className}
           href={field ? sortHref(toggleSort(sort, field, first)) : undefined}
           sort={field ? sortDirection(sort, field) : undefined}
         >
-          {label}
+          {hidden ? <span className="sr-only">{label}</span> : label}
         </TableHeader>
       ))}
     </TableRow>

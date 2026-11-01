@@ -1,6 +1,6 @@
 # Blocking an email address
 
-Status: **implemented 2026-11-01** (see [Built so far](#built-so-far) for where the build differs, and the docs updated). Revised 2026-11-01 for email verification, the existing `cmd/admin` and migrations 011–017, and to make every refusal silent (decisions 2, 3, 14). The admin dashboard's block list and unblocking (decisions 17–21 here) moved to their own plan, [admin/email-blocks](../admin/email-blocks.md). Builds on [email delivery](email-delivery.md) (the SMTP driver, the per-recipient rule in [mail.md](../../../docs/api/mail.md#who-gets-email-and-how-often)), [workspace invitations](workspace-invitations.md) and [email verification](email-verification.md).
+Status: **implemented 2026-11-01** (see [Built so far](#built-so-far) for where the build differs, and the docs updated). Revised 2026-11-01 for email verification, the existing `cmd/admin` and migrations 011–017, and to make every refusal silent (decisions 2, 3, 14). The admin dashboard's block list and unblocking (decisions 17–21 here) moved to their own plan, [admin/email-blocks](admin/email-blocks.md) (implemented 2026-11-01). Builds on [email delivery](email-delivery.md) (the SMTP driver, the per-recipient rule in [mail.md](../../../docs/api/mail.md#who-gets-email-and-how-often)), [workspace invitations](workspace-invitations.md) and [email verification](email-verification.md).
 
 ## Why
 
@@ -211,7 +211,7 @@ The address is in the payload (decision 6), as it is for sign-in attempts, reset
 | 15 | Sign-up with a blocked address (verification off) | Refused with the taken-email 409 that mode already gives. Allowing it would leave an account whose mail is blocked (no password reset), or let anyone lift someone's block by typing their address, since that mode doesn't prove ownership. **Confirmed 2026-11-01.** |
 | 16 | Where the controller lives | `account.EmailBlocks`, keeping `/api/email-blocks`; noted in naming.md. **Confirmed 2026-11-01.** |
 
-Decisions 17–21 (the admin dashboard's block list and unblocking) moved to [admin/email-blocks](../admin/email-blocks.md) as its decisions 1–5, still to confirm.
+Decisions 17–21 (the admin dashboard's block list and unblocking) moved to [admin/email-blocks](admin/email-blocks.md) as its decisions 1–5, confirmed and implemented 2026-11-01.
 
 ## Built so far
 
@@ -221,7 +221,7 @@ Decisions 1–16 shipped on 2026-11-01. Docs updated: [mail.md](../../../docs/ap
 - **The code page's line** is "If you blocked this address, no code can reach it: unblock it from the link in our email first." The shared code step already says to check the spam folder.
 - **The mailer** keeps `subjects` and adds a `blockable` set beside it, rather than one `templates` map. `Blocks.IssueEmailBlockLink(ctx, email, hash)` stores a digest the mailer made (`auth.Token` in `Send`, as listeners make the other tokens), and only after both parts have rendered. `mail.New` refuses a mailer without `Blocks` or `Origin`. **Every** mail listener treats `ErrBlocked` as done (`done(err)`), not only the invitation and sign-up ones.
 - **Events** carry `email` (and `by`) only: the IP is the `events.ip` column, as for every event (no payload has an `ip` field, `TestPayloadsHoldNothingSensitive`). `email` is a new event area in the name test and naming.md.
-- **`email_block_links.token_hash`** is `text`, like the other tables' digests, not `bytea`; there's no `email` index ([admin/email-blocks](../admin/email-blocks.md) adds one for its page).
+- **`email_block_links.token_hash`** is `text`, like the other tables' digests, not `bytea`; there's no `email` index here ([admin/email-blocks](admin/email-blocks.md) added one, on `(email, expires_at)`, for its page).
 - **Extra store methods:** `FindEmailBlock` (the command line's preview) and `UnblockEmailAddress` (by address, `by: "cli"`), beside `UnblockEmail` (by link).
 - **The page's status message** is a success `Notice` ("Address blocked." / "Address unblocked."): sign-in pages have no `Toaster`.
 
@@ -231,6 +231,6 @@ Decisions 1–16 shipped on 2026-11-01. Docs updated: [mail.md](../../../docs/ap
 - **A block link on password reset, sign-up codes or security mail.**
 - **Telling an inviter an address is blocked** (decision 2).
 - **A way for registered users to refuse invitations** ("Don't accept invitations" in settings). `invitation:per-email` caps them meanwhile.
-- **Blocks in the admin dashboard.** `admin blocks` lists them; the page and unblocking from it are [admin/email-blocks](../admin/email-blocks.md).
+- **Blocks in the admin dashboard.** `admin blocks` lists them; the page and unblocking from it are [admin/email-blocks](admin/email-blocks.md).
 - **Removing pending invitations on block** (decision 9).
 - **Workspace notifications and their settings** (their own plan; the opt-in rule is already in mail.md).

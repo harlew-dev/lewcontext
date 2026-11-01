@@ -21,6 +21,11 @@ const (
 	// AdminSetupWindow is how long after admin grant (or an MFA reset) an
 	// admin may set up MFA at the door.
 	AdminSetupWindow = 24 * time.Hour
+	// AdminStepUpWindow is how long a fresh code at POST /api/admin/step-up
+	// lets an admin session take account-and-access actions (unblocking an
+	// address): long enough for several in a row, as a TOTP code works
+	// once per 30 seconds.
+	AdminStepUpWindow = 5 * time.Minute
 )
 
 // AdminKeyMatch is which configured ADMIN_ROUTE_KEY a key a request sent

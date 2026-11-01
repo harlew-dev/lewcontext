@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { signUpThroughApi } from "./mail";
+import { codeFor } from "./totp";
 // The run's admin key, made by playwright.config.ts and passed to the server.
 const key = process.env.E2E_ADMIN_ROUTE_KEY!;
 const stamp = Date.now();
@@ -23,30 +23,6 @@ test.afterAll(() => {
   sql(`DELETE FROM users WHERE email IN ('${adminEmail}', '${otherEmail}')`);
   sql(`DELETE FROM events WHERE payload->>'email' = '${brokenEmail}'`);
 });
-// An authenticator app's code for a base32 setup key, `ahead` 30-second
-// steps from now (RFC 6238), as mfa.spec.ts computes it.
-function codeFor(setupKey: string, ahead: number): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const bytes: number[] = [];
-  let bits = 0;
-  let value = 0;
-  for (const c of setupKey.replace(/\s/g, "")) {
-    value = (value << 5) | alphabet.indexOf(c);
-    bits += 5;
-    if (bits >= 8) {
-      bytes.push((value >>> (bits - 8)) & 255);
-      bits -= 8;
-    }
-  }
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + ahead));
-  const mac = createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
-  const offset = mac[mac.length - 1] & 15;
-  return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(
-    6,
-    "0",
-  );
-}
 // Creates an account through the API, then forgets its session.
 async function register(page: Page, email: string, name: string) {
   await signUpThroughApi(page.request, { name, email, password });

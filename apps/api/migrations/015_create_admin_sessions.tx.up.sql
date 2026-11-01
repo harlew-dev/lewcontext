@@ -6,7 +6,12 @@
 -- them (cascade). ip and user_agent are where the session was signed in
 -- from (shown on the Admins page); a session isn't bound to them, but the
 -- first request from another network sets moved_at and records
--- admin.session.moved, once.
+-- admin.session.moved, once. stepped_up_until is the end of the step-up
+-- window a fresh code opens (POST /api/admin/step-up): the dashboard's
+-- account-and-access actions need it ahead of now(). Null: never stepped up.
+-- It belongs to this session only, and ends with it. step_up_failures
+-- counts this session's wrong step-up codes: the fifth ends the session
+-- (admin.session.ended), as five wrong codes end a sign-in's challenge.
 CREATE TABLE admin_sessions (
  token_hash text PRIMARY KEY,
  user_id bigint NOT NULL REFERENCES admins(user_id) ON DELETE CASCADE,
@@ -17,7 +22,9 @@ CREATE TABLE admin_sessions (
  expires_at timestamptz NOT NULL,
  ip inet NOT NULL,
  user_agent text NOT NULL DEFAULT '' CHECK (length(user_agent) <= 256),
- moved_at timestamptz
+ moved_at timestamptz,
+ stepped_up_until timestamptz,
+ step_up_failures integer NOT NULL DEFAULT 0 CHECK (step_up_failures >= 0)
 );
 CREATE INDEX admin_sessions_user_id_idx ON admin_sessions(user_id);
 CREATE INDEX admin_sessions_expires_at_idx ON admin_sessions(expires_at);

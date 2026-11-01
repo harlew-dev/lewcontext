@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/httpapi"
 	"lewcontext/api/internal/httpapi/apitest"
 	"net/http"
 	"os"
@@ -65,9 +66,9 @@ func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
 		`signedIn.OwnSessions("POST", "/logout"`:     "signing out: ends only this session",
 		`signedIn.OwnSessions("DELETE", "/sessions"`: "signing out your other admin sessions (decision 5): only takes your own access away, so no role or code",
 	}
-	registration := regexp.MustCompile(`^\s*(\w+)\.(Handle|HandleFunc|Role|OwnSessions)\("(\w+)", "([^"]*)"`)
+	registration := regexp.MustCompile(`^\s*(\w+)\.(Handle|HandleFunc|Role|Action|OwnSessions)\("(\w+)", "([^"]*)"`)
 	// Any call that registers a route, however it's written.
-	call := regexp.MustCompile(`\b(\w+)\.(Handle|HandleFunc|Role|OwnSessions|handle)\(`)
+	call := regexp.MustCompile(`\b(\w+)\.(Handle|HandleFunc|Role|Action|OwnSessions|handle)\(`)
 	found := map[string]bool{}
 	for _, line := range strings.Split(inside, "\n") {
 		c := call.FindStringSubmatch(line)
@@ -83,7 +84,15 @@ func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
 			t.Errorf("a registration this test can't read (write it on one line, method and path as string literals): %s", strings.TrimSpace(line))
 			continue
 		}
-		if m[3] == "GET" || m[3] == "HEAD" || m[2] == "Role" {
+		if m[3] == "GET" || m[3] == "HEAD" || m[2] == "Action" {
+			continue
+		}
+		// An operator's mutation is an Action (a fresh code and the action
+		// limit), apart from the step-up that opens the window.
+		if m[2] == "Role" {
+			if !strings.Contains(line, "auth.AdminViewer") && !(m[3] == "POST" && m[4] == "/step-up") {
+				t.Errorf("%s %s is an operator mutation registered with Role: register it with Action", m[3], m[4])
+			}
 			continue
 		}
 		registered := fmt.Sprintf(`%s.%s(%q, %q`, m[1], m[2], m[3], m[4])
@@ -117,9 +126,32 @@ func TestAdminMutationsNeedARole(t *testing.T) {
 	}
 	signedIn := group(http.NewServeMux(), "/api/admin")
 	signedIn.requireAdminRoles = true
+	signedIn.server = &httpapi.Server{}
 	signedIn.HandleFunc("GET", "/things", ok)
-	signedIn.Role("POST", "/things", auth.AdminOperator, ok)
+	signedIn.Role("POST", "/things", auth.AdminViewer, ok)
+	signedIn.Role("POST", "/step-up", auth.AdminOperator, ok)
+	signedIn.Action("DELETE", "/things", ok)
 	signedIn.OwnSessions("DELETE", "/sessions", ok)
+	// An operator's mutation other than the step-up must be an Action.
+	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/email-blocks"}, {"PATCH", "/step-up"}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("Role(operator) took %s %s", route[0], route[1])
+				}
+			}()
+			signedIn.Role(route[0], route[1], auth.AdminOperator, ok)
+		}()
+	}
+	// Action is only for the signed-in admin group.
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("Action registered outside the admin group")
+			}
+		}()
+		group(http.NewServeMux(), "/api/workspaces/{workspace}").Action("POST", "/things", ok)
+	}()
 	signedIn.OwnSessions("POST", "/logout", ok)
 	// OwnSessions takes only the admin's own session routes.
 	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/users/{user}"}, {"POST", "/sessions"}, {"DELETE", "/logout"}} {

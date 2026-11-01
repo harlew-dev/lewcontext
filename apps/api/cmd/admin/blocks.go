@@ -60,7 +60,7 @@ func unblock(args []string) {
 		fmt.Println("Nothing changed. Re-run with -confirm (make admin cmd=unblock email=… CONFIRM=1) to unblock it.")
 		return
 	}
-	if err := repository.UnblockEmailAddress(ctx, address); err != nil {
+	if err := repository.UnblockEmailAddress(ctx, address, nil); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("%s is unblocked: it gets email and can sign up again.\n", address)

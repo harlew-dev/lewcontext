@@ -50,6 +50,11 @@ type adminSessionRecord struct {
 	IP            string    `bun:"ip,type:inet,notnull"`
 	UserAgent     string    `bun:",notnull"`
 	MovedAt       *time.Time
+	// SteppedUpUntil ends the step-up window a fresh code opened
+	// (StepUpAdminSession); nil when it never did.
+	SteppedUpUntil *time.Time
+	// StepUpFailures counts its wrong step-up codes; the fifth ends it.
+	StepUpFailures int `bun:",notnull"`
 }
 
 // Admin is an admin account. MFASetupUntil is when their setup window at
@@ -69,7 +74,9 @@ func (a Admin) SetupOpen() bool {
 // AdminSession is a live admin session and its admin. KeyHash is the digest
 // of the key it was made under, for the caller to check against the key the
 // request came with; IP is where it signed in, and Moved whether it has
-// been used from another network since (admin.session.moved).
+// been used from another network since (admin.session.moved). SteppedUp is
+// whether its step-up window is open, by the database's clock as its expiry
+// is (httpapi.RequireAdminStepUp).
 type AdminSession struct {
 	User                 User
 	Role                 auth.AdminRole
@@ -77,6 +84,7 @@ type AdminSession struct {
 	KeyHash              string
 	IP                   string
 	Moved                bool
+	SteppedUp            bool
 	CreatedAt, ExpiresAt time.Time
 }
 
@@ -197,9 +205,13 @@ func (s *Store) grantAdmin(ctx context.Context, tx bun.Tx, u User, role auth.Adm
 
 // changeAdminRole gives the admin u role instead of from and records
 // admin.updated. The setup window is left as it was. The admin's sessions
-// carry on with the new role from their next request.
+// carry on with the new role from their next request, but their step-up
+// windows close: an action under the new role needs a fresh code.
 func (s *Store) changeAdminRole(ctx context.Context, tx bun.Tx, u User, from, role auth.AdminRole) error {
 	if _, err := tx.NewUpdate().Model((*adminRecord)(nil)).Set("role = ?", role).Where("user_id = ?", u.ID).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.NewUpdate().Model((*adminSessionRecord)(nil)).Set("stepped_up_until = NULL").Where("user_id = ?", u.ID).Exec(ctx); err != nil {
 		return err
 	}
 	changes := events.Changes{}
@@ -306,16 +318,16 @@ func (s *Store) FindAdminSession(ctx context.Context, hash, keyHash string) (Adm
 	active := s.DB.NewUpdate().Model((*adminSessionRecord)(nil)).
 		Set("last_seen_at = now()").
 		Where("token_hash = ? AND key_hash = ? AND expires_at > now() AND last_seen_at > now() - make_interval(secs => ?)", hash, keyHash, adminIdleSeconds).
-		Returning("user_id, csrf_token, key_hash, host(ip) AS ip, moved_at IS NOT NULL AS moved, created_at, expires_at")
+		Returning("user_id, csrf_token, key_hash, host(ip) AS ip, moved_at IS NOT NULL AS moved, coalesce(stepped_up_until > now(), false) AS stepped_up, created_at, expires_at")
 	var session AdminSession
 	err := s.DB.NewSelect().
 		With("active", active).
 		TableExpr("active AS a").
 		Join("JOIN admins AS adm ON adm.user_id = a.user_id").
 		Join("JOIN users AS u ON u.id = a.user_id").
-		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, adm.role, a.csrf_token, a.key_hash, a.ip, a.moved, a.created_at, a.expires_at").
+		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, adm.role, a.csrf_token, a.key_hash, a.ip, a.moved, a.stepped_up, a.created_at, a.expires_at").
 		ColumnExpr("(?)", mfaEnabledAt(s.DB)).
-		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.Role, &session.CSRF, &session.KeyHash, &session.IP, &session.Moved, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
+		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.Role, &session.CSRF, &session.KeyHash, &session.IP, &session.Moved, &session.SteppedUp, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
 	return session, err
 }
 
@@ -346,6 +358,97 @@ func (s *Store) FlagAdminSessionMoved(ctx context.Context, hash string, admin Us
 		}
 		return s.record(ctx, tx, e, EventScope{ActorID: admin.ID})
 	})
+}
+
+// adminStepUpSeconds is auth.AdminStepUpWindow, for make_interval.
+var adminStepUpSeconds = int(auth.AdminStepUpWindow.Seconds())
+
+// MaxStepUpFailures is how many wrong step-up codes end an admin session,
+// as MaxChallengeAttempts end a sign-in's challenge: a stolen admin cookie
+// gets one burst of guesses (which also spend the account's
+// mfa:per-account), never a way to keep the real admin locked out.
+const MaxStepUpFailures = 5
+
+// StepUpResult is how a step-up went: OK (the window is open), or a wrong
+// code, Ended when it was the session's MaxStepUpFailures-th and the
+// session is gone.
+type StepUpResult struct {
+	OK    bool
+	Ended bool
+	FactorUsed
+}
+
+// StepUpAdminSession opens the step-up window of the live admin session
+// hash, of admin's, for auth.AdminStepUpWindow from now (the database's
+// clock), once the second factor f checks out. The code is checked and used
+// up exactly as at the door's second step (useConfirmedFactor, under the
+// authenticator's row lock): an authenticator code only for a step after
+// the last one used, a recovery code once. A wrong code (or none: MFA off)
+// counts against the session; the MaxStepUpFailures-th deletes it and
+// records admin.session.ended. A right code doesn't reset the count, so a
+// session gets MaxStepUpFailures wrong codes in its whole life.
+// sql.ErrNoRows when the session ended meanwhile (nothing is used up).
+func (s *Store) StepUpAdminSession(ctx context.Context, hash string, admin User, f SecondFactor) (StepUpResult, error) {
+	var result StepUpResult
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		result = StepUpResult{}
+		factor, err := useConfirmedFactor(ctx, tx, admin.ID, f)
+		if errors.Is(err, ErrWrongCode) || errors.Is(err, ErrMFANotEnabled) {
+			result.Ended, err = s.failStepUp(ctx, tx, hash, admin)
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		res, err := tx.NewUpdate().Model((*adminSessionRecord)(nil)).
+			Set("stepped_up_until = now() + make_interval(secs => ?)", adminStepUpSeconds).
+			Where("token_hash = ? AND user_id = ?", hash, admin.ID).
+			Where(liveAdminSession, adminIdleSeconds).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		if err := oneRow(res); err != nil {
+			return err
+		}
+		result.OK, result.FactorUsed = true, *factor
+		return nil
+	})
+	return result, err
+}
+
+// liveAdminSession is the condition for an admin session that hasn't ended:
+// not expired, nor idle (its argument is adminIdleSeconds).
+const liveAdminSession = "expires_at > now() AND last_seen_at > now() - make_interval(secs => ?)"
+
+// failStepUp counts a wrong step-up code against the live session hash,
+// and at MaxStepUpFailures deletes it and records admin.session.ended,
+// reporting whether it ended. sql.ErrNoRows when it already had.
+func (s *Store) failStepUp(ctx context.Context, tx bun.Tx, hash string, admin User) (bool, error) {
+	var failures int
+	err := tx.NewUpdate().Model((*adminSessionRecord)(nil)).
+		Set("step_up_failures = step_up_failures + 1").
+		Where("token_hash = ? AND user_id = ?", hash, admin.ID).
+		Where(liveAdminSession, adminIdleSeconds).
+		Returning("step_up_failures").
+		Scan(ctx, &failures)
+	if err != nil || failures < MaxStepUpFailures {
+		return false, err
+	}
+	if _, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("token_hash = ?", hash).Exec(ctx); err != nil {
+		return false, err
+	}
+	e := events.AdminSessionEnded{Admin: admin.PublicID, Reason: events.AdminSessionEndedStepUpFailures}
+	return true, s.record(ctx, tx, e, EventScope{ActorID: admin.ID})
+}
+
+// oneRow is sql.ErrNoRows unless res changed exactly one row.
+func oneRow(res sql.Result) error {
+	n, err := res.RowsAffected()
+	if err == nil && n != 1 {
+		err = sql.ErrNoRows
+	}
+	return err
 }
 
 // DeleteOtherAdminSessions signs out every admin session of the admin's but

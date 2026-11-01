@@ -28,7 +28,15 @@ Build them in this order. Each one assumes the ones above it are done, and later
 | 18 | [admin/actions](features/admin/actions.md): step-up codes, reasons and the `operator` role; sign out, reset MFA, suspend, retry deliveries, IP blocks, revoke a workspace's invitations, acknowledge alerts | 14, 13, 16, 17 | decisions to confirm |
 | 19 | [admin/compliance](features/admin/compliance.md): retention per kind of data, pseudonymisation, erasure of traces, "Download my data", audit lines shipped off the host, the data map and incident runbook | 13, 15, 18 | decisions to confirm |
 | 20 | [email-verification](features/implemented/email-verification.md): `EMAIL_VERIFICATION` (on by default), a 6-digit code before a sign-up's account exists (`pending_registrations`, tied to the browser by a cookie), "You already have an account" instead of a code for a taken email (sign-up no longer reveals accounts), `email_verified_at`, verifying older accounts from settings or at sign-in (`EMAIL_VERIFICATION_EXISTING=required`) | 9, 11 | implemented 2026-10-31 |
-| 21 | [admin/email-blocks](features/admin/email-blocks.md): the Email blocks page (the block list) and Unblock, the dashboard's first action, with A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` built for it | 10, 13; 14 for the `operator` role | decisions to confirm |
+| 21 | [admin/email-blocks](features/implemented/admin/email-blocks.md): the Email blocks page (the block list) and Unblock, the dashboard's first action, with A6's step-up, reasons, `admin-action:per-user` and `AdminActionDialog` built for it | 10, 13; 14 for the `operator` role | implemented 2026-11-01 |
+
+## Future plans
+
+Plans in `future/` are bigger directions, not in the build order above. Each says when it can start; once its decisions are confirmed and it's next, it moves to `features/` and gets a row in the table.
+
+| Plan | Starts after | Status |
+| --- | --- | --- |
+| [framework](future/framework.md): `kit`, a Laravel-style Go framework (`github.com/harlew-dev/kit`, `@harlew-dev/kit-ui`) built from this app's core; Buffalo-style routes and resources, single-action controllers, requests, Eloquent-style models over Bun, typed events and listeners, nested folders enforced by `kit check` | the open admin plans (A8, A2, A9, A3) | decisions to confirm |
 
 Implementing a plan:
 

@@ -213,6 +213,27 @@ func RequireAdminRole(role auth.AdminRole, next http.Handler) http.Handler {
 	})
 }
 
+// AdminStepUpNeeded is the answer to an account-and-access action outside
+// the admin session's step-up window: the web app asks for a code, opens
+// the window (POST /api/admin/step-up) and tries again.
+const AdminStepUpNeeded = "Enter a code to continue."
+
+// RequireAdminStepUp lets through, after RequireAdminSession (its CSRF check
+// included) and RequireAdminRole, only an admin session whose step-up
+// window is open: a fresh code within auth.AdminStepUpWindow. Otherwise 403
+// {error, stepUp: true}. It reads the window from the session already
+// loaded, compared with the database's clock there, so it costs no query.
+// Every account-and-access action in adminRoutes is wrapped in it.
+func RequireAdminStepUp(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !Admin(r).SteppedUp {
+			JSON(w, 403, map[string]any{"error": AdminStepUpNeeded, "stepUp": true})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // requireAdminPage sends visitors without a live admin session from an inner
 // admin page (/admin/<key>/<page>) to the admin sign-in page, before any
 // HTML is served, and reports whether to serve the page. Run only once the

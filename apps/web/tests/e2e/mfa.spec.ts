@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createHmac } from "node:crypto";
 import { enterMailedCode } from "./mail";
 import { execFileSync } from "node:child_process";
+import { codeFor } from "./totp";
 const email = `e2e-${Date.now()}-mfa@lewcontext.test`;
 let password = "A thoughtful test passphrase!";
 const newPassword = "A newer test passphrase, changed!";
@@ -18,32 +18,6 @@ test.afterAll(() => {
     `DELETE FROM workspaces WHERE id IN (SELECT m.workspace_id FROM workspace_user m JOIN users u ON u.id = m.user_id WHERE u.email = '${email}'); DELETE FROM users WHERE email = '${email}'`,
   );
 });
-// An authenticator app's code (RFC 6238: HMAC-SHA1, 30-second steps, 6
-// digits) for a base32 setup key, `ahead` steps from now. A step works once,
-// and one step of drift is allowed: setup uses this step's code, and signing
-// in the next step's, whichever step the clock has reached by then.
-function codeFor(key: string, ahead: number): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const bytes: number[] = [];
-  let bits = 0;
-  let value = 0;
-  for (const c of key.replace(/\s/g, "")) {
-    value = (value << 5) | alphabet.indexOf(c);
-    bits += 5;
-    if (bits >= 8) {
-      bytes.push((value >>> (bits - 8)) & 255);
-      bits -= 8;
-    }
-  }
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + ahead));
-  const mac = createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
-  const offset = mac[mac.length - 1] & 15;
-  return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(
-    6,
-    "0",
-  );
-}
 async function signIn(page: Page) {
   await page.context().clearCookies();
   await page.goto("/auth/login");

@@ -5,14 +5,17 @@ import type { Project, ProjectSort } from "@/types/projects";
 import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
 import type { MfaSetup, RecoveryCodes } from "./auth";
-import { httpWith, type Http } from "./http";
+import { ApiError, httpWith, type Http } from "./http";
 import { path } from "./paths";
 import {
+  defaultAdminEmailBlockSort,
   defaultAdminUserSort,
   defaultAdminWorkspaceSort,
   type AdminAccount,
   type AdminCatalogue,
   type AdminDeliveryRow,
+  type AdminEmailBlock,
+  type AdminEmailBlockSort,
   type AdminEvent,
   type AdminEventDetail,
   type AdminMail,
@@ -63,6 +66,14 @@ export type AdminDeliveryIndexQuery = {
   before?: string;
   perPage?: number;
 };
+export type AdminEmailBlockIndexQuery = {
+  page?: number;
+  perPage?: number;
+  q?: string;
+  sort?: AdminEmailBlockSort;
+};
+// Unblocking an address: the address in the body (never a path), and why.
+export type AdminUnblock = { email: string; reason: string };
 // The door's password step: a code next, or (an admin without MFA, inside
 // the setup window) setting MFA up.
 export type AdminLoginStep = { mfaRequired: true } | { mfaSetupRequired: true };
@@ -136,6 +147,21 @@ export const adminPaths = {
   },
   // The signed-in admin's own other sessions.
   sessions: { destroyOthers: () => `${base}/sessions` },
+  // The block list, and unblocking (DELETE, the address in the body).
+  emailBlocks: {
+    index: ({ page, perPage, q, sort }: AdminEmailBlockIndexQuery = {}) =>
+      path<Page<AdminEmailBlock>>(
+        url(`${base}/email-blocks`, {
+          page,
+          perPage,
+          q,
+          sort: sort === defaultAdminEmailBlockSort ? undefined : sort,
+        }),
+      ),
+    destroy: () => `${base}/email-blocks`,
+  },
+  // A fresh code opens this session's step-up window for the actions.
+  stepUp: () => `${base}/step-up`,
 };
 export function adminClient(http: Http) {
   return {
@@ -187,6 +213,21 @@ export function adminClient(http: Http) {
       destroyOthers: () =>
         http.send<void>("DELETE", adminPaths.sessions.destroyOthers()),
     }),
+    emailBlocks: () => ({
+      index: (query: AdminEmailBlockIndexQuery = {}) =>
+        http.get(adminPaths.emailBlocks.index(query)),
+      // Operators only, inside the step-up window (needsStepUp otherwise).
+      // A 404 means the address isn't blocked (any more).
+      destroy: ({ email, reason }: AdminUnblock) =>
+        http.send<void>("DELETE", adminPaths.emailBlocks.destroy(), {
+          email,
+          reason,
+        }),
+    }),
+    // An authenticator or recovery code: opens this admin session's 5-minute
+    // window for actions. A wrong code is an ApiError with field "code".
+    stepUp: (code: string) =>
+      http.send<void>("POST", adminPaths.stepUp(), { code }),
   };
 }
 export type AdminApiClient = ReturnType<typeof adminClient>;
@@ -242,6 +283,15 @@ export function loaderAdminApi(
   onPreviousKey?: () => void,
 ): AdminApiClient {
   return adminClient(adminHttp(adminKey, undefined, onPreviousKey));
+}
+// Whether an action was refused for want of a fresh code (403 with
+// stepUp): ask for one, step up, and try again (AdminActionDialog).
+export function needsStepUp(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.details.stepUp === true
+  );
 }
 // Whether the door's password step asks for setting MFA up.
 export function needsMfaSetup(step: AdminLoginStep): boolean {

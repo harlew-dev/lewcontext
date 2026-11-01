@@ -10,10 +10,10 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
-| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant` (with a role, `-role viewer|operator`), `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
+| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant` (with a role, `-role viewer|operator`), `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address); the dashboard's Email blocks page does both too); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
-| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin keys, sessions, roles, page gate and assets pass (`admin.go`), and the admin address allowlist (`admin_access.go`) |
+| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin keys, sessions, roles, step-up, page gate and assets pass (`admin.go`), and the admin address allowlist (`admin_access.go`) |
 | `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`, `/api/email-blocks/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
 | `internal/httpapi/router` | `routes.go`, the one registry of API routes and pages, with their middleware and limits (`router.New`) |
 | `internal/httpapi/{clientip,input,ratelimit}` | Leaves the core imports: resolving the client's address; query parameters, paging, public IDs, search terms and link tokens; what a rate limit is and the in-memory counter |
@@ -40,7 +40,7 @@ ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
   → mux (router/routes.go)
   → RequireSession (cookie → session, CSRF on mutations) for private routes
   → RequireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
-  (or, under /api/admin: RequireAdminKey for the sign-in, RequireAdminKeyOrPrevious → RequireAdminSession → RequireAdminRole on an action; admin.md)
+  (or, under /api/admin: RequireAdminKey for the sign-in, RequireAdminKeyOrPrevious → RequireAdminSession → RequireAdminRole on an action → RequireAdminStepUp → LimitAdmin on an account-and-access action; admin.md)
   → RequirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
   → controller, e.g. workspace.Projects.Index (parse + validate) → store, e.g. h.Repo.IndexProjects (query scoped by workspace ID) → httpapi.JSON
 ```

@@ -21,8 +21,10 @@ type ConfirmationDialogProps = {
   confirm: string;
   // "danger" for destructive actions: a red confirm button.
   variant?: keyof typeof confirmColors;
-  // Keeps the confirm button off, e.g. until a name is typed.
+  // Keeps the confirm button off, e.g. until a name is typed, and why
+  // ("Fill in required fields"), shown on the button.
   disabled?: boolean;
+  disabledReason?: string;
   onConfirm: () => Promise<unknown>;
   // Runs after the dialog has closed on success (a toast, navigation).
   onConfirmed?: () => unknown;
@@ -44,6 +46,7 @@ export function ConfirmationDialog({
   confirm,
   variant = "default",
   disabled = false,
+  disabledReason,
   onConfirm,
   onConfirmed,
   onError,
@@ -77,6 +80,7 @@ export function ConfirmationDialog({
             color={confirmColors[variant]}
             loading={action.loading}
             disabled={disabled}
+            disabledReason={disabledReason}
           >
             {confirm}
           </Button>

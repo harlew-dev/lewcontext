@@ -113,6 +113,12 @@ var (
 		Window: time.Hour,
 		Busy:   "Invitations are busy. Try again later.",
 	}
+
+	// AdminActionPerUser: the admin dashboard's account-and-access actions taken by one admin.
+	// Unblocking an address, and A6's actions to come. Every attempt past the
+	// step-up counts, refused or not (an address that isn't blocked too), so a
+	// stolen admin session can't act faster than this.
+	AdminActionPerUser = ratelimit.Limit{Name: "admin-action:per-user", Max: 60, Window: time.Hour}
 )
 
 // RateLimits lists every limit, for TestRateLimitNames.
@@ -124,6 +130,7 @@ var RateLimits = []ratelimit.Limit{
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
 	WorkspacePerUser, ProjectPerUser,
 	InvitationPerUser, InvitationPerEmail, InvitationGlobal,
+	AdminActionPerUser,
 }
 
 // Allow counts a request against l under key and answers 429 (503 with busy
@@ -192,6 +199,18 @@ func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, resetsAt
 func (s *Server) Limit(l ratelimit.Limit, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.Allow(w, r, l, l.Key(Session(r).User.PublicID)) {
+			next(w, r)
+		}
+	}
+}
+
+// LimitAdmin is Limit for the admin dashboard: it counts each request
+// against l for the signed-in admin (RequireAdminSession) before next.
+// Admin actions name theirs in router/routes.go, after the role and the
+// step-up.
+func (s *Server) LimitAdmin(l ratelimit.Limit, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.Allow(w, r, l, l.Key(Admin(r).User.PublicID)) {
 			next(w, r)
 		}
 	}

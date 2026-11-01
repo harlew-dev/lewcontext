@@ -2,6 +2,7 @@ import {
   BuildingOffice2Icon,
   EnvelopeIcon,
   KeyIcon,
+  NoSymbolIcon,
   QueueListIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
@@ -39,6 +40,10 @@ export const adminRoutes = {
         before,
       }),
   },
+  // The block list: addresses whose owners asked for no email.
+  emailBlocks: {
+    index: (key: string) => `/admin/${key}/email-blocks`,
+  },
   // Who holds admin: roles, MFA, last sign-in, live sessions.
   admins: {
     index: (key: string) => `/admin/${key}/admins`,
@@ -62,6 +67,11 @@ export function adminNavigation(key: string) {
       label: "Mail",
       href: adminRoutes.deliveries.index(key),
       icon: EnvelopeIcon,
+    },
+    {
+      label: "Email blocks",
+      href: adminRoutes.emailBlocks.index(key),
+      icon: NoSymbolIcon,
     },
     { label: "Admins", href: adminRoutes.admins.index(key), icon: KeyIcon },
   ];

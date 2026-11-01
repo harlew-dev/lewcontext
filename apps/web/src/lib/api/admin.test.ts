@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stubApi } from "@/test/api";
-import { adminClient, adminHttp, adminPaths } from "./admin";
+import { adminClient, adminHttp, adminPaths, needsStepUp } from "./admin";
+import { ApiError } from "./http";
 // The admin dashboard's client, apart from lib/api/index.ts (only the admin
 // build imports it).
 const stubFetch = (body: unknown = {}, status = 200) =>
@@ -25,6 +26,55 @@ describe("the admin client", () => {
     adminPaths.workspaces.index({ sort: "email" });
     // @ts-expect-error not a sort the API accepts
     adminPaths.users.index({ sort: "password" });
+  });
+  it("builds the Email blocks paths, and sends an address only in a body", async () => {
+    expect(adminPaths.emailBlocks.index()).toBe("/api/admin/email-blocks");
+    expect(
+      adminPaths.emailBlocks.index({ q: "ada@", sort: "-created", page: 1 }),
+    ).toBe("/api/admin/email-blocks?q=ada%40");
+    expect(adminPaths.emailBlocks.index({ sort: "email", page: 3 })).toBe(
+      "/api/admin/email-blocks?page=3&sort=email",
+    );
+    // @ts-expect-error blocks don't sort by name
+    adminPaths.emailBlocks.index({ sort: "name" });
+    const api = stubApi({ "*": { status: 204 } });
+    const client = adminClient(adminHttp(key, "admin-csrf"));
+    await client
+      .emailBlocks()
+      .destroy({ email: "ada@example.com", reason: "A reason here." });
+    await client.stepUp("123 456");
+    expect(api.sent()).toEqual([
+      expect.objectContaining({
+        method: "DELETE",
+        url: "/api/admin/email-blocks",
+        body: { email: "ada@example.com", reason: "A reason here." },
+        csrf: "admin-csrf",
+        adminKey: key,
+      }),
+      expect.objectContaining({
+        method: "POST",
+        url: "/api/admin/step-up",
+        body: { code: "123 456" },
+        csrf: "admin-csrf",
+        adminKey: key,
+      }),
+    ]);
+  });
+  it("tells a refusal for want of a fresh code from any other 403", () => {
+    expect(
+      needsStepUp(
+        new ApiError("Enter a code to continue.", 403, undefined, {
+          stepUp: true,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      needsStepUp(new ApiError("Your admin role doesn't allow this.", 403)),
+    ).toBe(false);
+    expect(
+      needsStepUp(new ApiError("Nope", 422, undefined, { stepUp: true })),
+    ).toBe(false);
+    expect(needsStepUp(new Error("Enter a code to continue."))).toBe(false);
   });
   it("builds the Events, Mail and projects paths, leaving out defaults", () => {
     expect(adminPaths.events.index()).toBe("/api/admin/events");

@@ -198,7 +198,7 @@ func TestSignUpWithABlockedAddressWithoutVerification(t *testing.T) {
 		t.Fatal("a blocked address became an account")
 	}
 
-	if err := s.Repo.UnblockEmailAddress(ctx, "blocked@example.com"); err != nil {
+	if err := s.Repo.UnblockEmailAddress(ctx, "blocked@example.com", nil); err != nil {
 		t.Fatal(err)
 	}
 	apitest.Call(t, h, "POST", "/api/auth/register", signUpBody("blocked@example.com"), "", nil, 201)
@@ -263,14 +263,14 @@ func TestUnblockingByAddress(t *testing.T) {
 	if len(list) != 2 || list[0].Email != "first@example.com" || list[1].Email != "second@example.com" {
 		t.Fatalf("list: %+v", list)
 	}
-	if err := s.Repo.UnblockEmailAddress(ctx, "first@example.com"); err != nil {
+	if err := s.Repo.UnblockEmailAddress(ctx, "first@example.com", nil); err != nil {
 		t.Fatal(err)
 	}
 	e := apitest.OnlyEvent(t, db, "email.unblocked")
 	if e.Payload["email"] != "first@example.com" || e.Payload["by"] != "cli" || e.IP != "" || e.ActorID.Valid {
 		t.Fatalf("email.unblocked: %+v", e)
 	}
-	if err := s.Repo.UnblockEmailAddress(ctx, "first@example.com"); !errors.Is(err, store.ErrEmailNotBlocked) {
+	if err := s.Repo.UnblockEmailAddress(ctx, "first@example.com", nil); !errors.Is(err, store.ErrEmailNotBlocked) {
 		t.Fatalf("unblocking twice: %v", err)
 	}
 	if _, err := s.Repo.FindEmailBlock(ctx, "first@example.com"); !errors.Is(err, store.ErrEmailNotBlocked) {

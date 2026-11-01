@@ -203,15 +203,6 @@ func TestPreviousAdminKey(t *testing.T) {
 	apitest.OnlyEvent(t, db, "admin.logged_out")
 }
 
-// requireOperator is a stand-in for an admin action until A6 adds one: an
-// admin route that needs the operator role.
-func requireOperator(s *httpapi.Server) http.Handler {
-	mux := http.NewServeMux()
-	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
-	mux.Handle("POST /api/admin/test-action", s.RequireAdminKeyOrPrevious(s.RequireAdminSession(httpapi.RequireAdminRole(auth.AdminOperator, ok))))
-	return s.Security(mux)
-}
-
 // A viewer reads but can't act; /api/admin/me says which role it has; the
 // role changes only from the command line, recorded.
 func TestAdminRoles(t *testing.T) {
@@ -231,12 +222,18 @@ func TestAdminRoles(t *testing.T) {
 			t.Fatalf("/me role: %q, want %q", me.Role, role)
 		}
 	}
-	action := requireOperator(s)
-	adminCall(t, action, "POST", "/api/admin/test-action", "{}", viewerSession.CSRFToken, 403, viewerSession.Cookie())
-	adminCall(t, action, "POST", "/api/admin/test-action", "{}", operatorSession.CSRFToken, 204, operatorSession.Cookie())
+	// The step-up is registered with Role(operator), as every action is: a
+	// viewer is refused before its code is looked at, an operator's code is
+	// checked.
+	act := func(session factory.AdminSession, a apitest.MFAAccount, step int64, want int) {
+		t.Helper()
+		adminCall(t, h, "POST", "/api/admin/step-up", apitest.CodeBody(a.CodeAt(step)), session.CSRFToken, want, session.Cookie())
+	}
+	act(viewerSession, viewer, 0, 403)
+	act(operatorSession, operator, 0, 204)
 	// Still behind the key and the session.
-	adminCall(t, action, "POST", "/api/admin/test-action", "{}", "", 401)
-	if w := adminSend(action, "POST", "/api/admin/test-action", "{}", "wrong", operatorSession.CSRFToken, operatorSession.Cookie()); w.Code != 404 {
+	adminCall(t, h, "POST", "/api/admin/step-up", apitest.CodeBody("123456"), "", 401)
+	if w := adminSend(h, "POST", "/api/admin/step-up", apitest.CodeBody(operator.CodeAt(1)), "wrong", operatorSession.CSRFToken, operatorSession.Cookie()); w.Code != 404 {
 		t.Fatalf("an action with a wrong key: %d", w.Code)
 	}
 
@@ -255,7 +252,7 @@ func TestAdminRoles(t *testing.T) {
 	if len(apitest.EventsNamed(t, db, "admin.granted")) != before {
 		t.Fatal("a role change recorded admin.granted")
 	}
-	adminCall(t, action, "POST", "/api/admin/test-action", "{}", viewerSession.CSRFToken, 204, viewerSession.Cookie())
+	act(viewerSession, viewer, 0, 204)
 	if a, from := must2(s.Repo.GrantAdmin(ctx, viewer.User.Email, ""))(t); a.Role != auth.AdminOperator || from != "" {
 		t.Fatalf("granting again without a role: %+v from %q", a, from)
 	}
@@ -264,7 +261,7 @@ func TestAdminRoles(t *testing.T) {
 	}
 	// Back to viewer: the next request can't act.
 	must2(s.Repo.GrantAdmin(ctx, viewer.User.Email, auth.AdminViewer))(t)
-	adminCall(t, action, "POST", "/api/admin/test-action", "{}", viewerSession.CSRFToken, 403, viewerSession.Cookie())
+	act(viewerSession, viewer, 1, 403)
 	// A new admin without a role is a viewer.
 	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
 	if a, _ := must2(s.Repo.GrantAdmin(ctx, user.Email, ""))(t); a.Role != auth.AdminViewer {

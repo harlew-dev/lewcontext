@@ -38,9 +38,10 @@ var Catalogue = []Event{
 	RateLimitReached{},
 	EmailBlocked{}, EmailUnblocked{},
 	AdminGranted{}, AdminUpdated{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
-	AdminAccessRefused{}, AdminSessionMoved{}, AdminSessionsRevoked{}, AdminAdminListed{},
+	AdminAccessRefused{}, AdminSessionMoved{}, AdminSessionEnded{}, AdminSessionsRevoked{}, AdminAdminListed{},
 	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
 	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
+	AdminEmailBlockListed{}, AdminEmailUnblocked{},
 }
 
 // Change is a field's value before and after an update.

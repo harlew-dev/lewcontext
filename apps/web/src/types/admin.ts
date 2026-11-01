@@ -81,6 +81,20 @@ export const defaultAdminUserSort: AdminUserSort = "-created";
 export const adminWorkspaceSortable = ["created", "name"] as const;
 export type AdminWorkspaceSort = Sort<(typeof adminWorkspaceSortable)[number]>;
 export const defaultAdminWorkspaceSort: AdminWorkspaceSort = "-created";
+// A blocked address as the Email blocks page lists it: when it was blocked,
+// and when the newest block link sent to it stops working (null when none
+// works any more, so only an admin or the operator can unblock it).
+export type AdminEmailBlock = {
+  email: string;
+  createdAt: string;
+  linkExpiresAt: string | null;
+};
+// Mirrors adminEmailBlockSorts in apps/api/internal/store/admin_email_blocks.go.
+export const adminEmailBlockSortable = ["created", "email"] as const;
+export type AdminEmailBlockSort = Sort<
+  (typeof adminEmailBlockSortable)[number]
+>;
+export const defaultAdminEmailBlockSort: AdminEmailBlockSort = "-created";
 // A list page's state, kept in its URL.
 export type AdminListQuery<S> = { page: number; q: string; sort: S };
 

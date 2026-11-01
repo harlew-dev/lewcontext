@@ -11,3 +11,6 @@ CREATE TABLE email_block_links (
  expires_at timestamptz NOT NULL
 );
 CREATE INDEX email_block_links_expires_at_idx ON email_block_links(expires_at);
+-- The admin dashboard's Email blocks page shows each blocked address's
+-- newest live link's expiry: by address, then expiry.
+CREATE INDEX email_block_links_email_idx ON email_block_links(email, expires_at);

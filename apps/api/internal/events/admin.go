@@ -14,8 +14,13 @@ const (
 	AdminLoginMFAOff = "mfa_off"
 )
 
-// MFAStepAdminLogin is auth.mfa.checked's step for an admin sign-in's code.
-const MFAStepAdminLogin = "admin_login"
+// auth.mfa.checked's steps at the admin dashboard: an admin sign-in's code,
+// and a code that opens an admin session's step-up window
+// (POST /api/admin/step-up).
+const (
+	MFAStepAdminLogin  = "admin_login"
+	MFAStepAdminStepUp = "admin_step_up"
+)
 
 // AdminGranted: the operator made an account an admin, or granted it again
 // (admin grant). Role is what it may do (viewer or operator); MFASetupUntil
@@ -66,6 +71,22 @@ type AdminSessionMoved struct {
 }
 
 func (AdminSessionMoved) EventName() string { return "admin.session.moved" }
+
+// Why an admin session was ended by the server (AdminSessionEnded.Reason).
+const (
+	// AdminSessionEndedStepUpFailures: its fifth wrong step-up code.
+	AdminSessionEndedStepUpFailures = "step_up_failures"
+)
+
+// AdminSessionEnded: the server ended an admin session, for Reason, as a
+// sign-in's challenge ends after five wrong codes. Its admin must sign in
+// again with the password and a code.
+type AdminSessionEnded struct {
+	Admin  string `json:"admin"`
+	Reason string `json:"reason"`
+}
+
+func (AdminSessionEnded) EventName() string { return "admin.session.ended" }
 
 // AdminSessionsRevoked: an admin signed out their other admin sessions.
 type AdminSessionsRevoked struct {
@@ -223,3 +244,26 @@ type AdminProjectListed struct {
 }
 
 func (AdminProjectListed) EventName() string { return "admin.project.listed" }
+
+// AdminEmailBlockListed: an admin loaded a page of the Email blocks list
+// (the addresses whose owners asked for no email), with its search, sort
+// and page number.
+type AdminEmailBlockListed struct {
+	Admin string `json:"admin"`
+	Q     string `json:"q"`
+	Sort  string `json:"sort"`
+	Page  int    `json:"page"`
+}
+
+func (AdminEmailBlockListed) EventName() string { return "admin.email_block.listed" }
+
+// AdminEmailUnblocked: an admin took Email off the block list from the
+// dashboard, behind a fresh code, for Reason (10 to 500 characters).
+// email.unblocked (by: admin) is recorded with it, in the same transaction.
+type AdminEmailUnblocked struct {
+	Admin  string `json:"admin"`
+	Email  string `json:"email"`
+	Reason string `json:"reason"`
+}
+
+func (AdminEmailUnblocked) EventName() string { return "admin.email.unblocked" }

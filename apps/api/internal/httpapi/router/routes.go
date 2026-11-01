@@ -114,8 +114,11 @@ func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
 // key they answer as an unknown route; then the sign-in steps, under the
 // current key only, or an admin session, under the key it was made with
 // (the current one, or ADMIN_ROUTE_KEY_PREVIOUS while it is set). Apart
-// from signing in and out they read, and every read is recorded; a route
-// that changes anything names the admin role it needs (Role).
+// from signing in and out, stepping up and unblocking an address they
+// read, and every read is recorded; a route that changes anything names
+// the admin role it needs (Role), and an account-and-access action also
+// needs a fresh code (RequireAdminStepUp) and counts against
+// admin-action:per-user.
 func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	sessions := admin.Sessions{Server: s}
 	users := admin.Users{Server: s}
@@ -125,6 +128,8 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	mail := admin.Mail{Server: s}
 	deliveries := admin.Deliveries{Server: s}
 	admins := admin.Admins{Server: s}
+	emailBlocks := admin.EmailBlocks{Server: s}
+	stepUp := admin.StepUp{Server: s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.RequireAdminKey(http.HandlerFunc(httpapi.NotFound)))
@@ -135,6 +140,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	door.HandleFunc("POST", "/login/mfa", sessions.LoginMFA)
 	signedIn := group(mux, "/api/admin", s.RequireAdminKeyOrPrevious, s.RequireAdminSession)
 	signedIn.requireAdminRoles = true
+	signedIn.server = s
 	signedIn.HandleFunc("GET", "/me", sessions.Me)
 	// Signing out, and signing out your other admin sessions, only take
 	// your own access away: every admin may, whatever their role.
@@ -152,6 +158,14 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/mail", mail.Show)
 	signedIn.HandleFunc("GET", "/deliveries", deliveries.Index)
 	signedIn.HandleFunc("GET", "/admins", admins.Index)
+	signedIn.HandleFunc("GET", "/email-blocks", emailBlocks.Index)
+	// A fresh code opens the session's 5-minute step-up window. Only the
+	// actions need it, and they need an operator, so it does too; the code
+	// counts against mfa:per-account, as at the door.
+	signedIn.Role("POST", "/step-up", auth.AdminOperator, stepUp.Store)
+	// Unblocking an address: an account-and-access action (Action: the
+	// operator role, the step-up window, then admin-action:per-user).
+	signedIn.Action("DELETE", "/email-blocks", emailBlocks.Destroy)
 }
 
 // unknownRoutesAsJSON answers a request no API route matches with the JSON
@@ -266,8 +280,10 @@ type routeGroup struct {
 	// each mutation has to be registered with Can.
 	requirePermissions bool
 	// requireAdminRoles does the same for the admin dashboard: each
-	// mutation is registered with Role, or with OwnSessions.
+	// mutation is registered with Role, Action or OwnSessions.
 	requireAdminRoles bool
+	// server is the admin group's, for Action's limit.
+	server *httpapi.Server
 	// registered collects each pattern, when set (the permission matrix test).
 	registered *[]string
 }
@@ -287,10 +303,35 @@ func (g routeGroup) Handle(method, path string, h http.Handler) {
 }
 
 // Role registers an admin route only admins whose role may do role can use
-// (httpapi.RequireAdminRole); others get 403. Every admin action is
-// registered this way.
+// (httpapi.RequireAdminRole); others get 403. An operator's mutation must
+// be an Action instead, apart from the step-up itself (operatorRoutes):
+// anything else stops the server starting, so an action can't ship without
+// its fresh code and limit.
 func (g routeGroup) Role(method, path string, role auth.AdminRole, h http.HandlerFunc) {
+	if g.requireAdminRoles && role == auth.AdminOperator && method != "GET" && method != "HEAD" && !operatorRoutes[method+" "+path] {
+		panic(fmt.Sprintf("%s %s%s: register an operator's mutation with Action", method, g.prefix, path))
+	}
 	g.handle(method, path, httpapi.RequireAdminRole(role, h))
+}
+
+// operatorRoutes are the only operator mutations registered with Role
+// rather than Action: the step-up opens the window the actions need, so it
+// can't need one itself.
+var operatorRoutes = map[string]bool{
+	"POST /step-up": true,
+}
+
+// Action registers one of the admin dashboard's account-and-access actions:
+// the operator role (httpapi.RequireAdminRole), then a fresh code
+// (httpapi.RequireAdminStepUp), then admin-action:per-user (LimitAdmin),
+// in that order, so a refusal before the step-up spends nothing. Every
+// operator mutation but the step-up is registered this way.
+func (g routeGroup) Action(method, path string, h http.HandlerFunc) {
+	if !g.requireAdminRoles || g.server == nil {
+		panic(fmt.Sprintf("%s %s%s: Action is for the signed-in admin group", method, g.prefix, path))
+	}
+	limited := g.server.LimitAdmin(httpapi.AdminActionPerUser, h)
+	g.handle(method, path, httpapi.RequireAdminRole(auth.AdminOperator, httpapi.RequireAdminStepUp(limited)))
 }
 
 // ownSessionRoutes are the only admin mutations registered without a role,

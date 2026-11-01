@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/16/solid";
 import { DeleteAccountDialog } from "@/components/app/account/delete-account-dialog";
 import {
+  AppOrRecoveryCode,
   CodeField,
   MfaScanStep,
   RecoveryCodeList,
@@ -733,48 +734,6 @@ function EnableMfaDialog({
         </DialogActions>
       </form>
     </Dialog>
-  );
-}
-// A code from the authenticator app (six boxes) or, after "Lost your
-// device?", a recovery code: either one confirms disabling MFA or replacing
-// the recovery codes. Switching clears what was typed.
-function AppOrRecoveryCode({
-  value,
-  onChange,
-  error,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  disabled: boolean;
-}) {
-  const [recovery, setRecovery] = useState(false);
-  return (
-    <div className="space-y-3">
-      <CodeField
-        key={recovery ? "recovery" : "app"}
-        label={recovery ? "Recovery code" : "Authentication code"}
-        value={value}
-        onChange={onChange}
-        error={error}
-        disabled={disabled}
-        recovery={recovery}
-      />
-      <Text>
-        <TextButton
-          disabled={disabled}
-          onClick={() => {
-            setRecovery(!recovery);
-            onChange("");
-          }}
-        >
-          {recovery
-            ? "Use your authenticator app instead"
-            : "Lost your device? Use a recovery code"}
-        </TextButton>
-      </Text>
-    </div>
   );
 }
 // Turning MFA off takes the password and a code (an authenticator or a

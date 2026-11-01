@@ -61,6 +61,10 @@ type AdminSession struct {
 	IP            string    `bun:"ip,type:inet,notnull"`
 	UserAgent     string    `bun:",notnull"`
 	MovedAt       *time.Time
+	// SteppedUpUntil ends the step-up window a code opened; nil: never.
+	SteppedUpUntil *time.Time
+	// StepUpFailures counts its wrong step-up codes; the fifth ends it.
+	StepUpFailures int `bun:",notnull"`
 	// Token is the raw cookie value; only its digest is stored.
 	Token string `bun:"-"`
 }
@@ -98,6 +102,13 @@ func AdminSessionFor(userID int64) func(*AdminSession) {
 // AdminIdle has been unused for longer than the 15-minute idle timeout.
 func AdminIdle(s *AdminSession) {
 	s.LastSeenAt = time.Now().Add(-auth.AdminSessionIdle - time.Minute)
+}
+
+// SteppedUp has its step-up window open, as a code at POST
+// /api/admin/step-up leaves it, for the rest of auth.AdminStepUpWindow.
+func SteppedUp(s *AdminSession) {
+	until := time.Now().Add(auth.AdminStepUpWindow)
+	s.SteppedUpUntil = &until
 }
 
 // AdminExpired is past its absolute expiry.

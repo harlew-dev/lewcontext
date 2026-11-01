@@ -2,7 +2,7 @@
 
 Status: **draft 2026-10-31**, decisions to confirm. Plan A6 of the [admin plans](README.md). Needs [access hardening](../implemented/admin/access-hardening.md) (the `operator` role), [events-and-mail](../implemented/admin/events-and-mail.md) (deliveries), [monitoring](monitoring.md) (errors, IPs) and [alerts](alerts.md) (acknowledging). Docs it will change: [admin.md](../../../docs/api/admin.md), [auth.md](../../../docs/api/auth.md), [endpoints.md](../../../docs/api/endpoints.md), [rate-limits.md](../../../docs/api/rate-limits.md), [events.md](../../../docs/api/events.md), [database.md](../../../docs/api/database.md), [deployment.md](../../../docs/deployment.md), [ui/forms-and-actions.md](../../../docs/ui/forms-and-actions.md) (the admin action dialog). Also AGENTS.md: the security invariant "It stays read-only until a plan adds actions" becomes this plan's rules.
 
-**The first action ships earlier, with [email blocks](email-blocks.md)** (A9, if its decisions are confirmed): unblocking an email address, an account-and-access action. That plan builds this one's step-up (`POST /api/admin/step-up`, `admin_sessions.stepped_up_until`, `RequireAdminStepUp`), required reasons, `admin-action:per-user` and `AdminActionDialog` as described here. This plan reuses them, and adds `requireAdminRole(operator)` to the unblock route along with its own.
+**The first action shipped earlier, with [email blocks](../implemented/admin/email-blocks.md)** (A9, implemented 2026-11-01): unblocking an email address, an account-and-access action. It built this plan's step-up (`POST /api/admin/step-up`, `admin_sessions.stepped_up_until`, `RequireAdminStepUp`), required reasons (10 to 500 characters), `admin-action:per-user` (`LimitAdmin`) and `AdminActionDialog` as described here, so they now exist: this plan reuses them unchanged. The unblock route already has the `operator` role (`Role(…, auth.AdminOperator, …)`, A2's registry), and so does the step-up, since only actions need it. Register each account-and-access action with `signedIn.Action(method, path, handler)` (`router/routes.go`), which composes the operator role, `RequireAdminStepUp` and `LimitAdmin(admin-action:per-user)`: `Role` with `operator` on any mutation but the step-up panics at startup and fails the source test, so a housekeeping action (operator only, no step-up, decision 1) will need its own helper beside `Action`. A step-up session also ends at its fifth wrong code. Where A9's build differs from this plan's descriptions (the window compared with the database's clock, a 404 counting against the limit, the reason's validation) is in its [How the build differs](../implemented/admin/email-blocks.md#how-the-build-differs-from-the-plan).
 
 ## Why
 
@@ -97,7 +97,7 @@ CREATE TABLE ip_blocks (
 | --- | --- | --- |
 | **Unblock an address** | `DELETE /api/admin/email-blocks {email, reason}` | `admin.email.unblocked`; `email.unblocked` (`by: "admin"`) |
 
-Built by [email blocks](email-blocks.md) (A9), on the Email blocks page. There is no admin block: blocking comes only from the inbox owner's link.
+Built by [email blocks](../implemented/admin/email-blocks.md) (A9, implemented 2026-11-01), on the Email blocks page. There is no admin block: blocking comes only from the inbox owner's link.
 
 ### Admins
 

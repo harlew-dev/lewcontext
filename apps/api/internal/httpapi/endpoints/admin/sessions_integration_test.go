@@ -98,6 +98,9 @@ var adminRoutesList = []struct{ method, path string }{
 	{"GET", "/api/admin/deliveries"},
 	{"GET", "/api/admin/admins"},
 	{"DELETE", "/api/admin/sessions"},
+	{"GET", "/api/admin/email-blocks"},
+	{"DELETE", "/api/admin/email-blocks"},
+	{"POST", "/api/admin/step-up"},
 	{"PUT", "/api/admin/login"},
 	{"GET", "/api/admin/nothing"},
 }
