@@ -5,7 +5,7 @@
 # (PATH, HOME, Go's GO* settings, CC), CI, CHROMIUM_PATH, FAKER_SEED and
 # PLAYWRIGHT_*, and the run's own E2E_PORT, E2E_REUSE, E2E_LOCK_HELD,
 # E2E_SETTINGS_PORT (e2e-preflight.sh reserves it), E2E_ADMIN_ROUTE_KEY and
-# E2E_APP_KEY (playwright.config.ts makes one of each per run).
+# E2E_APP_KEY (playwright.config.ts makes one of each per run), and E2E_SCREENSHOTS (a folder the specs copy review screenshots to).
 # Used by make test, make test-e2e and make serve-test.
 set -euo pipefail
 
@@ -25,7 +25,7 @@ kept=()
 for name in $(compgen -e); do
   case "$name" in
     PATH | HOME | USER | TMPDIR | TERM | CI | CC | CHROMIUM_PATH | FAKER_SEED | GO* | PLAYWRIGHT_*) ;;
-    E2E_PORT | E2E_REUSE | E2E_LOCK_HELD | E2E_SETTINGS_PORT | E2E_ADMIN_ROUTE_KEY | E2E_APP_KEY) [[ -n ${!name} ]] || continue ;;
+    E2E_PORT | E2E_REUSE | E2E_LOCK_HELD | E2E_SETTINGS_PORT | E2E_ADMIN_ROUTE_KEY | E2E_APP_KEY | E2E_SCREENSHOTS) [[ -n ${!name} ]] || continue ;;
     *) continue ;;
   esac
   kept+=("$name=${!name}")

@@ -105,7 +105,10 @@ test("an operator acknowledges and silences an alert and resolves an error group
 
   // Acknowledging needs no dialog and no code.
   await admin.getByRole("button", { name: "Acknowledge" }).click();
-  await expect(admin.getByText("Acknowledged", { exact: true })).toBeVisible();
+  // The state badge; the "Acknowledged" row label on the page is a term.
+  await expect(
+    admin.locator("span").filter({ hasText: /^Acknowledged$/ }),
+  ).toBeVisible();
   expect(
     sql(`SELECT count(*) FROM events WHERE name = 'admin.alert.acknowledged'`),
   ).not.toBe("0");
