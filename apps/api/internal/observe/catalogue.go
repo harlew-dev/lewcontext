@@ -42,6 +42,14 @@ var (
 	// DeliveriesPending is how many deliveries wait to run, read once a
 	// minute.
 	DeliveriesPending = Metrics.Gauge("deliveries_pending", "Event deliveries waiting to run, read once a minute.")
+	// IPBlockRefused counts requests refused because their client address
+	// is inside a live IP block (docs/api/admin.md#ip-blocks). No labels:
+	// the address is never one.
+	IPBlockRefused = Metrics.Counter("ip_block_refused_total", "Requests refused because their client address is blocked.")
+	// IPBlocksLoaded is when this server last loaded the live IP blocks, in
+	// Unix seconds, or 0 before its first load (when nothing is blocked on
+	// it): an alert can fire on a server whose list has gone stale.
+	IPBlocksLoaded = Metrics.Gauge("ip_blocks_loaded_timestamp_seconds", "When this server last loaded the live IP blocks, in Unix seconds; 0 before its first load.")
 	// BuildInfo is 1, labelled with this build's version and Go's.
 	BuildInfo = Metrics.Gauge("build_info", "This server's build: 1, labelled with its version and Go's.", "version", "go")
 )

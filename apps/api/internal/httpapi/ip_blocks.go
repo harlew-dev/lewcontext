@@ -42,8 +42,8 @@ const IPBlocked = "Access from your network has been blocked."
 const IPBlocksFirstRetry = time.Second
 
 // ipBlocks is a server's copy of the live blocks, when it last loaded them
-// and how many requests they refused (the ip_block_refused_total metric,
-// once /metrics exists).
+// (also the ip_blocks_loaded_timestamp_seconds gauge) and how many requests
+// they refused (also ip_block_refused_total).
 type ipBlocks struct {
 	live atomic.Pointer[[]liveBlock]
 	// loadedAt is the Unix time in nanoseconds of the last load that
@@ -70,8 +70,10 @@ func (s *Server) ReloadIPBlocks(ctx context.Context) error {
 		return err
 	}
 	live := parseLiveBlocks(rows)
+	now := time.Now()
 	s.ipBlocks.live.Store(&live)
-	s.ipBlocks.loadedAt.Store(time.Now().UnixNano())
+	s.ipBlocks.loadedAt.Store(now.UnixNano())
+	observe.IPBlocksLoaded.Set(float64(now.Unix()))
 	return nil
 }
 
@@ -92,12 +94,9 @@ func parseLiveBlocks(rows []store.LiveIPBlock) []liveBlock {
 }
 
 // IPBlocksLoadedAt is when this server last loaded the live blocks, zero
-// if it never has (then nothing is blocked on it).
-//
-// TODO(metrics): export it on /metrics as the
-// ip_blocks_loaded_timestamp_seconds gauge, beside ip_block_refused_total,
-// once /metrics exists (at the merge), so an alert can fire on a server
-// whose list has gone stale.
+// if it never has (then nothing is blocked on it). /metrics shows it as
+// ip_blocks_loaded_timestamp_seconds (observe.IPBlocksLoaded), so an alert
+// can fire on a server whose list has gone stale.
 func (s *Server) IPBlocksLoadedAt() time.Time {
 	at := s.ipBlocks.loadedAt.Load()
 	if at == 0 {
@@ -233,6 +232,7 @@ func (s *Server) refuseBlockedAddress(w http.ResponseWriter, r *http.Request, ip
 		return false
 	}
 	s.ipBlocks.refused.Add(1)
+	observe.IPBlockRefused.Inc()
 	observe.SetRoute(r.Context(), "ip blocked")
 	if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 		apiHeaders(w.Header())

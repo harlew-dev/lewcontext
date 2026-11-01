@@ -152,6 +152,8 @@ Every `InternalError`, panic (a request's or a listener's), final listener failu
 | `delivery_lag_ms` | histogram | `listener` | the worker: from the event's row to its listener's first attempt |
 | `deliveries_pending` | gauge | | `CountPendingDeliveries`, before each minute's write |
 | `go_goroutines`, `go_heap_bytes`, `go_memory_bytes`, `go_gc_cycles`, `go_gc_pause_ms` | gauges | | `runtime` and `runtime/metrics`, read at each collection (`go_gc_pause_ms` is summed from the runtime's pause histogram, so approximate) |
+| `ip_block_refused_total` | counter | | `ClientAddress`, every request refused because its address is inside a live [IP block](admin.md#ip-blocks) (never the address as a label) |
+| `ip_blocks_loaded_timestamp_seconds` | gauge | | when this server last loaded the live IP blocks (`ReloadIPBlocks`), in Unix seconds; 0 before its first load, when nothing is blocked on it. An alert can fire on a list gone stale |
 | `build_info` | gauge (1) | `version`, `go` | startup: `observe.Version()` and Go's version |
 
 - **Histograms** are in milliseconds, with the bounds 5, 10, 25, 50, 100, 250, 500, 1,000, 2,500, 5,000 and 10,000 and one bucket above (`observe.DurationBounds`). A duration on a bound counts in it (`le`).

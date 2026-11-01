@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -148,6 +149,11 @@ func TestIPBlocksAreEnforced(t *testing.T) {
 	}
 	adminCall(t, h, "POST", "/api/admin/ip-blocks", reasonBody(reason, "network", "198.51.100.0/24", "expiresIn", "1h"), session.CSRFToken, 201, session.Cookie())
 	before := s.IPBlockRefusals()
+	beforeMetric, _ := strconv.Atoi(apitest.Metric(t, "ip_block_refused_total"))
+	// The server loaded the list as it made the block: /metrics says when.
+	if loaded, _ := strconv.ParseFloat(apitest.Metric(t, "ip_blocks_loaded_timestamp_seconds"), 64); time.Since(time.Unix(int64(loaded), 0)) > time.Minute {
+		t.Fatalf("ip_blocks_loaded_timestamp_seconds: %v", loaded)
+	}
 
 	// The API: 403 JSON, signed in or not, whatever the route.
 	for _, target := range []string{"/api/auth/me", "/api/workspaces", "/api/nowhere", "/api"} {
@@ -192,6 +198,10 @@ func TestIPBlocksAreEnforced(t *testing.T) {
 	}
 	if s.IPBlockRefusals() <= before {
 		t.Fatal("refusals weren't counted")
+	}
+	// ip_block_refused_total counts them too (no labels: never the address).
+	if after, _ := strconv.Atoi(apitest.Metric(t, "ip_block_refused_total")); after < beforeMetric+int(s.IPBlockRefusals()-before) {
+		t.Fatalf("ip_block_refused_total: %d before, %d after", beforeMetric, after)
 	}
 
 	// Only what would open the door is exempt: the current key, or a pass,
