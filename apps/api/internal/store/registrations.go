@@ -51,6 +51,8 @@ type NewRegistration struct {
 type PendingRegistration struct {
 	Email     string    `json:"email"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	// Agreed says whether the sign-up agreed to policy versions; never sent.
+	Agreed bool `json:"-"`
 }
 
 // RegistrationResult is a code checked against a sign-up. OK: the code was
@@ -77,7 +79,9 @@ func (s *Store) CreatePendingRegistration(ctx context.Context, in NewRegistratio
 			TokenHash: in.TokenHash, RequestID: request,
 			ExpiresAt: time.Now().Add(auth.EmailCodeLifetime),
 		}
-		row.TermsOfServiceVersion, row.PrivacyPolicyVersion = in.Policies.dates()
+		if row.TermsOfServiceVersion, row.PrivacyPolicyVersion, err = in.Policies.dates(); err != nil {
+			return err
+		}
 		_, err = tx.NewInsert().Model(&row).Exec(ctx)
 		return err
 	})
@@ -88,8 +92,9 @@ func (s *Store) CreatePendingRegistration(ctx context.Context, in NewRegistratio
 func (s *Store) FindPendingRegistration(ctx context.Context, tokenHash string) (PendingRegistration, error) {
 	var p PendingRegistration
 	err := s.DB.NewSelect().Model((*pendingRegistration)(nil)).Column("email", "expires_at").
+		ColumnExpr("terms_of_service_version IS NOT NULL").
 		Where("token_hash = ? AND expires_at > now()", tokenHash).
-		Scan(ctx, &p.Email, &p.ExpiresAt)
+		Scan(ctx, &p.Email, &p.ExpiresAt, &p.Agreed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNoRegistration
 	}
@@ -203,7 +208,9 @@ func (s *Store) CompleteRegistration(ctx context.Context, tokenHash, digest stri
 		a := account{User: User{Name: row.Name, Email: row.Email, EmailVerifiedAt: &verified}, PasswordHash: row.PasswordHash}
 		// Agreed when the sign-up was submitted, not when the code came.
 		policies := row.policies()
-		a.agreeTo(policies, row.CreatedAt)
+		if err := a.agreeTo(policies, row.CreatedAt); err != nil {
+			return err
+		}
 		res, err := tx.NewInsert().Model(&a).On("CONFLICT (email) DO NOTHING").Returning("*").Exec(ctx)
 		if err != nil {
 			return err

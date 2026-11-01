@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -47,17 +48,21 @@ func (u User) MarshalJSON() ([]byte, error) {
 }
 
 // dates are the versions as the database's date columns take them: nil for
-// none. Callers have checked they're YYYY-MM-DD (the server's own).
-func (v PolicyVersions) dates() (terms, privacy *time.Time) {
-	if !v.Set() {
-		return nil, nil
+// none, and an error for a version that isn't a YYYY-MM-DD date (the server
+// only ever passes its own, so that's a bug, never a silent "no record").
+func (v PolicyVersions) dates() (terms, privacy *time.Time, err error) {
+	if v == (PolicyVersions{}) {
+		return nil, nil, nil
 	}
-	t, err1 := time.Parse(time.DateOnly, v.TermsOfService)
-	p, err2 := time.Parse(time.DateOnly, v.PrivacyPolicy)
-	if err1 != nil || err2 != nil {
-		return nil, nil
+	t, err := time.Parse(time.DateOnly, v.TermsOfService)
+	if err != nil {
+		return nil, nil, fmt.Errorf("terms of service version %q: %w", v.TermsOfService, err)
 	}
-	return &t, &p
+	p, err := time.Parse(time.DateOnly, v.PrivacyPolicy)
+	if err != nil {
+		return nil, nil, fmt.Errorf("privacy policy version %q: %w", v.PrivacyPolicy, err)
+	}
+	return &t, &p, nil
 }
 
 // event is the versions for auth.registered: nil when none were agreed to.
@@ -69,12 +74,13 @@ func (v PolicyVersions) event() *events.PolicyVersions {
 }
 
 // agreeTo records policies on a new account, as accepted at.
-func (a *account) agreeTo(policies PolicyVersions, at time.Time) {
-	terms, privacy := policies.dates()
-	if terms == nil {
-		return
+func (a *account) agreeTo(policies PolicyVersions, at time.Time) error {
+	terms, privacy, err := policies.dates()
+	if err != nil || terms == nil {
+		return err
 	}
 	a.TermsOfServiceVersion, a.PrivacyPolicyVersion, a.PoliciesAcceptedAt = terms, privacy, &at
+	return nil
 }
 
 // policies are the versions the sign-up agreed to, or none.

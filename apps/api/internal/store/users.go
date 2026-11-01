@@ -34,7 +34,9 @@ func (e LastOwnerError) Is(target error) bool { return target == ErrLastOwner }
 // email's lock.
 func (s *Store) CreateUser(ctx context.Context, name, email, hash string, policies PolicyVersions) (User, error) {
 	a := account{User: User{Name: name, Email: email}, PasswordHash: hash}
-	a.agreeTo(policies, time.Now())
+	if err := a.agreeTo(policies, time.Now()); err != nil {
+		return User{}, err
+	}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		if err := refuseBlockedEmail(ctx, tx, email); err != nil {
 			return err

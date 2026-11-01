@@ -141,6 +141,14 @@ func (h Registrations) Verify(w http.ResponseWriter, r *http.Request) {
 	if !ok || !h.Allow(w, r, httpapi.EmailCodePerEmail, httpapi.EmailCodePerEmail.Key(pending.Email)) {
 		return
 	}
+	// POLICIES was turned on after this sign-up began: it agreed to
+	// nothing, so it can't make an account. It starts again, as an expired
+	// one does; that reads only the sign-up's own row, the same for every
+	// address.
+	if h.Policies.Set() && !pending.Agreed {
+		h.endRegistration(w, registrationEnded)
+		return
+	}
 	result, err := h.Repo.CompleteRegistration(r.Context(), digest, h.EmailCodeDigest(in.Code))
 	switch {
 	case errors.Is(err, store.ErrNoRegistration):

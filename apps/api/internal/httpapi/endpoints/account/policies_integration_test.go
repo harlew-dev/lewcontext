@@ -184,3 +184,42 @@ func countRows(t *testing.T, db bun.IDB, table string) int {
 	}
 	return int(n)
 }
+
+// POLICIES turned on while a sign-up waited for its code: the sign-up agreed
+// to nothing, so verify ends it as it ends an expired one, the same for a
+// taken email as a new one, and makes no account.
+func TestSignUpFromBeforeThePoliciesStartsAgain(t *testing.T) {
+	s, db, box := verificationServer(t, false)
+	h := router.New(s)
+	taken := apitest.Must(factory.Users.CreateOne(context.Background(), db, factory.TestFaker(t)))(t)
+	var answers []string
+	for _, email := range []string{"new@example.com", taken.Email} {
+		s.Policies = store.PolicyVersions{}
+		w := apitest.Call(t, h, "POST", "/api/auth/register", registerWith(email, ""), "", nil, 202)
+		cookie := mustCookie(t, w, auth.RegistrationCookieName(false))
+		deliverSignUp(t, s, box)
+		code := "000000"
+		if email == "new@example.com" {
+			code = box.code(t)
+		}
+		s.Policies = currentPolicies
+		ended := apitest.Call(t, h, "POST", "/api/auth/register/verify", apitest.CodeBody(code), "", cookie, 401)
+		answers = append(answers, ended.Body.String())
+	}
+	if answers[0] != answers[1] || !strings.Contains(answers[0], "This sign-up has expired. Start again.") {
+		t.Fatalf("answers %q", answers)
+	}
+	if countUsers(t, db, "new@example.com") != 0 {
+		t.Fatal("an account was made without an agreement")
+	}
+}
+
+// The store refuses a version that isn't a date rather than recording
+// nothing.
+func TestStoreRefusesABadVersion(t *testing.T) {
+	s, _ := server(t)
+	_, err := s.Repo.CreateUser(context.Background(), "Ada", "ada@example.com", "hash", store.PolicyVersions{TermsOfService: "yes", PrivacyPolicy: "2026-10-15"})
+	if err == nil || !strings.Contains(err.Error(), "terms of service version") {
+		t.Fatalf("a bad version: %v", err)
+	}
+}

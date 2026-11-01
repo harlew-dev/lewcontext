@@ -187,7 +187,7 @@ The check reads only the body and the server's versions, never `users`, so it an
 
 ## Recording acceptance (decisions 12, 13)
 
-- **With verification on**, `pending_registrations` keeps the two versions until the code is right; `CompleteRegistration` copies them to the new `users` row with `policies_accepted_at` set to the pending row's `created_at`: the moment the person ticked the box and submitted, which `register/resend` doesn't change. A document updated during the 15 minutes doesn't matter: the record is the version they agreed to.
+- **With verification on**, `pending_registrations` keeps the two versions until the code is right; `CompleteRegistration` copies them to the new `users` row with `policies_accepted_at` set to the pending row's `created_at`: the moment the person ticked the box and submitted, which `register/resend` doesn't change. A document updated while the sign-up waits for its code (15 minutes, renewed by each resend) doesn't matter: the record is the version they agreed to. A sign-up that began while `POLICIES` was off agreed to nothing: once it's on, verify ends it as an expired one ("This sign-up has expired. Start again.", the same for every address), so no account is made without a record (review fix).
 - **With verification off**, `CreateUser` takes the versions and records them with `now()`.
 - **`auth.registered`** gains `policies: {termsOfService, privacyPolicy}` (absent when off), so the audit trail shows it for 90 days. The `users` columns are the lasting record.
 - **The user JSON** gains `policies: {termsOfService, privacyPolicy, acceptedAt}` or `null`: the account's own data, in every response that carries the user.
