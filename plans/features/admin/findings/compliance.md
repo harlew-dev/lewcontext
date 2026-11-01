@@ -64,4 +64,24 @@ The failure is the Monitoring Security chart crash, which main had already fixed
 
 ## Security review
 
-_Running._
+The independent reviewer found **no secret in the export, no SQL built from input, and no broken invariant**. It confirmed sound:
+- **Export contents:** every section lists its own fields; no hash, TOTP secret, recovery code, token or digest appears.
+- **Wrong passwords on the export** are bounded by the sign-in limits.
+- **Minimising:** its own key derivation; correct IP cutting for IPv4, IPv6 and mapped addresses; idempotent batches; every email and IP field in the event catalogue covered.
+- **Erasure:** in the deletion's own transaction, in A6's lock order.
+- **Retention classes** split cleanly.
+- **The Events CSV** defuses formulas.
+- **The data map test** checks both directions.
+- **The runbook's commands** exist.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | **Medium** | **An admin's own "Download my data" held other people's data.** Dashboard actions record some events outside `admin.*` with the admin as actor (revoked invitations, an unblock, MFA resets, suspensions), so an admin's export carried a stranger's invitation email, **the address of someone who asked to be blocked**, and other workspaces' IDs. Confirmed by probe | Events caused inside an admin request are left out of the export, in a way that covers future dashboard actions too |
+| 2 | **Medium** | **Audit log retention contradicted itself:** the logs were to be kept 30 days, but the audit lines are the tamper evidence for events kept a year, and lines kept a year would hold full IPs past the 30-day cut | Audit lines carry the IP already cut to /24 or /48, with their own one-year retention |
+| 3 | Low–medium | Erasure scanned every admin read (no index) inside the deletion transaction; with a busy admin team, self-deletion could time out every time | Limited to events carrying the field, with partial indexes |
+| 4 | Low | The export held operators' free-text notes from CLI suspensions | Reasons blanked in the export |
+| 5 | Low | The "LOG_LEVEL hides audit lines" warning was itself hidden at `LOG_LEVEL=error` | Logged at error level |
+| 6–7 | Low | The export's scope didn't match erasure's (undocumented); a delivery retry could race the minimiser | Scope documented; the event row locked on retry |
+| 8–11 | Nits | The CSV held a chart slot too long; "truncated" was guessed from the row count; unlisted gaps (names in searches, user agents, co-members' IDs in one's own events); the runbook didn't say to pause the minimiser while investigating | Fixed or documented |
+
+_Fix results: filled in once committed._
