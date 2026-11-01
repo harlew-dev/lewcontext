@@ -122,7 +122,7 @@ function monitoringUrl(path: string, window?: MonitoringWindow): string {
   });
 }
 // The Monitoring heading's items in the sidebar: the pages built so far
-// (plans/features/admin/monitoring.md ships them one by one).
+// (plans/features/implemented/admin/monitoring.md shipped them one by one).
 export function adminMonitoringNavigation(key: string) {
   return [
     {

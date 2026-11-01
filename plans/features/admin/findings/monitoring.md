@@ -1,6 +1,6 @@
 # Findings: A4, monitoring
 
-Plan: [monitoring](../monitoring.md), built on main in three parts, with every recommendation in its Decisions table taken as accepted. Screenshots are in [monitoring/](monitoring/).
+Plan: [monitoring](../../implemented/admin/monitoring.md), built on main in three parts, with every recommendation in its Decisions table taken as accepted. Screenshots are in [monitoring/](monitoring/).
 
 | Part | Pages | State |
 | --- | --- | --- |
