@@ -22,8 +22,8 @@ import type {
 } from "@/types/admin";
 // The Monitoring Overview: is everything all right, and if not, where? A
 // tile per area, each with its signals' levels in words, a sparkline over
-// the window, and a link to the page behind it (or its Events rows while
-// that page isn't built). One request, one recorded read.
+// the window, and a link to the page behind it. With metric storage off
+// the request tiles say so. One request, one recorded read.
 export default function AdminMonitoringOverview() {
   const page = useMonitoringPage<OverviewSections>(
     "overview",
@@ -63,9 +63,8 @@ function worst(signals: Signal[]): Level {
     "ok",
   );
 }
-// Where a tile's page is: Security, Rate limits and Usage are built, Mail
-// is its own page; the rest (Performance, Errors, Configuration) come
-// later, so their tiles link to their Events rows if they have any.
+// Where a tile's page is: a Monitoring page, or Mail, the dashboard's own.
+// A tile whose page isn't built links to its Events rows if it has any.
 function usePageHref() {
   const key = useAdminKey();
   return (page: string, window: MonitoringWindow): string | undefined => {
@@ -76,12 +75,23 @@ function usePageHref() {
         return adminRoutes.monitoring.limits(key, window);
       case "usage":
         return adminRoutes.monitoring.usage(key, window);
+      case "integrity":
+        return adminRoutes.monitoring.integrity(key, window);
+      case "performance":
+        return adminRoutes.monitoring.performance(key, window);
+      case "errors":
+        return adminRoutes.monitoring.errors(key, window);
+      case "configuration":
+        return adminRoutes.monitoring.configuration(key, window);
       case "mail":
         return adminRoutes.deliveries.index(key);
     }
     return undefined;
   };
 }
+// The tiles that read the stored metrics: with METRICS_STORE off they'd
+// read zero, which isn't "no traffic".
+const metricTiles = ["requests", "server_errors", "latency"];
 function Tile({
   tile,
   view,
@@ -96,6 +106,8 @@ function Tile({
   );
   const [first, ...rest] = signals;
   if (!first) return null;
+  const metricsOff =
+    view.sections.metricsStore === "off" && metricTiles.includes(tile.id);
   const href = pageHref(tile.page, view.window.name) ?? drill(first.drill);
   const limits = thresholds(first);
   return (
@@ -136,6 +148,11 @@ function Tile({
             </li>
           ))}
         </ul>
+      )}
+      {metricsOff && (
+        <div className="mt-2 font-medium text-zinc-950 dark:text-white">
+          Metric storage is off.
+        </div>
       )}
       {!href && (
         <div className="mt-2 text-zinc-500 dark:text-zinc-400">

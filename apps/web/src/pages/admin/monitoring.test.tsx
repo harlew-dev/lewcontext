@@ -110,6 +110,7 @@ const overview: MonitoringView<OverviewSections> = {
         series: null,
       },
     ],
+    metricsStore: "off",
   },
 };
 const emptySeries = { series: [], buckets: [] };
@@ -286,9 +287,18 @@ describe("the Monitoring Overview", () => {
     // Never colour alone: every level not OK is written out.
     expect(screen.getAllByText("Warning")).toHaveLength(3);
     expect(screen.getByText("1.8 s")).toBeInTheDocument();
-    // A page not built yet: no link, and it says so.
-    expect(screen.queryByRole("link", { name: "Latency" })).toBeNull();
-    expect(screen.getAllByText("Its page comes later.")).toHaveLength(2);
+    // Every tile's page is built: each links to it.
+    expect(screen.getByRole("link", { name: "Latency" })).toHaveAttribute(
+      "href",
+      `/admin/${key}/monitoring/performance`,
+    );
+    expect(screen.getByRole("link", { name: "Servers" })).toHaveAttribute(
+      "href",
+      `/admin/${key}/monitoring/configuration`,
+    );
+    expect(screen.queryByText("Its page comes later.")).toBeNull();
+    // Metric storage off: the latency tile says so, not the others.
+    expect(screen.getAllByText("Metric storage is off.")).toHaveLength(1);
     // The sparkline's numbers for screen readers.
     const table = screen.getByRole("table", {
       name: "Failed sign-ins over the window",
