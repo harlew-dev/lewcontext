@@ -98,7 +98,7 @@ Optional for every account (Account settings → Two-factor authentication → *
 - **Login, register (or a sign-up's right code) and a password change rotate the session.** The previous one is deleted, and at most 5 sessions exist per user, enforced in a transaction with a row lock on the user.
 - Logout deletes the session. `DELETE /api/auth/sessions` deletes all others.
 - Session tokens never go in localStorage or URLs.
-- **Admin sessions are separate** ([admin.md](admin.md)): their own table and `lewcontext_admin` cookie (SameSite=Strict), 15 minutes idle and 8 hours at most, 2 per admin, started only by an admin sign-in with a code, and valid only while the user is an admin and the `ADMIN_ROUTE_KEY` they were made under is current. A password change, a password reset, an MFA reset, revoking admin and deleting the account end them. An app session never counts as one, nor the other way round.
+- **Admin sessions are separate** ([admin.md](admin.md)): their own table and `lewcontext_admin` cookie (SameSite=Strict), 15 minutes idle and 8 hours at most, 2 per admin, started only by an admin sign-in with a code, and valid only while the user is an admin and the `ADMIN_ROUTE_KEY` they were made under is still accepted: the current key, or `ADMIN_ROUTE_KEY_PREVIOUS` while a rotation finishes, and only when the request comes with that same key. Each remembers the address and browser it signed in from, and its first use from another network is recorded (`admin.session.moved`). A password change, a password reset, an MFA reset, revoking admin and deleting the account end them. An app session never counts as one, nor the other way round.
 
 ## CSRF and origin checks
 
@@ -120,11 +120,11 @@ Sign-in, sign-up (and its codes) and password reset are limited per IP, per acco
 
 ## Admin dashboard
 
-`/admin/<ADMIN_ROUTE_KEY>`, behind the secret key on every page and API call (`X-Admin-Key`; wrong keys get the ordinary 404), then an admin's password and second factor and an admin session. Admins are granted only from the command line, must have MFA, and can only read. Everything is in [admin.md](admin.md).
+`/admin/<ADMIN_ROUTE_KEY>`, behind the secret key on every page and API call (`X-Admin-Key`; wrong keys get the ordinary 404, and so does the right key from an address outside `ADMIN_ALLOWED_IPS` when it's set), then an admin's password and second factor and an admin session. Admins and their role (`viewer`, or `operator` for the actions to come) are granted only from the command line, must have MFA, and can only read; every admin route that changes anything names the role it needs (`RequireAdminRole`, 403). A rotated key can stay accepted for the sessions made under it (`ADMIN_ROUTE_KEY_PREVIOUS`), never for a new sign-in. Everything is in [admin.md](admin.md).
 
 ## Audit trail
 
-Sign-ups (requested, sent, each code checked, completed), email verifications, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, the first refusal of each rate-limit window (`rate_limit.reached`), and admins granted, revoked, signing in and out and everything they read (`admin.*`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
+Sign-ups (requested, sent, each code checked, completed), email verifications, login attempts (with the email typed and the client IP), sign-ins, sign-outs, other sessions revoked, password checks and changes, two-factor authentication turned on or off, each second-factor check and new recovery codes, deleted accounts, reset links requested, sent and used, the first refusal of each rate-limit window (`rate_limit.reached`), and admins granted, their role changed, revoked, signing in and out, their sessions moving or signed out, the right key refused from outside the allowlist, and everything they read (`admin.*`) are recorded in the `events` table; never passwords, hashes or tokens. See [events.md](events.md).
 
 ## Transport and headers
 

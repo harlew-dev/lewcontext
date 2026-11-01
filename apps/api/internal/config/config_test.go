@@ -22,6 +22,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"APP_KEY":                     testAppKey,
 		"ENCRYPTION_KEY":              "",
 		"ADMIN_ROUTE_KEY":             "",
+		"ADMIN_ROUTE_KEY_PREVIOUS":    "",
+		"ADMIN_ALLOWED_IPS":           "",
 		"MAIL_FILE":                   "",
 		"MAIL_FROM_ADDRESS":           "",
 		"MAIL_FROM_NAME":              "",

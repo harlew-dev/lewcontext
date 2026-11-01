@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/httpapi/apitest"
 	"net/http"
@@ -35,7 +36,9 @@ func TestWorkspaceMutationsNeedAPermission(t *testing.T) {
 }
 
 // Every /api/admin/ route is registered in adminRoutes, behind
-// RequireAdminKey: a route added anywhere else in routes.go fails here.
+// RequireAdminKey: a route added anywhere else in routes.go fails here. And
+// every admin route that changes anything names the admin role it needs,
+// apart from the door's sign-in steps and the admin's own sessions.
 func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
 	source := string(apitest.Must(os.ReadFile("routes.go"))(t))
 	start := strings.Index(source, "func adminRoutes(")
@@ -49,9 +52,85 @@ func TestAdminRoutesStayInTheAdminGroup(t *testing.T) {
 	}
 	inside := source[start : start+end]
 	for _, line := range strings.Split(inside, "\n") {
-		if strings.Contains(line, "mux.Handle") && !strings.Contains(line, "RequireAdminKey") {
+		if (strings.Contains(line, "mux.Handle") || strings.Contains(line, "group(mux")) && !strings.Contains(line, "RequireAdminKey") {
 			t.Fatalf("an admin route without RequireAdminKey: %s", strings.TrimSpace(line))
 		}
+	}
+	// The mutations that need no role, and why. Anything else that isn't a
+	// GET must be registered with Role.
+	unguarded := map[string]string{
+		`door.Handle("POST", "/login"`:               "the sign-in's password step: no session yet",
+		`door.HandleFunc("POST", "/login/mfa/setup"`: "the sign-in's MFA setup: no session yet",
+		`door.HandleFunc("POST", "/login/mfa"`:       "the sign-in's code: no session yet",
+		`signedIn.OwnSessions("POST", "/logout"`:     "signing out: ends only this session",
+		`signedIn.OwnSessions("DELETE", "/sessions"`: "signing out your other admin sessions (decision 5): only takes your own access away, so no role or code",
+	}
+	registration := regexp.MustCompile(`^\s*(\w+)\.(Handle|HandleFunc|Role|OwnSessions)\("(\w+)", "([^"]*)"`)
+	// Any call that registers a route, however it's written.
+	call := regexp.MustCompile(`\b(\w+)\.(Handle|HandleFunc|Role|OwnSessions|handle)\(`)
+	found := map[string]bool{}
+	for _, line := range strings.Split(inside, "\n") {
+		c := call.FindStringSubmatch(line)
+		if c == nil || c[1] == "mux" {
+			continue
+		}
+		if c[2] == "handle" {
+			t.Errorf("registered with handle, which skips the role check: %s", strings.TrimSpace(line))
+			continue
+		}
+		m := registration.FindStringSubmatch(line)
+		if m == nil {
+			t.Errorf("a registration this test can't read (write it on one line, method and path as string literals): %s", strings.TrimSpace(line))
+			continue
+		}
+		if m[3] == "GET" || m[3] == "HEAD" || m[2] == "Role" {
+			continue
+		}
+		registered := fmt.Sprintf(`%s.%s(%q, %q`, m[1], m[2], m[3], m[4])
+		if unguarded[registered] == "" {
+			t.Errorf("%s %s needs an admin role: register it with Role", m[3], m[4])
+		}
+		found[registered] = true
+	}
+	for registered := range unguarded {
+		if !found[registered] {
+			t.Errorf("%s is listed as needing no role, but isn't registered so", registered)
+		}
+	}
+}
+
+// An admin mutation registered without a role stops the server starting,
+// as a workspace one without a permission does.
+func TestAdminMutationsNeedARole(t *testing.T) {
+	ok := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
+	for _, method := range []string{"POST", "PUT", "PATCH", "DELETE"} {
+		t.Run(method, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("%s without a role was registered", method)
+				}
+			}()
+			signedIn := group(http.NewServeMux(), "/api/admin")
+			signedIn.requireAdminRoles = true
+			signedIn.HandleFunc(method, "/things", ok)
+		})
+	}
+	signedIn := group(http.NewServeMux(), "/api/admin")
+	signedIn.requireAdminRoles = true
+	signedIn.HandleFunc("GET", "/things", ok)
+	signedIn.Role("POST", "/things", auth.AdminOperator, ok)
+	signedIn.OwnSessions("DELETE", "/sessions", ok)
+	signedIn.OwnSessions("POST", "/logout", ok)
+	// OwnSessions takes only the admin's own session routes.
+	for _, route := range [][2]string{{"POST", "/things"}, {"DELETE", "/users/{user}"}, {"POST", "/sessions"}, {"DELETE", "/logout"}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("OwnSessions took %s %s", route[0], route[1])
+				}
+			}()
+			signedIn.OwnSessions(route[0], route[1], ok)
+		}()
 	}
 }
 

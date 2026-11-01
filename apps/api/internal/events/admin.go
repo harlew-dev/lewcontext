@@ -17,15 +17,71 @@ const (
 // MFAStepAdminLogin is auth.mfa.checked's step for an admin sign-in's code.
 const MFAStepAdminLogin = "admin_login"
 
-// AdminGranted: the operator made an account an admin (admin grant).
-// MFASetupUntil is when the setup window at the door closes, or nil when MFA
-// is already on.
+// AdminGranted: the operator made an account an admin, or granted it again
+// (admin grant). Role is what it may do (viewer or operator); MFASetupUntil
+// is when the setup window at the door closes, or nil when MFA is already
+// on.
 type AdminGranted struct {
 	User          string     `json:"user"`
+	Role          string     `json:"role"`
 	MFASetupUntil *time.Time `json:"mfaSetupUntil"`
 }
 
 func (AdminGranted) EventName() string { return "admin.granted" }
+
+// AdminUpdated: the operator changed an admin's role (admin grant -role on
+// an existing admin), with changes.role.
+type AdminUpdated struct {
+	User    string  `json:"user"`
+	Changes Changes `json:"changes"`
+}
+
+func (AdminUpdated) EventName() string { return "admin.updated" }
+
+// Reasons an admin request with the right key was refused.
+const (
+	// AdminRefusedIP: the client's address isn't in ADMIN_ALLOWED_IPS.
+	AdminRefusedIP = "ip_not_allowed"
+)
+
+// AdminAccessRefused: a request with the right admin key (or a valid assets
+// pass) was answered as an unknown URL, for Reason. Recorded at most once
+// per address (an IPv6 /64) per 15 minutes per server; the address is in
+// events.ip. It means the key, or a pass, is held somewhere it shouldn't be.
+type AdminAccessRefused struct {
+	Reason string `json:"reason"`
+}
+
+func (AdminAccessRefused) EventName() string { return "admin.access_refused" }
+
+// AdminSessionMoved: an admin session was used from another network than
+// the one it signed in from (another IPv4 /24 or IPv6 /48), recorded once
+// per session. From and To are the networks, not the addresses;
+// SessionAge is how long ago it signed in, in seconds.
+type AdminSessionMoved struct {
+	Admin      string `json:"admin"`
+	From       string `json:"from"`
+	To         string `json:"to"`
+	SessionAge int    `json:"sessionAge"`
+}
+
+func (AdminSessionMoved) EventName() string { return "admin.session.moved" }
+
+// AdminSessionsRevoked: an admin signed out their other admin sessions.
+type AdminSessionsRevoked struct {
+	Admin string `json:"admin"`
+	Count int    `json:"count"`
+}
+
+func (AdminSessionsRevoked) EventName() string { return "admin.sessions_revoked" }
+
+// AdminAdminListed: an admin loaded the Admins page (every admin, their
+// sessions and when they last signed in).
+type AdminAdminListed struct {
+	Admin string `json:"admin"`
+}
+
+func (AdminAdminListed) EventName() string { return "admin.admin.listed" }
 
 // AdminRevoked: the operator took admin away (admin revoke), signing out
 // the user's admin sessions.

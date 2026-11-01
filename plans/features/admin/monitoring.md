@@ -37,7 +37,7 @@ These pages turn each of those into a **signal** with a threshold, a chart, and 
   Each page response carries its signals with `value`, `level` (`ok`, `warn`, `critical`) and `drill`, then the page's charts and tables. Thresholds are in code, changed by a reviewed commit, and listed in `docs/api/monitoring.md`.
 - **Computed when read** (decision 3), every query bounded by the window (7 days at most) and an index, under a 5 s deadline per page. A signal too slow at real volume moves to the hourly rollup job ([observability](observability.md)), not to a slower page.
 - **Everything drills down:** every number and bar links to the Events page filtered to its rows, or to a User, Workspace, IP or error page.
-- **Viewers can read every page** ([access hardening](access-hardening.md) roles); nothing here changes data.
+- **Viewers can read every page** ([access hardening](../implemented/admin/access-hardening.md) roles); nothing here changes data.
 - Queries live in `internal/store/monitor_<page>.go`, written with Bun's builder like every other query, including those on PostgreSQL's statistics views (`TableExpr("pg_stat_user_tables")`).
 
 ## The pages

@@ -25,7 +25,12 @@ const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
 const admin = testSession({
   user: { id: "usr_00000000000009", name: "Olive Admin" },
 });
-const me = { user: admin.user, csrfToken: "admin-csrf", expiresAt: "" };
+const me = {
+  user: admin.user,
+  role: "viewer",
+  csrfToken: "admin-csrf",
+  expiresAt: "",
+};
 const emptyPage = {
   data: [],
   pages: { current: 1, total: 1, perPage: 20, items: 0 },

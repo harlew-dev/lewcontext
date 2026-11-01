@@ -18,6 +18,9 @@ CREATE INDEX events_name_created_idx ON events(name, created_at DESC);
 CREATE INDEX events_created_idx ON events(created_at);
 -- Each user's last sign-in, for the admin dashboard's user list.
 CREATE INDEX events_logged_in_idx ON events(user_id, created_at DESC) WHERE name = 'auth.logged_in';
+-- Each admin's last admin sign-in (the admin is the actor), for the Admins
+-- page: events_actor_created_idx would walk every read the admin made.
+CREATE INDEX events_admin_logged_in_idx ON events(actor_id, created_at DESC) WHERE name = 'admin.logged_in';
 -- The admin dashboard's Events filters (docs/api/admin.md): by IP or range,
 -- by the email in a payload, by the workspace in a payload (which outlives
 -- the workspace), and by the actor (the account filter's other half is

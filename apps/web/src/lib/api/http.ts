@@ -24,12 +24,14 @@ export type Http = {
   send<T>(method: Method, path: string, body?: unknown): Promise<T>;
 };
 // Where and how requests go: the base URL, headers sent with every request,
-// cookies and a timeout.
+// cookies and a timeout. onResponse sees every response, answered or
+// refused, before it's read (the admin pages watch a header with it).
 export type Transport = {
   base: string;
   headers: Record<string, string>;
   credentials?: RequestCredentials;
   timeout: number;
+  onResponse?: (response: Response) => void;
 };
 // An Http on a transport: browserHttp below, and the admin dashboard's
 // adminHttp (lib/api/admin.ts).
@@ -42,7 +44,7 @@ export function httpWith(transport: Transport): Http {
   };
 }
 async function request<T>(
-  { base, headers, credentials, timeout }: Transport,
+  { base, headers, credentials, timeout, onResponse }: Transport,
   method: string,
   path: string,
   body?: unknown,
@@ -56,6 +58,7 @@ async function request<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(timeout),
   });
+  onResponse?.(response);
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new ApiError(

@@ -96,6 +96,8 @@ var adminRoutesList = []struct{ method, path string }{
 	{"GET", "/api/admin/catalogue"},
 	{"GET", "/api/admin/mail"},
 	{"GET", "/api/admin/deliveries"},
+	{"GET", "/api/admin/admins"},
+	{"DELETE", "/api/admin/sessions"},
 	{"PUT", "/api/admin/login"},
 	{"GET", "/api/admin/nothing"},
 }
@@ -280,11 +282,11 @@ func TestAdminFirstSignInSetsUpMFA(t *testing.T) {
 	ctx := context.Background()
 	f := factory.TestFaker(t)
 	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
-	granted := apitest.Must(s.Repo.GrantAdmin(ctx, user.Email))(t)
-	if granted.MFASetupUntil == nil || time.Until(*granted.MFASetupUntil) < 23*time.Hour {
-		t.Fatalf("grant opened no window: %+v", granted)
+	granted, _ := must2(s.Repo.GrantAdmin(ctx, user.Email, ""))(t)
+	if granted.MFASetupUntil == nil || time.Until(*granted.MFASetupUntil) < 23*time.Hour || granted.Role != auth.AdminViewer {
+		t.Fatalf("grant opened no window, or isn't a viewer: %+v", granted)
 	}
-	if e := apitest.OnlyEvent(t, db, "admin.granted"); e.ActorID.Valid || !apitest.Is(e.UserID, user.ID) || e.Payload["mfaSetupUntil"] == nil {
+	if e := apitest.OnlyEvent(t, db, "admin.granted"); e.ActorID.Valid || !apitest.Is(e.UserID, user.ID) || e.Payload["mfaSetupUntil"] == nil || e.Payload["role"] != "viewer" {
 		t.Fatalf("admin.granted: %+v", e)
 	}
 
@@ -343,7 +345,7 @@ func TestAdminFirstSignInSetsUpMFA(t *testing.T) {
 		t.Fatalf("outside the window: %+v", e[len(e)-1])
 	}
 	// Granting again opens a new one.
-	apitest.Must(s.Repo.GrantAdmin(ctx, user.Email))(t)
+	must2(s.Repo.GrantAdmin(ctx, user.Email, ""))(t)
 	if w := adminLogin(t, h, user.Email, 200); !strings.Contains(w.Body.String(), "mfaSetupRequired") {
 		t.Fatalf("after a new grant: %s", w.Body.String())
 	}

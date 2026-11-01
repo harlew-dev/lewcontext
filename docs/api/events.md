@@ -66,17 +66,22 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `project.created` | `project`, `workspace`, `name`, `description`, `status`, `color` | `CreateProject` |
 | `project.updated` | `project`, `workspace`, `changes` per changed field (`from`, `to`) | `UpdateProject`, only when something changed |
 | `project.deleted` | `project`, `workspace`, `name` | `DeleteProject` |
-| `admin.granted` | `user`, `mfaSetupUntil` (null when MFA is already on); `user_id` set, no actor (the CLI) | `GrantAdmin` (`admin grant`) |
+| `admin.granted` | `user`, `role` (`viewer`, `operator`), `mfaSetupUntil` (null when MFA is already on); `user_id` set, no actor (the CLI) | `GrantAdmin` (`admin grant`): a new admin, or one granted again with the same role (or none) |
+| `admin.updated` | `user`, `changes.role` (`from`, `to`); `user_id` set, no actor (the CLI) | `GrantAdmin` (`admin grant -role`), only when an admin's role changed |
 | `admin.revoked` | `user`, `adminSessionsRevoked`; `user_id` set, no actor | `RevokeAdmin` (`admin revoke`) |
 | `admin.login_attempted` | `email`, `user` (if the account exists), `result`: `mfa_required` / `mfa_setup_required` / `wrong_password` / `unknown_account` / `not_admin` / `mfa_off` (an admin without MFA outside the setup window); no scope | `POST /api/admin/login`, for every attempt that reaches the password check |
 | `admin.logged_in` | `user`; the admin is the actor, `user_id` stays empty | `CreateAdminSession`, after the code |
 | `admin.logged_out` | `user`; actor only | `DeleteAdminSession` |
+| `admin.access_refused` | `reason`: `ip_not_allowed`; no scope, the address in `ip` | a request with the right admin key (or a valid assets pass) from outside `ADMIN_ALLOWED_IPS`, at most once per address (an IPv6 /64) per 15 minutes per server, queued by the request and written by one worker (dropped past 64 queued) |
+| `admin.session.moved` | `admin`, `from`, `to` (the sign-in's and the request's networks: IPv4 /24, IPv6 /48), `sessionAge` (seconds); actor only | `FlagAdminSessionMoved`: the first request of an admin session from another network, once per session |
+| `admin.sessions_revoked` | `admin`, `count`; actor only | `DeleteOtherAdminSessions` (`DELETE /api/admin/sessions`) |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page`; actor only | every admin list read |
 | `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` (what was looked at); actor only, so deleting it keeps the record | every admin detail read |
 | `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (the Events or deliveries filters used, the cursor included; a searched-for IP is `filters.ip`, not the admin's); actor only | every Events and deliveries list read |
 | `admin.event.viewed` | `admin`, `event`; actor only | opening an event |
 | `admin.mail.viewed` | `admin`, `window` (`24h`, `7d`); actor only | the Mail summary |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page`; actor only | a workspace's projects on its admin page |
+| `admin.admin.listed` | `admin`; actor only | the Admins page |
 | `email.blocked` | `email` (the address, without an account); no user, workspace or actor. The `ip` column is the request's | `BlockEmail`, from a block link, only when the address wasn't blocked already ([auth.md](auth.md#blocking-an-email-address)) |
 | `email.unblocked` | `email`, `by`: `link` (its block link, with the request's `ip`) / `cli` (`admin unblock`, no `ip`) | `UnblockEmail`, `UnblockEmailAddress`, only when the address was blocked |
 | `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md)); `user` and `workspace` when known; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them | `allow`, only for the first refused request in a window |

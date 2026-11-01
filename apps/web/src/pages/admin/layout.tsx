@@ -28,7 +28,11 @@ export default function AdminLayoutRoute({
   const { pathname } = useLocation();
   if ("unavailable" in loaderData) return <ServiceUnavailable />;
   return (
-    <AdminProvider adminKey={params.key} session={loaderData.session}>
+    <AdminProvider
+      adminKey={params.key}
+      session={loaderData.session}
+      previousKey={loaderData.previousKey}
+    >
       <AdminLayout>
         <PageTransition key={pathname}>
           <Outlet />

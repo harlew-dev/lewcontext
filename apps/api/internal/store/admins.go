@@ -35,7 +35,8 @@ type adminRecord struct {
 	bun.BaseModel `bun:"table:admins,alias:adm"`
 	UserID        int64 `bun:",pk"`
 	MFASetupUntil *time.Time
-	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	Role          auth.AdminRole `bun:",notnull"`
+	CreatedAt     time.Time      `bun:",nullzero,notnull,default:current_timestamp"`
 }
 type adminSessionRecord struct {
 	bun.BaseModel `bun:"table:admin_sessions,alias:adms"`
@@ -46,6 +47,9 @@ type adminSessionRecord struct {
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 	LastSeenAt    time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 	ExpiresAt     time.Time `bun:",notnull"`
+	IP            string    `bun:"ip,type:inet,notnull"`
+	UserAgent     string    `bun:",notnull"`
+	MovedAt       *time.Time
 }
 
 // Admin is an admin account. MFASetupUntil is when their setup window at
@@ -53,6 +57,7 @@ type adminSessionRecord struct {
 type Admin struct {
 	User          User
 	MFASetupUntil *time.Time
+	Role          auth.AdminRole
 	CreatedAt     time.Time
 }
 
@@ -61,25 +66,48 @@ func (a Admin) SetupOpen() bool {
 	return a.User.MFAEnabledAt == nil && a.MFASetupUntil != nil && time.Now().Before(*a.MFASetupUntil)
 }
 
-// AdminSession is a live admin session and its admin.
+// AdminSession is a live admin session and its admin. KeyHash is the digest
+// of the key it was made under, for the caller to check against the key the
+// request came with; IP is where it signed in, and Moved whether it has
+// been used from another network since (admin.session.moved).
 type AdminSession struct {
 	User                 User
+	Role                 auth.AdminRole
 	CSRF                 string
+	KeyHash              string
+	IP                   string
+	Moved                bool
 	CreatedAt, ExpiresAt time.Time
 }
 
-// adminsWith selects admins with their accounts (MFAEnabledAt included).
+// NewAdminSession is an admin session to start: the token's and the key's
+// digests, its CSRF token and end, and where it signed in from (the client
+// IP and its User-Agent, already cut to 256 characters).
+type NewAdminSession struct {
+	UserID                   int64
+	TokenHash, KeyHash, CSRF string
+	ExpiresAt                time.Time
+	IP, UserAgent            string
+}
+
+// scanDest is where a row of adminsWith goes, in its order, then extra.
+func (a *Admin) scanDest(extra ...any) []any {
+	return append([]any{&a.User.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.User.CreatedAt, &a.User.MFAEnabledAt, &a.MFASetupUntil, &a.Role, &a.CreatedAt}, extra...)
+}
+
+// adminsWith selects admins with their accounts (MFAEnabledAt included),
+// in Admin.scanDest's order.
 func adminsWith(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().Model((*adminRecord)(nil)).
 		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at").
 		ColumnExpr("(?)", mfaEnabledAt(db)).
-		ColumnExpr("adm.mfa_setup_until, adm.created_at").
+		ColumnExpr("adm.mfa_setup_until, adm.role, adm.created_at").
 		Join("JOIN users AS u ON u.id = adm.user_id")
 }
 
 func scanAdmin(ctx context.Context, q *bun.SelectQuery) (Admin, error) {
 	var a Admin
-	err := q.Scan(ctx, &a.User.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.User.CreatedAt, &a.User.MFAEnabledAt, &a.MFASetupUntil, &a.CreatedAt)
+	err := q.Scan(ctx, a.scanDest()...)
 	return a, err
 }
 
@@ -102,7 +130,7 @@ func (s *Store) IndexAdmins(ctx context.Context) ([]Admin, error) {
 	admins := []Admin{}
 	for rows.Next() {
 		var a Admin
-		if err := rows.Scan(&a.User.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.User.CreatedAt, &a.User.MFAEnabledAt, &a.MFASetupUntil, &a.CreatedAt); err != nil {
+		if err := rows.Scan(a.scanDest()...); err != nil {
 			return nil, err
 		}
 		admins = append(admins, a)
@@ -110,37 +138,73 @@ func (s *Store) IndexAdmins(ctx context.Context) ([]Admin, error) {
 	return admins, rows.Err()
 }
 
-// GrantAdmin makes the account with email an admin, or grants it again,
-// and records admin.granted with no actor (the operator's CLI). Without
-// MFA, it opens a new 24-hour setup window at the door. sql.ErrNoRows for an
-// unknown email.
-func (s *Store) GrantAdmin(ctx context.Context, email string) (Admin, error) {
-	var a Admin
-	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+// GrantAdmin makes the account with email an admin with role (a viewer when
+// role is ""), or grants it again. A new grant, or one again with the same
+// role (or none), records admin.granted with no actor (the operator's CLI)
+// and, without MFA, opens a new 24-hour setup window at the door. Granting
+// an existing admin another role only changes the role, recording
+// admin.updated; from is then the role it had ("" otherwise).
+// sql.ErrNoRows for an unknown email.
+func (s *Store) GrantAdmin(ctx context.Context, email string, role auth.AdminRole) (a Admin, from auth.AdminRole, err error) {
+	err = s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var u User
 		err := tx.NewSelect().Model(&u).ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at").ColumnExpr("(?) AS mfa_enabled_at", mfaEnabledAt(tx)).
 			Where("u.email = ?", email).For("UPDATE OF u").Scan(ctx)
 		if err != nil {
 			return err
 		}
-		row := adminRecord{UserID: u.ID}
-		if u.MFAEnabledAt == nil {
-			until := time.Now().Add(auth.AdminSetupWindow)
-			row.MFASetupUntil = &until
-		}
-		_, err = tx.NewInsert().Model(&row).
-			On("CONFLICT (user_id) DO UPDATE").
-			Set("mfa_setup_until = EXCLUDED.mfa_setup_until").
-			Returning("created_at").
-			Exec(ctx)
-		if err != nil {
+		var existing adminRecord
+		err = tx.NewSelect().Model(&existing).Where("user_id = ?", u.ID).For("UPDATE").Scan(ctx)
+		known := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		a = Admin{User: u, MFASetupUntil: row.MFASetupUntil, CreatedAt: row.CreatedAt}
-		e := events.AdminGranted{User: u.PublicID, MFASetupUntil: row.MFASetupUntil}
-		return s.record(ctx, tx, e, EventScope{UserID: u.ID})
+		if known && role != "" && role != existing.Role {
+			a, from = Admin{User: u, MFASetupUntil: existing.MFASetupUntil, Role: role, CreatedAt: existing.CreatedAt}, existing.Role
+			return s.changeAdminRole(ctx, tx, u, existing.Role, role)
+		}
+		if role == "" {
+			role = auth.AdminViewer
+			if known {
+				role = existing.Role
+			}
+		}
+		a, err = s.grantAdmin(ctx, tx, u, role)
+		return err
 	})
-	return a, err
+	return a, from, err
+}
+
+// grantAdmin inserts (or refreshes) the admin row of u with role, opening
+// the setup window without MFA, and records admin.granted.
+func (s *Store) grantAdmin(ctx context.Context, tx bun.Tx, u User, role auth.AdminRole) (Admin, error) {
+	row := adminRecord{UserID: u.ID, Role: role}
+	if u.MFAEnabledAt == nil {
+		until := time.Now().Add(auth.AdminSetupWindow)
+		row.MFASetupUntil = &until
+	}
+	_, err := tx.NewInsert().Model(&row).
+		On("CONFLICT (user_id) DO UPDATE").
+		Set("mfa_setup_until = EXCLUDED.mfa_setup_until").
+		Returning("created_at").
+		Exec(ctx)
+	if err != nil {
+		return Admin{}, err
+	}
+	e := events.AdminGranted{User: u.PublicID, Role: string(role), MFASetupUntil: row.MFASetupUntil}
+	return Admin{User: u, MFASetupUntil: row.MFASetupUntil, Role: role, CreatedAt: row.CreatedAt}, s.record(ctx, tx, e, EventScope{UserID: u.ID})
+}
+
+// changeAdminRole gives the admin u role instead of from and records
+// admin.updated. The setup window is left as it was. The admin's sessions
+// carry on with the new role from their next request.
+func (s *Store) changeAdminRole(ctx context.Context, tx bun.Tx, u User, from, role auth.AdminRole) error {
+	if _, err := tx.NewUpdate().Model((*adminRecord)(nil)).Set("role = ?", role).Where("user_id = ?", u.ID).Exec(ctx); err != nil {
+		return err
+	}
+	changes := events.Changes{}
+	changes.Add("role", string(from), string(role))
+	return s.record(ctx, tx, events.AdminUpdated{User: u.PublicID, Changes: changes}, EventScope{UserID: u.ID})
 }
 
 // RevokeAdmin takes admin away from the account with email, deleting its
@@ -182,7 +246,7 @@ func (s *Store) FindAdminChallenge(ctx context.Context, hash string) (Admin, str
 		ColumnExpr("c.purpose").
 		Where("c.token_hash = ? AND c.purpose IN (?, ?) AND c.expires_at > now()", hash, ChallengeAdmin, ChallengeAdminSetup)
 	var a Admin
-	err := q.Scan(ctx, &a.User.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.User.CreatedAt, &a.User.MFAEnabledAt, &a.MFASetupUntil, &a.CreatedAt, &purpose)
+	err := q.Scan(ctx, a.scanDest(&purpose)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, "", ErrNoChallenge
 	}
@@ -195,14 +259,14 @@ func (s *Store) DeleteMFAChallenge(ctx context.Context, hash string) error {
 	return err
 }
 
-// CreateAdminSession starts an admin session under the key whose digest is
-// keyHash, keeping at most MaxAdminSessions per admin (the oldest go), and
-// records e with the admin as actor. ErrNotAdmin if they stopped being one.
-func (s *Store) CreateAdminSession(ctx context.Context, userID int64, hash, keyHash, csrf string, expiry time.Time, e events.Event) error {
+// CreateAdminSession starts the admin session n, keeping at most
+// MaxAdminSessions per admin (the oldest go), and records e with the admin
+// as actor. ErrNotAdmin if they stopped being one.
+func (s *Store) CreateAdminSession(ctx context.Context, n NewAdminSession, e events.Event) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// The admin row's lock serialises sign-ins, so the cap holds.
 		var locked int64
-		err := tx.NewSelect().Model((*adminRecord)(nil)).Column("user_id").Where("user_id = ?", userID).For("UPDATE").Scan(ctx, &locked)
+		err := tx.NewSelect().Model((*adminRecord)(nil)).Column("user_id").Where("user_id = ?", n.UserID).For("UPDATE").Scan(ctx, &locked)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotAdmin
 		}
@@ -210,47 +274,97 @@ func (s *Store) CreateAdminSession(ctx context.Context, userID int64, hash, keyH
 			return err
 		}
 		if _, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).
-			Where("user_id = ? AND (expires_at <= now() OR last_seen_at <= now() - make_interval(secs => ?))", userID, adminIdleSeconds).
+			Where("user_id = ? AND (expires_at <= now() OR last_seen_at <= now() - make_interval(secs => ?))", n.UserID, adminIdleSeconds).
 			Exec(ctx); err != nil {
 			return err
 		}
 		newest := tx.NewSelect().Model((*adminSessionRecord)(nil)).Column("token_hash").
-			Where("user_id = ?", userID).
+			Where("user_id = ?", n.UserID).
 			Order("created_at DESC").
 			Offset(MaxAdminSessions - 1)
 		if _, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("token_hash IN (?)", newest).Exec(ctx); err != nil {
 			return err
 		}
-		session := adminSessionRecord{TokenHash: hash, UserID: userID, KeyHash: keyHash, CSRFToken: csrf, ExpiresAt: expiry}
+		session := adminSessionRecord{TokenHash: n.TokenHash, UserID: n.UserID, KeyHash: n.KeyHash, CSRFToken: n.CSRF, ExpiresAt: n.ExpiresAt, IP: n.IP, UserAgent: n.UserAgent}
 		if _, err := tx.NewInsert().Model(&session).Exec(ctx); err != nil {
 			return err
 		}
-		return s.record(ctx, tx, e, EventScope{ActorID: userID})
+		return s.record(ctx, tx, e, EventScope{ActorID: n.UserID})
 	})
 }
 
 // adminIdleSeconds is auth.AdminSessionIdle, for make_interval.
 var adminIdleSeconds = int(auth.AdminSessionIdle.Seconds())
 
-// FindAdminSession refreshes the idle time of the admin session hash created
-// under the key whose digest is keyHash, and returns it with its admin.
-// sql.ErrNoRows when it's unknown, expired, idle, made under another key, or
-// its user is no longer an admin.
+// FindAdminSession refreshes the idle time of the admin session hash made
+// under the key whose digest is keyHash (the one the request came with),
+// and returns it with its admin and that digest. sql.ErrNoRows when it's
+// unknown, expired, idle, made under another key, or its user is no longer
+// an admin. A session made under another key is never touched, so a
+// request with the wrong key can't keep it from idling out.
 func (s *Store) FindAdminSession(ctx context.Context, hash, keyHash string) (AdminSession, error) {
 	active := s.DB.NewUpdate().Model((*adminSessionRecord)(nil)).
 		Set("last_seen_at = now()").
 		Where("token_hash = ? AND key_hash = ? AND expires_at > now() AND last_seen_at > now() - make_interval(secs => ?)", hash, keyHash, adminIdleSeconds).
-		Returning("user_id, csrf_token, created_at, expires_at")
+		Returning("user_id, csrf_token, key_hash, host(ip) AS ip, moved_at IS NOT NULL AS moved, created_at, expires_at")
 	var session AdminSession
 	err := s.DB.NewSelect().
 		With("active", active).
 		TableExpr("active AS a").
 		Join("JOIN admins AS adm ON adm.user_id = a.user_id").
 		Join("JOIN users AS u ON u.id = a.user_id").
-		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, a.csrf_token, a.created_at, a.expires_at").
+		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, adm.role, a.csrf_token, a.key_hash, a.ip, a.moved, a.created_at, a.expires_at").
 		ColumnExpr("(?)", mfaEnabledAt(s.DB)).
-		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.CSRF, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
+		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.Role, &session.CSRF, &session.KeyHash, &session.IP, &session.Moved, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
 	return session, err
+}
+
+// CheckAdminSession reports whether hash is a live admin session made under
+// the key whose digest is keyHash, without refreshing it: telling a session
+// made under the other key (401) from none at all.
+func (s *Store) CheckAdminSession(ctx context.Context, hash, keyHash string) (bool, error) {
+	return s.DB.NewSelect().Model((*adminSessionRecord)(nil)).
+		Join("JOIN admins AS adm ON adm.user_id = adms.user_id").
+		Where("adms.token_hash = ? AND adms.key_hash = ? AND adms.expires_at > now() AND adms.last_seen_at > now() - make_interval(secs => ?)", hash, keyHash, adminIdleSeconds).
+		Exists(ctx)
+}
+
+// FlagAdminSessionMoved marks the admin session hash as used from another
+// network than it signed in from, and records e (admin.session.moved) with
+// the admin as actor, only the first time: a session is flagged once.
+func (s *Store) FlagAdminSessionMoved(ctx context.Context, hash string, admin User, e events.AdminSessionMoved) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		result, err := tx.NewUpdate().Model((*adminSessionRecord)(nil)).
+			Set("moved_at = now()").
+			Where("token_hash = ? AND moved_at IS NULL", hash).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		if n, err := result.RowsAffected(); err != nil || n == 0 {
+			return err
+		}
+		return s.record(ctx, tx, e, EventScope{ActorID: admin.ID})
+	})
+}
+
+// DeleteOtherAdminSessions signs out every admin session of the admin's but
+// hash (this one), and records admin.sessions_revoked with how many.
+func (s *Store) DeleteOtherAdminSessions(ctx context.Context, admin User, hash string) (int, error) {
+	var count int
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		result, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("user_id = ? AND token_hash <> ?", admin.ID, hash).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		count = int(n)
+		return s.record(ctx, tx, events.AdminSessionsRevoked{Admin: admin.PublicID, Count: count}, EventScope{ActorID: admin.ID})
+	})
+	return count, err
 }
 
 // DeleteAdminSession signs an admin session out and records

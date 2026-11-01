@@ -14,6 +14,7 @@ import (
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 )
 
@@ -32,7 +33,7 @@ const wrongAdminLogin = "Email or password is incorrect."
 // a code, or setting MFA up. POST /api/admin/login.
 func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	var in httpapi.Credentials
-	if !httpapi.Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) || !signInAddress(w, r) {
 		return
 	}
 	if !httpapi.ValidCredentials(&in) {
@@ -82,6 +83,20 @@ func (h Sessions) Login(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpapi.Fail(w, 401, wrongAdminLogin)
 	}
+}
+
+// signInAddress answers 503 unless the request's client address is an IP
+// address, which the sign-in's event and the admin session store (inet). A
+// server reached through a unix socket has none: admin sign-in is refused
+// there, with the reason logged, rather than failing on the insert. Run it
+// before anything is checked or used up.
+func signInAddress(w http.ResponseWriter, r *http.Request) bool {
+	if _, err := netip.ParseAddr(httpapi.ClientIP(r)); err == nil {
+		return true
+	}
+	slog.Error("admin sign-in refused: the client address isn't an IP address; serve the API over TCP (or set CLIENT_IP_HEADER behind a proxy)", "clientIP", httpapi.ClientIP(r))
+	httpapi.Fail(w, 503, "Admin sign-in isn't available on this server.")
+	return false
 }
 
 // adminLoginResult is what the password step at the door comes to, for
@@ -144,7 +159,7 @@ func (h Sessions) LoginMFASetup(w http.ResponseWriter, r *http.Request) {
 // /api/admin/login/mfa.
 func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	var in httpapi.MFACode
-	if !httpapi.Decode(w, r, &in) {
+	if !httpapi.Decode(w, r, &in) || !signInAddress(w, r) {
 		return
 	}
 	if !h.Allow(w, r, httpapi.AuthPerIP, httpapi.AuthPerIP.IPKey(httpapi.ClientIP(r))) {
@@ -181,7 +196,7 @@ func (h Sessions) LoginMFA(w http.ResponseWriter, r *http.Request) {
 	case !result.OK:
 		httpapi.FailField(w, 422, "code", httpapi.WrongMFACode)
 	default:
-		h.startAdminSession(w, r, result.User, 200, nil)
+		h.startAdminSession(w, r, result.User, admin.Role, 200, nil)
 	}
 }
 
@@ -203,7 +218,7 @@ func (h Sessions) confirmAdminSetup(w http.ResponseWriter, r *http.Request, hash
 	}
 	now := time.Now()
 	admin.User.MFAEnabledAt = &now
-	h.startAdminSession(w, r, admin.User, 201, map[string]any{"recoveryCodes": codes})
+	h.startAdminSession(w, r, admin.User, admin.Role, 201, map[string]any{"recoveryCodes": codes})
 }
 
 // adminChallenge reads the admin door's challenge cookie and returns the
@@ -244,7 +259,7 @@ func (h Sessions) endAdminChallenge(w http.ResponseWriter, r *http.Request, hash
 // startAdminSession signs the admin in to the dashboard, records
 // admin.logged_in, and answers with the session as /api/admin/me does, plus
 // extra.
-func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user store.User, status int, extra map[string]any) {
+func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user store.User, role auth.AdminRole, status int, extra map[string]any) {
 	token, err := auth.Token()
 	if err != nil {
 		httpapi.InternalError(w, err)
@@ -257,7 +272,13 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 	}
 	expires := time.Now().Add(auth.AdminSessionLifetime)
 	e := events.AdminLoggedIn{User: user.PublicID}
-	err = h.Repo.CreateAdminSession(r.Context(), user.ID, auth.Digest(token), h.AdminKeyHash(), csrf, expires, e)
+	// Always under the current key: the door never opens to the previous
+	// one (RequireAdminKey). Where it signed in from is kept for the Admins
+	// page and for noticing it move.
+	err = h.Repo.CreateAdminSession(r.Context(), store.NewAdminSession{
+		UserID: user.ID, TokenHash: auth.Digest(token), KeyHash: h.AdminKeyHash(), CSRF: csrf, ExpiresAt: expires,
+		IP: httpapi.ClientIP(r), UserAgent: events.UserAgent(r.Context()),
+	}, e)
 	if errors.Is(err, store.ErrNotAdmin) {
 		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return
@@ -268,29 +289,40 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 	}
 	h.clearAdminCookie(w, auth.AdminMFACookie("", h.Config.Production, 0))
 	http.SetCookie(w, auth.AdminCookie(token, h.Config.Production))
-	body := map[string]any{"user": user, "csrfToken": csrf, "expiresAt": expires}
+	body := map[string]any{"user": user, "role": role, "csrfToken": csrf, "expiresAt": expires}
 	for key, value := range extra {
 		body[key] = value
 	}
 	httpapi.JSON(w, status, body)
 }
 
-// Me is the signed-in admin's session; the admin pages' first call, which
-// answers 401 without one. GET /api/admin/me.
+// Me is the signed-in admin's session and role; the admin pages' first
+// call, which answers 401 without one. GET /api/admin/me.
 func (h Sessions) Me(w http.ResponseWriter, r *http.Request) {
 	session := httpapi.Admin(r)
-	httpapi.JSON(w, 200, map[string]any{"user": session.User, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt})
+	httpapi.JSON(w, 200, map[string]any{"user": session.User, "role": session.Role, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt})
 }
 
-// Logout ends the admin session (the app session, if any, stays). POST
-// /api/admin/logout.
+// Logout ends the admin session (the app session, if any, stays), under
+// either key. POST /api/admin/logout.
 func (h Sessions) Logout(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie(auth.AdminCookieName(h.Config.Production))
-	if err := h.Repo.DeleteAdminSession(r.Context(), httpapi.Admin(r).User, auth.Digest(cookie.Value)); err != nil {
+	if err := h.Repo.DeleteAdminSession(r.Context(), httpapi.Admin(r).User, h.AdminSessionDigest(r)); err != nil {
 		httpapi.InternalError(w, err)
 		return
 	}
 	h.clearAdminCookie(w, auth.AdminCookie("", h.Config.Production))
+	w.WriteHeader(204)
+}
+
+// RevokeOthers signs out every other admin session of the signed-in
+// admin's, keeping this one, and records admin.sessions_revoked. It only
+// takes access away, so it needs no role and no code (signing out another
+// admin is an action). DELETE /api/admin/sessions.
+func (h Sessions) RevokeOthers(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.Repo.DeleteOtherAdminSessions(r.Context(), httpapi.Admin(r).User, h.AdminSessionDigest(r)); err != nil {
+		httpapi.InternalError(w, err)
+		return
+	}
 	w.WriteHeader(204)
 }
 

@@ -1,34 +1,66 @@
 # Admin dashboard
 
-Code: `internal/httpapi/admin.go` (the key, admin sessions, the page gate, the assets pass), `internal/auth/admin_assets.go` (the pass itself), `internal/web` (the admin build, apart from the app's), `internal/httpapi/endpoints/admin`: `sessions.go` (sign-in), `users.go`, `workspaces.go`, `workspace_projects.go`, `events.go`, `mail.go` and `deliveries.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go` and `admin_mail.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/admin-routes.ts`, `lib/api/admin.ts`, built on their own (`WEB_BUILD=admin`). Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md), [separate build](../../plans/features/implemented/admin/separate-build.md).
+Code: `internal/httpapi/admin.go` (the keys, admin sessions, roles, the page gate, the assets pass), `admin_access.go` (`ADMIN_ALLOWED_IPS`, a session that moved), `internal/auth/admin.go` (comparing keys, roles) and `admin_assets.go` (the pass itself), `internal/web` (the admin build, apart from the app's), `internal/httpapi/endpoints/admin`: `sessions.go` (sign-in, sign-out, your other sessions), `users.go`, `workspaces.go`, `workspace_projects.go`, `events.go`, `mail.go`, `deliveries.go` and `admins.go` (the reads), `internal/store/admins.go` (admins and admin sessions), `internal/store/admin_views.go`, `admin_events.go`, `admin_mail.go` and `admin_admins.go` (what admins see), `internal/config/admin_key.go`, `cmd/admin/admins.go` (the CLI). Web: `pages/admin/*`, `lib/admin.tsx`, `lib/admin-routes.ts`, `lib/api/admin.ts`, built on their own (`WEB_BUILD=admin`). Plans: [admin access](../../plans/features/implemented/admin-access.md), [events and mail](../../plans/features/implemented/admin/events-and-mail.md), [separate build](../../plans/features/implemented/admin/separate-build.md), [access hardening](../../plans/features/implemented/admin/access-hardening.md).
 
 Operators see every account and every workspace without running SQL against production. That view reads every user's data, so it's guarded by layers, each of which alone gets nobody in:
 
-1. **A secret door:** the dashboard lives at `/admin/<ADMIN_ROUTE_KEY>`. Every other `/admin…` URL is the ordinary 404. The key **hides** the door; it doesn't authenticate anyone (it ends up in browser history, proxy logs and screenshots).
-2. **An admin account:** a normal user account the operator granted admin from the command line. There is no API route, page or seeder for granting.
+1. **A secret door:** the dashboard lives at `/admin/<ADMIN_ROUTE_KEY>`. Every other `/admin…` URL is the ordinary 404. The key **hides** the door; it doesn't authenticate anyone (it ends up in browser history, proxy logs and screenshots). With `ADMIN_ALLOWED_IPS`, the door is a 404 from anywhere else too, key or not.
+2. **An admin account:** a normal user account the operator granted admin, and a role (`viewer` or `operator`), from the command line. There is no API route, page or seeder for granting or for changing a role.
 3. **The password and a second factor at every admin sign-in**, separate from the app's sign-in. Admins must have MFA; one without it sets it up at their first admin sign-in, inside a 24-hour window.
-4. **A separate admin session:** its own table and cookie, 15 minutes idle and 8 hours at most, tied to the current key.
-5. **Read-only.** A stolen admin session can read, never change anything. Every read is recorded.
+4. **A separate admin session:** its own table and cookie, 15 minutes idle and 8 hours at most, tied to the key it was made under (the current one, or `ADMIN_ROUTE_KEY_PREVIOUS` while a rotation finishes).
+5. **Read-only.** A stolen admin session can read, never change anything. Every read is recorded. The only writes are signing out and signing out your own other admin sessions; actions to come each name the role they need.
 
 ## The key: `ADMIN_ROUTE_KEY`
 
 - **Unset turns admin off:** every `/admin…` page and `/api/admin/…` route is then the ordinary 404, and no comparison is made.
 - **Format:** a UUIDv4 (`uuidgen`), or 32–128 characters of `A–Z a–z 0–9 _ -`. Not one repeated character, and in production not `.env.example`'s throwaway key. `go run ./cmd/admin route-key generate` prints a 256-bit one (`make admin cmd="route-key generate"`). Messages never show the value.
-- **Compared in constant time** over equal-length SHA-256 digests (`auth.AdminKeyMatches`).
-- **Rotating** (change it and restart) signs every admin out: each admin session stores the digest of the key it was made under, and stops working when that no longer matches. Rotate it if it may have leaked.
+- **Compared in constant time** over equal-length SHA-256 digests, with the current key and the previous one **both, every time**, with no early exit, so the comparison's timing shows neither which one matched nor whether one did (`auth.MatchAdminKey`). That is the comparison only: what follows differs. A request under the previous key that carries an admin cookie costs a database round trip a wrong key never makes (one with no cookie costs none), so with a cookie of any shape the previous key can be told from a wrong one by timing. It opens nothing: no sign-in, and no session without that session's cookie. A session is looked up only under the key the request matched, and its stored digest checked again against both in constant time (`auth.MatchAdminKeyHash`).
+- **Rotating** (change it and restart) signs every admin out: each admin session stores the digest of the key it was made under, and stops working when that no longer matches. Rotate it this way if it may have leaked. A routine rotation can keep sessions working instead ([below](#rotating-without-signing-out-admin_route_key_previous)).
 - **Never in an API path.** Pages carry it in the URL; every API call sends it in `X-Admin-Key`. A script injected into an **app** page could send the admin cookie (same origin), but can't know the key: it isn't in any app page, the bundle or storage, only in the admin page's URL.
 - **Local and tests:** `.env.example` and Docker Compose carry a throwaway key, so `http://localhost:3000/admin/<that key>` works under `make dev`. `.env.testing` holds none: `playwright.config.ts` makes one per run (`E2E_ADMIN_ROUTE_KEY`, kept by `scripts/test-env.sh`), the e2e server uses it and prints the admin URL, and Go tests use `factory.AdminRouteKey`.
+
+## Rotating without signing out: `ADMIN_ROUTE_KEY_PREVIOUS`
+
+The key being retired, same format as `ADMIN_ROUTE_KEY`; refused without a current key or equal to it, and never shown in a message or log (startup says only that it is set). **It keeps live sessions made under it working; it never opens the door:**
+
+| Request | Under the current key | Under the previous key |
+| --- | --- | --- |
+| `GET /admin/<key>` (the sign-in page), `POST /api/admin/login`, `/login/mfa/setup`, `/login/mfa` | as before | exactly a wrong key's 404 |
+| An inner page or `/api/admin/*` with a live session made under that key | 200 | 200, with `X-Admin-Key-Status: previous` |
+| … with a live session made under the other key | 401 (inner pages: 302 to sign in) | 401 (inner pages: the 404) |
+| … with no admin cookie, or one that's no live session | 401 (inner pages: 302 to sign in) | exactly a wrong key's 404, with no query when there's no cookie |
+| … when the session can't be checked (the database is down or slow) | inner pages are served anyway, with their pass (the sign-in page gives both to anyone with the key, and the page shows the outage); the API answers 500 | exactly a wrong key's 404, pages and API, and no pass: it fails closed, logging the error |
+
+- **A session sent with the other key is never touched:** the lookup is by the matched key's digest, so it isn't refreshed, and a request with the wrong key can't keep someone's session from idling out. Telling "made under the other key" (401) from "none" under the previous key is a second, read-only check.
+
+- To anyone without a live admin session, the previous key looks like a wrong one. Its sessions' pages say so: the header goes only to a live session made under it, and the web app shows "This admin address is being retired. Ask your operator for the new one before this session ends." above every page.
+- **Signing out** works under it (204); the sign-in page it would return to is then the 404.
+- **Step by step:** `admin route-key generate`; set it as `ADMIN_ROUTE_KEY` and the old one as `ADMIN_ROUTE_KEY_PREVIOUS`; restart; hand out the new URL; after 8 hours at most (a session's longest) remove the previous key and restart. Removing it ends its sessions at once.
+- **A key that may have leaked is never set as previous:** replace it outright, and every session under it ends.
+- The assets pass is always signed for the current key, so pages under the previous key hand out passes that keep working after it's removed ([The assets pass](#the-assets-pass)).
+
+## The address allowlist: `ADMIN_ALLOWED_IPS`
+
+Comma-separated addresses or CIDR ranges (`203.0.113.10,198.51.100.0/24,2001:db8:1::/48`), parsed like `TRUSTED_PROXIES`: a range that doesn't parse, an IPv4-mapped range, `0.0.0.0/0` and `::/0` are refused. **Unset: any address.**
+
+- **Checked once a key matched** (current or previous) on every admin page and API call, and once an assets pass is valid on `/admin-assets/…`, against `httpapi.ClientIP(r)`. From any other address the answer is exactly a wrong key's (a missing pass's for files): nobody outside the list learns that the key, or a pass, is right. A wrong key is never checked, so it costs nothing.
+- **The operator learns it:** a server log warning (the address, never the path, which holds the key) and `admin.access_refused` (`reason: "ip_not_allowed"`, the address in `events.ip`), **at most once per address per 15 minutes per server**, an IPv6 address counting by its /64 as per-IP limits do. The request only queues the refusal; one worker per server logs it and writes the event, so the request never waits on the database and a right key from outside takes about as long as a wrong one. The queue holds 64: past that, refusals are dropped and counted in a log line at most once a minute, so a burst can't hold database connections real requests need. Shutdown records what's queued (within the server's 10-second grace). The set of recent addresses holds at most 10,000 per server: when it's full it drops ended ones (at most once a minute) and otherwise records nothing more rather than grow, so someone with the key changing address can't grow it, or the events table, without bound. A refusal means the key (or a pass) is somewhere it shouldn't be: rotate it. (The alerts plan raises an alert on the first one.)
+- **Behind a proxy it needs the real client address** (`CLIENT_IP_HEADER`, `TRUSTED_PROXIES`): otherwise every request comes from the proxy, and an allowlist naming it lets everyone in. Production startup warns when `ADMIN_ALLOWED_IPS` is set without `CLIENT_IP_HEADER` ([deployment.md](../deployment.md#admin-dashboard)).
+- **Stronger, outside the app:** Cloudflare Access, a VPN or Tailscale in front of `/admin/` and `/admin-assets/` authenticate people before they reach the server. The allowlist is the layer that works everywhere.
 
 ## Pages
 
 ```
-GET /admin, /admin/<anything>     key unset, or <anything> isn't the key
+GET /admin, /admin/<anything>     key unset, or <anything> isn't the key, or an address outside ADMIN_ALLOWED_IPS
                                   → exactly what GET /nowhere gets: the fallback page, 404, same headers, no query
 GET /admin/<key>                  → the admin build's shell, 200: the admin sign-in page, + the assets pass
 GET /admin/<key>/<page…>          no live admin session → 302 /admin/<key> (an app session doesn't count), no pass
                                   admin session         → the admin build's shell, 200, + the assets pass
-GET /admin-assets/<file>          a valid assets pass, and the file exists → the file, Cache-Control: private
-                                  anything else                         → exactly what GET /nowhere gets
+GET /admin/<previous key>         → exactly what GET /nowhere gets
+GET /admin/<previous key>/<page…> a live session made under it → the shell, 200, X-Admin-Key-Status: previous, + the pass
+                                  anything else                → exactly what GET /nowhere gets
+GET /admin-assets/<file>          a valid assets pass, from an allowed address, and the file exists → the file, Cache-Control: private
+                                  anything else                                                    → exactly what GET /nowhere gets
 ```
 
 Admin pages and their redirects send `Referrer-Policy: no-referrer` (the key never leaves in a Referer), `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store` (`Pages.ServeAdmin`, `adminPageHeaders`). The CSP and other headers are the app's, with the admin shell's own script hashes.
@@ -55,8 +87,8 @@ The admin shell's scripts, styles and fonts need the key's protection too, but t
 | Cookie | `__Secure-lewcontext_admin_assets` in production (`lewcontext_admin_assets` in development); **Path=/admin-assets/**, HttpOnly, SameSite=Strict, Secure in production, Max-Age 8 hours (an admin session's longest) |
 | Value | `<expiry, unix seconds>.<base64url HMAC-SHA256(k, "admin-assets" ‖ key digest ‖ expiry)>`; `k` is derived from `APP_KEY` for this alone (HKDF, `lewcontext admin-assets-pass v1`), not the key that seals MFA secrets |
 | Set | by `issueAdminAssetsPass` on every 200 admin page (the sign-in page and each inner page), renewing it; never on a redirect or a 404 |
-| Signed with | **always the current `ADMIN_ROUTE_KEY`'s digest** (`AdminKeyHash`), whichever key the page was served under. Once a previous key is accepted too (planned: `ADMIN_ROUTE_KEY_PREVIOUS`), its pages still hand out passes for the current key, and a pass signed with any other digest is invalid |
-| Checked | before any file is looked up: the MAC in constant time (`hmac.Equal`), the expiry a positive number of seconds, in the future and at most 8 hours and a minute ahead (the minute for another server's clock). Any of the first 4 cookies of the pass's name may be the pass: the name can't be `__Host-` (its path isn't `/`), so a sibling subdomain could plant one that the browser sends first, but no request makes the server check more |
+| Signed with | **always the current `ADMIN_ROUTE_KEY`'s digest** (`AdminKeyHash`), whichever key the page was served under: pages under `ADMIN_ROUTE_KEY_PREVIOUS` hand out passes for the current key, and a pass signed with any other digest is invalid |
+| Checked | before any file is looked up: the MAC in constant time (`hmac.Equal`), the expiry a positive number of seconds, in the future and at most 8 hours and a minute ahead (the minute for another server's clock). Any of the first 4 cookies of the pass's name may be the pass: the name can't be `__Host-` (its path isn't `/`), so a sibling subdomain could plant one that the browser sends first, but no request makes the server check more. Then, with `ADMIN_ALLOWED_IPS`, the address: a valid pass from outside the list opens nothing (and is recorded as `admin.access_refused`), so a stolen pass works only from where admins work |
 | Invalid when | it expires, the key is rotated, `APP_KEY` changes, or admin is off |
 
 - **Stateless:** no table and no query, so servers sharing `APP_KEY` and `ADMIN_ROUTE_KEY` accept each other's passes.
@@ -69,15 +101,16 @@ The admin shell's scripts, styles and fonts need the key's protection too, but t
 
 ## API
 
-Everything under `/api/admin/` checks `X-Admin-Key` first (`RequireAdminKey`): a missing or wrong key gets exactly what an unknown API route gets, `404 {"error": "Not found."}` (the API's unknown-route answer is that JSON too, `unknownRoutesAsJSON`). So does any other path or method under `/api/admin/`, with the key or without. `security` (Origin, content type) runs before both.
+Everything under `/api/admin/` checks `X-Admin-Key` first: a missing or wrong key, or an address outside `ADMIN_ALLOWED_IPS`, gets exactly what an unknown API route gets, `404 {"error": "Not found."}` (the API's unknown-route answer is that JSON too, `unknownRoutesAsJSON`). So does any other path or method under `/api/admin/`, with the key or without. The sign-in steps take the current key only (`RequireAdminKey`); the routes behind a session take the previous key too (`RequireAdminKeyOrPrevious`), and `RequireAdminSession` then lets through only a session made under the key the request came with. `security` (Origin, content type) runs before both.
 
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
 | POST | `/api/admin/login` | key, Origin, JSON, `LimitAuth`, `auth:per-account` | `{mfaRequired: true}` or `{mfaSetupRequired: true}`, and the challenge cookie |
 | POST | `/api/admin/login/mfa/setup` | key, Origin, JSON (`{}`), an `admin_setup` challenge inside the setup window | `{secret, uri}`; replaces a pending secret. 401 otherwise (the challenge is ended) |
-| POST | `/api/admin/login/mfa` | key, Origin, JSON, a challenge, `auth:per-ip`, `mfa:per-account` | 200 `{user, csrfToken, expiresAt}` and the admin cookie; for an `admin_setup` challenge MFA is turned on and it's 201 with `recoveryCodes` too. 422 `field: "code"`; 401 when the challenge ended; 409 when the setup expired |
-| GET | `/api/admin/me` | key, admin session | `{user, csrfToken, expiresAt}`; 401 without one (the pages' probe) |
+| POST | `/api/admin/login/mfa` | key, Origin, JSON, a challenge, `auth:per-ip`, `mfa:per-account` | 200 `{user, role, csrfToken, expiresAt}` and the admin cookie; for an `admin_setup` challenge MFA is turned on and it's 201 with `recoveryCodes` too. 422 `field: "code"`; 401 when the challenge ended; 409 when the setup expired |
+| GET | `/api/admin/me` | key, admin session | `{user, role, csrfToken, expiresAt}`; 401 without one (the pages' probe) |
 | POST | `/api/admin/logout` | key, admin session, CSRF | 204, cookie cleared |
+| DELETE | `/api/admin/sessions` | key, admin session, CSRF | 204: every other admin session of yours signed out, this one kept; `admin.sessions_revoked`. No role and no code: it only takes your own access away |
 | GET | `/api/admin/users` | key, admin session | A page of accounts: `id`, `name`, `email`, `createdAt`, `emailVerifiedAt` (null: never verified), `mfaEnabled`, `admin`, `workspaceCount`, `lastSignedInAt`. `q` (name or email), `sort` `created` (default `-created`), `name`, `email` |
 | GET | `/api/admin/users/{user}` | key, admin session | The account as listed, plus `memberships` (`{workspace: {id, name}, role, addedAt}`, at most 100, newest first) and `sessionCount` (live app sessions) |
 | GET | `/api/admin/workspaces` | key, admin session | A page of workspaces: `id`, `name`, `createdAt`, `memberCount`, `projectCount`, `owners` (`{id, name, email}`, at most 3, oldest first). `q` (name), `sort` `created` (default `-created`), `name` |
@@ -88,27 +121,36 @@ Everything under `/api/admin/` checks `X-Admin-Key` first (`RequireAdminKey`): a
 | GET | `/api/admin/catalogue` | key, admin session | `{events, limits, listeners}`: the names the filters offer. **Not recorded**: it holds no user data |
 | GET | `/api/admin/mail` | key, admin session | The Mail summary for `window` `24h` (default) or `7d` ([Mail](#mail)) |
 | GET | `/api/admin/deliveries` | key, admin session | Every delivery, newest event first, a cursor page: `status`, `listener`, `from`, `to`, `before` (`evt_…:listener`), `perPage` |
+| GET | `/api/admin/admins` | key, admin session | `{data}`: every admin, oldest grant first ([Admins](#the-admins-page)); no parameters (400 for any) |
 
 - **Pagination** is the app's ([pagination.md](pagination.md)): `page`, `perPage`, and 400 for unknown or malformed parameters. Events and deliveries page by a cursor instead (log tables: [pagination.md](pagination.md#cursor-pages-log-tables)). A malformed or unknown ID is 404.
 - **Never in a response:** password hashes, MFA secrets, recovery codes, other users' session or CSRF tokens, internal IDs, the SMTP username and password. Project names and descriptions **are** shown (the workspace's projects, and event payloads as stored). `decodeAdmin` in the tests walks every admin response for such field names.
-- **Not scoped by membership, on purpose:** these queries see across workspaces, which is why they're only reachable behind both middlewares. `TestAdminRoutesStayInTheAdminGroup` fails if an `/api/admin` route is registered outside `adminRoutes`, or there without `RequireAdminKey`.
+- **Not scoped by membership, on purpose:** these queries see across workspaces, which is why they're only reachable behind both middlewares. `TestAdminRoutesStayInTheAdminGroup` fails if an `/api/admin` route is registered outside `adminRoutes`, or there without `RequireAdminKey` (or `RequireAdminKeyOrPrevious`).
+- **Roles:** every admin route that changes anything is registered with `Role(method, path, role, handler)`, behind `RequireAdminRole` (403 for a role without it), as workspace mutations name a permission with `ws.Can`. The signed-in group panics at startup on any other mutation, and the same test reads `routes.go` for it. The exceptions, each with its reason in the test: the door's three sign-in steps (no session yet) and `OwnSessions` for signing out and signing out your other sessions (they only take your own access away). `OwnSessions` takes only those two (`ownSessionRoutes`) and panics on anything else, and the test fails on any registration in `adminRoutes` it can't read (a method that isn't a string literal, a call split across lines) and on the unchecked `handle`. No route needs `operator` yet; the first action (the email-blocks plan's Unblock) will.
 - **Admin status is never in an app response** (`/api/auth/me`). The one place an account learns it is an admin is turning MFA off: 409 "Admins must keep two-factor authentication on."
 
 ## Admins (`admins`)
 
-`admins (user_id, mfa_setup_until, created_at)`: one row per admin, deleted with the account.
+`admins (user_id, mfa_setup_until, role, created_at)`: one row per admin, deleted with the account.
+
+| Role | Can |
+| --- | --- |
+| `viewer` (the default) | every admin page and read, and signing out its own sessions |
+| `operator` | that, plus the actions (each still behind its own checks); none exists yet |
 
 ```sh
-make admin cmd=grant email=ada@example.com CONFIRM=1    # an existing account; MFA off → a 24-hour setup window
+make admin cmd=grant email=ada@example.com CONFIRM=1    # an existing account, a viewer; MFA off → a 24-hour setup window
+make admin cmd=grant email=ada@example.com role=operator CONFIRM=1  # a new admin as an operator, or change an admin's role
 make admin cmd=revoke email=ada@example.com CONFIRM=1   # deletes the row and their admin sessions
-make admin cmd=list                                     # email, name, ID, MFA, admin since
+make admin cmd=list                                     # email, name, ID, role, MFA, admin since
 make admin cmd="route-key generate"                     # a new ADMIN_ROUTE_KEY
 make admin cmd=blocks                                   # every blocked email address, oldest first
 make admin cmd=unblock email=bob@example.com CONFIRM=1  # take one off the block list
-docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.com -confirm
+docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.com -role operator -confirm
 ```
 
-- `grant` and `revoke` preview without `-confirm`. `grant` refuses an `@example.test` account in production (the seeders' fakes).
+- `grant` and `revoke` preview without `-confirm` (the preview says which role it would give or change). `grant` refuses an `@example.test` account in production (the seeders' fakes).
+- **Roles change only here.** `grant -role` on an existing admin with another role changes it and records `admin.updated` (`changes.role`), and nothing else (the setup window stays as it was); the admin's next request has the new role. Without `-role`, a new admin is a viewer and an existing one keeps their role, so granting again to reopen the setup window never changes it. `admin.granted` names the role.
 - **The setup window:** an admin without MFA may set it up at the door only until `mfa_setup_until`, which `grant` (again, to reopen) and `reset-mfa` on an admin set to 24 hours ahead, and turning MFA on clears. Outside it they get the door's ordinary 401, a server log warning and `result: "mfa_off"` in the event. Without the window, anyone with only an admin's password could set up their own authenticator at the door.
 - **Losing admin sessions:** revoking, deleting the account, a password change, a password reset and an MFA reset each delete every admin session of the user's, in the same transaction.
 - An admin can't turn MFA off (409); revoke admin first.
@@ -142,16 +184,21 @@ setup:  POST …/mfa/setup → the QR code (hidden until revealed) → POST …/
 | Idle / absolute | 30 min / 24 h | **15 min / 8 h** |
 | Per user | 5 | **2** (a third sign-in drops the oldest) |
 | Created by | login, register, password change | admin sign-in only, after a code |
-| Valid while | not expired | not expired, **still an admin, and made under the current key** |
+| Valid while | not expired | not expired, **still an admin, and made under the key the request came with** (the current one, or the previous one while it's set) |
 
-- `RequireAdminSession` (after `RequireAdminKey`) loads the session joined with `admins`, checks its `key_hash`, checks `X-CSRF-Token` on mutations, puts it in the context (`httpapi.Admin(r)`, `events.WithActor`) and counts reads against `admin-read:per-user` (1,000 / 5 min, in memory).
+- `RequireAdminSession` (after `RequireAdminKeyOrPrevious`) loads the session joined with `admins` (its role included), compares its `key_hash` with both keys' digests and requires the one the request's key matched, checks `X-CSRF-Token` on mutations, puts it in the context (`httpapi.Admin(r)`, `events.WithActor`), notices a move (below) and counts reads against `admin-read:per-user` (1,000 / 5 min, in memory).
+- **Where it signed in:** each session stores the client address (`ip`, `httpapi.ClientIP`) and `User-Agent` (cut to 256 characters) of its sign-in, shown on the Admins page. A server whose client address isn't an IP address (reached through a unix socket) can't store one: the door's password and code steps answer 503 "Admin sign-in isn't available on this server." and log why; serve the API over TCP. It isn't bound to them (mobile networks change address), but the first request from another network (another IPv4 /24 or IPv6 /48) records `admin.session.moved` (`from` and `to` as networks, `sessionAge` in seconds) and sets `moved_at`, so it's recorded once per session. A stolen admin cookie used elsewhere shows up in the trail.
 - **Independent of the app session.** Signing in to either never signs in to the other; signing out of one leaves the other. One browser can hold both. Only the token's digest is stored. `Store.Cleanup` deletes ended ones.
 
 ## Audit trail
 
 | Event | Payload | Scope |
 | --- | --- | --- |
-| `admin.granted`, `admin.revoked` | `user`; `mfaSetupUntil` / `adminSessionsRevoked` | `user_id` (no actor: the CLI) |
+| `admin.granted`, `admin.revoked` | `user`; `role` and `mfaSetupUntil` / `adminSessionsRevoked` | `user_id` (no actor: the CLI) |
+| `admin.updated` | `user`, `changes.role` (`from`, `to`) | `user_id` (no actor: the CLI) |
+| `admin.access_refused` | `reason`: `ip_not_allowed` | none; the address in `ip` |
+| `admin.session.moved` | `admin`, `from`, `to` (networks), `sessionAge` | actor |
+| `admin.sessions_revoked` | `admin`, `count` | actor |
 | `admin.login_attempted` | `email`, `ip`, `user`, `result` (`mfa_required`, `mfa_setup_required`, `wrong_password`, `unknown_account`, `not_admin`, `mfa_off`) | none |
 | `admin.logged_in`, `admin.logged_out` | `user` (and `ip`) | actor |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page` | actor |
@@ -160,6 +207,7 @@ setup:  POST …/mfa/setup → the QR code (hidden until revealed) → POST …/
 | `admin.event.viewed` | `admin`, `event` | actor |
 | `admin.mail.viewed` | `admin`, `window` | actor |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page` | actor |
+| `admin.admin.listed` | `admin` | actor |
 
 Every read is recorded, so the trail shows what each admin looked at and searched for (who searched for an email, an IP, a workspace). The one exception is `GET /api/admin/catalogue`, which holds only names. The admin is named in the payload so the record outlives their account; `user_id` and `workspace_id` stay empty, so deleting the account or workspace looked at doesn't erase the record, and it never shows among their own events. Each code check also records `auth.mfa.checked` with step `admin_login` (or `enable` for the setup). See [events.md](events.md).
 
@@ -195,18 +243,26 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 
 `GET /api/admin/deliveries` lists `event` (`{id, name, createdAt}`), `listener`, `to` (the payload's `email`, if any), `status` (`pending`, `retrying`, `failed`, `delivered`), `attempts`, `nextAttemptAt` (while waiting), `deliveredAt`, `failedAt`, `lastError`. A failure's `last_error` may name the recipient (an SMTP reply), never the password.
 
+## The Admins page
+
+`GET /api/admin/admins` (recorded as `admin.admin.listed`) lists every admin, oldest grant first (at most 500; admins are granted one by one): `user` (`{id, name, email}`), `role`, `mfaEnabled`, `mfaSetupUntil`, `grantedAt`, `lastSignedInAt` and `sessions`.
+
+- **`lastSignedInAt`** is their newest `admin.logged_in` (the admin is its actor), read through a partial index on `events (actor_id, created_at) WHERE name = 'admin.logged_in'`, so it doesn't walk every read the admin made. Events are pruned after 90 days by default, so an older sign-in reads as none.
+- **`sessions`** are their live admin sessions (not expired or idle, made under the current or previous key), newest first: `createdAt`, `lastSeenAt`, `ip`, `userAgent`, `current` (the session asking) and `previousKey`. Never a token or CSRF token.
+- **The page** (`pages/admin/[key]/admins.tsx`, `AdminAdminIndex`): each admin with badges for the role, MFA and "Setup window open", and a warning on anyone with no admin sign-in for 90 days ("consider revoking"; granted that long ago and never signed in counts too; nothing is revoked automatically); every live session ("This session", "Retiring address"); **Download CSV** (email, role, MFA, granted, last sign-in), built in the browser from the same answer so it records nothing more, cells quoted and any a spreadsheet would run as a formula started with an apostrophe; and **Sign out my other sessions** (`DELETE /api/admin/sessions`), disabled while you have none. Roles change only from the command line.
+
 ## Web app
 
-- **Routes** (`routes.ts`): `admin/:key` (`pages/admin/[key]/index.tsx`, `AdminLogin`), and inside `pages/admin/layout.tsx`: `users` (`AdminUserIndex`), `users/:user` (`AdminUserShow`, with **Activity**: Events for `?account=`), `workspaces` (`AdminWorkspaceIndex`), `workspaces/:workspace` (`AdminWorkspaceShow`, with **Activity** and its projects in a `PaginatedTable`, rows without links), `events` (`AdminEventIndex`), `events/:event` (`AdminEventShow`), `mail` (`AdminDeliveryIndex`). Not prerendered.
-- **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. `useAdminApi()` (`lib/api/admin.ts`) sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads an `adminPaths` path with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `adminRoutes.*(key)` (`lib/admin-routes.ts`).
+- **Routes** (`routes.ts`): `admin/:key` (`pages/admin/[key]/index.tsx`, `AdminLogin`), and inside `pages/admin/layout.tsx`: `users` (`AdminUserIndex`), `users/:user` (`AdminUserShow`, with **Activity**: Events for `?account=`), `workspaces` (`AdminWorkspaceIndex`), `workspaces/:workspace` (`AdminWorkspaceShow`, with **Activity** and its projects in a `PaginatedTable`, rows without links), `events` (`AdminEventIndex`), `events/:event` (`AdminEventShow`), `mail` (`AdminDeliveryIndex`), `admins` (`AdminAdminIndex`). Not prerendered.
+- **The key** is read from `:key` and kept in `AdminProvider` (`lib/admin.tsx`), never in storage, SWR keys or page text. The provider also holds the session (its `role` included: `adminCan(useAdminSession().role, "operator")` hides what a viewer can't do; the API refuses it anyway) and whether the key is being retired: `adminLoader` reads `X-Admin-Key-Status` from `/api/admin/me`, and every admin call after it can turn it on (`adminHttp`'s `onPreviousKey`), so a rotation mid-visit shows too. `useAdminApi()` (`lib/api/admin.ts`) sends it in `X-Admin-Key` with the admin CSRF token; `useAdminResource(path)` loads an `adminPaths` path with SWR key `["admin", adminUserId, path]` and sends a 401 back to `/admin/<key>`. Links come from `adminRoutes.*(key)` (`lib/admin-routes.ts`).
 - **Nothing reloads on its own.** Every load is a recorded read, so `useAdminResource` doesn't revalidate on focus or reconnect: only opening a page, a new query, or a Refresh button (Events, Mail) loads again.
 - **Events** (`pages/admin/[key]/events.tsx`): the filters in a form (Event, a `Listbox` of the catalogue grouped by area, each area's prefix an option; Account, Workspace, Email, IP; From and To as UTC days; Admin reads), applied together with Apply filters, kept in the URL. The table (`components/app/admin/events.tsx`: `EventTable`, `eventSummary`) shows the time (opening the event), the name and a one-line summary from the payload, the actor, what it's about, and the IP; every account, workspace and IP links to its page or filter. **Older / Newer** (`CursorNav`) follow the cursor; the way back travels in navigation state, so the URL holds only `before`. An event's page shows the payload as indented JSON in a `<pre>`, through React's escaping.
 - **Mail** (`pages/admin/[key]/mail.tsx`): the window and Refresh in the header, `Stat` tiles for the queue, emails per hour as a stacked `BarChart` (`components/ui/chart.tsx`, Recharts; its numbers in a table for screen readers), asked for vs sent, frequent addresses (each linking to Events `?email=`), the queue per listener, how mail is sent, then the deliveries with status tabs (Failed first while the window has any).
 - **Loaders** (`lib/admin.tsx`, so they stay out of the app build): `adminLoginLoader` (404 → not-found, signed in → Users) and `adminLoader` (404 → not-found, 401 → sign-in).
-- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users, Workspaces, Events and Mail, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out. The app's pages are the other build, so those two load as a new page (`pages/admin/not-found.tsx`).
+- **Chrome:** `AdminLayout` (`components/layout/admin-layout.tsx`), the `SidebarLayout` with Users, Workspaces, Events, Mail and Admins, a warning `Notice` above every page while the key is being retired, the app name with a red "Admin" badge (under the name in the sidebar, beside it in the phone top bar), and an account menu with Back to app (`/app`), Account & security (`/app/settings`) and Sign out. The app's pages are the other build, so those two load as a new page (`pages/admin/not-found.tsx`).
 - **Lists** use `PaginatedTable`, `SearchField` and sortable headers (`components/app/admin/admin-list.tsx`: URL state, `AdminTableHead`, `MfaBadge`, `EmailBadge` (zinc "Not verified"; a user's page also shows lime "Verified", the list only the unverified), `AdminBadge`); rows link to their page. There are no row menus: there are no actions.
 - `react/no-danger` is on for the whole web app: other users' names and emails render only through React's escaping.
 
 ## Not built
 
-Monitoring pages, alerts, write actions (retrying a delivery among them), an IP allowlist, admin roles and several keys at once (rotating without signing everyone out) are planned in [plans/features/admin/](../../plans/features/admin/README.md). Email bodies are never stored, so the dashboard can't show them. Not planned: impersonation, a separate admin origin, passkeys for admins.
+Monitoring pages, alerts, write actions (retrying a delivery among them, and signing out another admin) are planned in [plans/features/admin/](../../plans/features/admin/README.md). The Configuration page's warnings (an allowlist without `CLIENT_IP_HEADER`, sessions still on the previous key) come with monitoring, and an alert on `admin.access_refused` with alerts. Email bodies are never stored, so the dashboard can't show them. Not planned: impersonation, a separate admin origin, passkeys for admins.

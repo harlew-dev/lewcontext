@@ -28,6 +28,9 @@ type Server struct {
 	authSlots chan struct{}
 	// memoryLimits counts the limits kept in memory (api-read:per-user).
 	memoryLimits *ratelimit.Memory
+	// adminRefusals records addresses outside ADMIN_ALLOWED_IPS, each once
+	// per window, through a bounded queue and one worker (admin_access.go).
+	adminRefusals *adminRefusals
 }
 
 // WebPages serves the built web app (web.Pages): its pages and files, and
@@ -48,7 +51,9 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory()}, nil
+	server := &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory(), adminRefusals: newAdminRefusals()}
+	go server.runAdminRefusals()
+	return server, nil
 }
 
 // DummyHash is a password hash no account has, checked when an email is

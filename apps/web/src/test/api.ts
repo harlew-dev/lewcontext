@@ -15,6 +15,7 @@ import { vi } from "vitest";
 export type Reply = {
   status?: number; // 200 by default
   body?: unknown; // sent as JSON; no body when left out
+  headers?: Record<string, string>; // response headers, besides the JSON type
   gate?: Promise<unknown>; // hold the response until this settles
   network?: boolean; // fail as if the API were unreachable
 };
@@ -48,8 +49,8 @@ export function stubApi(replies: Record<string, Reply | Reply[]>) {
     if (reply.network) throw new TypeError("Failed to fetch");
     const status = reply.status ?? 200;
     return reply.body === undefined
-      ? new Response(null, { status })
-      : json(reply.body, status);
+      ? new Response(null, { status, headers: reply.headers })
+      : json(reply.body, status, reply.headers);
   });
   vi.stubGlobal("fetch", fetch);
   return {
@@ -76,8 +77,8 @@ export function stubApi(replies: Record<string, Reply | Reply[]>) {
   };
 }
 // A fresh Response per call: a body can only be read once.
-function json(body: unknown, status: number) {
-  return new Response(JSON.stringify(body), { status });
+function json(body: unknown, status: number, headers?: Record<string, string>) {
+  return new Response(JSON.stringify(body), { status, headers });
 }
 // A promise the test settles, for holding a reply (Reply.gate) to check the
 // pending state.

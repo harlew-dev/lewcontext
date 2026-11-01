@@ -1,6 +1,7 @@
 import {
   BuildingOffice2Icon,
   EnvelopeIcon,
+  KeyIcon,
   QueueListIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
@@ -38,6 +39,10 @@ export const adminRoutes = {
         before,
       }),
   },
+  // Who holds admin: roles, MFA, last sign-in, live sessions.
+  admins: {
+    index: (key: string) => `/admin/${key}/admins`,
+  },
 } as const;
 // Sidebar items for the admin dashboard (Monitoring comes with its plan).
 export function adminNavigation(key: string) {
@@ -58,5 +63,6 @@ export function adminNavigation(key: string) {
       href: adminRoutes.deliveries.index(key),
       icon: EnvelopeIcon,
     },
+    { label: "Admins", href: adminRoutes.admins.index(key), icon: KeyIcon },
   ];
 }

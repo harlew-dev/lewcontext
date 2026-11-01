@@ -74,11 +74,15 @@ describe("the admin client", () => {
     await admin.login({ email: "olive@example.com", password: "pw" });
     await admin.loginMfa("123456");
     await admin.users().index({ q: "x" });
+    await admin.admins().index();
+    await admin.sessions().destroyOthers();
     await admin.logout();
     expect(stub.sent().map(({ method, url }) => `${method} ${url}`)).toEqual([
       "POST /api/admin/login",
       "POST /api/admin/login/mfa",
       "GET /api/admin/users?q=x",
+      "GET /api/admin/admins",
+      "DELETE /api/admin/sessions",
       "POST /api/admin/logout",
     ]);
     for (const request of stub.sent()) {
@@ -86,5 +90,29 @@ describe("the admin client", () => {
       expect(request.csrf).toBe("admin-csrf");
     }
     expect(stub.sent()[1].body).toEqual({ code: "123456" });
+  });
+  it("calls back when an answer says the key is being retired, answered or refused", async () => {
+    stubApi({
+      "GET /api/admin/me": {
+        body: {},
+        headers: { "X-Admin-Key-Status": "previous" },
+      },
+      "GET /api/admin/admins": {
+        status: 401,
+        body: { error: "Please sign in to continue." },
+        headers: { "X-Admin-Key-Status": "previous" },
+      },
+      "*": { body: {} },
+    });
+    let retiring = 0;
+    const admin = adminClient(adminHttp(key, undefined, () => retiring++));
+    await admin.users().index();
+    expect(retiring).toBe(0);
+    await admin.me();
+    await admin
+      .admins()
+      .index()
+      .catch(() => {});
+    expect(retiring).toBe(2);
   });
 });

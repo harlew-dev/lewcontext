@@ -65,6 +65,7 @@ const adminRoutes = [
     route("admin/:key/events", "pages/admin/[key]/events.tsx"),
     route("admin/:key/events/:event", "pages/admin/[key]/events/[event].tsx"),
     route("admin/:key/mail", "pages/admin/[key]/mail.tsx"),
+    route("admin/:key/admins", "pages/admin/[key]/admins.tsx"),
   ]),
 ] satisfies RouteConfig;
 

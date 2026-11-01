@@ -12,7 +12,7 @@ One image (the root `Dockerfile`) holding four binaries:
 | `migrate` | Applies database migrations, inside a transaction each, under an advisory lock | once per release, **before** starting the new `api` |
 | `prune` | Deletes old rows from log tables (`events`) | from cron |
 | `seed` | Demo data | never: it refuses to run with `APP_ENV=production` |
-| `admin` | The operator's commands, previewing without `-confirm`: `admin grant`, `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
+| `admin` | The operator's commands, previewing without `-confirm`: `admin grant` (with `-role viewer|operator`), `revoke` and `list` for the admin dashboard; `admin reset-mfa -email … -confirm` turns off two-factor authentication for someone who lost their authenticator and recovery codes, and signs out their sessions; `admin blocks` lists blocked email addresses and `admin unblock -email … -confirm` takes one off the list; `admin app-key generate` and `admin route-key generate` print a new `APP_KEY` or `ADMIN_ROUTE_KEY` | by hand; check who is asking out of band before `reset-mfa` |
 
 There is one process and one origin: the same server sends pages and API responses, so there is no CORS and no separate frontend host. The server does **not** migrate on startup.
 
@@ -46,6 +46,8 @@ make build                                                     # or, without Doc
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | your provider's | Both or neither. **A secret:** pass it through your platform's secret store, not the image |
 | `APP_KEY` | 32 random bytes in base64: `docker run --rm lewcontext admin app-key generate` prints one (or `openssl rand -base64 32`) | **A secret, and required.** Seals two-factor secrets at rest, keys recovery-code and emailed-code digests and signs the admin dashboard's assets pass; **every server on one database needs the same one** (one server's worker may send a code another checks). `.env.example`'s key is refused. **Back it up with the database and never change it:** without the same key, every account with two-factor authentication on is locked out (there is no key rotation yet), and `admin reset-mfa` is the only way back in, one account at a time |
 | `ADMIN_ROUTE_KEY` | `docker run --rm lewcontext admin route-key generate` prints one (256 bits) | **A secret.** The admin dashboard's path, `/admin/<key>`, and its API header. Unset turns the admin dashboard off. `.env.example`'s throwaway key is refused. See [Admin dashboard](#admin-dashboard) |
+| `ADMIN_ROUTE_KEY_PREVIOUS` | unset, except for the hours after a rotation | **A secret.** The key being retired: sessions made under it keep working, it opens no sign-in. See [Rotating the admin key](#rotating-the-admin-key) |
+| `ADMIN_ALLOWED_IPS` | your office, VPN or bastion addresses, e.g. `203.0.113.10,198.51.100.0/24` | The only client addresses the admin dashboard answers; unset allows any. Needs `CLIENT_IP_HEADER` behind a proxy. See [Admin dashboard](#admin-dashboard) |
 | `CLIENT_IP_HEADER`, `TRUSTED_PROXIES` | for example `X-Forwarded-For` and `127.0.0.1/32,::1/128` | The real client IP behind a proxy. Set both or neither. See [Behind a proxy](#behind-a-proxy-or-load-balancer) |
 
 `RATE_LIMITS` must stay unset (or `on`): `off`, for the end-to-end tests, is refused in production. The server refuses to start if any of these rules is broken, rather than starting insecurely. `DEMO_PASSWORD`, `MAIL_FILE` and `API_URL` are for development only. Tests use the committed `.env.testing`, never production settings.
@@ -72,10 +74,24 @@ make build                                                     # or, without Doc
 `https://app.example.com/admin/<ADMIN_ROUTE_KEY>`: every account and workspace, read-only, with every read recorded ([api/admin.md](api/admin.md)).
 
 1. **Set `ADMIN_ROUTE_KEY`** from your secret store, and restart.
-2. **Grant the first admin:** they register an account in the app as anyone would, then `docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.com -confirm`. Without two-factor authentication on, they set it up at their first admin sign-in, within 24 hours (run `grant` again for another day). `admin list` shows every admin and their MFA; `admin revoke -email … -confirm` takes it away and signs out their admin sessions.
+2. **Grant the first admin:** they register an account in the app as anyone would, then `docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.com -confirm`. Without two-factor authentication on, they set it up at their first admin sign-in, within 24 hours (run `grant` again for another day). Admins are **viewers** (every page, read-only) unless granted `-role operator`, which the actions to come will need; give it only to those who must act. `admin list` shows every admin, their role and MFA; `admin revoke -email … -confirm` takes it away and signs out their admin sessions. The dashboard's Admins page shows the same with last sign-ins and live sessions, and downloads it as CSV for an access review.
 3. **Keep `/admin/` out of access logs**, or redact the path: the key is in it. Cloudflare and most proxies log paths; the key never travels in a header to anywhere but this server (`X-Admin-Key`), and admin pages send `Referrer-Policy: no-referrer`. The admin pages' code is a build of its own, at `/admin-assets/…` (no key in those paths), which the server sends only to a browser holding the assets pass an admin page set ([api/admin.md](api/admin.md#the-admin-build)).
 4. **Never cache `/admin-assets/` in a shared cache.** Its files are sent `Cache-Control: private, max-age=28800` (browsers only, for the assets pass's 8 hours); don't add a "cache everything" or edge-cache rule (Cloudflare Cache Rules, a CDN, nginx `proxy_cache`) that covers it, or the cache would hand admin code to anyone. Leave its cookie alone too: the pass travels in `__Secure-lewcontext_admin_assets`.
-5. **If the key may have leaked** (a log, a screenshot, browser sync), rotate it: set a new one and restart. Every admin is signed out, every assets pass stops working, and the old URL becomes an ordinary 404. The key alone gets nobody in: an admin's password and second factor are still needed.
+5. **Allow only your own addresses** where you can: `ADMIN_ALLOWED_IPS` (office, VPN or bastion addresses or ranges) makes the dashboard, its API and its files an ordinary 404 from anywhere else, even with the key, and records each refused address (`admin.access_refused`, once per address per 15 minutes per server; the server log warns too). A refusal means the key, or an assets pass, has leaked: rotate the key outright. **Behind a proxy** it needs `CLIENT_IP_HEADER` and `TRUSTED_PROXIES`, or every request comes from the proxy and an allowlist naming it lets everyone in; production startup warns when it's set without `CLIENT_IP_HEADER`. **Stronger, where you have it:** put Cloudflare Access, a VPN or Tailscale in front of `/admin/` and `/admin-assets/`, so people authenticate before they reach the server; the allowlist is the layer that works everywhere.
+6. **If the key may have leaked** (a log, a screenshot, browser sync, a refusal above), rotate it outright: set a new one and restart, **without** `ADMIN_ROUTE_KEY_PREVIOUS`. Every admin is signed out, every assets pass stops working, and the old URL becomes an ordinary 404. The key alone gets nobody in: an admin's password and second factor are still needed.
+
+### Rotating the admin key
+
+A routine rotation (every 90 days, or when someone with the URL leaves) needn't sign anyone out:
+
+1. `docker run --rm lewcontext admin route-key generate` for a new key.
+2. Set it as `ADMIN_ROUTE_KEY`, and the old one as `ADMIN_ROUTE_KEY_PREVIOUS`, on every server; restart. The log says the previous key is set (never its value).
+3. Hand out the new URL. Sessions made under the old one carry on, their pages saying the address is being retired; the old URL opens no new sign-in.
+4. After 8 hours at most (a session's longest), remove `ADMIN_ROUTE_KEY_PREVIOUS` and restart. Its last sessions end then.
+
+Never set a key that may have leaked as the previous one: replace it outright (step 6 above). While it's set, the previous key fails closed: if the database is unreachable, its pages and API are the ordinary 404.
+
+The admin sign-in stores the client's IP address, so the server must be reached over TCP (as the image and `make serve` are); over a unix socket the door answers 503 and logs why.
 
 The image builds both web builds and fails if any admin code reached the app's. A server with `ADMIN_ROUTE_KEY` set and no admin build refuses to start.
 
@@ -99,7 +115,7 @@ Everything that must be shared lives in PostgreSQL, so several `api` processes b
 | Rate-limit counters | `rate_limits` | exact across servers |
 | Event deliveries (mail, future listeners) | `event_deliveries`, claimed with `FOR UPDATE SKIP LOCKED` | each delivery runs on one server; a crashed one's lease expires after 5 minutes and another takes over |
 | Reset links and invitations | digests in their tables | any server can check a link |
-| The admin assets pass | an HMAC in the cookie, under `APP_KEY` and the admin key's digest | any server accepts another's, **if every server has the same `APP_KEY` and `ADMIN_ROUTE_KEY`** |
+| The admin assets pass | an HMAC in the cookie, under `APP_KEY` and the admin key's digest | any server accepts another's, **if every server has the same `APP_KEY` and `ADMIN_ROUTE_KEY`** (and `ADMIN_ROUTE_KEY_PREVIOUS` and `ADMIN_ALLOWED_IPS`, or a session works on one server and not the next) |
 | Sign-ups and email codes | `pending_registrations`, `email_verifications`: HMACs under `APP_KEY` | any server can check a code, **if every server has the same `APP_KEY`** |
 | CAPTCHA tokens (**Planned**) | single use enforced by Cloudflare | no table needed |
 
@@ -107,6 +123,7 @@ Things that are per process:
 
 - the 4 password-hashing slots;
 - the in-memory read budget (`api-read:per-user`, [rate limits](api/rate-limits.md));
+- which addresses outside `ADMIN_ALLOWED_IPS` were recorded lately (`admin.access_refused` once per address per 15 minutes, per server), and the queue of those still to record;
 - the development mailbox file (development only).
 
 With N servers, these allow N times as much. That is fine for load protection.
@@ -189,7 +206,7 @@ Check each provider's own docs for current values.
 - [ ] Migrations frozen (append-only) before the first real data.
 - [ ] `prune` scheduled.
 - [ ] `APP_KEY` generated for this deployment, kept in the secret store, and backed up with the database.
-- [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; admins granted only to people who need it (`admin list`).
+- [ ] `ADMIN_ROUTE_KEY` generated for this deployment and kept in the secret store (or unset, with no admin dashboard); `ADMIN_ROUTE_KEY_PREVIOUS` unset outside a rotation; `/admin/` kept out of access logs or redacted; no shared-cache rule covering `/admin-assets/`; `ADMIN_ALLOWED_IPS` set to your own addresses where possible (with `CLIENT_IP_HEADER` behind a proxy), or Cloudflare Access or a VPN in front of `/admin/`; admins granted only to people who need it, as viewers unless they must act (`admin list`, the Admins page), and reviewed quarterly.
 - [ ] `seed` never run (it refuses in production anyway).
 - [ ] Behind a proxy: `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` set, listing only your own proxies (or Cloudflare's current ranges), and a single-value header overwritten by the proxy.
 - [ ] Behind Cloudflare: the origin locked to Cloudflare, and any public API excluded from bot and challenge rules.

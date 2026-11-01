@@ -58,6 +58,8 @@ Every method starts with a verb:
 
 `<resource>.<action>`, where the action is the CRUD action of the route the permission guards: `workspace.update`, `project.store`, `workspace.member.destroy`, `workspace.invitation.store`. The Go constant is the same words in PascalCase (`auth.WorkspaceMemberDestroy`).
 
+The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, least access first); an admin route that changes anything names the one it needs with `Role` in `router/routes.go`.
+
 ## Events (`internal/events`)
 
 `<resource>.<fact>`: `workspace.invitation.created`, `workspace.member.removed`, `auth.password_reset.requested`, `project.updated`, `auth.logged_in`. Segments are snake_case.
@@ -66,7 +68,7 @@ Every method starts with a verb:
 - **The fact** is the last segment: past tense, a fact rather than a command (`created`, `updated`, `removed`, `left`, `sent`). Everything before it is what the fact is about, so filtering by resource is a prefix (`workspace.member.%`).
 - **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`, `auth.email_verified`); only stored sub-resources (reset links, pending sign-ups, email codes, members, invitations) get a segment (`auth.registration.requested`, `auth.email_verification.sent`). A sign-up waiting for its code is a *registration*, after the `register` route; the table is `pending_registrations`.
 - **Email addresses on their own**, apart from any account, are the `email` area: `email.blocked`, `email.unblocked` (the block list).
-- **The admin dashboard** is the `admin` area: facts about admins and their sessions are one segment (`admin.granted`, `admin.logged_in`), and what an admin read gets the resource read (`admin.user.viewed`, `admin.workspace.listed`).
+- **The admin dashboard** is the `admin` area: facts about admins and their sessions as a whole are one segment (`admin.granted`, `admin.logged_in`, `admin.sessions_revoked`, `admin.access_refused`); a fact about one stored admin session names it, as the `auth` area's sub-resources do (`admin.session.moved`); and what an admin read gets the resource read (`admin.user.viewed`, `admin.workspace.listed`, `admin.admin.listed`).
 - **At most three segments**, enforced by the `events.name` CHECK and `TestCatalogueNames`. A deeper resource needs this rule revisited, not a fourth dot.
 - **CRUD actions:** `store` records `<resource>.created`; `update` records `<resource>.updated`, or a more specific fact (`workspace.renamed`); `destroy` records `<resource>.deleted`, or a more specific fact (`workspace.member.removed`, `workspace.member.left`, `workspace.invitation.revoked`).
 - **One event type per fact**, with variable details in the payload, never in the name (`rate_limit.reached` with a `limit` field, not one event per limit).

@@ -78,7 +78,7 @@ Kept a year (a `make prune` target, `alerts`, on resolved alerts), since "when d
 
 ### Email to admins
 
-- **Who:** every admin whose `alert_email` covers the level: `critical` (the default), `all`, or `none`. Each admin sets their own on the Admins page ([access hardening](access-hardening.md)); it's the only setting there that changes data without a code, since it only affects their own inbox.
+- **Who:** every admin whose `alert_email` covers the level: `critical` (the default), `all`, or `none`. Each admin sets their own on the Admins page ([access hardening](../implemented/admin/access-hardening.md)); it's the only setting there that changes data without a code, since it only affects their own inbox.
 - **When:** on opening, on escalating to critical, and on resolving (for alerts that were emailed). A **critical alert still open and not acknowledged is emailed again every 4 hours** (decision 5). More than 5 alerts opening within 10 minutes become one digest email.
 - **Kind:** operational mail to people who took on the admin role, not a workspace notification, so the opt-in rule in [mail.md](../../../docs/api/mail.md#who-gets-email-and-how-often) is met by the per-admin setting, defaulting to critical only. It isn't triggered by any request, so there's no per-email limit; the hysteresis and digest bound it.
 - **Content:** the signal's title, level, value, when it opened, and a sentence of what it usually means. **No link containing the admin key, and no personal data** (decision 6): the email says "Open the admin dashboard to see the details". An email passes through the provider and sits in an inbox; the key and the IPs and addresses behind an alert stay in the dashboard.

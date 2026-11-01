@@ -10,6 +10,7 @@ import { path } from "./paths";
 import {
   defaultAdminUserSort,
   defaultAdminWorkspaceSort,
+  type AdminAccount,
   type AdminCatalogue,
   type AdminDeliveryRow,
   type AdminEvent,
@@ -129,6 +130,12 @@ export const adminPaths = {
     index: (query: AdminDeliveryIndexQuery = {}) =>
       path<CursorPage<AdminDeliveryRow>>(url(`${base}/deliveries`, query)),
   },
+  // The Admins page: every admin, one list (no paging).
+  admins: {
+    index: () => path<{ data: AdminAccount[] }>(`${base}/admins`),
+  },
+  // The signed-in admin's own other sessions.
+  sessions: { destroyOthers: () => `${base}/sessions` },
 };
 export function adminClient(http: Http) {
   return {
@@ -174,14 +181,32 @@ export function adminClient(http: Http) {
       index: (query: AdminDeliveryIndexQuery = {}) =>
         http.get(adminPaths.deliveries.index(query)),
     }),
+    admins: () => ({ index: () => http.get(adminPaths.admins.index()) }),
+    // Signs out every other admin session of yours, keeping this one.
+    sessions: () => ({
+      destroyOthers: () =>
+        http.send<void>("DELETE", adminPaths.sessions.destroyOthers()),
+    }),
   };
 }
 export type AdminApiClient = ReturnType<typeof adminClient>;
+// The header the API sends with every answer to a session made under the
+// key being retired (ADMIN_ROUTE_KEY_PREVIOUS): "previous".
+export const adminKeyStatusHeader = "X-Admin-Key-Status";
+// Whether a response came under the key being retired.
+export function previousKeyIn(response: Response): boolean {
+  return response.headers.get(adminKeyStatusHeader) === "previous";
+}
 // The admin dashboard's requests: the same-origin /api/admin with the admin
 // cookie, the ADMIN_ROUTE_KEY from the page's URL in X-Admin-Key on every
 // call (without it the API answers as an unknown route), and the admin
-// session's CSRF token on mutations when given.
-export function adminHttp(adminKey: string, csrfToken?: string): Http {
+// session's CSRF token on mutations when given. onPreviousKey is called
+// whenever an answer says the key is being retired.
+export function adminHttp(
+  adminKey: string,
+  csrfToken?: string,
+  onPreviousKey?: () => void,
+): Http {
   return httpWith({
     base: "",
     headers: {
@@ -190,6 +215,9 @@ export function adminHttp(adminKey: string, csrfToken?: string): Http {
     },
     credentials: "same-origin",
     timeout: 12000,
+    onResponse: (response) => {
+      if (onPreviousKey && previousKeyIn(response)) onPreviousKey();
+    },
   });
 }
 // The admin dashboard's API, for components under the admin pages
@@ -200,17 +228,20 @@ export function adminHttp(adminKey: string, csrfToken?: string): Http {
 export function useAdminApi(): AdminApiClient {
   const admin = useOptionalAdmin();
   if (!admin) throw new Error("useAdminApi() needs an AdminProvider");
-  const { adminKey } = admin;
+  const { adminKey, retiring } = admin;
   const csrfToken = admin.session?.csrfToken;
   return useMemo(
-    () => adminClient(adminHttp(adminKey, csrfToken)),
-    [adminKey, csrfToken],
+    () => adminClient(adminHttp(adminKey, csrfToken, retiring)),
+    [adminKey, csrfToken, retiring],
   );
 }
 // The admin API for the admin pages' route loaders: reads only, with the key
 // from the route's params.
-export function loaderAdminApi(adminKey: string): AdminApiClient {
-  return adminClient(adminHttp(adminKey));
+export function loaderAdminApi(
+  adminKey: string,
+  onPreviousKey?: () => void,
+): AdminApiClient {
+  return adminClient(adminHttp(adminKey, undefined, onPreviousKey));
 }
 // Whether the door's password step asks for setting MFA up.
 export function needsMfaSetup(step: AdminLoginStep): boolean {

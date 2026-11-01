@@ -1,6 +1,6 @@
 # Admin: the email block list, and unblocking
 
-Status: **draft 2026-11-01**, decisions to confirm. Plan A9 of the [admin plans](README.md). Split out of [email blocks](../implemented/email-blocks.md) (its decisions 17–21), whose links, page, mailer and command line shipped on 2026-11-01. Needs [admin access](../implemented/admin-access.md) and [events-and-mail](../implemented/admin/events-and-mail.md); brings forward the step-up, reasons, limit and dialog from [actions](actions.md) (A6); waits for [access hardening](access-hardening.md) (A2) only for the `operator` role (decision 3). Docs it will change: [admin.md](../../../docs/api/admin.md), [events.md](../../../docs/api/events.md), [rate-limits.md](../../../docs/api/rate-limits.md), [database.md](../../../docs/api/database.md), [ui/forms-and-actions.md](../../../docs/ui/forms-and-actions.md), [api/testing.md](../../../docs/api/testing.md), [ui/testing.md](../../../docs/ui/testing.md), AGENTS.md.
+Status: **draft 2026-11-01**, decisions to confirm. Plan A9 of the [admin plans](README.md). Split out of [email blocks](../implemented/email-blocks.md) (its decisions 17–21), whose links, page, mailer and command line shipped on 2026-11-01. Needs [admin access](../implemented/admin-access.md) and [events-and-mail](../implemented/admin/events-and-mail.md); brings forward the step-up, reasons, limit and dialog from [actions](actions.md) (A6); and uses [access hardening](../implemented/admin/access-hardening.md)'s (A2, implemented 2026-11-01) `operator` role, which Unblock requires (decision 3). Docs it will change: [admin.md](../../../docs/api/admin.md), [events.md](../../../docs/api/events.md), [rate-limits.md](../../../docs/api/rate-limits.md), [database.md](../../../docs/api/database.md), [ui/forms-and-actions.md](../../../docs/ui/forms-and-actions.md), [api/testing.md](../../../docs/api/testing.md), [ui/testing.md](../../../docs/ui/testing.md), AGENTS.md.
 
 ## Why
 
@@ -34,7 +34,7 @@ An address is blocked by its owner, from the link in an invitation. Today only t
 - **`RequireAdminStepUp`** wraps the unblock route, after the session and CSRF checks. It reads `stepped_up_until` from the admin session already loaded, so it costs no query. A6's other account-and-access actions use it unchanged.
 - **Store methods:** `IndexAdminEmailBlocks` (paginated, as `IndexAdminUsers`), `UnblockEmailAddress` (today's by-address unblock, given the admin and the reason), and `StepUpAdminSession`.
 - **Rate limits:** `admin-action:per-user` (60 an hour, in the database), new, as A6 defines it; the step-up shares `mfa:per-account` with every other code check, so a stolen admin session guesses no faster there than at the door. Reads count against `admin-read:per-user` as every admin read does.
-- **Roles wait for [access hardening](access-hardening.md)** (decision 3). Until it adds `operator`, every admin may unblock. When it does, the route gains `requireAdminRole(operator)` like A6's actions.
+- **Unblock needs the `operator` role** ([access hardening](../implemented/admin/access-hardening.md), decision 3): the route is registered with `Role("DELETE", "/email-blocks", auth.AdminOperator, …)` (`httpapi.RequireAdminRole`: 403 for a viewer), like A6's actions, and the page shows Unblock only to operators (`adminCan(useAdminSession().role, "operator")`).
 
 ### Data
 
@@ -76,7 +76,7 @@ Added to `events.Catalogue` and the catalogues in [events.md](../../../docs/api/
 | Admins reading the block list (people who asked not to be contacted) | Only behind the key, an admin session and MFA; every read recorded as `admin.email_block.listed`, searches included. Rows hold the address and two dates, never a token or digest (`decodeAdmin` walks the response) |
 | An admin blocking someone to stop them signing up | There is no block in the dashboard (decision 4) |
 | An address in an admin URL | The unblock takes it in the body; only the Events link (`?email=`) puts it in a page URL, as Events already does, and admin pages send `Referrer-Policy: no-referrer` |
-| Every admin can unblock until roles exist | Accepted until [access hardening](access-hardening.md) adds `operator` (decision 3); admins are few, granted only from the command line, and every unblock is recorded with its reason |
+| A viewer unblocking | Unblock needs `operator` (decision 3), granted only from the command line: the API refuses a viewer (403) and the page doesn't offer it |
 
 ## Tests
 
@@ -110,7 +110,7 @@ Numbered 17–21 in the [email blocks](../implemented/email-blocks.md) plan befo
 | --- | --- | --- |
 | 1 | Blocks in the admin dashboard | An Email blocks page after Mail: the list with search, sort and whether the owner's link still works, each read recorded; Unblock and Show activity in a ⋯ menu. A page of its own rather than the Blocked addresses tab on Mail that [events-and-mail](../implemented/admin/events-and-mail.md) suggested, since it has its own endpoint and action |
 | 2 | How the dashboard's unblock is guarded | As an A6 account-and-access action: a 5-minute step-up window opened with a code, a required reason (10–500 characters), `admin-action:per-user`, and `admin.email.unblocked` beside `email.unblocked`, in one transaction. This plan builds A6's step-up, reason, limit and dialog for A6 to reuse. The alternative, a list now and unblocking only when A6 ships, keeps the dashboard read-only for longer |
-| 3 | Roles before access hardening | Every admin may unblock until A2 adds `operator`; then the route needs it. The rule "a write needs the `operator` role" ([README](README.md), rule 5) is waived for this one action until then. Waiting for A2 instead would delay the action until A2 ships |
+| 3 | Roles | Unblock needs `operator`. A2 shipped first (2026-11-01), so the question of a waiver until then is moot: the rule "a write needs the `operator` role" ([README](README.md), rule 5) holds with no exception |
 | 4 | Blocking from the dashboard | No, as for the command line: every unwanted email an unregistered address can get carries its own link, and an admin block would let a stolen session stop someone signing up |
 | 5 | Identifying a block in the API | By its address in the request body, as the command line does, not a public ID in the path: blocks have no public ID, and an address in a path lands in access logs |
 
@@ -118,5 +118,4 @@ Numbered 17–21 in the [email blocks](../implemented/email-blocks.md) plan befo
 
 - **Blocking from the dashboard** (decision 4).
 - **A6's other actions**; the dashboard gains only Unblock.
-- **Admin roles.** Every admin may unblock until [access hardening](access-hardening.md) (decision 3).
 - **Blocked emails on the Mail page.** A refused `Send` records nothing, so Mail shows them only as asked for without a `.sent`.

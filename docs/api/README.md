@@ -10,10 +10,10 @@ Go 1.26, standard-library `net/http` with method-aware routing, Bun over pgx, Po
 | `cmd/migrate` | `make migrate`, `migrate-status`, `migrate-rollback`, `migrate-fresh`, `migration` |
 | `cmd/seed` | `make seed` flags only; refuses production |
 | `cmd/prune` | `make prune` flags only; previews unless confirmed ([database.md](database.md#pruning)) |
-| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant`, `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
+| `cmd/admin` | The operator's commands, previewing unless confirmed: `grant` (with a role, `-role viewer|operator`), `revoke` and `list` admins ([admin.md](admin.md)); `reset-mfa` turns off a locked-out user's two-factor authentication ([auth.md](auth.md#two-factor-authentication)); `blocks` and `unblock` list and unblock blocked email addresses ([auth.md](auth.md#blocking-an-email-address)); `app-key generate` makes an `APP_KEY` (`make app-key`) and `route-key generate` an `ADMIN_ROUTE_KEY` |
 | `internal/config` | Environment loading and validation |
 | `internal/database` | Connection (`Open`) and the Bun migrator |
-| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin key, page gate and assets pass (`admin.go`) |
+| `internal/httpapi` | The core every controller uses: `Server`, middleware, JSON answers (`respond.go`), what middleware puts on a request (`context.go`), rate limits (`limits.go`), sessions, credentials, second factors, the admin keys, sessions, roles, page gate and assets pass (`admin.go`), and the admin address allowlist (`admin_access.go`) |
 | `internal/httpapi/endpoints/<area>` | The controllers, one package per area: `account` (`/api/auth/*`, `/api/email-blocks/*`), `workspace` (`/api/workspaces/*`, `/api/invitations/*`), `admin` (`/api/admin/*`); one controller per file ([naming](../naming.md#controllers)) |
 | `internal/httpapi/router` | `routes.go`, the one registry of API routes and pages, with their middleware and limits (`router.New`) |
 | `internal/httpapi/{clientip,input,ratelimit}` | Leaves the core imports: resolving the client's address; query parameters, paging, public IDs, search terms and link tokens; what a rate limit is and the in-memory counter |
@@ -40,7 +40,7 @@ ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
   → mux (router/routes.go)
   → RequireSession (cookie → session, CSRF on mutations) for private routes
   → RequireWorkspace ({workspace} → the member's workspace and role, else 404) for workspace routes
-  (or, under /api/admin: RequireAdminKey → RequireAdminSession; admin.md)
+  (or, under /api/admin: RequireAdminKey for the sign-in, RequireAdminKeyOrPrevious → RequireAdminSession → RequireAdminRole on an action; admin.md)
   → RequirePermission (403 unless the role grants it) on workspace mutations (ws.Can)
   → controller, e.g. workspace.Projects.Index (parse + validate) → store, e.g. h.Repo.IndexProjects (query scoped by workspace ID) → httpapi.JSON
 ```
@@ -63,8 +63,8 @@ ClientAddress (the client IP: the connection's, or CLIENT_IP_HEADER from TRUSTED
 | `GET /` (prerendered pages) | Their HTML, `no-cache` |
 | `GET /app`, `/app/*` without a valid session | `302` to `/auth/login?next=<path and query>` (`RequirePageSession`) |
 | `GET /app/*`, `/auth/*` | `__spa-fallback.html`, `no-store`; the browser renders the page |
-| `GET /admin/<ADMIN_ROUTE_KEY>`, and `/admin/<key>/*` with an admin session (else `302` to `/admin/<key>`) | The admin build's `index.html` (never the app's fallback) with 200, `no-store`, `no-referrer`, `noindex` (`Pages.ServeAdmin`), and the assets pass cookie. A wrong key, or admin off, is the 404 below ([admin.md](admin.md#pages)) |
-| `GET /admin-assets/*` with a valid assets pass | The admin build's file, `Cache-Control: private, max-age=28800, immutable`, as long as the pass lasts (`Pages.ServeAdminFile`). Without one, an unknown file, HTML or a dot-file: the 404 below ([admin.md](admin.md#the-assets-pass)) |
+| `GET /admin/<ADMIN_ROUTE_KEY>`, and `/admin/<key>/*` with an admin session (else `302` to `/admin/<key>`) | The admin build's `index.html` (never the app's fallback) with 200, `no-store`, `no-referrer`, `noindex` (`Pages.ServeAdmin`), and the assets pass cookie. A wrong key, admin off, or an address outside `ADMIN_ALLOWED_IPS` is the 404 below; under `ADMIN_ROUTE_KEY_PREVIOUS` only inner pages, with a session made under it ([admin.md](admin.md#pages)) |
+| `GET /admin-assets/*` with a valid assets pass, from an allowed address | The admin build's file, `Cache-Control: private, max-age=28800, immutable`, as long as the pass lasts (`Pages.ServeAdminFile`). Without one, an unknown file, HTML or a dot-file: the 404 below ([admin.md](admin.md#the-assets-pass)) |
 | any other `GET` | `__spa-fallback.html` with status 404 (the app shows its not-found page) |
 | other methods outside `/api` | 405 |
 
@@ -92,7 +92,9 @@ Without a web build, the server serves the API only in development (Vite serves 
 | `TRUSTED_PROXIES` | (unset) | Comma-separated addresses or CIDR ranges the proxy connects from. Set with `CLIENT_IP_HEADER` or not at all; `0.0.0.0/0` and `::/0` are refused |
 | `MAIL_FILE` | `tmp/mail.log` | The `log` driver's mailbox. `make` sets it to `<repo>/tmp/mail.log`, so every target uses one file |
 | `APP_KEY` | (required) | 32 random bytes in base64. `make app-key` writes one into `.env` when it has none (never replacing one); `go run ./cmd/admin app-key generate` only prints one. An `.env` still saying `ENCRYPTION_KEY` gets a message to rename it. Seals two-factor secrets, keys recovery-code and emailed-code digests and signs the admin assets pass, so every server on one database needs the same one. Production refuses `.env.example`'s. **Changing it locks out every account with MFA on** (and ends codes in flight). The e2e servers share one per run (`E2E_APP_KEY`) |
-| `ADMIN_ROUTE_KEY` | (unset: admin off) | The admin dashboard's secret path segment and `X-Admin-Key`: a UUIDv4 or 32–128 characters of `A–Z a–z 0–9 _ -`; `go run ./cmd/admin route-key generate` prints one. Production refuses `.env.example`'s. Rotating it signs every admin out. It hides the door; admins still need their password and a code ([admin.md](admin.md)) |
+| `ADMIN_ROUTE_KEY` | (unset: admin off) | The admin dashboard's secret path segment and `X-Admin-Key`: a UUIDv4 or 32–128 characters of `A–Z a–z 0–9 _ -`; `go run ./cmd/admin route-key generate` prints one. Production refuses `.env.example`'s. Rotating it signs every admin out, unless the old one is set as `ADMIN_ROUTE_KEY_PREVIOUS`. It hides the door; admins still need their password and a code ([admin.md](admin.md)) |
+| `ADMIN_ROUTE_KEY_PREVIOUS` | (unset) | After a rotation, the old key: admin sessions made under it keep working until they end (8 hours at most), but it never opens the sign-in. Same format; refused without `ADMIN_ROUTE_KEY` or equal to it. Never set a key that may have leaked ([admin.md](admin.md#rotating-without-signing-out-admin_route_key_previous)) |
+| `ADMIN_ALLOWED_IPS` | (unset: any) | Comma-separated addresses or CIDR ranges the admin dashboard answers; the right key from anywhere else is a 404, recorded as `admin.access_refused`. Parsed like `TRUSTED_PROXIES` (`0.0.0.0/0` and `::/0` refused). Behind a proxy it needs `CLIENT_IP_HEADER`; production warns at startup without it ([admin.md](admin.md#the-address-allowlist-admin_allowed_ips)) |
 | `APP_NAME` | `lewcontext` | The product name: baked into the web build, and read by the server for emails, which open with it ([mail.md](mail.md#templates)) |
 | `APP_ENV` | (development) | `production` enables Secure `__Host-` cookies, HSTS and stricter config |
 | `DEMO_PASSWORD` | | Only for `make seed` seeders that create accounts (1–128 bytes; `password` locally) |

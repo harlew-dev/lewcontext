@@ -41,10 +41,11 @@ prune:
 app-key:
 	cd apps/api && go run ./cmd/admin app-key generate -env ../../.env
 # make admin cmd=grant|revoke|reset-mfa|unblock email=you@example.com [CONFIRM=1], make admin cmd=list|blocks,
+# make admin cmd=grant email=… role=operator [CONFIRM=1] (an admin's role: viewer or operator),
 # make admin cmd="route-key generate": the operator's commands (cmd/admin). Changes preview unless CONFIRM=1.
 admin:
 	@test -n "$(cmd)" || (cd apps/api && go run ./cmd/admin; exit 2)
-	cd apps/api && go run ./cmd/admin $(cmd) $(if $(email),-email '$(email)') $(if $(CONFIRM),-confirm)
+	cd apps/api && go run ./cmd/admin $(cmd) $(if $(email),-email '$(email)') $(if $(role),-role '$(role)') $(if $(CONFIRM),-confirm)
 # Development in one terminal: rebuilds the embedded web app, then runs the API and Vite together (scripts/dev.sh).
 dev:
 	./scripts/dev.sh

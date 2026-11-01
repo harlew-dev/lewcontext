@@ -4,8 +4,42 @@ import type { Role } from "./workspaces";
 // What the admin dashboard shows (docs/api/admin.md): every account and every
 // workspace, the audit trail and the mail queue.
 
+// What an admin may do (docs/api/admin.md), least access first: a viewer
+// reads every admin page, an operator may also act. Set from the command
+// line only; the API refuses an action to a role without it (403), and the
+// pages hide what the role can't do (adminCan).
+export const adminRoles = ["viewer", "operator"] as const;
+export type AdminRole = (typeof adminRoles)[number];
 // The signed-in admin's session, as /api/admin/me answers.
-export type AdminSession = { user: User; csrfToken: string; expiresAt: string };
+export type AdminSession = {
+  user: User;
+  role: AdminRole;
+  csrfToken: string;
+  expiresAt: string;
+};
+// An admin as the Admins page lists them: their live admin sessions,
+// and lastSignedInAt, their newest admin sign-in still in the audit trail
+// (events are kept 90 days by default).
+export type AdminAccountSession = {
+  createdAt: string;
+  lastSeenAt: string;
+  ip: string;
+  userAgent: string;
+  // The session asking.
+  current: boolean;
+  // Made under the key being retired (ADMIN_ROUTE_KEY_PREVIOUS).
+  previousKey: boolean;
+};
+export type AdminAccount = {
+  user: AdminPerson;
+  role: AdminRole;
+  mfaEnabled: boolean;
+  // While set and ahead, they may still set MFA up at the door.
+  mfaSetupUntil: string | null;
+  grantedAt: string;
+  lastSignedInAt: string | null;
+  sessions: AdminAccountSession[];
+};
 export type AdminUser = {
   id: string;
   name: string;

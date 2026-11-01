@@ -42,7 +42,7 @@ func (l Limit) Key(subject string) string {
 // IPKey is the rate_limits key for a client address (ClientIP): the address
 // itself for IPv4, its /64 for IPv6 (subject).
 func (l Limit) IPKey(ip string) string {
-	return l.Key(subject(ip))
+	return l.Key(Subject(ip))
 }
 
 // Everyone is the rate_limits key of a limit shared by all requests.
@@ -86,9 +86,9 @@ func WaitFor(left time.Duration) string {
 	}
 }
 
-// subject is what a per-IP limit counts for ip: the address itself for
+// Subject is what a per-IP limit counts for ip: the address itself for
 // IPv4, and its /64 for IPv6, since one IPv6 user usually holds a whole /64.
-func subject(ip string) string {
+func Subject(ip string) string {
 	addr, err := netip.ParseAddr(ip)
 	if err != nil || !addr.Is6() {
 		return ip

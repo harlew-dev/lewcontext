@@ -37,7 +37,8 @@ var Catalogue = []Event{
 	ProjectCreated{}, ProjectUpdated{}, ProjectDeleted{},
 	RateLimitReached{},
 	EmailBlocked{}, EmailUnblocked{},
-	AdminGranted{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
+	AdminGranted{}, AdminUpdated{}, AdminRevoked{}, AdminLoginAttempted{}, AdminLoggedIn{}, AdminLoggedOut{},
+	AdminAccessRefused{}, AdminSessionMoved{}, AdminSessionsRevoked{}, AdminAdminListed{},
 	AdminUserListed{}, AdminUserViewed{}, AdminWorkspaceListed{}, AdminWorkspaceViewed{},
 	AdminEventListed{}, AdminEventViewed{}, AdminMailViewed{}, AdminDeliveryListed{}, AdminProjectListed{},
 }

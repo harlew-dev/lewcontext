@@ -47,8 +47,8 @@ func TestLimitSubject(t *testing.T) {
 		"2001:db8:1:3::1":      "2001:db8:1:3::/64",
 		"not an address":       "not an address",
 	} {
-		if got := subject(ip); got != want {
-			t.Errorf("subject(%s) = %s, want %s", ip, got, want)
+		if got := Subject(ip); got != want {
+			t.Errorf("Subject(%s) = %s, want %s", ip, got, want)
 		}
 	}
 	// Two IPv6 addresses in one /64 share a key; two IPv4 addresses don't.

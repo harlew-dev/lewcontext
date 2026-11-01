@@ -142,7 +142,7 @@ Actor only, as the other admin reads.
 
 | Risk | Mitigation |
 | --- | --- |
-| Project content now visible to every admin | Admins already see every account and workspace; every list and detail read that shows it is recorded, so who looked at which workspace's projects is answerable. [Access hardening](../../admin/access-hardening.md)'s roles can narrow it later if needed |
+| Project content now visible to every admin | Admins already see every account and workspace; every list and detail read that shows it is recorded, so who looked at which workspace's projects is answerable. [Access hardening](access-hardening.md)'s roles can narrow it later if needed |
 | A name, email or user agent with markup (`<script>`) in a payload | React escaping only; JSON shown as text in `<pre>`; `react/no-danger` is already on |
 | SQL through filters | Every value through `?` placeholders; names checked against the catalogue and expanded in Go; IDs checked with `validPublicID`; IP and CIDR parsed with `netip` before the query |
 | A filter that scans the whole table | Every filter has an index; CIDRs are bounded; `perPage` ≤ 100; the 10 s request timeout; cursor pagination counts nothing |

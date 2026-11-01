@@ -110,9 +110,12 @@ func verificationRoutes(s *httpapi.Server, mux *http.ServeMux) {
 
 // adminRoutes are the admin dashboard's (admin.go), and the only place an
 // /api/admin/ route may be registered (TestAdminRoutesStayInTheAdminGroup).
-// Every one checks X-Admin-Key first, so without the key they answer as an
-// unknown route; then the sign-in steps, or an admin session. They only read,
-// apart from signing in and out.
+// Every one checks X-Admin-Key (and ADMIN_ALLOWED_IPS) first, so without the
+// key they answer as an unknown route; then the sign-in steps, under the
+// current key only, or an admin session, under the key it was made with
+// (the current one, or ADMIN_ROUTE_KEY_PREVIOUS while it is set). Apart
+// from signing in and out they read, and every read is recorded; a route
+// that changes anything names the admin role it needs (Role).
 func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	sessions := admin.Sessions{Server: s}
 	users := admin.Users{Server: s}
@@ -121,6 +124,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	adminEvents := admin.Events{Server: s}
 	mail := admin.Mail{Server: s}
 	deliveries := admin.Deliveries{Server: s}
+	admins := admin.Admins{Server: s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.RequireAdminKey(http.HandlerFunc(httpapi.NotFound)))
@@ -129,9 +133,13 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	door.Handle("POST", "/login", s.LimitAuth(http.HandlerFunc(sessions.Login)))
 	door.HandleFunc("POST", "/login/mfa/setup", sessions.LoginMFASetup)
 	door.HandleFunc("POST", "/login/mfa", sessions.LoginMFA)
-	signedIn := group(mux, "/api/admin", s.RequireAdminKey, s.RequireAdminSession)
+	signedIn := group(mux, "/api/admin", s.RequireAdminKeyOrPrevious, s.RequireAdminSession)
+	signedIn.requireAdminRoles = true
 	signedIn.HandleFunc("GET", "/me", sessions.Me)
-	signedIn.HandleFunc("POST", "/logout", sessions.Logout)
+	// Signing out, and signing out your other admin sessions, only take
+	// your own access away: every admin may, whatever their role.
+	signedIn.OwnSessions("POST", "/logout", sessions.Logout)
+	signedIn.OwnSessions("DELETE", "/sessions", sessions.RevokeOthers)
 	signedIn.HandleFunc("GET", "/users", users.Index)
 	signedIn.HandleFunc("GET", "/users/{user}", users.Show)
 	signedIn.HandleFunc("GET", "/workspaces", workspaces.Index)
@@ -143,6 +151,7 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/catalogue", adminEvents.Catalogue)
 	signedIn.HandleFunc("GET", "/mail", mail.Show)
 	signedIn.HandleFunc("GET", "/deliveries", deliveries.Index)
+	signedIn.HandleFunc("GET", "/admins", admins.Index)
 }
 
 // unknownRoutesAsJSON answers a request no API route matches with the JSON
@@ -256,6 +265,9 @@ type routeGroup struct {
 	// requirePermissions makes Handle refuse anything but GET and HEAD, so
 	// each mutation has to be registered with Can.
 	requirePermissions bool
+	// requireAdminRoles does the same for the admin dashboard: each
+	// mutation is registered with Role, or with OwnSessions.
+	requireAdminRoles bool
 	// registered collects each pattern, when set (the permission matrix test).
 	registered *[]string
 }
@@ -267,6 +279,35 @@ func group(mux *http.ServeMux, prefix string, middleware ...func(http.Handler) h
 func (g routeGroup) Handle(method, path string, h http.Handler) {
 	if g.requirePermissions && method != "GET" && method != "HEAD" {
 		panic(fmt.Sprintf("%s %s%s: register it with Can and the permission it needs", method, g.prefix, path))
+	}
+	if g.requireAdminRoles && method != "GET" && method != "HEAD" {
+		panic(fmt.Sprintf("%s %s%s: register it with Role and the admin role it needs", method, g.prefix, path))
+	}
+	g.handle(method, path, h)
+}
+
+// Role registers an admin route only admins whose role may do role can use
+// (httpapi.RequireAdminRole); others get 403. Every admin action is
+// registered this way.
+func (g routeGroup) Role(method, path string, role auth.AdminRole, h http.HandlerFunc) {
+	g.handle(method, path, httpapi.RequireAdminRole(role, h))
+}
+
+// ownSessionRoutes are the only admin mutations registered without a role,
+// under the admin group's prefix: they act on the signed-in admin's own
+// sessions, which any admin may do, since they take access away, never
+// give it.
+var ownSessionRoutes = map[string]bool{
+	"POST /logout":     true, // signing out
+	"DELETE /sessions": true, // signing out your other admin sessions
+}
+
+// OwnSessions registers one of ownSessionRoutes in the admin group;
+// anything else stops the server starting, so it can't be used to skip a
+// role.
+func (g routeGroup) OwnSessions(method, path string, h http.HandlerFunc) {
+	if !g.requireAdminRoles || !ownSessionRoutes[method+" "+path] {
+		panic(fmt.Sprintf("%s %s%s isn't one of the admin's own session routes: register it with Role", method, g.prefix, path))
 	}
 	g.handle(method, path, h)
 }

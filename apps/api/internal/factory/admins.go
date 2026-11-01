@@ -16,14 +16,20 @@ type Admin struct {
 	bun.BaseModel `bun:"table:admins,alias:adm"`
 	UserID        int64 `bun:",pk"`
 	MFASetupUntil *time.Time
-	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	Role          auth.AdminRole `bun:",notnull"`
+	CreatedAt     time.Time      `bun:",nullzero,notnull,default:current_timestamp"`
 }
 
-// Admins builds admins with no setup window (as when MFA is on). Set
-// UserID, or use AdminFor.
+// Admins builds viewers with no setup window (as when MFA is on), as admin
+// grant makes them. Set UserID, or use AdminFor; AdminRole for an operator.
 var Admins = Define(func(f *gofakeit.Faker) Admin {
-	return Admin{}
+	return Admin{Role: auth.AdminViewer}
 })
+
+// AdminRole gives the admin role instead of viewer.
+func AdminRole(role auth.AdminRole) func(*Admin) {
+	return func(a *Admin) { a.Role = role }
+}
 
 // AdminFor makes the user an admin.
 func AdminFor(userID int64) func(*Admin) {
@@ -52,12 +58,17 @@ type AdminSession struct {
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 	LastSeenAt    time.Time `bun:",nullzero,notnull,default:current_timestamp"`
 	ExpiresAt     time.Time `bun:",notnull"`
+	IP            string    `bun:"ip,type:inet,notnull"`
+	UserAgent     string    `bun:",notnull"`
+	MovedAt       *time.Time
 	// Token is the raw cookie value; only its digest is stored.
 	Token string `bun:"-"`
 }
 
-// AdminSessions builds live admin sessions under AdminRouteKey. The user
-// must be an admin (Admins); use AdminSessionFor.
+// AdminSessions builds live admin sessions under AdminRouteKey, signed in
+// from 127.0.0.1 (the address the integration tests' requests come from)
+// with a fake browser. The user must be an admin (Admins); use
+// AdminSessionFor.
 var AdminSessions = Define(func(f *gofakeit.Faker) AdminSession {
 	token, csrf := mustToken(), mustToken()
 	now := time.Now()
@@ -68,9 +79,16 @@ var AdminSessions = Define(func(f *gofakeit.Faker) AdminSession {
 		CreatedAt:  now,
 		LastSeenAt: now,
 		ExpiresAt:  now.Add(auth.AdminSessionLifetime),
+		IP:         "127.0.0.1",
+		UserAgent:  f.UserAgent(),
 		Token:      token,
 	}
 })
+
+// SignedInFrom is a session signed in from ip.
+func SignedInFrom(ip string) func(*AdminSession) {
+	return func(s *AdminSession) { s.IP = ip }
+}
 
 // AdminSessionFor makes the session the admin's.
 func AdminSessionFor(userID int64) func(*AdminSession) {

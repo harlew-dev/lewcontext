@@ -27,6 +27,13 @@ type Config struct {
 	// AdminRouteKey (ADMIN_ROUTE_KEY) is the admin dashboard's secret path
 	// segment, and every admin API call's X-Admin-Key. Empty: admin is off.
 	AdminRouteKey string
+	// AdminRouteKeyPrevious (ADMIN_ROUTE_KEY_PREVIOUS) is the key being
+	// retired: admin sessions made under it keep working, but it opens no
+	// sign-in (admin_key.go). Empty: none.
+	AdminRouteKeyPrevious string
+	// AdminAllowedIPs (ADMIN_ALLOWED_IPS) are the only client addresses the
+	// admin dashboard answers; empty allows any.
+	AdminAllowedIPs []netip.Prefix
 	// RateLimits is RateLimitsOff to switch every rate limit off, for the
 	// end-to-end tests; quotas and the hashing slots stay. Production
 	// refuses it.
@@ -95,7 +102,7 @@ var clientIPHeaders = []string{"X-Forwarded-For", "X-Real-Ip", "Cf-Connecting-Ip
 // its own address, so ranges that cover everyone are refused.
 func (c *Config) loadClientIP() error {
 	header := os.Getenv("CLIENT_IP_HEADER")
-	proxies, err := parseProxies(os.Getenv("TRUSTED_PROXIES"))
+	proxies, err := parseRanges("TRUSTED_PROXIES", os.Getenv("TRUSTED_PROXIES"))
 	if err != nil {
 		return err
 	}
@@ -115,47 +122,50 @@ func (c *Config) loadClientIP() error {
 	return errors.New("CLIENT_IP_HEADER must be X-Forwarded-For, X-Real-IP, CF-Connecting-IP or True-Client-IP")
 }
 
-// parseProxies parses a comma-separated list of addresses and CIDR ranges.
-func parseProxies(list string) ([]netip.Prefix, error) {
-	var proxies []netip.Prefix
+// parseRanges parses a comma-separated list of addresses and CIDR ranges,
+// the value of the variable name (TRUSTED_PROXIES, ADMIN_ALLOWED_IPS).
+func parseRanges(name, list string) ([]netip.Prefix, error) {
+	var ranges []netip.Prefix
 	for _, entry := range strings.Split(list, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
 		}
-		proxy, err := parseProxy(entry)
+		r, err := parseRange(name, entry)
 		if err != nil {
 			return nil, err
 		}
-		proxies = append(proxies, proxy)
+		ranges = append(ranges, r)
 	}
-	return proxies, nil
+	return ranges, nil
 }
 
-// parseProxy parses one TRUSTED_PROXIES entry: a CIDR range, or a single
-// address as a range of one.
-func parseProxy(entry string) (netip.Prefix, error) {
+// parseRange parses one entry: a CIDR range, or a single address as a range
+// of one. A range covering every address is refused: in TRUSTED_PROXIES it
+// would believe the header from anyone, in ADMIN_ALLOWED_IPS it would allow
+// everyone while looking like a restriction.
+func parseRange(name, entry string) (netip.Prefix, error) {
 	if !strings.Contains(entry, "/") {
 		addr, err := netip.ParseAddr(entry)
 		if err != nil {
-			return netip.Prefix{}, fmt.Errorf("TRUSTED_PROXIES: %q isn't an address or CIDR range", entry)
+			return netip.Prefix{}, fmt.Errorf("%s: %q isn't an address or CIDR range", name, entry)
 		}
 		addr = addr.Unmap().WithZone("")
 		return netip.PrefixFrom(addr, addr.BitLen()), nil
 	}
-	proxy, err := netip.ParsePrefix(entry)
+	r, err := netip.ParsePrefix(entry)
 	if err != nil {
-		return netip.Prefix{}, fmt.Errorf("TRUSTED_PROXIES: %q isn't an address or CIDR range", entry)
+		return netip.Prefix{}, fmt.Errorf("%s: %q isn't an address or CIDR range", name, entry)
 	}
 	// Client addresses are unmapped before they're compared, so an
 	// IPv4-mapped range would never match.
-	if proxy.Addr().Is4In6() {
-		return netip.Prefix{}, fmt.Errorf("TRUSTED_PROXIES: write %q as an IPv4 range", entry)
+	if r.Addr().Is4In6() {
+		return netip.Prefix{}, fmt.Errorf("%s: write %q as an IPv4 range", name, entry)
 	}
-	if proxy.Bits() == 0 {
-		return netip.Prefix{}, fmt.Errorf("TRUSTED_PROXIES: %q trusts every address, which is the same as believing the header from anyone", entry)
+	if r.Bits() == 0 {
+		return netip.Prefix{}, fmt.Errorf("%s: %q covers every address", name, entry)
 	}
-	return proxy.Masked(), nil
+	return r.Masked(), nil
 }
 func env(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

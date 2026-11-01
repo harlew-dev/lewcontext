@@ -8,6 +8,7 @@ import {
 } from "@heroicons/react/16/solid";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Notice } from "@/components/ui/feedback";
 import {
   Dropdown,
   DropdownButton,
@@ -31,7 +32,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api";
 import { useAdminApi } from "@/lib/api/admin";
-import { useAdminKey, useAdminSession } from "@/lib/admin";
+import { useAdminKey, useAdminSession, usePreviousAdminKey } from "@/lib/admin";
 import { adminNavigation, adminRoutes } from "@/lib/admin-routes";
 import { initials } from "@/lib/format";
 import { routes } from "@/lib/routes";
@@ -54,6 +55,18 @@ function AdminBrand({ stacked = false }: { stacked?: boolean }) {
     </span>
   );
 }
+// Above every admin page while its key is being retired
+// (ADMIN_ROUTE_KEY_PREVIOUS): the session keeps working until it ends, but
+// this address won't open the sign-in again.
+function RetiringKeyNotice() {
+  if (!usePreviousAdminKey()) return null;
+  return (
+    <Notice variant="warning" className="mb-8">
+      This admin address is being retired. Ask your operator for the new one
+      before this session ends.
+    </Notice>
+  );
+}
 // The route being navigated to, or the current one when idle, so the
 // sidebar indicator slides on click.
 function useCurrentPath() {
@@ -62,8 +75,9 @@ function useCurrentPath() {
   return (pending ?? location).pathname;
 }
 // Signed-in chrome for the admin pages (pages/admin/layout.tsx): the sidebar
-// layout with Users and Workspaces, and an account menu leading back to the
-// app (or its Account & security) and Sign out. Signing out of the dashboard
+// layout with the admin pages, a notice while the key is being retired, and
+// an account menu leading back to the app (or its Account & security) and
+// Sign out. Signing out of the dashboard
 // leaves the app session alone. The app's pages are another build: following
 // those links loads them as a new page (pages/admin/not-found.tsx).
 export function AdminLayout({ children }: { children: ReactNode }) {
@@ -153,6 +167,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         </Sidebar>
       }
     >
+      <RetiringKeyNotice />
       {children}
     </SidebarLayout>
   );

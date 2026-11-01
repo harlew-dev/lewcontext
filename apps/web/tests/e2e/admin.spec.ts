@@ -301,6 +301,35 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   await expect(failed).toContainText("no such template");
   expect(errors).toEqual([]);
 
+  // Admins: the admin's own row (a viewer, as granted), this session with
+  // the address it signed in from, and no other session to sign out (the
+  // first one ended with Sign out). The read is recorded.
+  await page.getByRole("link", { name: "Admins" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Admins", exact: true }),
+  ).toBeVisible();
+  const own = page.getByRole("row").filter({ hasText: adminEmail });
+  await expect(own).toContainText("Viewer");
+  await expect(own).toContainText("MFA");
+  const thisSession = page.getByRole("row").filter({ hasText: "This session" });
+  await expect(thisSession).toContainText(/127\.0\.0\.1|::1/);
+  await expect(
+    page.getByRole("button", { name: "Sign out my other sessions" }),
+  ).toBeDisabled();
+  expect(
+    sql(
+      `SELECT host(ip) FROM admin_sessions WHERE user_id = (SELECT id FROM users WHERE email = '${adminEmail}')`,
+    ),
+  ).toMatch(/^(127\.0\.0\.1|::1)$/);
+  expect(
+    Number(
+      sql(
+        `SELECT count(*) FROM events WHERE name = 'admin.admin.listed' AND payload->>'admin' = (SELECT public_id FROM users WHERE email = '${adminEmail}')`,
+      ),
+    ),
+  ).toBe(1);
+  expect(errors).toEqual([]);
+
   // Back to app is another build: it loads as a new page, which Go answers
   // (this browser has no app session, so login, returning to /app).
   await page.getByRole("button", { name: "Admin account menu" }).click();

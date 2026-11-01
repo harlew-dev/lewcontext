@@ -57,6 +57,7 @@ func run() error {
 	if c.ClientIPHeader != "" {
 		slog.Info("client addresses come from a proxy header", "header", c.ClientIPHeader, "trustedProxies", len(c.TrustedProxies))
 	}
+	logAdminAccess(c)
 	if err := servePages(api, c); err != nil {
 		return err
 	}
@@ -88,6 +89,8 @@ func run() error {
 			shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err := server.Shutdown(shutdown)
+			// Record the refused admin addresses still queued.
+			api.StopAdminRefusals(shutdown)
 			// Let the worker finish its batch; anything unfinished is
 			// retried when its lease ends.
 			select {
@@ -167,4 +170,24 @@ func servePages(api *httpapi.Server, c config.Config) error {
 	}
 	api.Pages = pages
 	return nil
+}
+
+// logAdminAccess says how the admin dashboard is reached, never a key's
+// value: a previous key still accepted, and the address allowlist.
+func logAdminAccess(c config.Config) {
+	if c.AdminRouteKeyPrevious != "" {
+		slog.Info("ADMIN_ROUTE_KEY_PREVIOUS is set: admin sessions made under it keep working until they end (8 hours at most); remove it then")
+	}
+	if len(c.AdminAllowedIPs) == 0 {
+		return
+	}
+	slog.Info("the admin dashboard answers only ADMIN_ALLOWED_IPS", "ranges", len(c.AdminAllowedIPs))
+	// Behind a proxy, every request comes from the proxy unless the real
+	// client address is read from its header: an allowlist naming the proxy
+	// would let everyone in. A server facing the internet directly is valid
+	// without it, so this warns rather than refusing. Plan A4's
+	// Configuration page shows the same warning.
+	if c.Production && c.ClientIPHeader == "" {
+		slog.Warn("ADMIN_ALLOWED_IPS is set without CLIENT_IP_HEADER: behind a proxy every request comes from the proxy's address, so an allowlist naming the proxy lets everyone in; set CLIENT_IP_HEADER and TRUSTED_PROXIES (docs/deployment.md)")
+	}
 }
