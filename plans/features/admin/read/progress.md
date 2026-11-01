@@ -1,0 +1,51 @@
+# Progress
+
+What has shipped on branch `nimble-quartz-1f9`, and what's next. Nothing is pushed. Open questions are in [questions.md](questions.md).
+
+## How each piece was built
+
+1. **A builder sub-agent** reads AGENTS.md, the plan and every doc it touches, then builds the plan with tests and docs.
+2. **The orchestrator** checks the diff.
+3. **A separate security reviewer** sees only the diff and the plan, not the builder's summary, and probes it, often with throwaway tests.
+4. **Its findings go back to the builder.**
+5. **`make check`, `make test`, `make build` and the e2e suite run,** one heavy run at a time.
+6. **One commit per plan.**
+
+## Shipped
+
+| Plan | Commit | Checks | Findings |
+| --- | --- | --- | --- |
+| A8: the admin pages as their own build | `942a846` | check, test, build; e2e 22/22 | [separate-build](../findings/separate-build.md) |
+| A2: IP allowlist, key rotation, roles, Admins page | `f5c815f` | check, test, build; e2e 22/22 | [access-hardening](../findings/access-hardening.md) |
+| A9: the Email blocks page and Unblock (the first admin write) | `b84eaa7` | check, test, build; e2e 23/23 | [email-blocks](../findings/email-blocks.md) ([screenshot](../findings/email-blocks-unblock-dialog.png)) |
+
+Security reviews found:
+- **A8:** one medium (admin code could slip past both build guards) and 7 lower.
+- **A2:** one medium (the previous key failed open while the database was down) and 7 lower.
+- **A9:** 8 lower.
+
+All were fixed before committing, apart from the few listed as accepted in each findings file.
+
+## In progress
+
+- **A3, observability,** in three phases. Each is reviewed and committed on its own. The plan moves to `implemented/` after phase 3.
+  1. Logs, request IDs, panic recovery, health checks: _building_.
+  2. Grouped errors (`app_errors`), errors from the browser.
+  3. Metrics, server heartbeats, slow queries, `/metrics`.
+- **Plans being written** (no code): [legal pages](../../legal-pages.md) and the [Events page redesign](../events-page.md).
+
+## Next, after A3 (your [notes.md](../../notes.md))
+
+- **Small UI fixes:**
+  - the "Didn't receive the email?" modal;
+  - a Back ghost button under the logo on auth pages, including 2FA;
+  - "Forgot password" and descriptions tighter under their inputs and headings;
+  - the admin logout button not danger;
+  - copying shows a 3-second tooltip, app-wide;
+  - Refresh buttons removed;
+  - the project input validation fix.
+- **The Events page redesign,** built from its plan.
+
+## Not started (needs your decisions first)
+
+A4 monitoring, A5 alerts, A6 actions and A7 compliance: their Decisions tables haven't been confirmed.
