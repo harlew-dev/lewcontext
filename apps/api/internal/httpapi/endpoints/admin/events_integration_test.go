@@ -138,6 +138,9 @@ func TestAdminEvents(t *testing.T) {
 		"?outcome=ok", "?window=30d", "?window=all&from=2026-10-31T00%3A00%3A00Z", "?window=24h&to=2026-10-31T00%3A00%3A00Z",
 		"?from=2026-10-31T00%3A00%3A00Z&to=2026-10-31T00%3A00%3A00Z", "?from=2026-10-31T00%3A00%3A00Z&to=2026-10-30T00%3A00%3A00Z",
 		"?summary=yes", "?summary=include&before=" + attempt.PublicID,
+		"?from=0000-01-01T00%3A00%3A00Z", "?to=10000-01-01T00%3A00%3A00Z", "?from=1969-12-31T23%3A59%3A59Z",
+		// Custom ranges are at most a year and a day, as the calendar offers.
+		"?from=2025-01-01T00%3A00%3A00Z&to=2026-01-03T00%3A00%3A00Z",
 	} {
 		adminCall(t, h, "GET", "/api/admin/events"+query, "", "", 400, cookie)
 	}

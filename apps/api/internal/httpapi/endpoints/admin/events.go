@@ -97,13 +97,20 @@ func ipFilter(raw string) (string, bool) {
 	return prefix.Masked().String(), true
 }
 
-// timeFilter reads an RFC 3339 time; "" is no filter.
+// Times a filter may name: PostgreSQL and JSON both take these years.
+const (
+	minFilterYear = 1970
+	maxFilterYear = 9999
+)
+
+// timeFilter reads an RFC 3339 time in years 1970–9999; "" is no filter.
 func timeFilter(raw string) (*time.Time, bool) {
 	if raw == "" {
 		return nil, true
 	}
 	t, err := time.Parse(time.RFC3339, raw)
-	return &t, err == nil
+	year := t.UTC().Year()
+	return &t, err == nil && year >= minFilterYear && year <= maxFilterYear
 }
 
 // eventQuery is an Events request, parsed: the store's filter, the window,
@@ -135,7 +142,6 @@ func adminEventQuery(r *http.Request, now time.Time) (eventQuery, bool) {
 	}
 	f.Account, f.Workspace, f.Before, f.Failed = used.Account, used.Workspace, used.Before, used.Outcome == outcomeFailed
 	q.summary = params["summary"] == summaryInclude
-	used.Summary = q.summary
 	valid := (used.Account == "" || input.PublicID("usr", used.Account)) &&
 		(used.Workspace == "" || input.PublicID("wsp", used.Workspace)) &&
 		(used.Before == "" || input.PublicID("evt", used.Before)) &&
@@ -183,7 +189,7 @@ func windowQuery(params map[string]string, now time.Time) (eventWindow, bool) {
 	}
 	from, okFrom := timeFilter(rawFrom)
 	to, okTo := timeFilter(rawTo)
-	if !okFrom || !okTo || from != nil && to != nil && !from.Before(*to) {
+	if !okFrom || !okTo || from != nil && to != nil && (!from.Before(*to) || to.Sub(*from) > maxRange) {
 		return eventWindow{}, false
 	}
 	return eventWindow{From: utc(from), To: utc(to)}, true
@@ -219,12 +225,14 @@ func (h Events) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if q.summary {
-		summary, err := h.summarize(r.Context(), q, now)
+		summary, err := h.summarize(r.Context(), httpapi.Admin(r).User.PublicID, q, now)
 		if err != nil {
 			httpapi.InternalError(w, r, err)
 			return
 		}
 		out.Summary = &summary
+		// The read records what the charts were: served, or why not.
+		q.used.Summary = summary.Status
 	}
 	// One read recorded for the list and its charts together.
 	e := events.AdminEventListed{Admin: httpapi.Admin(r).User.PublicID, Filters: q.used}
@@ -246,14 +254,15 @@ type adminEventIndex struct {
 }
 
 // summarize computes the summary after the list, within its bounds: 7 days
-// or less, a slot among the server's two, and a deadline. Past a bound it
+// or less, one at a time for each admin, a slot among the server's two, and
+// a deadline. Past a bound it
 // says why (a status) rather than failing, so the list always answers.
-func (h Events) summarize(ctx context.Context, q eventQuery, now time.Time) (store.AdminSummary, error) {
+func (h Events) summarize(ctx context.Context, admin string, q eventQuery, now time.Time) (store.AdminSummary, error) {
 	window, ok := q.window.summaryWindow(now)
 	if !ok {
 		return store.AdminSummary{Status: store.SummaryTooWide}, nil
 	}
-	release, ok := h.Summaries.Acquire(ctx)
+	release, ok := h.Summaries.Acquire(ctx, admin)
 	if !ok {
 		return store.AdminSummary{Status: store.SummaryBusy}, ctx.Err()
 	}

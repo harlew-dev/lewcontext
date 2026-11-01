@@ -129,3 +129,30 @@ func TestEventNames(t *testing.T) {
 		}
 	}
 }
+
+// Times are RFC 3339 in years 1970–9999.
+func TestTimeFilter(t *testing.T) {
+	for raw, ok := range map[string]bool{
+		"":                          true,
+		"2026-11-01T14:00:00Z":      true,
+		"1970-01-01T00:00:00Z":      true,
+		"9999-12-31T23:59:59Z":      true,
+		"2026-11-01T14:00:00+14:00": true,
+		"0000-01-01T00:00:00Z":      false,
+		"1969-12-31T23:59:59Z":      false,
+		"1970-01-01T00:00:00+01:00": false,
+		"2026-11-01":                false,
+	} {
+		if _, got := timeFilter(raw); got != ok {
+			t.Errorf("%q: %v, want %v", raw, got, ok)
+		}
+	}
+	// A year and a day at most.
+	from, to := at("2025-11-01T00:00:00Z"), at("2026-11-02T00:00:00Z")
+	if _, ok := windowQuery(map[string]string{"from": from.Format(time.RFC3339), "to": to.Format(time.RFC3339)}, to); !ok {
+		t.Error("a year and a day refused")
+	}
+	if _, ok := windowQuery(map[string]string{"from": from.Format(time.RFC3339), "to": to.Add(time.Second).Format(time.RFC3339)}, to); ok {
+		t.Error("over a year and a day accepted")
+	}
+}

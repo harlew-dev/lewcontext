@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"fmt"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/router"
@@ -160,7 +161,7 @@ func TestAdminEventSummary(t *testing.T) {
 	before := len(apitest.EventsNamed(t, db, "admin.event.listed"))
 	indexEvents(t, h, cookie, "?summary=include")
 	listed := apitest.EventsNamed(t, db, "admin.event.listed")
-	if len(listed) != before+1 || listed[len(listed)-1].Payload["filters"].(map[string]any)["summary"] != true {
+	if len(listed) != before+1 || listed[len(listed)-1].Payload["filters"].(map[string]any)["summary"] != store.SummaryOK {
 		t.Fatalf("records: %d then %d, %v", before, len(listed), listed[len(listed)-1].Payload)
 	}
 }
@@ -173,7 +174,7 @@ func TestAdminEventSummaryBounds(t *testing.T) {
 	h := router.New(s)
 	ctx := context.Background()
 	f := factory.TestFaker(t)
-	_, session := adminSignedIn(t, db, f)
+	admin, session := adminSignedIn(t, db, f)
 	cookie := session.Cookie()
 	apitest.Must(factory.Events.State(func(e *factory.Event) { e.CreatedAt = time.Now().Add(-time.Hour) }).CreateOne(ctx, db, f))(t)
 
@@ -184,16 +185,30 @@ func TestAdminEventSummaryBounds(t *testing.T) {
 	}
 	s.Summaries.Deadline = 5 * time.Second
 
+	// One at a time for each admin: a second is busy at once, without
+	// waiting for a slot.
+	s.Summaries.Wait = 5 * time.Second
+	mine, ok := s.Summaries.Acquire(ctx, admin.User.PublicID)
+	if !ok {
+		t.Fatal("a free slot wasn't given")
+	}
+	start := time.Now()
+	if second := indexEvents(t, h, cookie, "?summary=include"); second.Summary.Status != store.SummaryBusy || time.Since(start) > time.Second {
+		t.Fatalf("the admin's second summary: %+v after %v", second.Summary, time.Since(start))
+	}
+	mine()
+
+	// Two at once on the server: a third waits, then is busy.
 	s.Summaries.Wait = 10 * time.Millisecond
 	var releases []func()
-	for range 2 {
-		release, ok := s.Summaries.Acquire(ctx)
+	for _, other := range []string{"usr_a", "usr_b"} {
+		release, ok := s.Summaries.Acquire(ctx, other)
 		if !ok {
 			t.Fatal("a free slot wasn't given")
 		}
 		releases = append(releases, release)
 	}
-	if _, ok := s.Summaries.Acquire(ctx); ok {
+	if _, ok := s.Summaries.Acquire(ctx, "usr_c"); ok {
 		t.Fatal("a third slot was given")
 	}
 	busy := indexEvents(t, h, cookie, "?summary=include")
@@ -206,9 +221,19 @@ func TestAdminEventSummaryBounds(t *testing.T) {
 	if ok := indexEvents(t, h, cookie, "?summary=include").Summary; ok.Status != store.SummaryOK || ok.Total != 1 {
 		t.Fatalf("after release: %+v", ok)
 	}
+	// Each read records the charts' status, not that they were asked for.
 	listed := apitest.EventsNamed(t, db, "admin.event.listed")
-	if len(listed) != 3 {
-		t.Fatalf("%d reads recorded for 3 requests", len(listed))
+	var statuses []any
+	for _, e := range listed {
+		statuses = append(statuses, e.Payload["filters"].(map[string]any)["summary"])
+	}
+	if want := []any{"too_slow", "busy", "busy", "ok"}; fmt.Sprint(statuses) != fmt.Sprint(want) {
+		t.Fatalf("recorded summaries %v, want %v", statuses, want)
+	}
+	// Not asked for, it isn't recorded.
+	indexEvents(t, h, cookie, "")
+	if last := apitest.EventsNamed(t, db, "admin.event.listed"); last[len(last)-1].Payload["filters"].(map[string]any)["summary"] != nil {
+		t.Fatalf("a read without charts recorded %v", last[len(last)-1].Payload["filters"])
 	}
 }
 
@@ -232,7 +257,7 @@ func TestAdminEventRefs(t *testing.T) {
 		t.Fatalf("refs without filters: %+v", none.Refs)
 	}
 	live := indexEvents(t, h, cookie, "?account="+ada.PublicID+"&workspace="+acme.PublicID).Refs
-	if live.Account == nil || *live.Account != (store.AdminRef{PublicID: ada.PublicID, Name: "Ada Lovelace", Email: "ada@example.test"}) ||
+	if live.Account == nil || *live.Account != (store.AdminRef{PublicID: ada.PublicID, Name: "Ada Lovelace"}) ||
 		live.Workspace == nil || *live.Workspace != (store.AdminRef{PublicID: acme.PublicID, Name: "Acme"}) {
 		t.Fatalf("live refs: %+v %+v", live.Account, live.Workspace)
 	}

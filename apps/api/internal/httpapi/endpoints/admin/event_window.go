@@ -32,6 +32,10 @@ const (
 // maxSummaryWindow: charts cover 7 days or less.
 const maxSummaryWindow = 7 * 24 * time.Hour
 
+// maxRange is the longest custom range, as the page's calendar offers: a
+// year and a day (from 365 days ago to the end of today).
+const maxRange = 366 * 24 * time.Hour
+
 // summaryBuckets size a chart's columns by its window's length: at most
 // 61, 73, 97 and 57 of them.
 var summaryBuckets = []struct{ upTo, bucket time.Duration }{

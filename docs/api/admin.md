@@ -207,7 +207,7 @@ setup:  POST …/mfa/setup → the QR code (hidden until revealed) → POST …/
 | `admin.logged_in`, `admin.logged_out` | `user` (and `ip`) | actor |
 | `admin.user.listed`, `admin.workspace.listed` | `admin`, `q`, `sort`, `page` | actor |
 | `admin.user.viewed`, `admin.workspace.viewed` | `admin`, `user` / `workspace` | actor |
-| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (those used, the cursor included; for events, `names` as sent, the window as resolved and `summary: true` when the charts came with it) | actor |
+| `admin.event.listed`, `admin.delivery.listed` | `admin`, `filters` (those used, the cursor included; for events, `names` as sent, the window as resolved and `summary`, the charts' status when they were asked for) | actor |
 | `admin.event.viewed` | `admin`, `event` | actor |
 | `admin.mail.viewed` | `admin`, `window` | actor |
 | `admin.project.listed` | `admin`, `workspace`, `q`, `status`, `sort`, `page` | actor |
@@ -230,15 +230,15 @@ Every read is recorded, so the trail shows what each admin looked at and searche
 | `email` | An address, lower-cased, matched with the payload's `email` | all |
 | `ip` | An address, or a CIDR no wider than /16 (IPv4) or /32 (IPv6), matched with `events.ip` (`<<=`) | all |
 | `window` | `1h`, `24h`, `today`, `yesterday` (UTC days), `7d`, `all`, resolved from the server's clock. A relative window starts on its first chart bucket's boundary ("the last 24 hours" at 14:47 starts at 14:30) and runs to now; the list has no upper bound but `yesterday`'s midnight | **`24h`** |
-| `from`, `to` | RFC 3339 times (`from` inclusive, `to` exclusive, `from` < `to`), instead of `window` (400 with it); one alone is open-ended | none |
+| `from`, `to` | RFC 3339 times in years 1970–9999 (`from` inclusive, `to` exclusive, `from` < `to`, at most 366 days apart: a year back to the end of today, as the page's calendar offers), instead of `window` (400 with it); one alone is open-ended | none |
 | `summary` | `include`: add the [summary](#the-summary). 400 with `before` | none |
 | `before`, `perPage` | an `evt_` cursor (400 when that event is gone) and 1–100 | newest, 50 |
 
 - **Admin reads** (`admin.*.listed`, `.viewed`) are their own group, `admin-reads`: picked (or named), they show; `admin.*` leaves them out; with no `name` they're hidden.
-- **Response:** `{data, next, window, refs, summary?}`. `window` is `{from, to}` as resolved (`from` null for a range with no start), or `null` for `all`. `refs` names the account and workspace filters, `{account: {id, name, email} | null, workspace: {id, name} | null}` (`{id}` alone once deleted, or for an ID nothing has), so the page's badges read as names; it names only what was filtered on.
+- **Response:** `{data, next, window, refs, summary?}`. `window` is `{from, to}` as resolved (`from` null for a range with no start), or `null` for `all`. `refs` names the account and workspace filters, `{account: {id, name} | null, workspace: {id, name} | null}` (`{id}` alone once deleted, or for an ID nothing has), so the page's badges read as names. It names the filtered account or workspace whether or not any rows match (the ID and name only, never the email), and the read records the filter.
 - **Rows:** `id`, `name`, `createdAt`, `failed` (it records a failed check), `actor`, `user` and `workspace` (`{id, name, email}` / `{id, name}`, read from the column or, once that's empty, from the payload's `admin`, `user` or `workspace`: a deleted one is `{id}` alone), `ip` (null outside a request), `payload` as stored. The detail adds `userAgent`, `deliveries` (`listener`, `status`, `attempts`, `nextAttemptAt`, `deliveredAt`, `failedAt`, `lastError`) and `related`: the event its `request` field names, and the events naming it (a `.sent` and its `.requested`).
 - **Every filter has an index** (migration 007): `ip`, the payload's `email` and `workspace`, `actor_id`, `request`, beside `name` and `user_id`; `events_created_idx` includes `name`, so the default view's counts read the index alone. Cursor pages count nothing.
-- **One recorded read per request**, the summary included: `admin.event.listed` with `filters` (`names` as sent, `outcome`, `account`, `workspace`, `email`, `ip`, `window`, `from` and `to` as resolved, `before`, `summary: true`).
+- **One recorded read per request**, the summary included: `admin.event.listed` with `filters` (`names` as sent, `outcome`, `account`, `workspace`, `email`, `ip`, `window`, `from` and `to` as resolved, `before`, and `summary`: the charts' status when they were asked for (`ok`, `busy`, `too_slow`, `too_wide`), left out when they weren't).
 
 ### Failed checks
 
@@ -267,7 +267,8 @@ One fixed table in the store, `adminEventFailures` (`internal/store/admin_event_
 
 - **Buckets** by the window's length, aligned to UTC (`date_bin`): up to 1 hour, 1 minute; up to 6 hours, 5 minutes; up to 2 days (and `24h`, `today`, `yesterday`), 30 minutes; up to 7 days, 3 hours. Every bucket is listed, empty ones as zeros; `counts` line up with `series`.
 - **Series:** stacked by top-level group, or by name when every picked name is in one group; the four largest and `other` when there are more than five. `topNames` are the ten busiest names; `failures` is null when no picked name can record a failed check.
-- **Bounds**, so the list always answers: `status` is `too_wide` for a window over 7 days, `all` or a range with no start; `too_slow` past a **5 s deadline**; `busy` when **two summaries** are already running on this server (`httpapi.Summaries`: a slot waited on for at most 1 s). None is a rate limit: `admin-read:per-user` counts the request once. Only `status` is sent when it isn't `ok`.
+- **Bounds**, so the list always answers: `status` is `too_wide` for a window over 7 days, `all` or a range with no start; `too_slow` past a **5 s deadline**; `busy` at once when **the same admin** already has one in flight, and after waiting at most 1 s when **two summaries** are already running on this server (`httpapi.Summaries`). None is a rate limit: `admin-read:per-user` counts the request once. Only `status` is sent when it isn't `ok`.
+- **How long a request can take:** the list first, then the summary, which waits up to 1 s for a slot and then runs up to 5 s. The list itself is bounded only by the request's 10 s timeout: its worst case is rare names over all time, where the planner may walk the time index; at a million events it took 30 ms, but on a much larger table it could take seconds.
 - At a million events (`make seed only=events`), the default view's counts take about 0.1 s (an index-only scan), 7 days' about 1 s ([testing.md](../testing.md#volume-check-for-the-events-page)).
 
 ## Mail

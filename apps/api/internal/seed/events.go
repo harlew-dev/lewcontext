@@ -77,12 +77,14 @@ func seedEvents(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (s
 		if f.IntN(100) < burstPercent {
 			burst := bursts[i%len(bursts)]
 			e.Name, e.Payload = "auth.login_attempted", loginPayload(f, f.IntN(4) > 0)
+			e.Payload["seeded"] = true
 			e.CreatedAt = burst.Add(time.Duration(f.IntN(3600)) * time.Second)
 			e.IP = attackers[f.IntN(len(attackers))]
 			return
 		}
 		e.Name = pick[f.IntN(len(pick))]
 		e.Payload = fakePayload(f, e.Name)
+		e.Payload["seeded"] = true
 		e.CreatedAt = fakeTime(f, now)
 		e.IP = f.IPv4Address()
 		if strings.HasSuffix(e.Name, ".sent") {

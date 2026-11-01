@@ -152,6 +152,9 @@ func TestEventsInsertFakeHistory(t *testing.T) {
 		if !names[e.Name] || e.CreatedAt.After(time.Now()) || e.CreatedAt.Before(time.Now().AddDate(0, 0, -91)) {
 			t.Fatalf("event %s at %v", e.Name, e.CreatedAt)
 		}
+		if e.Payload["seeded"] != true {
+			t.Fatalf("event %s not marked seeded: %v", e.Name, e.Payload)
+		}
 		if e.CreatedAt.After(time.Now().AddDate(0, 0, -7)) {
 			recent++
 		}

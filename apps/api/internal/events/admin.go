@@ -187,8 +187,9 @@ func (AdminEventListed) EventName() string { return "admin.event.listed" }
 // ones are left out. Names are the name tokens as sent (names and group
 // IDs); From and To the window as resolved (a relative Window's too).
 // IP is the address or range searched for, not the admin's own, which is
-// in the events.ip column like any request's. Summary: the charts were
-// asked for with the list.
+// in the events.ip column like any request's. Summary is the charts'
+// status when they were asked for with the list: ok, busy, too_slow or
+// too_wide.
 type EventFilters struct {
 	Names     []string   `json:"names,omitempty"`
 	Outcome   string     `json:"outcome,omitempty"`
@@ -200,7 +201,7 @@ type EventFilters struct {
 	From      *time.Time `json:"from,omitempty"`
 	To        *time.Time `json:"to,omitempty"`
 	Before    string     `json:"before,omitempty"`
-	Summary   bool       `json:"summary,omitempty"`
+	Summary   string     `json:"summary,omitempty"`
 }
 
 // AdminEventViewed: an admin opened one event's detail.

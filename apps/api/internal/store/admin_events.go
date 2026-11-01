@@ -382,9 +382,10 @@ func nonEmpty(values []string) []string {
 }
 
 // AdminEventRefs name the Events list's account and workspace filters, so
-// the page reads "Account: Ada Lovelace" rather than an ID. Nil without the
-// filter; the ID alone once the record is deleted, or when it never
-// existed. They name only what was filtered on, which the rows name anyway.
+// the page reads "Account: Ada Lovelace" rather than an ID: the ID and name
+// only. Nil without the filter; the ID alone once the record is deleted, or
+// when it never existed. They name the filtered account or workspace,
+// whether or not rows match, and the read records the filter.
 type AdminEventRefs struct {
 	Account   *AdminRef `json:"account"`
 	Workspace *AdminRef `json:"workspace"`
@@ -395,7 +396,8 @@ type AdminEventRefs struct {
 func (s *Store) FindAdminEventRefs(ctx context.Context, account, workspace string) (AdminEventRefs, error) {
 	var refs AdminEventRefs
 	if account != "" {
-		users, err := s.refsByID(ctx, (*User)(nil), "u", "u.public_id, u.name, u.email", nil, []string{account})
+		// The name only: the badge needs nothing more (the least data).
+		users, err := s.refsByID(ctx, (*User)(nil), "u", "u.public_id, u.name", nil, []string{account})
 		if err != nil {
 			return refs, err
 		}
