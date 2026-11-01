@@ -5,7 +5,7 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 | Method | Route | Requires | Success |
 | --- | --- | --- | --- |
 | GET | `/api/health` | Public | `{"status":"ok"}`, or 503 if the database is down |
-| POST | `/api/auth/register` | Origin, JSON, rate limits | With `EMAIL_VERIFICATION=on` (the default): 202 `{verificationRequired: true, email}` and the registration cookie, the same for every valid email, taken or not; no account yet ([auth.md](auth.md#email-verification)). With it off: 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a new session cookie, or 409 for a taken email or a blocked one (the same answer) |
+| POST | `/api/auth/register` | Origin, JSON, rate limits | With `EMAIL_VERIFICATION=on` (the default): 202 `{verificationRequired: true, email}` and the registration cookie, the same for every valid email, taken or not; no account yet ([auth.md](auth.md#email-verification)). With it off: 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a new session cookie, or 409 for a taken email or a blocked one (the same answer). A name of 1–80 characters with an invisible formatting character is 422 with `field: "name"`, checked from the body before any limit or lookup |
 | POST | `/api/auth/register/check` | Origin, JSON, the registration cookie, `auth:per-ip` | 200 `{email, expiresAt}` of this browser's sign-up; 401 (and the cookie cleared) when it has ended. Only with verification on |
 | POST | `/api/auth/register/resend` | Origin, JSON, the registration cookie, `auth:per-ip`, `register:per-email`, `register:global` | 202 `{verificationRequired: true, email}`: a new code (or "you already have an account") for this browser's sign-up, 15 more minutes, its tries back to 5; 401 when it has ended |
 | POST | `/api/auth/register/verify` | Origin, JSON, the registration cookie, `auth:per-ip`, `email-code:per-email` | 201 `{user, csrfToken, expiresAt, signedInAt, emailVerification}` and a session cookie for the right `{code}` (6 digits, spaces allowed): the account, verified. 422 with `field: "code"` for a wrong one; 401 when the sign-up has ended (expired, the 5th wrong code, or the address blocked since the code was sent); 409 when an account took the email since the code was sent |
@@ -14,7 +14,7 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 | POST | `/api/auth/login` | Origin, JSON, rate limit | 200 `{user, csrfToken, expiresAt, signedInAt}` and a rotated session cookie; with two-factor authentication on, 200 `{mfaRequired: true}` and the challenge cookie instead, with no session ([auth.md](auth.md#two-factor-authentication)) |
 | POST | `/api/auth/login/mfa` | Origin, JSON, the challenge cookie, `auth:per-ip`, `mfa:per-account` | 200 `{user, csrfToken, expiresAt, signedInAt}` and a session cookie for a right `{code}` (authenticator or recovery code). 422 with `field: "code"` for a wrong one; 401 when the challenge is missing, expired or has had its 5 tries (the password is needed again) |
 | GET | `/api/auth/me` | Session (unverified allowed) | `{user, csrfToken, expiresAt, signedInAt, emailVerification}`; `emailVerification` is `off`, `optional` or `required` |
-| PATCH | `/api/auth/me` | Session, CSRF, Origin | 200 with the updated user. Body `{name}` (trimmed, 1–80 characters, no control characters); the email address can't change, so other fields are rejected (400) |
+| PATCH | `/api/auth/me` | Session, CSRF, Origin | 200 with the updated user. Body `{name}` (trimmed, 1–80 characters, no invisible formatting characters: `input.ValidText`); the email address can't change, so other fields are rejected (400) |
 | DELETE | `/api/auth/me` | Session, CSRF, Origin, rate limit | 204; the account, its sessions, memberships and the events about it are deleted, and the cookie is cleared. Body `{password}`. 422 with `field: "password"`; 409 for the only owner of a workspace, listing them ([below](#deleting)) |
 | POST | `/api/auth/logout` | Session (unverified allowed), CSRF, Origin | 204; session revoked, cookie cleared |
 | DELETE | `/api/auth/sessions` | Session (unverified allowed), CSRF, Origin | 204; every other session revoked |
@@ -45,7 +45,7 @@ All routes are registered in `apps/api/internal/httpapi/router/routes.go`. The b
 | DELETE | `/api/email-blocks` | Origin, JSON, `auth:per-ip` | 204: the link's address is unblocked (not blocked too). Body `{token}`. 422 with `field: "token"` for a dead link |
 | POST | `/api/invitations/accept` | Session, CSRF, Origin | 200 with the workspace (your `role`, `permissions`). Body `{token}`. 403 when you're signed in as another email; 422 with `field: "token"` for a dead link, or without it when the workspace is full |
 | GET | `/api/workspaces/{workspace}/projects` | Member | One page of the workspace's projects ([pagination.md](pagination.md)) |
-| POST | `/api/workspaces/{workspace}/projects` | `project.store`, CSRF, Origin, `project:per-user` | 201 with the created project; 403 for viewers; 422 when the workspace has 1,000, or with `field` `name` (1–100 characters, no control characters) or `description` (up to 500, line breaks and tabs but no other control, format or line-separator characters) |
+| POST | `/api/workspaces/{workspace}/projects` | `project.store`, CSRF, Origin, `project:per-user` | 201 with the created project; 403 for viewers; 422 when the workspace has 1,000, or with `field` `name` (1–100 characters) or `description` (up to 500, line breaks and tabs allowed), neither with an invisible formatting character (`input.ValidText`) |
 | GET | `/api/workspaces/{workspace}/projects/{project}` | Member | The project, or 404 |
 | PATCH | `/api/workspaces/{workspace}/projects/{project}` | `project.update`, CSRF, Origin | 200 with the updated project, or 404; 403 for viewers; 422 with `field` as for creating |
 | DELETE | `/api/workspaces/{workspace}/projects/{project}` | `project.destroy`, CSRF, Origin | 204, or 404; 403 for members and viewers |
@@ -69,7 +69,7 @@ Every record in a response is identified by its **public ID**: a prefix and 14 b
   "createdAt": "2026-10-30T12:00:00Z", "updatedAt": "2026-10-30T12:00:00Z" }
 ```
 
-- **Body for POST/PATCH:** `name` (trimmed, 1–80 characters, no control characters). Unknown fields, such as `id` or `role`, are rejected.
+- **Body for POST/PATCH:** `name` (trimmed, 1–80 characters, no invisible formatting characters: `input.ValidText`). Unknown fields, such as `id` or `role`, are rejected.
 - **Membership:** the `{workspace}` routes go through `RequireWorkspace`, which looks the workspace up through your membership. Another user's workspace, a missing one and a malformed ID all get the same 404.
 - **`canLeave`**: whether you may leave (`DELETE …/membership`). False only for a workspace's only owner. Read with the role in the same query, so the web app never loads the member list to tell.
 - **`permissions`** (sorted) and **`assignableRoles`** (most access first) come from your role, at no query cost, in every workspace response including the list. Empty lists for a viewer, never `null`.

@@ -33,7 +33,7 @@ The way back is a **Back** button right under the logo, never a "Back to …" or
 | The reset link page | login |
 | The admin door's MFA setup | the password step (until MFA is on; then the codes lead on to Users) |
 
-The pages that start a flow from an email or gate a session have no Back: the admin door's password step, the invitation and block links, onboarding, verify email (its way out is Sign out), and a sign-up that has ended (its one button is Back to sign up).
+Pages with nowhere to go back to have no Back: the admin door's password step, the invitation and block-link pages (they start a flow from an email), onboarding, verify email (its way out is Sign out), and a sign-up that has ended (its one button is Back to sign up). The reset link page, though opened from an email, has one: it goes to sign in.
 
 Everything signed in and outside a dialog follows the settings rows: right-aligned, never left-aligned or full-width. The sign-in pages are the only exception, because their single action is the whole page.
 
