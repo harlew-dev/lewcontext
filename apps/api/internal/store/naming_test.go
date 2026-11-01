@@ -133,6 +133,16 @@ func TestStoreMethodNames(t *testing.T) {
 	for _, problem := range badStoreMethods(names, queue) {
 		t.Error(problem)
 	}
+	// A listed verb no method uses any more comes off the list.
+	for verb := range domainVerbs {
+		used := slices.ContainsFunc(names, func(name string) bool {
+			rest, ok := strings.CutPrefix(name, verb)
+			return ok && (rest == "" || unicode.IsUpper(rune(rest[0])))
+		})
+		if !used {
+			t.Errorf("domain verb %s is listed, but no store method uses it: take it off domainVerbs", verb)
+		}
+	}
 }
 
 // The check itself: verbs pass, nouns and lookalikes don't.

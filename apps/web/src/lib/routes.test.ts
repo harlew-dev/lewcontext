@@ -114,6 +114,8 @@ function badRouteNames(
 describe("page route constant names", () => {
   it("are resource groups of page actions, or listed plain pages", () => {
     expect(badRouteNames(routes, plainPages)).toEqual([]);
+    // A listed page that's gone comes off the list.
+    expect(plainPages.filter((key) => !(key in routes))).toEqual([]);
   });
   it("refuses other names", () => {
     expect(
