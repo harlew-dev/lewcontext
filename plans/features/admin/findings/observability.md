@@ -220,3 +220,15 @@ The independent reviewer found no high-severity defects. It checked these and fo
 | 6–8 | Nits | Label values not checked for valid UTF-8; the metrics listener and rollup not closed or awaited on a failed startup; the link check crashed on a deleted tracked file | Fixed |
 
 _These fixes are being made by the A4 builder as separate commits before it continues._
+
+## Found while verifying the merged code (after the review rounds)
+
+A full test run on merged main failed in `internal/observe`. It turned up one real bug and one performance problem, both now fixed (`4756910`, the speed fix, `a60847b`, `6015a0a`).
+
+| What | Detail |
+| --- | --- |
+| **The scrubber could leak most of a token** | A random 43-character token containing something shaped like a public ID (`vbv_` plus 14 characters) had that piece replaced first, leaving 25 of its 43 characters in the log. It was probabilistic, so earlier runs passed. Tokens are now matched before IDs, and IDs only match the app's real prefixes (`usr wsp prj inv evt err ipb req srv alt`). The randomized test now uses five fixed seeds and asserts that no run of 8 or more original characters survives |
+| **The scrubber was slow on hostile input** | 100 KB inputs (long runs of colons, tokens, quotes, nested brackets) took 150–800 ms per call. `Scrub` now reads only a capped prefix (4,000 bytes for messages, 16,000 for stacks); the output was cut to 1,000 or 8,000 characters anyway. A new test feeds hostile 100 KB inputs to every scrub function and requires each call under 100 ms |
+| **Two flaky tests** | `TestMinuteFlush` was a race in the test itself (the next request could land in the first minute). The Events page test disabled SWR's deduping, so going back to the newest page always re-fetched; it now uses a realistic interval, and the test waits have a ceiling for busy machines |
+
+**Product behaviour to know:** on the Events page, going back to the newest page after more than 2 seconds re-fetches it, which is one more recorded admin read. That's by design, and unchanged.
