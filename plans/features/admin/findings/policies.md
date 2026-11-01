@@ -57,4 +57,20 @@ The full suite passed:
 
 ## Security review
 
-_Filled in after the independent review._
+The independent reviewer found **no high or medium defects**. It checked these and found them sound:
+- **Same answer at sign-up:** the agreement check reads only the body and the server's versions, before any account lookup.
+- **Versions:** accepted only when they match the server's exactly.
+- **The Markdown reader:** about 45 crafted inputs (entity-encoded `javascript:`, `www.` autolinks, zero-width characters in links, HTML in tables, …) all fail the build with the file and line; nothing is silently dropped.
+- **Switched off:** the pages, data files and `.policies.json` answer exactly like an unknown URL, checked against the real build.
+- **CSP:** the hashes cover every inline script on the real pages.
+- **Exposure:** agreement dates go only to the account's own responses, never to other workspace members.
+- **`slot()`'s new checked state** affects no other component.
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 1 | Low | A sign-up submitted while `POLICIES` was off, then verified after it was turned on, created an account with no agreement | Verify ends such a sign-up ("sign up again"), the same way for every address |
+| 2 | Low | Under `make dev`, Vite serves the policy pages even with `POLICIES=off` | Documented: only `make serve` and production honour the switch |
+| 3 | Low | If loading the policies failed, a refused sign-up showed no error | The error appears in the form's notice |
+| 4–8 | Nits | A bad server version dropped silently (unreachable); route chunks in the app build when off (the text isn't); `noreferrer` on links; the admin session's user shows `policies: null`; doc drift | Fixed or documented |
+
+_Fix results: filled in once the fixes are committed._
