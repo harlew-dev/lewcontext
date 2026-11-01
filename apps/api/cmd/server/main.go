@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/captcha"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
@@ -15,6 +16,7 @@ import (
 	"lewcontext/api/internal/web"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -58,6 +60,9 @@ func run() error {
 		slog.Info("client addresses come from a proxy header", "header", c.ClientIPHeader, "trustedProxies", len(c.TrustedProxies))
 	}
 	logAdminAccess(c)
+	if err := useCaptcha(api, c); err != nil {
+		return err
+	}
 	if err := servePages(api, c); err != nil {
 		return err
 	}
@@ -174,6 +179,11 @@ func servePages(api *httpapi.Server, c config.Config) error {
 		return err
 	}
 	api.Pages = pages
+	// The CAPTCHA provider's script and frame, only while there is one.
+	if api.Captcha != nil {
+		sources := api.Captcha.CSP()
+		pages.AllowThirdParty(web.ThirdParty{Script: sources.Script, Frame: sources.Frame})
+	}
 	if c.Policies {
 		built, err := pages.ServePolicies()
 		if err != nil {
@@ -181,6 +191,32 @@ func servePages(api *httpapi.Server, c config.Config) error {
 		}
 		api.Policies = store.PolicyVersions{TermsOfService: built.TermsOfService.Version, PrivacyPolicy: built.PrivacyPolicy.Version}
 		slog.Info("the terms of service and privacy policy are published", "termsOfService", api.Policies.TermsOfService, "privacyPolicy", api.Policies.PrivacyPolicy)
+	}
+	return nil
+}
+
+// useCaptcha sets up the CAPTCHA provider rate limits' challenge levels ask
+// for (CAPTCHA_PROVIDER), and says what's off. It logs the provider's name,
+// never its keys.
+func useCaptcha(api *httpapi.Server, c config.Config) error {
+	origin, err := url.Parse(c.Origin)
+	if err != nil {
+		return err
+	}
+	provider, err := captcha.New(c.Captcha, &http.Client{}, origin.Hostname())
+	if err != nil {
+		return err
+	}
+	api.Captcha = provider
+	if provider == nil {
+		if c.Production {
+			slog.Warn("CAPTCHA_PROVIDER=off: rate limits' challenge levels are skipped, only their block levels apply")
+		}
+	} else {
+		slog.Info("rate limits' challenge levels ask for a CAPTCHA", "provider", provider.Name())
+	}
+	if c.PerIPLimitsOff {
+		slog.Warn("PER_IP_LIMITS=off: no limit counts client IPs; set CLIENT_IP_HEADER and TRUSTED_PROXIES instead if the proxy can send them")
 	}
 	return nil
 }

@@ -63,3 +63,30 @@ func TestLimitSubject(t *testing.T) {
 		t.Error("two IPv4 addresses counted as one")
 	}
 }
+
+func TestThresholds(t *testing.T) {
+	if Never.Exceeds(0) || Never.Exceeds(1_000_000) || Never.Crossed(1) || Never.Set() {
+		t.Fatal("Never triggered")
+	}
+	five := Above(5)
+	if five.Exceeds(5) || !five.Exceeds(6) || !five.Exceeds(7) {
+		t.Fatal("Above(5) is exceeded from the sixth hit")
+	}
+	if five.Crossed(5) || !five.Crossed(6) || five.Crossed(7) {
+		t.Fatal("Above(5) is crossed by the sixth hit only")
+	}
+	if !Above(0).Exceeds(1) {
+		t.Fatal("Above(0) refuses the first hit")
+	}
+}
+
+func TestWithoutPerIP(t *testing.T) {
+	perIP := Limit{Name: "auth:per-ip", Challenge: Above(5), Block: Above(60)}
+	if got := perIP.WithoutPerIP(); got.Challenge.Set() || got.Block.Set() {
+		t.Fatalf("per-IP levels kept: %+v", got)
+	}
+	global := Limit{Name: "register:global", Challenge: Above(200), Block: Above(1000)}
+	if got := global.WithoutPerIP(); got != global {
+		t.Fatalf("a global limit changed: %+v", got)
+	}
+}

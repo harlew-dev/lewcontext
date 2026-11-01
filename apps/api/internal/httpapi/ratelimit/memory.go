@@ -27,9 +27,9 @@ func NewMemory() *Memory {
 	return &Memory{windows: map[string]memoryWindow{}, now: time.Now}
 }
 
-// Allow counts a hit against key, like Store.Allow: allowed while the window
-// holds at most limit hits, and firstRefusal for the hit that first goes over.
-func (m *Memory) Allow(key string, limit int, window time.Duration) (allowed, firstRefusal bool, resetsAt time.Time) {
+// Count adds a hit to key's window, like Store.CountHit, and returns the
+// window's hits so far and when it ends.
+func (m *Memory) Count(key string, window time.Duration) (hits int, resetsAt time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
@@ -40,7 +40,7 @@ func (m *Memory) Allow(key string, limit int, window time.Duration) (allowed, fi
 	}
 	w.hits++
 	m.windows[key] = w
-	return w.hits <= limit, w.hits == limit+1, w.resetsAt
+	return w.hits, w.resetsAt
 }
 
 // sweep drops ended windows, at most once a minute. The caller holds mu.

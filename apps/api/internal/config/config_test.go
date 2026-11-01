@@ -35,6 +35,11 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"SMTP_PASSWORD":               "",
 		"RATE_LIMITS":                 "",
 		"POLICIES":                    "",
+		// Off unless a test turns it on: production requires a choice.
+		"CAPTCHA_PROVIDER":   "off",
+		"CAPTCHA_SITE_KEY":   "",
+		"CAPTCHA_SECRET_KEY": "",
+		"PER_IP_LIMITS":      "",
 		// Set to "" rather than left out, so the developer's own value
 		// doesn't leak into a test.
 		"CLIENT_IP_HEADER": "",

@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -120,4 +121,29 @@ func scriptSrc(csp string) string {
 		}
 	}
 	return ""
+}
+
+// A CAPTCHA provider's exact origins join script-src and a frame-src on the
+// app's pages only, beside the hashes, never as an inline-script keyword.
+func TestThirdPartyOriginsInTheCSP(t *testing.T) {
+	p := pages(t, policyBuild(editedManifest))
+	before := serve(t, p, "GET", "/").Header().Get("Content-Security-Policy")
+	if strings.Contains(before, "frame-src") || strings.Contains(before, "cloudflare") {
+		t.Fatalf("without a provider: %q", before)
+	}
+	p.AllowThirdParty(ThirdParty{Script: []string{"https://challenges.cloudflare.com"}, Frame: []string{"https://challenges.cloudflare.com"}})
+	for _, target := range []string{"/", "/app/settings", "/nowhere"} {
+		csp := serve(t, p, "GET", target).Header().Get("Content-Security-Policy")
+		script := scriptSrc(csp)
+		if !strings.Contains(script, "https://challenges.cloudflare.com") || strings.Contains(script, "unsafe-inline") ||
+			!strings.Contains(script, "'sha256-") || !strings.Contains(csp, "frame-src 'self' https://challenges.cloudflare.com") {
+			t.Errorf("%s: %q", target, csp)
+		}
+	}
+	// The admin build's shell is untouched.
+	w := httptest.NewRecorder()
+	p.ServeAdmin(w, httptest.NewRequest("GET", "/admin/x", nil))
+	if strings.Contains(w.Header().Get("Content-Security-Policy"), "cloudflare") {
+		t.Fatal("the admin build got the third party")
+	}
 }

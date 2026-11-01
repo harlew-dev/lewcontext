@@ -253,6 +253,12 @@ func TestSignUpLooksTheSameForATakenEmail(t *testing.T) {
 		tables                          map[string][]string
 	}
 	try := func(email string) run {
+		// Each run starts with no counters, so both cross the same limits'
+		// levels at the same requests (auth:per-ip's challenge level records
+		// an event at the sixth from this test's one IP).
+		if _, err := db.NewDelete().TableExpr("rate_limits").Where("TRUE").Exec(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		var r run
 		r.tables = map[string][]string{}
 		r.tables["register"] = log.during(func() { r.register = apitest.Send(h, "POST", "/api/auth/register", signUpBody(email), "", nil) })

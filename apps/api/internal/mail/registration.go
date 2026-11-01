@@ -23,7 +23,7 @@ var AccountExistsPerAccount = struct {
 // RegistrationStore is what the sign-up listener needs: *store.Store.
 type RegistrationStore interface {
 	IssueRegistrationCode(ctx context.Context, request, codeHash string) (email string, existing *store.User, err error)
-	Allow(ctx context.Context, key string, limit int, window time.Duration) (allowed, firstRefusal bool, resetsAt time.Time, err error)
+	CountHit(ctx context.Context, key string, window time.Duration) (hits int, resetsAt time.Time, err error)
 	Record(ctx context.Context, e events.Event, scope store.EventScope) error
 }
 
@@ -88,9 +88,9 @@ func allowAccountExists(ctx context.Context, s RegistrationStore, u store.User, 
 		return true, nil
 	}
 	l := AccountExistsPerAccount
-	allowed, firstRefusal, resetsAt, err := s.Allow(ctx, l.Name+":"+auth.Digest(u.PublicID), l.Limit, l.Window)
-	if err != nil || !firstRefusal {
-		return allowed, err
+	hits, resetsAt, err := s.CountHit(ctx, l.Name+":"+auth.Digest(u.PublicID), l.Window)
+	if err != nil || hits != l.Limit+1 {
+		return hits <= l.Limit, err
 	}
 	reached := events.RateLimitReached{Limit: l.Name + ":block", User: u.PublicID, Window: int(l.Window.Seconds()), ResetsAt: resetsAt}
 	return false, s.Record(ctx, reached, store.EventScope{UserID: u.ID})

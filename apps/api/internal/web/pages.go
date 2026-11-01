@@ -43,6 +43,7 @@ type Pages struct {
 
 type page struct {
 	body   []byte
+	hashes []string
 	policy string
 }
 
@@ -101,7 +102,7 @@ func load(files fs.FS, name string) (page, error) {
 	if err != nil {
 		return page{}, fmt.Errorf("read inline scripts of %s: %w", name, err)
 	}
-	return page{body: body, policy: policy(hashes)}, nil
+	return page{body: body, hashes: hashes, policy: policy(hashes, ThirdParty{})}, nil
 }
 
 // urlPath is the URL a prerendered file answers: "index.html" is "/",
@@ -136,6 +137,18 @@ func (p *Pages) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusNotFound
 	}
 	p.serveHTML(w, p.fallback, status, "no-store")
+}
+
+// AllowThirdParty adds a third party's origins to the app's pages' policies
+// (the CAPTCHA provider's, CAPTCHA_PROVIDER=turnstile), recomputed from each
+// page's own hashes. Never the admin build's: no admin route can be
+// challenged, so its pages load nothing from a third party.
+func (p *Pages) AllowThirdParty(extra ThirdParty) {
+	for path, prerendered := range p.prerendered {
+		prerendered.policy = policy(prerendered.hashes, extra)
+		p.prerendered[path] = prerendered
+	}
+	p.fallback.policy = policy(p.fallback.hashes, extra)
 }
 
 // AdminBuilt reports whether the admin build is loaded (admin on, and New
