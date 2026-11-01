@@ -240,6 +240,18 @@ The grouped errors (`app_errors`) **last seen in the window**, newest occurrence
 
 `GET /api/admin/errors/{error}?window=1h|24h|7d` (`admin.Errors.Show`): an `err_` ID (`app_errors.public_id`, a column default); any other shape, or none, is 404 "Error not found.". Bounded like a page and recorded as **`admin.error.viewed`** (`admin`, `error`, `window`); a refusal or a busy read records nothing. It answers the group with its latest occurrence's **stack** (scrubbed: function names, files and lines), `lastRequestId` (to search the logs with: always ours), **`lastVersion` only in a release's shape** (`store.ReleaseShape`: a revision, `-dirty`, or `dev`; anything else is empty), the release now running, and its **route's occurrences** per bucket (`errors_total` counts by source and route, so every group on the route). "Versions seen" (the plan) isn't kept: a group keeps only its last version.
 
+## Data
+
+How big is the database, what's growing, is pruning running? (`internal/monitor/data.go`; `GET /api/admin/monitoring/data`.) Counts and durations from PostgreSQL's statistics, never a query's text, a role or a client's address.
+
+| Section | Shows |
+| --- | --- |
+| Database | its size, and what is connected and waiting now |
+| Tables | each known table's sizes and upkeep (dead rows, sequential against index scans) |
+| Growth | from the daily sizes (`table_stats_daily`, written once a day under an advisory lock and pruned), with a 90-day projection |
+| What fills the log | the events table by name |
+| Retention | each prune target's oldest row against its retention, with its last confirmed run (`prune.completed`): a target a week past its age, or not run in two days, is a warning; Configuration warns too (`prune_not_running`) |
+
 ## Configuration
 
 From each server's configuration summary (`server_instances.config`, `config.Summary`: which settings are set and their non-secret values). **Only the settings listed in `monitor.settings` are shown, read field by field into `config.Summary`**, so a field a summary holds that isn't listed (a newer server's, or anything written by hand) never reaches the page, and secrets show only as "set" or "not set" (`TestAdminMonitoringConfiguration` writes a summary holding an app key, database and SMTP passwords, an admin key and its digest and a metrics token, and finds none of them, nor the unlisted fields' names, in the answer; `decodeAdmin` walks it).
