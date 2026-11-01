@@ -675,6 +675,55 @@ describe("the Events page", () => {
     await waitFor(() => expect(location()).toBe(`/admin/${key}/events`));
   });
 });
+describe("downloading the Events as CSV", () => {
+  it("sends the page's filters, saves the API's file and says how many rows", async () => {
+    const saved: Blob[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      saved.push(blob);
+      return "blob:events";
+    });
+    const { createObjectURL: realCreate, revokeObjectURL: realRevoke } = URL;
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    const csv =
+      "time,event,name\r\n2026-11-01T12:00:00Z,evt_00000000000001,auth.logged_in\r\n2026-11-01T11:00:00Z,evt_00000000000002,auth.logged_in\r\n";
+    const api = stubEvents({
+      "GET /api/admin/events": { body: eventPage([event(1)]) },
+      "GET /api/admin/events/export": [
+        {
+          status: 503,
+          body: { error: "Exports are busy. Try again in a moment." },
+        },
+        { text: csv },
+      ],
+    });
+    renderAdmin(`/admin/${key}/events?window=7d&ip=198.51.100.7`);
+    const button = await screen.findByRole("button", { name: "Download CSV" });
+    fireEvent.click(button);
+    expect(
+      await screen.findByText("Exports are busy. Try again in a moment."),
+    ).toBeInTheDocument();
+    expect(saved).toHaveLength(0);
+    fireEvent.click(button);
+    expect(await screen.findByText("Downloaded 2 events.")).toBeInTheDocument();
+    const exports = api
+      .sent("GET")
+      .filter((r) => r.url.startsWith("/api/admin/events/export"));
+    expect(exports.map((r) => r.url)).toEqual([
+      "/api/admin/events/export?window=7d&ip=198.51.100.7",
+      "/api/admin/events/export?window=7d&ip=198.51.100.7",
+    ]);
+    expect(exports[1].adminKey).toBe(key);
+    expect(saved).toHaveLength(1);
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockRestore();
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  });
+});
 describe("an event's page", () => {
   it("shows the payload as text, markup included, with its deliveries and related events", async () => {
     stubApi({

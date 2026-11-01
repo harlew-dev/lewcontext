@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { FunnelIcon } from "@heroicons/react/16/solid";
+import { ArrowDownTrayIcon, FunnelIcon } from "@heroicons/react/16/solid";
 import { CursorNav } from "@/components/app/admin/cursor-nav";
 import {
   canonicalTokens,
@@ -56,12 +56,15 @@ import { Input } from "@/components/ui/input";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Stat } from "@/components/ui/stat";
 import { Text, TextButton } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
 import { Tooltip } from "@/components/ui/tooltip";
-import { adminPaths } from "@/lib/api/admin";
+import { errorMessage } from "@/lib/api";
+import { adminPaths, useAdminApi } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
 import { adminRoutes, eventQuery } from "@/lib/admin-routes";
 import { cx } from "@/lib/cx";
 import { parsePublicId } from "@/lib/ids";
+import { useAction } from "@/lib/use-action";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import { useOpenCount } from "@/lib/use-open-count";
 import {
@@ -148,6 +151,7 @@ export default function AdminEventIndex() {
             count={filterBadges(filters, undefined).length}
             onClick={() => setDialog("filters")}
           />
+          <ExportButton filters={filters} disabled={waiting} />
         </div>
       </div>
       <FilterBadges
@@ -280,6 +284,56 @@ function RangeListbox({
         </ListboxLabel>
       </ListboxOption>
     </Listbox>
+  );
+}
+// The most rows one CSV holds (admin.EventExport's MaxEventExportRows).
+const maxExportRows = 10_000;
+// Download CSV: the current filters' events, newest first, as the API
+// writes them (at most 10,000, each cell safe for a spreadsheet), saved
+// as a file. The API records the export with its filters.
+function ExportButton({
+  filters,
+  disabled,
+}: {
+  filters: EventFilters;
+  disabled: boolean;
+}) {
+  const api = useAdminApi();
+  const download = useAction(() => api.eventExport().show(filters), {
+    onError: (e) => {
+      toast.error(errorMessage(e));
+      return true;
+    },
+  });
+  async function run() {
+    const result = await download.run();
+    if (!result.ok) return;
+    const csv = result.value;
+    const rows = Math.max(csv.split("\r\n").filter(Boolean).length - 1, 0);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `events-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(href);
+    toast.success(
+      rows >= maxExportRows
+        ? "Downloaded the newest 10,000 events. Narrow the filters for the rest."
+        : `Downloaded ${rows.toLocaleString()} ${rows === 1 ? "event" : "events"}.`,
+    );
+  }
+  return (
+    <Button
+      outline
+      loading={download.loading}
+      disabled={disabled}
+      disabledReason="Loading the event names"
+      onClick={run}
+    >
+      <ArrowDownTrayIcon />
+      Download CSV
+    </Button>
   );
 }
 function FiltersButton({

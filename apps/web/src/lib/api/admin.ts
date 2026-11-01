@@ -175,6 +175,15 @@ export const adminPaths = {
       ),
     show: (id: string) => path<AdminEventDetail>(`${base}/events/${id}`),
   },
+  // The Events list's filters as a CSV file, at most 10,000 rows (recorded
+  // as admin.event.exported).
+  eventExport: {
+    show: (filters: EventFilters = {}) =>
+      eventsUrl(
+        `${base}/events/export`,
+        eventQuery({ ...filters, before: undefined }),
+      ),
+  },
   catalogue: () => path<AdminCatalogue>(`${base}/catalogue`),
   // The Mail summary; 24h is the default, so it's left out.
   mail: (window: MailWindow = "24h") =>
@@ -280,6 +289,11 @@ export function adminClient(http: Http) {
       index: (query: AdminEventIndexQuery = {}) =>
         http.get(adminPaths.events.index(query)),
       show: (id: string) => http.get(adminPaths.events.show(id)),
+    }),
+    // The CSV's text: the page saves it as a file.
+    eventExport: () => ({
+      show: (filters: EventFilters = {}) =>
+        http.text(adminPaths.eventExport.show(filters)),
     }),
     catalogue: () => http.get(adminPaths.catalogue()),
     mail: (window?: MailWindow) => http.get(adminPaths.mail(window)),

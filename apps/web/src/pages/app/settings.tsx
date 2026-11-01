@@ -87,6 +87,13 @@ export default function AccountSettings() {
       </SettingsSection>
       <Divider className="my-10" soft />
       <SettingsSection
+        title="Your data"
+        description="A copy of everything we keep about your account, as a JSON file."
+      >
+        <DataExportControls />
+      </SettingsSection>
+      <Divider className="my-10" soft />
+      <SettingsSection
         title="Danger zone"
         description="Deleting your account takes effect at once and can’t be undone."
         variant="danger"
@@ -922,6 +929,101 @@ function SessionControls() {
       </div>
     </div>
   );
+}
+// "Download my data": the password in a dialog, then the API's answer saved
+// as a file. Nothing of it stays in the page's state once saved.
+function DataExportControls() {
+  const [open, setOpen] = useState(false);
+  // Each opening starts with an empty password.
+  const [opened, setOpened] = useState(0);
+  return (
+    <div className="flex justify-end">
+      <Button
+        outline
+        onClick={() => {
+          setOpened(opened + 1);
+          setOpen(true);
+        }}
+      >
+        Download your data
+      </Button>
+      <DataExportDialog
+        key={opened}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
+    </div>
+  );
+}
+function DataExportDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const session = useSession();
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string>();
+  function showOnField(e: unknown): boolean {
+    if (e instanceof ApiError && e.field === "password") {
+      setPasswordError(errorMessage(e));
+      return true;
+    }
+    return false;
+  }
+  async function download() {
+    setPasswordError(undefined);
+    const data = await api.auth().exportData({ password });
+    saveJson(
+      data,
+      `lewcontext-export-${new Date().toISOString().slice(0, 10)}.json`,
+    );
+  }
+  return (
+    <ConfirmationDialog
+      open={open}
+      onClose={onClose}
+      title="Download your data"
+      description="Your profile, sign-in sessions, memberships, the workspaces you own with their projects and the invitations you sent, and your account’s activity. Enter your password to download it; you can do this five times a day."
+      confirm="Download"
+      disabled={password === ""}
+      onConfirm={download}
+      onConfirmed={() => toast.success("Your data has been downloaded.")}
+      onError={showOnField}
+    >
+      {/* Tells password managers which account the password belongs to. */}
+      <input
+        type="email"
+        name="username"
+        autoComplete="username"
+        value={session.user.email}
+        readOnly
+        hidden
+      />
+      <PasswordField
+        label="Your password"
+        autoComplete="current-password"
+        value={password}
+        onChange={setPassword}
+        error={passwordError}
+        disabled={false}
+      />
+    </ConfirmationDialog>
+  );
+}
+// saveJson hands data to the browser as a file to save.
+function saveJson(data: unknown, name: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2) + "\n"], {
+    type: "application/json",
+  });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(href);
 }
 // The workspaces you're the only owner of block deleting your account, so the
 // page loads them first and opens a warning instead of the confirmation. The

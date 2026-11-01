@@ -38,6 +38,9 @@ export type Method = "POST" | "PATCH" | "DELETE";
 export type Http = {
   get<T>(path: ApiPath<T>): Promise<T>;
   send<T>(method: Method, path: string, body?: unknown): Promise<T>;
+  // A GET whose answer is a file rather than JSON (the admin Events CSV):
+  // its text, refused as get is.
+  text(path: string): Promise<string>;
 };
 // Where and how requests go: the base URL, headers sent with every request,
 // cookies and a timeout. onResponse sees every response, answered or
@@ -57,6 +60,7 @@ export function httpWith(transport: Transport): Http {
   return {
     get: (path) => call("GET", path),
     send: (method, path, body) => call(method, path, body),
+    text: (path) => request(transport, "GET", path, undefined, true),
   };
 }
 async function request<T>(
@@ -64,6 +68,7 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  asText = false,
 ): Promise<T> {
   const init = new Headers(headers);
   if (body !== undefined) init.set("Content-Type", "application/json");
@@ -86,6 +91,7 @@ async function request<T>(
   }
   // 204, and 202 for work done later (a password reset link), carry no body.
   const text = await response.text();
+  if (asText) return text as T;
   return (text === "" ? undefined : JSON.parse(text)) as T;
 }
 // Requests go to the same-origin /api (Go serves it; Vite proxies it in

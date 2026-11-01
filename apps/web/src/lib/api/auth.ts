@@ -62,7 +62,12 @@ export const authRoutes = {
   verifyPassword: () => "/api/auth/password/verify",
   passwordReset: () => "/api/auth/password-reset",
   checkPasswordReset: () => "/api/auth/password-reset/check",
+  dataExport: () => "/api/auth/export",
 };
+// "Download my data": everything the app keeps about the account, as the
+// API answers it (docs/compliance.md#download-my-data). The page only saves
+// it as a file, so its shape stays the API's.
+export type AccountExport = Record<string, unknown>;
 export type ProfileInput = { name: string };
 // With MFA on a code confirms the change, otherwise the current password.
 export type PasswordChange = { newPassword: string } & (
@@ -126,6 +131,10 @@ export function auth(http: Http) {
     // workspaces lastOwnerWorkspaces() reads.
     destroy: ({ password }: { password: string }) =>
       http.send<void>("DELETE", authRoutes.me(), { password }),
+    // The account's data, after its password: a wrong one is an ApiError
+    // with field "password"; past five a day, a 429.
+    exportData: ({ password }: { password: string }) =>
+      http.send<AccountExport>("POST", authRoutes.dataExport(), { password }),
     // Saves the user's name; the email address can't change.
     updateProfile: ({ name }: ProfileInput) =>
       http.send<User>("PATCH", authRoutes.me(), { name }),

@@ -15,6 +15,7 @@ import { vi } from "vitest";
 export type Reply = {
   status?: number; // 200 by default
   body?: unknown; // sent as JSON; no body when left out
+  text?: string; // sent as it is instead (a CSV file)
   headers?: Record<string, string>; // response headers, besides the JSON type
   gate?: Promise<unknown>; // hold the response until this settles
   network?: boolean; // fail as if the API were unreachable
@@ -48,6 +49,8 @@ export function stubApi(replies: Record<string, Reply | Reply[]>) {
     await reply.gate;
     if (reply.network) throw new TypeError("Failed to fetch");
     const status = reply.status ?? 200;
+    if (reply.text !== undefined)
+      return new Response(reply.text, { status, headers: reply.headers });
     return reply.body === undefined
       ? new Response(null, { status, headers: reply.headers })
       : json(reply.body, status, reply.headers);
