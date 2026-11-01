@@ -53,7 +53,7 @@ export default function Register({ loaderData }: Route.ComponentProps) {
   // know) or have changed since it opened. Either way, show what's current,
   // unticked if the versions changed, with the API's reason under the box.
   async function refusedAgreement(error: ApiError) {
-    setAgreeError(errorMessage(error));
+    if (policies.enabled) setAgreeError(errorMessage(error));
     const current = await api
       .policies()
       .show()
@@ -86,7 +86,10 @@ export default function Register({ loaderData }: Route.ComponentProps) {
     (e) => {
       if (e instanceof ApiError && e.field === "policies") {
         void refusedAgreement(e);
-        return true;
+        // Under the checkbox when there is one; otherwise (the page couldn't
+        // ask whether they're published) in the form's error notice, while
+        // the checkbox it now knows about appears.
+        return policies.enabled;
       }
     },
   );
@@ -175,7 +178,7 @@ export default function Register({ loaderData }: Route.ComponentProps) {
             <TextLink
               href={routes.termsOfService}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
             >
               Terms of Service
             </TextLink>{" "}
@@ -183,7 +186,7 @@ export default function Register({ loaderData }: Route.ComponentProps) {
             <TextLink
               href={routes.privacyPolicy}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
             >
               Privacy Policy
             </TextLink>

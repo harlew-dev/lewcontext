@@ -13,7 +13,7 @@ export function PolicyLinks({
   newTab?: boolean;
 }) {
   const target = newTab ? "_blank" : undefined;
-  const rel = newTab ? "noopener" : undefined;
+  const rel = newTab ? "noopener noreferrer" : undefined;
   return (
     <Text className={cx(className, "flex flex-wrap gap-x-2")}>
       <TextLink href={routes.termsOfService} target={target} rel={rel}>

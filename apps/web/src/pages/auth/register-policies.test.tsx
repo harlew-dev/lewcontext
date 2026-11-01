@@ -125,4 +125,23 @@ describe("agreeing to the policies at sign-up", () => {
       policies: { termsOfService: "2026-12-01", privacyPolicy: "2026-10-15" },
     });
   });
+  it("says why when the API wants an agreement the page didn't know about", async () => {
+    const required = "Agree to the Terms of Service to create an account.";
+    stubApi({
+      "GET /api/auth/me": signedOut,
+      // The loader couldn't ask; asked again after the 422, they're on.
+      "GET /api/policies": [{ network: true }, published],
+      "POST /api/auth/register": {
+        status: 422,
+        body: { error: required, field: "policies" },
+      },
+    });
+    renderRegister();
+    await fillIn();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    // Not silent: the form's error notice says it, and the box appears.
+    expect(await screen.findByRole("alert")).toHaveTextContent(required);
+    expect(await screen.findByRole("checkbox")).not.toBeChecked();
+  });
 });
