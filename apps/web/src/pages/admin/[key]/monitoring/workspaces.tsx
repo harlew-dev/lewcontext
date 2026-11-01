@@ -53,14 +53,12 @@ function Workspaces({ view }: { view: View }) {
       <SectionGate names={["rows"]} title="Rows per workspace">
         <Rows view={view} />
       </SectionGate>
-      <div className="grid gap-x-14 lg:grid-cols-2">
-        <SectionGate names={["growth"]} title="Growth">
-          <Growth view={view} />
-        </SectionGate>
-        <SectionGate names={["throwaways"]} title="Thrown away">
-          <Throwaways view={view} />
-        </SectionGate>
-      </div>
+      <SectionGate names={["growth"]} title="Growth">
+        <Growth view={view} />
+      </SectionGate>
+      <SectionGate names={["throwaways"]} title="Thrown away">
+        <Throwaways view={view} />
+      </SectionGate>
       <SectionGate names={["invitations"]} title="Invitations">
         <Invitations view={view} />
       </SectionGate>

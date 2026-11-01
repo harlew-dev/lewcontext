@@ -48,6 +48,7 @@ export default function AdminMonitoringAddress() {
         window={window}
         onWindow={setWindow}
         view={resource.data}
+        signals={false}
       />
       <MonitoringBody resource={resource} label="Loading the address">
         {(view) => <Address view={view} />}
@@ -110,7 +111,7 @@ function Accounts({ view }: { view: AddressView }) {
   return (
     <MonitoringSection
       title="Accounts seen from it"
-      description={`Signed in, made there, or failing to sign in. ${view.unknownEmails.toLocaleString("en-US")} ${view.unknownEmails === 1 ? "email" : "different emails"} with no account tried too: its events show which.`}
+      description={`Signed in, made there, or failing to sign in. ${unknownEmails(view.unknownEmails)}`}
     >
       {view.accounts.length === 0 ? (
         <NoneFound>No account was seen from it in this window.</NoneFound>
@@ -192,4 +193,9 @@ function Inside({ view }: { view: AddressView }) {
       </MonitoringTable>
     </MonitoringSection>
   );
+}
+// The emails tried that have no account: how many, never which.
+function unknownEmails(n: number): string {
+  if (n === 0) return "It tried no email without an account.";
+  return `It tried ${n.toLocaleString("en-US")} ${n === 1 ? "email" : "different emails"} with no account too: its events show which.`;
 }

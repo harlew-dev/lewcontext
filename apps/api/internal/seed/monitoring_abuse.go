@@ -100,7 +100,7 @@ func (a abuse) spammer() (factory.User, error) {
 	// inviting first: with the one kept, five made today.
 	for i := range 4 {
 		id := fakeID(a.f, "wsp")
-		start := time.Duration(4-i)*time.Hour - 30*time.Minute
+		start := time.Duration(4-i)*time.Hour + 30*time.Minute
 		a.add("workspace.created", start, seedSpamIP, map[string]any{"workspace": id, "name": "Prize draw"}, func(e *factory.Event) { e.ActorID = u.ID })
 		if i < 2 {
 			a.add("workspace.invitation.created", start-10*time.Minute, seedSpamIP, map[string]any{"invitation": fakeID(a.f, "inv"), "workspace": id, "email": fmt.Sprintf("prize%d@example.test", i), "role": "member"}, func(e *factory.Event) { e.ActorID = u.ID })
@@ -145,6 +145,11 @@ func (a abuse) usage() error {
 			return err
 		}
 		if i == 0 {
+			// Two-factor on (a secret no one holds, for an account no one
+			// can sign in to), so the week's share with MFA isn't zero.
+			if _, err := factory.MFATOTPs.State(factory.TOTPFor(u.ID)).CreateOne(a.ctx, a.tx, a.f); err != nil {
+				return err
+			}
 			a.add("auth.mfa.enabled", 50*time.Minute, "192.0.2.31", map[string]any{"user": u.PublicID}, func(e *factory.Event) { e.ActorID, e.UserID = u.ID, u.ID })
 		}
 	}

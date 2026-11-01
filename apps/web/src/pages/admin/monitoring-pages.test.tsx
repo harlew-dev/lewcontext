@@ -245,7 +245,7 @@ describe("one address's page", () => {
       screen.getByRole("heading", { name: "2001:db8:7:7::1" }),
     ).toBeVisible();
     expect(
-      screen.getByText(/2 different emails with no account/),
+      screen.getByText(/tried 2 different emails with no account/),
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "2001:db8:7:7::/64" }),

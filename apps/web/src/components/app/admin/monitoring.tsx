@@ -70,11 +70,15 @@ export function MonitoringHeader({
   window,
   onWindow,
   view,
+  signals = true,
 }: {
   title: string;
   window: MonitoringWindow;
   onWindow: (w: MonitoringWindow) => void;
   view?: { window: MonitoringView<unknown>["window"] };
+  // Signal tiles keep their own windows; a page without them says only
+  // what it counted over.
+  signals?: boolean;
 }) {
   return (
     <>
@@ -92,7 +96,9 @@ export function MonitoringHeader({
       </div>
       <Text className="mt-2">
         {view
-          ? `Charts and lists: ${spanLabel(view.window.from, view.window.to)} UTC. Each tile counts its own window, shown under it.`
+          ? signals
+            ? `Charts and lists: ${spanLabel(view.window.from, view.window.to)} UTC. Each tile counts its own window, shown under it.`
+            : `Counted over ${spanLabel(view.window.from, view.window.to)} UTC.`
           : " "}
       </Text>
     </>
