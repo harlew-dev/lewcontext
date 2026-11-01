@@ -105,6 +105,11 @@ const warningText: Record<
     action:
       "Nobody can sign in to this dashboard. Grant admin from the command line (cmd/admin grant): it opens the window to set it up.",
   }),
+  prune_not_running: (n) => ({
+    title: `${n === 1 ? "1 prune target hasn’t" : `${n.toLocaleString("en-US")} prune targets haven’t`} run in 2 days.`,
+    action:
+      "Retention isn’t being kept. Schedule every target daily from cron (prune <target> -confirm) and report its failures; the Data page lists which.",
+  }),
   shared_address: (n) => ({
     title: `One address sent ${Math.round(n)}% of the last day's events.`,
     action:
@@ -119,7 +124,7 @@ function Warnings({ view }: { view: View }) {
   return (
     <MonitoringSection
       title="Warnings"
-      description="Settings that are unsafe or broken on the servers compared, each with what to do. Prune not running is the Data page's."
+      description="Settings that are unsafe or broken on the servers compared, and prune not running, each with what to do."
     >
       {warnings.length === 0 ? (
         <NoneFound>Nothing set unsafely.</NoneFound>

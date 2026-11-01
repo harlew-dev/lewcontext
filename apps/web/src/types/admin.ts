@@ -332,6 +332,7 @@ export const monitoringPages = [
   "accounts",
   "workspaces",
   "usage",
+  "data",
   "integrity",
   "performance",
   "errors",
@@ -348,7 +349,7 @@ export type Level = "ok" | "warn" | "critical";
 export type Signal = {
   name: string;
   label: string;
-  unit: "count" | "percent" | "ms" | "minutes" | "per_minute";
+  unit: "count" | "percent" | "ms" | "minutes" | "per_minute" | "bytes";
   value: number;
   sample: number;
   level: Level;
@@ -756,4 +757,77 @@ export type ConfigurationSections = {
   compared: string[];
   settings: { name: string; values: string[]; differs: boolean }[];
   warnings: { id: string; count?: number }[];
+};
+// The Data page (docs/api/monitoring.md#data): the database's size and
+// what's connected now (counts and durations only), each known table,
+// growth from the daily sizes, what fills the events table, and each
+// prune target against its retention.
+export type DataSections = {
+  database: {
+    sizeBytes: number;
+    maxConnections: number;
+    // By state; "hidden" counts another role's connections.
+    connections: { state: string; count: number }[];
+    longestQuerySeconds: number;
+    longestTransactionSeconds: number;
+    idleInTransaction: number;
+    lockWaits: number;
+    // Percent; null before any read.
+    cacheHitShare: number | null;
+  };
+  tables: {
+    name: string;
+    totalBytes: number;
+    tableBytes: number;
+    indexBytes: number;
+    liveRows: number;
+    deadRows: number;
+    lastVacuum: string | null;
+    lastAnalyze: string | null;
+    seqScans: number;
+    indexScans: number;
+    deadShare: number;
+    // Read mostly by sequential scans at a size an index would matter.
+    scanned: boolean;
+    // Dead rows past their level, waiting for a vacuum.
+    bloated: boolean;
+  }[];
+  growth: {
+    days: { day: string; liveRows: number; totalBytes: number }[];
+    tables: {
+      name: string;
+      liveRows: number;
+      totalBytes: number;
+      rowsPerDay: number;
+      bytesPerDay: number;
+    }[];
+    bytesPerDay: number;
+    projectionDays: number;
+    projectedBytes: number | null;
+  };
+  log: {
+    chart: MonitorSeries;
+    names: { name: string; count: number }[];
+    total: number;
+  };
+  retention: RetentionTarget[];
+};
+// A prune target: its age, its oldest row a run would prune, and its last
+// confirmed run (prune.completed).
+export type RetentionTarget = {
+  target: string;
+  description: string;
+  keepDays: number;
+  minimises: boolean;
+  oldest: string | null;
+  overdue: boolean;
+  lastRun: {
+    target: string;
+    at: string;
+    event: string;
+    deleted: number;
+    kept: number;
+    cutoff: string;
+  } | null;
+  notRunning: boolean;
 };
