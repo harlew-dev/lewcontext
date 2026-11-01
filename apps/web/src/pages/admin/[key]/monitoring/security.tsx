@@ -256,6 +256,7 @@ function SuccessAfterFailures({ view }: { view: View }) {
 const changes: Record<string, string> = {
   "auth.password_changed": "Password changed",
   "auth.mfa.disabled": "Two-factor turned off",
+  "auth.mfa.enabled": "Two-factor turned on",
   "auth.recovery_codes.created": "New recovery codes",
   "auth.other_sessions_revoked": "Other sessions signed out",
 };
