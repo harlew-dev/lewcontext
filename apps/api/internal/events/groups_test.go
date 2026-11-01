@@ -50,7 +50,7 @@ func TestEventGroups(t *testing.T) {
 		}
 	}
 	all := GroupNames()
-	if reads := all[AdminReadsGroup]; !slices.Equal(reads, AdminReadNames()) || len(reads) != 14 {
+	if reads := all[AdminReadsGroup]; !slices.Equal(reads, AdminReadNames()) || len(reads) != 15 {
 		t.Errorf("admin-reads: %v", reads)
 	}
 	for _, name := range all["admin.*"] {

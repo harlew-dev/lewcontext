@@ -244,6 +244,17 @@ type AdminIPViewed struct {
 
 func (AdminIPViewed) EventName() string { return "admin.ip.viewed" }
 
+// AdminErrorViewed: an admin looked at one grouped error (Monitoring's
+// Errors, one group's page) over Window: its message and stack. Error is
+// the group's err_ ID.
+type AdminErrorViewed struct {
+	Admin  string `json:"admin"`
+	Error  string `json:"error"`
+	Window string `json:"window"`
+}
+
+func (AdminErrorViewed) EventName() string { return "admin.error.viewed" }
+
 // AdminDeliveryListed: an admin loaded a page of the deliveries list, with
 // the filters used.
 type AdminDeliveryListed struct {

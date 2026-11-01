@@ -7,6 +7,8 @@
 -- Pruned by make prune (app_errors), 30 days after a group was last seen.
 CREATE TABLE app_errors (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ -- The group's address on the admin Errors page (err_ and 14 base62).
+ public_id text NOT NULL UNIQUE DEFAULT public_id('err') CHECK (public_id ~ '^err_[0-9A-Za-z]{14}$'),
  -- The hex SHA-256 of the source, route and scrubbed message.
  fingerprint text NOT NULL UNIQUE CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
  source text NOT NULL CHECK (source IN ('request', 'panic', 'worker', 'background', 'client')),

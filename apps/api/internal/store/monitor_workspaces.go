@@ -150,20 +150,27 @@ type WorkspaceRows struct {
 	Total     int64        `json:"total" bun:"total"`
 }
 
+// WorkspaceRowsCap is how far each of a workspace's tables is counted:
+// one more row than this reads as "over" it (the Workspaces page's
+// warning level), so a workspace with millions of events costs at most
+// this many index entries per table, never its whole history.
+const WorkspaceRowsCap = 50_000
+
 // IndexWorkspaceRows lists the workspaces with an event in [from, to)
-// holding the most rows across WorkspaceTables, most first.
+// holding the most rows across WorkspaceTables, most first, each table
+// counted up to WorkspaceRowsCap + 1.
 func (s *Store) IndexWorkspaceRows(ctx context.Context, from, to time.Time, limit int) ([]WorkspaceRows, error) {
-	// A count per registered table: their names are fixed Go strings,
-	// quoted as identifiers, never input.
+	// A capped count per registered table: their names are fixed Go
+	// strings, quoted as identifiers, never input.
 	counts := make([]string, len(WorkspaceTables))
-	tables := make([]any, len(WorkspaceTables))
+	args := make([]any, 0, 2*len(WorkspaceTables))
 	for i, t := range WorkspaceTables {
-		counts[i] = "(SELECT count(*) FROM ? AS t WHERE t.workspace_id = w.id)"
-		tables[i] = bun.Ident(t.Name)
+		counts[i] = "(SELECT count(*) FROM (SELECT 1 FROM ? AS t WHERE t.workspace_id = w.id LIMIT ?) AS c)"
+		args = append(args, bun.Ident(t.Name), WorkspaceRowsCap+1)
 	}
 	perTable := s.DB.NewSelect().TableExpr("workspaces AS w").
 		ColumnExpr("w.public_id AS id, w.name").
-		ColumnExpr("ARRAY["+strings.Join(counts, ", ")+"] AS counts", tables...).
+		ColumnExpr("ARRAY["+strings.Join(counts, ", ")+"] AS counts", args...).
 		Where("w.id IN (?)", s.activeWorkspaces(from, to))
 	rows := []WorkspaceRows{}
 	err := s.DB.NewSelect().TableExpr("(?) AS q", perTable).

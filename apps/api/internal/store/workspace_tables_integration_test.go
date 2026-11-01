@@ -8,7 +8,8 @@ import (
 // Every table with a workspace_id column is in WorkspaceTables (monitoring
 // decision 9), so the Workspaces page counts a new table's rows without
 // anyone remembering; every one listed exists, and has an index leading
-// with workspace_id, so a workspace's rows are counted through it.
+// with workspace_id (not a partial one), so a workspace's rows are counted
+// through it.
 func TestEveryWorkspaceTableIsMonitored(t *testing.T) {
 	s, ctx := queueStore(t, nil)
 	var tables []string
@@ -40,16 +41,23 @@ func TestEveryWorkspaceTableIsMonitored(t *testing.T) {
 			t.Errorf("store.WorkspaceTables lists %q, which has no workspace_id column", name)
 		}
 		var indexes []string
-		err := s.DB.NewSelect().TableExpr("pg_indexes").Column("indexname").
-			Where("schemaname = current_schema()").
-			Where("tablename = ?", name).
-			Where(`indexdef ~ '\(workspace_id[,)]'`).
+		// An index whose first column is workspace_id, and not partial: a
+		// partial one serves only the rows its predicate keeps.
+		err := s.DB.NewSelect().TableExpr("pg_index AS i").
+			Join("JOIN pg_class AS t ON t.oid = i.indrelid").
+			Join("JOIN pg_namespace AS n ON n.oid = t.relnamespace").
+			Join("JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = i.indkey[0]").
+			ColumnExpr("i.indexrelid::regclass::text").
+			Where("n.nspname = current_schema()").
+			Where("t.relname = ?", name).
+			Where("a.attname = 'workspace_id'").
+			Where("i.indpred IS NULL").
 			Scan(ctx, &indexes)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(indexes) == 0 {
-			t.Errorf("%s has no index leading with workspace_id: counting a workspace's rows would read the whole table", name)
+			t.Errorf("%s has no index leading with workspace_id (and not partial): counting a workspace's rows would read the whole table", name)
 		}
 	}
 }

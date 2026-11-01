@@ -231,7 +231,7 @@ func (s *Store) requestRows(ctx context.Context, from, to time.Time) (func(colum
 // metricRows is requestRows for a metric's series: minutes, or hours then
 // minutes for a window longer than the minutes are kept.
 func (s *Store) metricRows(ctx context.Context, metric string, from, to time.Time) (*bun.SelectQuery, error) {
-	const columns = "m.labels, m.count, m.sum"
+	const columns = "m.labels, m.count, m.sum, m.buckets"
 	minutes := s.DB.NewSelect().TableExpr("metric_minutes AS m").
 		ColumnExpr("m.minute AS t, "+columns).
 		Where("m.minute >= ?", from).Where("m.minute < ?", to).Where("m.metric = ?", metric)

@@ -23,6 +23,10 @@ var pages = []Page{
 	{Name: PageAccounts, Signals: func() []Signal { return AccountsSignals }, Sections: accountsPage},
 	{Name: PageWorkspaces, Signals: func() []Signal { return WorkspacesSignals }, Sections: workspacesPage},
 	{Name: PageUsage, Signals: func() []Signal { return UsageSignals }, Sections: usagePage},
+	{Name: PageIntegrity, Signals: func() []Signal { return IntegritySignals }, Sections: integrityPage},
+	{Name: PagePerformance, Signals: func() []Signal { return PerformanceSignals }, Sections: performancePage},
+	{Name: PageErrors, Signals: func() []Signal { return ErrorsSignals }, Sections: errorsPage},
+	{Name: PageConfiguration, Signals: func() []Signal { return ConfigurationSignals }, Sections: configurationPage},
 }
 
 // PageNames are the pages built, in order.
@@ -57,6 +61,7 @@ type View struct {
 // Show reads page p over w, each signal and section under env's budget
 // (sections.go). ErrNothingRead when no part of it could be read.
 func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
+	env = env.withMemo()
 	signals, read, err := readSignals(ctx, env, p.Signals())
 	if err != nil {
 		return View{}, err
@@ -75,7 +80,8 @@ func Show(ctx context.Context, env Env, p Page, w Window) (View, error) {
 // (TestSignalsAreWellFormed).
 func Signals() []Signal {
 	var all []Signal
-	for _, list := range [][]Signal{SecuritySignals, LimitsSignals, IPsSignals, AccountsSignals, WorkspacesSignals, UsageSignals, OverviewSignals} {
+	for _, list := range [][]Signal{SecuritySignals, LimitsSignals, IPsSignals, AccountsSignals, WorkspacesSignals, UsageSignals,
+		IntegritySignals, PerformanceSignals, ErrorsSignals, ConfigurationSignals, OverviewSignals} {
 		all = append(all, list...)
 	}
 	return all

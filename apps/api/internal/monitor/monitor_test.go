@@ -63,7 +63,7 @@ func TestSignalsAreWellFormed(t *testing.T) {
 			}
 		}
 	}
-	if len(overviewSignals()) == 0 || len(PageNames()) != 7 {
+	if len(overviewSignals()) == 0 || len(PageNames()) != 11 {
 		t.Fatal("pages")
 	}
 }

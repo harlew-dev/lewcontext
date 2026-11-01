@@ -89,10 +89,13 @@ var (
 	// The admin pages' own budget, as api-read:per-user is the app's.
 	AdminReadPerUser = ratelimit.Limit{Name: "admin-read:per-user", Max: 1000, Window: 5 * time.Minute, InMemory: true}
 
-	// SessionsRevokePerUser: one user's requests to sign out their other sessions.
-	// The route skips the write budget (a recovery route), so this is its own
-	// limit. Used up by a stolen session, the owner still changes the
-	// password, which signs out every other session too.
+	// SessionsRevokePerUser: requests to sign out the other sessions, counted
+	// per session (LimitSession), so each of a user's sessions has a budget
+	// of its own: a stolen session using its budget up can't stop the owner
+	// signing it out. The route skips the write budget (a recovery route),
+	// so this is its own limit. Its name keeps per-user, the user's own
+	// sessions: rate-limit names have no per-session kind (a new kind needs
+	// agreeing first, docs/checks.md).
 	SessionsRevokePerUser = ratelimit.Limit{Name: "sessions-revoke:per-user", Max: 30, Window: time.Hour}
 
 	// WorkspacePerUser: workspaces created by one user.
@@ -231,6 +234,17 @@ func (s *Server) recordLimitReached(r *http.Request, l ratelimit.Limit, resetsAt
 func (s *Server) Limit(l ratelimit.Limit, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.Allow(w, r, l, l.Key(Session(r).User.PublicID)) {
+			next(w, r)
+		}
+	}
+}
+
+// LimitSession is Limit counted per session rather than per user: by the
+// digest of the session's stored digest, so the key is never the
+// sessions table's own value.
+func (s *Server) LimitSession(l ratelimit.Limit, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.Allow(w, r, l, l.Key(s.SessionDigest(r))) {
 			next(w, r)
 		}
 	}

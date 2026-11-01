@@ -17,7 +17,7 @@ const PageWorkspaces = "workspaces"
 // LargeWorkspace: a workspace holding this many rows across every
 // workspace table is a warning (the quotas keep today's tables far below
 // it; a future table without one is what it watches for).
-const LargeWorkspace = 50_000
+const LargeWorkspace = store.WorkspaceRowsCap
 
 // WorkspacesSignals are the Workspaces page's signals.
 var WorkspacesSignals = []Signal{
@@ -88,6 +88,9 @@ type workspacesSections struct {
 		Owners     []store.OwnerQuota `json:"owners"`
 	} `json:"quotas"`
 	Rows struct {
+		// Cap: each table is counted up to one more than this, which
+		// reads as over it.
+		Cap        int64                  `json:"cap"`
 		Tables     []store.WorkspaceTable `json:"tables"`
 		Workspaces []store.WorkspaceRows  `json:"workspaces"`
 	} `json:"rows"`
@@ -108,7 +111,7 @@ func workspacesPage(ctx context.Context, env Env, w Window) (Sections, error) {
 	s := env.Store
 	out := &workspacesSections{}
 	out.Quotas.Caps = Quotas{Projects: store.MaxWorkspaceProjects, Members: store.MaxWorkspaceMembers, Invitations: store.MaxPendingInvitations, Owned: store.MaxOwnedWorkspaces}
-	out.Rows.Tables = store.WorkspaceTables
+	out.Rows.Tables, out.Rows.Cap = store.WorkspaceTables, store.WorkspaceRowsCap
 	invitationsFrom := w.To.Add(-store.InvitationsLookback)
 	return readSections(ctx, env, out, []section{
 		{"quotas", func(ctx context.Context) (err error) {
