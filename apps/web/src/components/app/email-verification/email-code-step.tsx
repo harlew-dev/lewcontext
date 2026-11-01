@@ -117,9 +117,8 @@ export function EmailCodeStep({
         resend={resend}
         onSent={sent}
         onEnded={onEnded}
-      >
-        {resendHelp}
-      </ResendDialog>
+        help={resendHelp}
+      />
     </>
   );
 }
@@ -133,14 +132,14 @@ function ResendDialog({
   resend,
   onSent,
   onEnded,
-  children,
+  help,
 }: {
   open: boolean;
   onClose: () => void;
   resend: () => Promise<unknown>;
   onSent: () => void;
   onEnded: (reason: string) => void;
-  children?: ReactNode;
+  help?: ReactNode;
 }) {
   return (
     <ConfirmationDialog
@@ -157,8 +156,7 @@ function ResendDialog({
           return true;
         }
       }}
-    >
-      {children}
-    </ConfirmationDialog>
+      body={help}
+    />
   );
 }

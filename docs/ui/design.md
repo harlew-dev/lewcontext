@@ -56,7 +56,7 @@ Files are kebab-case and export a family of named components. Keep these props s
 | `tooltip.tsx` | `Tooltip content placement onClick disabled open` (`top`, `bottom`, `left`, `right`) around a focusable child that forwards its ref. `onClick` makes the tooltip itself a pointer shortcut (it stays open while hovered), never the only way to do something; `disabled` keeps it closed without remounting the child; `open` holds it open whatever the pointer and focus do (a locked field's lock after a try at typing) |
 | `listbox.tsx` | `Listbox<T> value onChange aria-label` · `ListboxOption value` · `ListboxLabel` |
 | `dialog.tsx` | `Dialog open onClose size` (`xs`…`5xl`, default `lg`) · `DialogTitle`, `DialogDescription`, `DialogBody`, `DialogActions` |
-| `confirmation-dialog.tsx` | `ConfirmationDialog open onClose title description confirm variant disabled disabledReason onConfirm onConfirmed onError` ([Confirmations](#confirmations)) |
+| `confirmation-dialog.tsx` | `ConfirmationDialog open onClose title description confirm variant disabled disabledReason onConfirm onConfirmed onError body` (`body`: more to read that isn't a field; children are fields, in a `Fieldset` disabled while confirming) ([Confirmations](#confirmations)) |
 | `dropdown.tsx` | `Dropdown`, `DropdownButton as plain outline`, `DropdownMenu`, `DropdownItem href keepOpen aria-current variant selected` (`danger`: red text and icon, for destructive items such as Delete; Sign out is a default item), `DropdownHeader`, `DropdownLabel`, `DropdownDivider` |
 | `settings-section.tsx` | `SettingsSection title description variant stacked` (account and workspace settings; `description` is optional, see [Descriptions](#descriptions)): content beside the title, or under it at full width with `stacked`; `variant="danger"` is the danger zone, always stacked, with a red title and the content in a red-tinted panel · `DangerAction title description action`: one row of that panel, text on the left and its button on the right (below on phones) |
 | `table.tsx` | `Table bleed dense grid striped` · `TableHead`, `TableBody` · `TableRow href target title` (row link) · `TableHeader href sort` (sortable) · `TableCell` |
@@ -140,7 +140,7 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 </ConfirmationDialog>
 ```
 
-- **Also for a dialog with one action and no fields to fill**, which says what will happen and asks to go ahead: "Didn’t receive the email?" (Cancel · Resend code, `EmailCodeStep`).
+- **Also for a dialog with one action and no fields to fill**, which says what will happen and asks to go ahead: "Didn’t receive the email?" (Cancel · Resend code, `EmailCodeStep`; the sign-up's blocked-address text is its `body`).
 - `onConfirm` runs through `useAction`: the button shows `loading`, a double click confirms once, and Cancel, Escape and the backdrop do nothing until it settles. The fields are disabled meanwhile.
 - A failure keeps the dialog open with the error (`ErrorNotice`) and the typed fields. Success closes it, then calls `onConfirmed`.
 - Key the dialog per opening with `useOpenCount(open)` (`lib/use-open-count.ts`): `key={opened}`, so each opening starts empty, without the last opening's values or error. A dialog keyed by its target instead (`"new"`, a project ID) keeps whatever was typed last time; that was the "forms don't reset after submit" bug.

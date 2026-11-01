@@ -202,6 +202,8 @@ describe("signing up with an emailed code", () => {
     expect(dialog).toHaveTextContent(
       "Did you block this address? If you ever used “Block this address” in one of our emails, we can’t send anything to it",
     );
+    // Text to read, not a field: no (disabled) fieldset around it.
+    expect(within(dialog).queryByRole("group")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     fireEvent.change(screen.getByLabelText("Verification code"), {
       target: { value: "482913" },
