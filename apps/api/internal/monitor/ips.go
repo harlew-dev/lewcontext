@@ -47,6 +47,14 @@ type ipsSections struct {
 	// IPv6 address by its /64, the others list each address.
 	Addresses []store.AddressRow       `json:"addresses"`
 	Clusters  []store.SignUpClusterRow `json:"clusters"`
+	Blocks    ipBlocksNow              `json:"blocks"`
+}
+
+// ipBlocksNow is how many IP blocks (the admin actions', the IP blocks
+// page's) are live: every server refuses their requests. A count, so
+// reading it isn't the IP blocks page's recorded read.
+type ipBlocksNow struct {
+	Live int `json:"live"`
 }
 
 // ipsPage reads the IP addresses page's lists over w: sign-up clusters by
@@ -61,6 +69,11 @@ func ipsPage(ctx context.Context, env Env, w Window) (Sections, error) {
 		{"clusters", func(ctx context.Context) (err error) {
 			out.Clusters, err = env.Store.IndexSignUpClusters(ctx, store.MonitorSpan{From: w.From, To: w.To, Per: 24 * time.Hour, Origin: w.To})
 			return
+		}},
+		{"blocks", func(ctx context.Context) error {
+			live, err := env.Store.IndexLiveIPBlocks(ctx)
+			out.Blocks.Live = len(live)
+			return err
 		}},
 	})
 }
@@ -88,19 +101,55 @@ func ParseAddress(raw string) (ip, network string, ok bool) {
 }
 
 // AddressView is one address's page: the address (or /64) looked at, an
-// IPv6 address's /64, the window, and what it did in it.
+// IPv6 address's /64, the window, what it did in it, and the live IP
+// blocks covering it.
 type AddressView struct {
-	IP      string     `json:"ip"`
-	Network string     `json:"network,omitempty"`
-	Window  WindowEcho `json:"window"`
+	IP      string         `json:"ip"`
+	Network string         `json:"network,omitempty"`
+	Window  WindowEcho     `json:"window"`
+	Blocks  []AddressBlock `json:"blocks"`
 	store.AddressActivity
 }
 
-// ShowAddress reads what ip (from ParseAddress) did over w.
+// AddressBlock is a live IP block covering one address's page's address,
+// or overlapping its /64: requests from it are refused until ExpiresAt.
+type AddressBlock struct {
+	Network   string    `json:"network"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// ShowAddress reads what ip (from ParseAddress) did over w, and the live
+// blocks covering it.
 func ShowAddress(ctx context.Context, env Env, ip, network string, w Window) (AddressView, error) {
 	activity, err := env.Store.FindAddressActivity(ctx, ip, w.From, w.To)
 	if err != nil {
 		return AddressView{}, err
 	}
-	return AddressView{IP: ip, Network: network, Window: w.Echo(), AddressActivity: activity}, nil
+	live, err := env.Store.IndexLiveIPBlocks(ctx)
+	if err != nil {
+		return AddressView{}, err
+	}
+	return AddressView{IP: ip, Network: network, Window: w.Echo(), Blocks: blocksCovering(live, ip), AddressActivity: activity}, nil
+}
+
+// blocksCovering is the live blocks holding ip (an address, or an IPv6 /64
+// as ParseAddress gives it), or holding part of it; a block whose network
+// doesn't parse is skipped, as the servers skip it.
+func blocksCovering(live []store.LiveIPBlock, ip string) []AddressBlock {
+	out := []AddressBlock{}
+	looked, err := netip.ParsePrefix(ip)
+	if err != nil {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			return out
+		}
+		looked = netip.PrefixFrom(addr, addr.BitLen())
+	}
+	for _, b := range live {
+		network, err := netip.ParsePrefix(b.Network)
+		if err == nil && network.Overlaps(looked) {
+			out = append(out, AddressBlock{Network: network.String(), ExpiresAt: b.ExpiresAt})
+		}
+	}
+	return out
 }

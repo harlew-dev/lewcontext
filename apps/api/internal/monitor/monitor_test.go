@@ -3,6 +3,7 @@ package monitor
 import (
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/store"
 	"slices"
 	"strings"
 	"testing"
@@ -168,5 +169,42 @@ func TestParseAddress(t *testing.T) {
 		if _, _, ok := ParseAddress(raw); ok {
 			t.Errorf("%q accepted", raw)
 		}
+	}
+}
+
+// One address's page lists the live blocks holding the address, or part
+// of its /64; others, and one that doesn't parse, aren't.
+func TestBlocksCovering(t *testing.T) {
+	end := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	live := []store.LiveIPBlock{
+		{Network: "203.0.113.0/24", ExpiresAt: end},
+		{Network: "203.0.113.66/32", ExpiresAt: end},
+		{Network: "198.51.100.0/24", ExpiresAt: end},
+		{Network: "2001:db8:1::/48", ExpiresAt: end},
+		{Network: "2001:db8:1:2:aa::/128", ExpiresAt: end},
+		{Network: "2001:db8:1:3::/64", ExpiresAt: end},
+		{Network: "not a network", ExpiresAt: end},
+	}
+	networks := func(ip string) []string {
+		var out []string
+		for _, b := range blocksCovering(live, ip) {
+			out = append(out, b.Network)
+		}
+		return out
+	}
+	for ip, want := range map[string][]string{
+		"203.0.113.66":      {"203.0.113.0/24", "203.0.113.66/32"},
+		"203.0.113.67":      {"203.0.113.0/24"},
+		"192.0.2.1":         nil,
+		"2001:db8:1:2::/64": {"2001:db8:1::/48", "2001:db8:1:2:aa::/128"},
+		"2001:db8:1:2::9":   {"2001:db8:1::/48"},
+		"2001:db8:2:2::/64": nil,
+	} {
+		if got := networks(ip); !slices.Equal(got, want) {
+			t.Errorf("%s: %v, want %v", ip, got, want)
+		}
+	}
+	if got := blocksCovering(nil, "192.0.2.1"); got == nil || len(got) != 0 {
+		t.Errorf("no blocks: %#v, want an empty list", got)
 	}
 }

@@ -71,6 +71,7 @@ export function MonitoringHeader({
   onWindow,
   view,
   signals = true,
+  actions,
 }: {
   title: string;
   window: MonitoringWindow;
@@ -79,19 +80,25 @@ export function MonitoringHeader({
   // Signal tiles keep their own windows; a page without them says only
   // what it counted over.
   signals?: boolean;
+  // The page's action (one address's Block this address), right of the
+  // time range.
+  actions?: ReactNode;
 }) {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Heading>{title}</Heading>
-        <div>
-          <Listbox aria-label="Time range" value={window} onChange={onWindow}>
-            {monitoringWindows.map((w) => (
-              <ListboxOption key={w} value={w}>
-                <ListboxLabel>{monitoringWindowLabels[w]}</ListboxLabel>
-              </ListboxOption>
-            ))}
-          </Listbox>
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <Listbox aria-label="Time range" value={window} onChange={onWindow}>
+              {monitoringWindows.map((w) => (
+                <ListboxOption key={w} value={w}>
+                  <ListboxLabel>{monitoringWindowLabels[w]}</ListboxLabel>
+                </ListboxOption>
+              ))}
+            </Listbox>
+          </div>
+          {actions}
         </div>
       </div>
       <Text className="mt-2">

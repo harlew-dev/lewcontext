@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Text, TextLink } from "@/components/ui/text";
 import { useAdminKey } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
 import { url } from "@/lib/pagination";
@@ -31,10 +32,8 @@ import type { IpsSections, MonitoringView } from "@/types/admin";
 // most of the traffic (the proxy's client IP probably isn't set, so every
 // number here is wrong). Each address opens its own page. One request, one
 // recorded read; sorting and the IPv6 switch only rearrange what came.
-//
-// TODO(A6, actions): "Block this address" (POST /api/admin/ip-blocks, an
-// AdminActionDialog for operators) plugs in on each address's page,
-// ips/[ip].tsx, once the actions branch is merged.
+// How many IP blocks are live, linking to the IP blocks page; an operator
+// blocks an address from its own page (ips/[ip].tsx).
 export default function AdminMonitoringIPs() {
   const page = useMonitoringPage<IpsSections>(
     "ips",
@@ -60,6 +59,9 @@ function Addresses({ view }: { view: View }) {
     <>
       <SharedAddress view={view} />
       <SignalGrid className="mt-8" signals={view.signals} />
+      <SectionGate names={["blocks"]} title="IP blocks">
+        <Blocks view={view} />
+      </SectionGate>
       <SectionGate names={["addresses"]} title="Top addresses">
         <TopAddresses view={view} />
       </SectionGate>
@@ -81,6 +83,19 @@ function SharedAddress({ view }: { view: View }) {
       behind its proxy (CLIENT_IP_HEADER, TRUSTED_PROXIES), so every number by
       address on this page is the proxy&rsquo;s.
     </Notice>
+  );
+}
+// How many addresses and ranges every server refuses right now.
+function Blocks({ view }: { view: View }) {
+  const key = useAdminKey();
+  const live = view.sections.blocks.live;
+  return (
+    <Text className="mt-8">
+      {live === 0
+        ? "No address is blocked right now."
+        : `${live.toLocaleString("en-US")} ${live === 1 ? "address or range is" : "addresses or ranges are"} blocked right now.`}{" "}
+      <TextLink href={adminRoutes.ipBlocks.index(key)}>IP blocks</TextLink>
+    </Text>
   );
 }
 // The columns a top list sorts by (?sort=, events by default), largest

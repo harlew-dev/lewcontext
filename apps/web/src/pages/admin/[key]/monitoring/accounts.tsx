@@ -28,10 +28,9 @@ import type {
 // opening it is its own recorded read); then the accounts writing the most
 // and owning the most workspaces. One request, one recorded read.
 //
-// TODO(A6, actions): the account actions (sign out everywhere, reset MFA,
-// suspend) live on the account's own page, users/[user].tsx, once the
-// actions branch is merged; a row here links there. If A6 wants them
-// in the list too, they go in a last column of ReviewRow.
+// The account actions (sign out everywhere, reset MFA, suspend) are on the
+// account's own page, users/[user].tsx, which each account's name links
+// to; not in this list, so each is taken with the account's page in view.
 export default function AdminMonitoringAccounts() {
   const page = useMonitoringPage<AccountsSections>(
     "accounts",

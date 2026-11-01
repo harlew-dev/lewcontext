@@ -496,6 +496,8 @@ export type AddressRow = {
 export type IpsSections = {
   addresses: AddressRow[];
   clusters: { period: string; ip: string; accounts: number }[];
+  // How many IP blocks are live (the IP blocks page lists them).
+  blocks: { live: number };
 };
 // One address's page: what an address (or an IPv6 /64) did in a window.
 export type AddressView = {
@@ -516,6 +518,8 @@ export type AddressView = {
   unknownEmails: number;
   limits: { limit: string; windows: number; lastReached: string }[];
   addresses: AddressCount[];
+  // The live IP blocks holding it, or part of its /64.
+  blocks: { network: string; expiresAt: string }[];
 };
 // The Accounts page's review list: each account with the signals it
 // tripped in its busiest day.

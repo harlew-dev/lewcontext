@@ -92,6 +92,7 @@ const ips = view<IpsSections>(
     clusters: [
       { period: "2026-10-31T14:30:00Z", ip: "2001:db8:5:5::/64", accounts: 20 },
     ],
+    blocks: { live: 2 },
   },
   [
     signal({ value: 20, level: "critical", warn: 5, critical: 20 }),
@@ -186,6 +187,14 @@ describe("the IP addresses page", () => {
       await screen.findByText(/One address sent 80% of the last day/),
     ).toBeVisible();
     expect(screen.getByText("Critical")).toBeVisible();
+    // The live IP blocks, counted, linking to their page.
+    const blocks = screen.getByText(
+      /2 addresses or ranges are blocked right now/,
+    );
+    expect(blocks).toBeVisible();
+    expect(
+      within(blocks).getByRole("link", { name: "IP blocks" }),
+    ).toHaveAttribute("href", `/admin/${key}/ip-blocks`);
     // By events, IPv6 by its /64.
     expect(addressColumn()).toEqual([
       "10.0.0.1",
@@ -229,7 +238,9 @@ const address: AddressView = {
   unknownEmails: 2,
   limits: [],
   addresses: [],
+  blocks: [],
 };
+const reason = "Credential stuffing from this network, ticket 4521.";
 describe("one address's page", () => {
   it("shows what it did, the accounts from it, and its /64, with the window in the URL", async () => {
     const api = stubApi({
@@ -263,6 +274,68 @@ describe("one address's page", () => {
     expect(api.sent("GET").map((s) => s.url)).toContain(
       "/api/admin/ips/2001:db8:7:7::1",
     );
+    // A viewer can't block it.
+    expect(
+      screen.queryByRole("button", { name: "Block this address" }),
+    ).not.toBeInTheDocument();
+  });
+  it("lets an operator block its /64, then shows the block", async () => {
+    const blocked = {
+      ...address,
+      blocks: [
+        { network: "2001:db8:7:7::/64", expiresAt: "2026-11-02T14:00:00Z" },
+      ],
+    };
+    const api = stubApi({
+      "GET /api/admin/me": { body: { ...me, role: "operator" } },
+      "GET /api/admin/ips/2001:db8:7:7::1": [
+        { body: address },
+        { body: blocked },
+      ],
+      "POST /api/admin/ip-blocks": {
+        status: 201,
+        body: {
+          id: "ipb_00000000000001",
+          network: "2001:db8:7:7::/64",
+          reason,
+          createdBy: null,
+          createdAt: "2026-11-01T14:00:00Z",
+          expiresAt: "2026-11-02T14:00:00Z",
+        },
+      },
+    });
+    renderAdmin(`/admin/${key}/monitoring/ips/2001:db8:7:7::1`);
+    await screen.findByRole("link", { name: "Taylor Reed" });
+    expect(screen.queryByText(/is blocked until/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Block this address" }));
+    const dialog = await screen.findByRole("dialog");
+    // Its /64 offered: one person on IPv6 usually has a whole /64.
+    expect(within(dialog).getByLabelText("Address or range")).toHaveValue(
+      "2001:db8:7:7::/64",
+    );
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: reason },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Block" }));
+    expect(
+      await screen.findByText(/2001:db8:7:7::\/64 is blocked\./),
+    ).toBeInTheDocument();
+    expect(api.sent("POST")[0]).toEqual(
+      expect.objectContaining({
+        url: "/api/admin/ip-blocks",
+        body: { network: "2001:db8:7:7::/64", expiresIn: "24h", reason },
+        adminKey: key,
+      }),
+    );
+    // Reloaded: the block shown, linking to the IP blocks page.
+    const notice = (await screen.findByText(/is blocked until/))
+      .parentElement as HTMLElement;
+    expect(notice).toHaveTextContent(
+      "2001:db8:7:7::/64 is blocked until Nov 2, 2026, 2:00 PM UTC. Requests from it are refused.",
+    );
+    expect(
+      within(notice).getByRole("link", { name: "IP blocks" }),
+    ).toHaveAttribute("href", `/admin/${key}/ip-blocks`);
   });
 });
 const accounts = view<AccountsSections>("accounts", {

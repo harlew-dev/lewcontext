@@ -33,6 +33,9 @@ func olderThanADay(u *factory.User) { u.CreatedAt = time.Now().AddDate(0, -1, 0)
 type ipsSections struct {
 	Addresses []store.AddressRow       `json:"addresses"`
 	Clusters  []store.SignUpClusterRow `json:"clusters"`
+	Blocks    struct {
+		Live int `json:"live"`
+	} `json:"blocks"`
 }
 
 // Sign-up clusters (an IPv6 /64 as one address), the busiest address's
@@ -76,6 +79,20 @@ func TestAdminMonitoringIPs(t *testing.T) {
 	}
 	if network != 1 || single != 1 {
 		t.Fatalf("addresses: %+v", page.Addresses)
+	}
+	// The live IP blocks, counted: an expired one isn't.
+	if page.Blocks.Live != 0 {
+		t.Fatalf("blocks with none: %+v", page.Blocks)
+	}
+	for _, block := range []factory.Factory[factory.IPBlock]{
+		factory.IPBlocks.State(factory.BlockOf("198.51.100.1/32")),
+		factory.IPBlocks.State(factory.BlockOf("2001:db8:9::/48")),
+		factory.IPBlocks.State(factory.BlockOf("198.51.100.2/32")).State(factory.ExpiredBlock),
+	} {
+		apitest.Must(block.CreateOne(context.Background(), db, f))(t)
+	}
+	if live := sections[ipsSections](t, ips()).Blocks.Live; live != 2 {
+		t.Fatalf("live blocks: %d, want 2", live)
 	}
 
 	// The busiest address's share: 25 events is too few to say; 100 more
@@ -157,6 +174,18 @@ func TestAdminMonitoringAddress(t *testing.T) {
 		recorded[0].Payload["admin"] != admin.User.PublicID || recorded[0].UserID.Valid {
 		t.Fatalf("recorded: %+v", recorded)
 	}
+	if len(v.Blocks) != 0 {
+		t.Fatalf("blocks with none: %+v", v.Blocks)
+	}
+	// The live blocks holding it, or part of a /64; not an expired one,
+	// nor another network.
+	for _, network := range []string{"203.0.113.0/24", "198.51.100.0/24", "2001:db8:7::/48"} {
+		apitest.Must(factory.IPBlocks.State(factory.BlockOf(network)).CreateOne(ctx, db, f))(t)
+	}
+	apitest.Must(factory.IPBlocks.State(factory.BlockOf("203.0.113.5/32")).State(factory.ExpiredBlock).CreateOne(ctx, db, f))(t)
+	if blocked := show(ip); len(blocked.Blocks) != 1 || blocked.Blocks[0].Network != "203.0.113.0/24" || blocked.Blocks[0].ExpiresAt.IsZero() {
+		t.Fatalf("blocks: %+v", blocked.Blocks)
+	}
 	// A week reaches the sign-in two days ago.
 	if week := show(ip + "?window=7d"); week.Events != 8 {
 		t.Fatalf("7d: %d events", week.Events)
@@ -168,7 +197,7 @@ func TestAdminMonitoringAddress(t *testing.T) {
 	if one := show("2001:db8:7:7::1"); one.Network != "2001:db8:7:7::/64" || one.Events != 1 {
 		t.Fatalf("IPv6 address: %+v", one)
 	}
-	if net := show("2001:db8:7:7::%2F64"); net.IP != "2001:db8:7:7::/64" || net.Events != 2 || len(net.Addresses) != 2 {
+	if net := show("2001:db8:7:7::%2F64"); net.IP != "2001:db8:7:7::/64" || net.Events != 2 || len(net.Addresses) != 2 || len(net.Blocks) != 1 || net.Blocks[0].Network != "2001:db8:7::/48" {
 		t.Fatalf("IPv6 /64: %+v", net)
 	}
 	// Nothing from an address: zero, not an error.

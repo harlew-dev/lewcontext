@@ -1,6 +1,6 @@
 # Findings: A7, compliance
 
-Plan: [compliance](../compliance.md) (on the events branch it has moved to `implemented/admin/compliance.md`). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), with every recommendation in its Decisions table taken as accepted. Screenshots are in [compliance/](compliance/).
+Plan: [compliance](../../implemented/admin/compliance.md). Built on the **events** worktree (`../lewcontext-events`, branch `admin-run/events`), with every recommendation in its Decisions table taken as accepted. Screenshots are in [compliance/](compliance/).
 
 ## What shipped
 

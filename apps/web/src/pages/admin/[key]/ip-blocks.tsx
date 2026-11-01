@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
+import { IPBlockDialog } from "@/components/app/admin/ip-block-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dropdown,
@@ -10,15 +11,7 @@ import {
   DropdownMenu,
 } from "@/components/ui/dropdown";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
-import {
-  Description,
-  ErrorMessage,
-  Field,
-  Label,
-} from "@/components/ui/fieldset";
 import { Heading } from "@/components/ui/heading";
-import { Input } from "@/components/ui/input";
-import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import {
   Table,
   TableBody,
@@ -29,18 +22,14 @@ import {
 } from "@/components/ui/table";
 import { Code, Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
-import { ApiError, errorMessage } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { adminPaths, useAdminApi } from "@/lib/api/admin";
 import { adminCan, useAdminKey, useAdminSession } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
 import { formatDateTime } from "@/lib/format";
 import { useAdminResource } from "@/lib/use-admin-resource";
 import { useOpenCount } from "@/lib/use-open-count";
-import {
-  ipBlockLifetimes,
-  type AdminIPBlock,
-  type IPBlockLifetime,
-} from "@/types/admin";
+import type { AdminIPBlock } from "@/types/admin";
 // Client addresses and ranges every server refuses
 // (plans/features/admin/actions.md): each for at most 30 days, at most a
 // /16 or /32 wide, never your own address nor a trusted proxy, and never
@@ -97,7 +86,7 @@ export default function AdminIPBlockIndex() {
           </div>
         )
       )}
-      <BlockDialog
+      <IPBlockDialog
         key={blockOpened}
         open={blocking}
         onClose={() => setBlocking(false)}
@@ -186,121 +175,6 @@ function BlockTable({
       </TableBody>
     </Table>
   );
-}
-const lifetimeLabels: Record<IPBlockLifetime, string> = {
-  "1h": "1 hour",
-  "24h": "24 hours",
-  "7d": "7 days",
-  "30d": "30 days",
-};
-// Blocking: an address (one /32 or /128) or a range written from its first
-// address, how long, and why. The API refuses ranges wider than a /16 (or
-// /32 for IPv6), your own address and trusted proxies, on the field. An
-// IPv6 range wider than a /48 is allowed but warned about: it can be a
-// whole provider's customers, where one person usually has a /64.
-function BlockDialog({
-  open,
-  onClose,
-  onDone,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const api = useAdminApi();
-  const [network, setNetwork] = useState("");
-  const [expiresIn, setExpiresIn] = useState<IPBlockLifetime>("24h");
-  const [errors, setErrors] = useState<{
-    network?: string;
-    expiresIn?: string;
-  }>({});
-  function fieldError(error: unknown) {
-    if (
-      error instanceof ApiError &&
-      (error.field === "network" || error.field === "expiresIn")
-    ) {
-      setErrors({ [error.field]: errorMessage(error) });
-      return true;
-    }
-    return false;
-  }
-  const wide = wideIPv6Prefix(network);
-  return (
-    <AdminActionDialog
-      open={open}
-      onClose={onClose}
-      title="Block an address?"
-      description="Its requests get a 403 on every server within 30 seconds, until the block ends or is lifted. This dashboard stays reachable from it."
-      confirm="Block"
-      variant="danger"
-      ready={network.trim() !== ""}
-      onError={fieldError}
-      action={async (reason) => {
-        setErrors({});
-        const block = await api
-          .ipBlocks()
-          .store({ network, expiresIn, reason });
-        toast.success(`${block.network} is blocked.`);
-      }}
-      onDone={onDone}
-    >
-      <Field>
-        <Label>Address or range</Label>
-        <Description>
-          An address, or a range from its first address, such as 203.0.113.0/24
-          or 2001:db8:1:2::/64. At most a /16 (IPv4) or /32 (IPv6). One person
-          on IPv6 usually has a whole /64: block that rather than a single
-          address.
-        </Description>
-        <Input
-          name="network"
-          value={network}
-          invalid={Boolean(errors.network)}
-          onChange={(e) => setNetwork(e.currentTarget.value)}
-          autoComplete="off"
-        />
-        {errors.network && (
-          <ErrorMessage role="alert">{errors.network}</ErrorMessage>
-        )}
-        {wide !== null && (
-          <Notice variant="warning" className="mt-3">
-            A /{wide} of IPv6 is wider than a /48: it can cover a whole
-            provider’s customers. For one person, block their /64.
-          </Notice>
-        )}
-      </Field>
-      <Field>
-        <Label>Lasts</Label>
-        <Listbox
-          value={expiresIn}
-          onChange={(value) => setExpiresIn(value as IPBlockLifetime)}
-        >
-          {ipBlockLifetimes.map((lifetime) => (
-            <ListboxOption key={lifetime} value={lifetime}>
-              <ListboxLabel>{lifetimeLabels[lifetime]}</ListboxLabel>
-            </ListboxOption>
-          ))}
-        </Listbox>
-        {errors.expiresIn && (
-          <ErrorMessage role="alert">{errors.expiresIn}</ErrorMessage>
-        )}
-      </Field>
-    </AdminActionDialog>
-  );
-}
-// wideIPv6Prefix is the prefix length of network when it's an IPv6 range
-// wider than a /48 (a site's usual allocation), or null.
-function wideIPv6Prefix(network: string): number | null {
-  const [address, prefix] = network.trim().split("/");
-  if (
-    !address?.includes(":") ||
-    prefix === undefined ||
-    !/^\d+$/.test(prefix)
-  ) {
-    return null;
-  }
-  const bits = Number(prefix);
-  return bits < 48 ? bits : null;
 }
 // Lifting a block before it ends. A 404 means it ended meanwhile: the list
 // reloads behind the dialog.

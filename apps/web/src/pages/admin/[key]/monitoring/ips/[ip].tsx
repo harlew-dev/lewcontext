@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AccountLink } from "@/components/app/admin/events";
 import { formatEventTime } from "@/components/app/admin/event-filters";
+import { IPBlockDialog } from "@/components/app/admin/ip-block-dialog";
 import {
   AddressLink,
   MonitoringBody,
@@ -10,26 +12,29 @@ import {
   NoneFound,
   monitoringWindow,
 } from "@/components/app/admin/monitoring";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/feedback";
 import { Stat } from "@/components/ui/stat";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Code, Text, TextLink } from "@/components/ui/text";
-import { useAdminKey } from "@/lib/admin";
+import { adminCan, useAdminKey, useAdminSession } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
 import { adminPaths } from "@/lib/api/admin";
+import { formatDateTime } from "@/lib/format";
 import { useAdminResource } from "@/lib/use-admin-resource";
+import { useOpenCount } from "@/lib/use-open-count";
 import type { AddressView, MonitoringWindow } from "@/types/admin";
 // What did one address (or an IPv6 /64) do? Over the window in the URL:
 // when it was first and last seen, its events by name, the accounts seen
 // from it, the emails it tried that have no account (how many, never
 // which: its events show them), the limits it reached and, for a /64, its
-// addresses. One request, recorded with the address looked at
-// (admin.ip.viewed): looking an address up is following someone.
+// addresses; and the live IP blocks holding it. One request, recorded with
+// the address looked at (admin.ip.viewed): looking an address up is
+// following someone.
 //
-// TODO(A6, actions): "Block this address" goes here, in the header beside
-// the time range, for operators: POST /api/admin/ip-blocks through
-// AdminActionDialog (a reason and a fresh code), offering the /64 for an
-// IPv6 address, and linking to the IP blocks page. It plugs in when the
-// actions branch is merged; until then the page only reads.
+// Operators can block it from here (the IP blocks page's dialog, offering
+// an IPv6 address's /64, where one person usually is); the page reloads
+// afterwards to show the block, one more recorded read.
 export default function AdminMonitoringAddress() {
   const key = useAdminKey();
   const ip = useParams().ip ?? "";
@@ -37,6 +42,9 @@ export default function AdminMonitoringAddress() {
   const [search] = useSearchParams();
   const window = monitoringWindow(search);
   const resource = useAdminResource(adminPaths.ips.show(ip, window));
+  const operator = adminCan(useAdminSession().role, "operator");
+  const [blocking, setBlocking] = useState(false);
+  const blockOpened = useOpenCount(blocking);
   const setWindow = (w: MonitoringWindow) =>
     void navigate(adminRoutes.monitoring.ip(key, ip, w), {
       preventScrollReset: true,
@@ -49,10 +57,26 @@ export default function AdminMonitoringAddress() {
         onWindow={setWindow}
         view={resource.data}
         signals={false}
+        actions={
+          operator && (
+            <Button outline onClick={() => setBlocking(true)}>
+              Block this address
+            </Button>
+          )
+        }
       />
       <MonitoringBody resource={resource} label="Loading the address">
         {(view) => <Address view={view} />}
       </MonitoringBody>
+      {operator && (
+        <IPBlockDialog
+          key={blockOpened}
+          open={blocking}
+          onClose={() => setBlocking(false)}
+          onDone={resource.refresh}
+          network={resource.data?.network ?? ip}
+        />
+      )}
     </>
   );
 }
@@ -63,6 +87,7 @@ function Address({ view }: { view: AddressView }) {
     adminRoutes.events.index(key, { ip: view.ip, names, window });
   return (
     <>
+      <Blocked view={view} />
       <div className="mt-8 grid gap-8 sm:grid-cols-3">
         <Stat title="Events" value={view.events.toLocaleString("en-US")}>
           <TextLink href={events()}>Its events</TextLink>
@@ -105,6 +130,27 @@ function Address({ view }: { view: AddressView }) {
         </>
       )}
     </>
+  );
+}
+// The live IP blocks holding the address, or part of its /64: its
+// requests are refused now.
+function Blocked({ view }: { view: AddressView }) {
+  const key = useAdminKey();
+  if (view.blocks.length === 0) return null;
+  return (
+    <Notice variant="warning" className="mt-6">
+      <span>
+        {view.blocks.map((b, i) => (
+          <span key={b.network}>
+            {i > 0 && "; "}
+            <Code>{b.network}</Code> is blocked until{" "}
+            {formatDateTime(b.expiresAt)}
+          </span>
+        ))}
+        . Requests from {view.blocks.length === 1 ? "it" : "them"} are refused.{" "}
+        <TextLink href={adminRoutes.ipBlocks.index(key)}>IP blocks</TextLink>
+      </span>
+    </Notice>
   );
 }
 function Accounts({ view }: { view: AddressView }) {
