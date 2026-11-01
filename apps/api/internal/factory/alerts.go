@@ -19,6 +19,8 @@ type Alert struct {
 	Details        json.RawMessage `bun:"type:jsonb,notnull"`
 	Notified       string          `bun:",notnull"`
 	LastNotifiedAt *time.Time
+	// MailTimes is the database's default ('[]'), read back only.
+	MailTimes      json.RawMessage `bun:"mail_times,type:jsonb,scanonly"`
 	AcknowledgedAt *time.Time
 	AcknowledgedBy *int64
 	SilencedUntil  *time.Time
