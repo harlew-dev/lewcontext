@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { createRoutesStub, useLocation } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
@@ -129,8 +129,19 @@ describe("signing up with an emailed code", () => {
       "POST /api/auth/register/resend": { status: 202, body: waiting },
     });
     renderAt("/auth/register/verify");
+    // A dialog says what to check first, then sends one on Resend code.
     fireEvent.click(
-      await screen.findByRole("button", { name: "Send a new code" }),
+      await screen.findByRole("button", { name: "Didn’t receive the email?" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Didn’t receive the email?",
+    });
+    expect(dialog).toHaveTextContent("Check your spam or junk folder");
+    expect(api.sent("POST").map((r) => r.url)).not.toContain(
+      "/api/auth/register/resend",
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Resend code" }),
     );
     expect(
       await screen.findByText("We sent a new code to ada@example.com."),
@@ -181,11 +192,17 @@ describe("signing up with an emailed code", () => {
       },
     });
     renderAt("/auth/register/verify");
-    expect(
-      await screen.findByText(
-        "If you blocked this address, no code can reach it: unblock it from the link in our email first.",
-      ),
-    ).toBeInTheDocument();
+    // Fixed text in the dialog, whatever the address: it may be blocked.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Didn’t receive the email?" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Didn’t receive the email?",
+    });
+    expect(dialog).toHaveTextContent(
+      "Did you block this address? If you ever used “Block this address” in one of our emails, we can’t send anything to it",
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     fireEvent.change(screen.getByLabelText("Verification code"), {
       target: { value: "482913" },
     });

@@ -152,8 +152,13 @@ test("blocking an address from an invitation, silently refused, then unblocked",
   await signUpPage.getByLabel("Password", { exact: true }).fill(password);
   await signUpPage.getByRole("button", { name: "Create account" }).click();
   await expect(signUpPage).toHaveURL("/auth/register/verify");
+  await signUpPage
+    .getByRole("button", { name: "Didn’t receive the email?" })
+    .click();
   await expect(
-    signUpPage.getByText("If you blocked this address, no code can reach it"),
+    signUpPage
+      .getByRole("dialog", { name: "Didn’t receive the email?" })
+      .getByText("Did you block this address?"),
   ).toBeVisible();
   await deliveredAll("auth.registration.requested", blockedEmail, 1);
   expect(await mailCountTo(blockedEmail)).toBe(1);

@@ -73,13 +73,11 @@ function CodeStep({
             });
             return true;
           }}
+          // The same for every address, so it says nothing about which are
+          // blocked: only that inbox's owner knows if it means them. An
+          // account's email can't be blocked, so only sign-up says it.
+          resendHelp={<BlockedHelp />}
         >
-          {/* The same for every address, so it says nothing about which are
-              blocked: only that inbox's owner knows if it means them. */}
-          <Text>
-            If you blocked this address, no code can reach it: unblock it from
-            the link in our email first.
-          </Text>
           <Text>
             Already have an account?{" "}
             <TextLink href={authPath(routes.login, next)} state={state}>
@@ -112,5 +110,17 @@ function SignUpEnded({ reason }: { reason: string }) {
         </Button>
       </div>
     </AuthLayout>
+  );
+}
+// Why no code may come: the address was blocked from one of our emails, and
+// how to undo that (the block link's page also unblocks).
+function BlockedHelp() {
+  return (
+    <Text>
+      <Strong>Did you block this address?</Strong> If you ever used “Block this
+      address” in one of our emails, we can’t send anything to it, codes
+      included. Open that email again and follow the same link: its page lets
+      you unblock the address. Then send a new code.
+    </Text>
   );
 }

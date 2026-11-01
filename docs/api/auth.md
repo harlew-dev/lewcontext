@@ -60,7 +60,7 @@ Invitations go to addresses an inviter types, so each one carries a **block link
 - **Only an address without an account can be blocked** (409 otherwise, and the page says to delete the account first): blocking a working account's address would cut it off from password reset. Only the inbox has the link (256 bits, stored as a digest, a year), and the same link unblocks it.
 - **Nothing anyone types reveals a block.** "Blocked" would tell a prober that the inbox is read by a person without an account, and a harasser that their invitation was seen. So:
   - **Invitations** to a blocked address answer 201 and are listed with `sentAt` like any other; `Send` refuses the email and the listener records no `.sent`.
-  - **Sign-up with verification on** answers 202 and opens the code page as for any address; no code is sent. The code page tells everyone "If you blocked this address, no code can reach it: unblock it from the link in our email first."
+  - **Sign-up with verification on** answers 202 and opens the code page as for any address; no code is sent. The code page's "Didn’t receive the email?" dialog tells everyone, in the same words whatever the address, that if they ever used "Block this address" in one of our emails no code can reach it, and that the same link's page unblocks it.
   - **Verify** checks again: a right code for an address blocked after it was sent ends the sign-up (401, "This address has been blocked…", its pending rows deleted). Only someone holding a code from the inbox gets there.
   - **Sign-up with verification off** answers a blocked address with the taken email's 409, which that mode already gives.
   - Only holders of a link or code from the inbox ever see the word.
