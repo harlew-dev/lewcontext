@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"lewcontext/api/internal/observe"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -399,22 +400,73 @@ var statementStarts = []string{"select", "insert", "update", "delete", "with"}
 
 // SafeStatement is a normalised statement as it may be shown, or false
 // when it might hold a value: only a query or a data change (never a
-// utility statement), with no string left in it (a quote, a dollar quote:
-// a constant PostgreSQL didn't replace with $n) and no comment (kept as
-// first seen), valid UTF-8, on one line, at most MaxStatement characters.
+// utility statement, nor SELECT … INTO, which is one), with no string left
+// in it (a quote, a dollar quote: a constant PostgreSQL didn't replace
+// with $n), no number but a placeholder's ($1) or inside a name (t1), no
+// double-quoted name but a plain one ("sessions", never "ada@example.test"),
+// and no comment (kept as first seen), valid UTF-8, on one line, at most
+// MaxStatement characters.
 func SafeStatement(query string) (string, bool) {
 	q := strings.Join(strings.Fields(query), " ")
 	if !utf8.ValidString(q) || strings.ContainsAny(q, "'`\\\x00") || strings.Contains(q, "--") || strings.Contains(q, "/*") || !onlyPlaceholders(q) {
 		return "", false
 	}
-	first, _, _ := strings.Cut(strings.ToLower(q), " ")
-	if !slices.Contains(statementStarts, strings.TrimLeft(first, "(")) {
+	words, ok := statementWords(q)
+	if !ok || len(words) == 0 || !slices.Contains(statementStarts, words[0]) {
 		return "", false
+	}
+	for i, w := range words {
+		// INTO only after INSERT: SELECT … INTO makes a table, a utility
+		// statement whose constants PostgreSQL keeps.
+		if w == "into" && (i == 0 || words[i-1] != "insert") {
+			return "", false
+		}
 	}
 	if utf8.RuneCountInString(q) > MaxStatement {
 		q = string([]rune(q)[:MaxStatement]) + "…"
 	}
 	return q, true
+}
+
+// plainName is a double-quoted name that can't be a value.
+var plainName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+
+// statementWords reads q's words (names and keywords, lower-cased), or
+// false when it holds a number outside a placeholder or a name, or a
+// double-quoted name that isn't plainName. Quoted names aren't words.
+func statementWords(q string) ([]string, bool) {
+	var words []string
+	isWord := func(r byte) bool {
+		return r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r >= utf8.RuneSelf
+	}
+	for i := 0; i < len(q); {
+		c := q[i]
+		switch {
+		case c == '"':
+			end := strings.IndexByte(q[i+1:], '"')
+			if end < 0 || !plainName.MatchString(q[i+1:i+1+end]) {
+				return nil, false
+			}
+			i += end + 2
+		case c == '$':
+			i++
+			for i < len(q) && q[i] >= '0' && q[i] <= '9' {
+				i++
+			}
+		case c >= '0' && c <= '9':
+			return nil, false
+		case isWord(c):
+			j := i
+			for j < len(q) && isWord(q[j]) {
+				j++
+			}
+			words = append(words, strings.ToLower(q[i:j]))
+			i = j
+		default:
+			i++
+		}
+	}
+	return words, true
 }
 
 // onlyPlaceholders reports whether every $ in q starts a placeholder ($1),
