@@ -15,8 +15,8 @@ Last updated 2026-11-01, during the overnight run.
 | 3 | **Bind the dev server (`make dev`, `:3000`) to `127.0.0.1` only?** Today it listens on every interface, so anyone on your LAN can load the dev app's code, admin pages included (not data: the API still checks the key). Say no if you open the dev server from another device | Unchanged (every interface), documented | [separate-build findings](../findings/separate-build.md#security-review) |
 | 4 | **Refresh buttons ([notes.md](../../notes.md)).** I'm removing the Refresh buttons, but keeping **Retry when a load fails**, which AGENTS.md rule 8 requires. Is that what you meant? | Remove Refresh, keep Retry on failure | — |
 | 5 | **"Didn't receive the email?" modal ([notes.md](../../notes.md)).** It will say "your address might be blocked" to *everyone*, never only to blocked addresses, because AGENTS.md forbids revealing a block | Same text for everyone | — |
-| 6 | **Terms of service and privacy policy:** decisions to confirm. This is a plan only, nothing will be built | — | [legal pages plan](../../legal-pages.md) _(being written)_ |
-| 7 | **Events page redesign:** decisions to confirm. Your notes already settle the multi-select with groups, the date dropdown, the Filters dialog with badges, and graphs. The rest are my recommendations, and I'll build with them tonight unless you say otherwise | Build with recommendations | [events-page plan](../events-page.md) _(being written)_ |
+| 6 | **Terms of service and privacy policy:** decisions to confirm. This is a plan only, nothing will be built | — | [policies plan](../../policies.md) |
+| 7 | **Events page redesign:** decisions to confirm. Your notes already settle the multi-select with groups, the date dropdown, the Filters dialog with badges, and graphs. The rest are my recommendations, and I'll build with them tonight unless you say otherwise | Build with recommendations | [events-page plan](../events-page.md) |
 
 ## Every open plan: recommendations taken as accepted
 
