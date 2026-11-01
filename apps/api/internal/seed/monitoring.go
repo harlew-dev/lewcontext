@@ -108,7 +108,7 @@ func seedMonitoring(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options
 		return "", err
 	}
 	ofVictim := func(e *factory.Event) { e.UserID, e.ActorID = victim.ID, victim.ID }
-	add("auth.logged_in", 10*24*time.Hour, "10.20.30.40", map[string]any{"user": victim.PublicID}, ofVictim)
+	add("auth.logged_in", 10*24*time.Hour, "198.51.100.140", map[string]any{"user": victim.PublicID}, ofVictim)
 	add("auth.logged_in", minutes(40), seedTakeoverIP, map[string]any{"user": victim.PublicID}, ofVictim)
 	add("auth.password_changed", minutes(25), seedTakeoverIP, map[string]any{"user": victim.PublicID, "otherSessionsRevoked": 2}, ofVictim)
 
