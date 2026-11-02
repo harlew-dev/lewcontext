@@ -108,7 +108,7 @@ describe("workspace settings", () => {
         }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("img", { name: "Workspace IDs can’t be changed" }),
+        screen.getByRole("img", { name: "Read-only" }),
       ).toBeInTheDocument();
     },
   );

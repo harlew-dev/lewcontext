@@ -51,7 +51,7 @@ export default function WorkspaceEdit() {
         <CopyField
           label="Workspace ID"
           value={workspace.id}
-          lock="Workspace IDs can’t be changed"
+          lock="Read-only"
         />
       </SettingsSection>
       <Divider className="my-10" soft />
