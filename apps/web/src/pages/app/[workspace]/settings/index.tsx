@@ -48,11 +48,7 @@ export default function WorkspaceEdit() {
       </SettingsSection>
       <Divider className="my-10" soft />
       <SettingsSection title="Workspace ID">
-        <CopyField
-          label="Workspace ID"
-          value={workspace.id}
-          lock="Read-only"
-        />
+        <CopyField label="Workspace ID" value={workspace.id} lock="Read-only" />
       </SettingsSection>
       <Divider className="my-10" soft />
       <DangerZone key={workspace.id} />
