@@ -223,11 +223,7 @@ function Actions({
     );
   return (
     <div className="mt-12">
-      <SettingsSection
-        title="Actions"
-        description="Each takes effect at once, needs a code from your authenticator and a reason, and is recorded with both."
-        variant="danger"
-      >
+      <SettingsSection title="Actions" variant="danger">
         <SignOutAction user={user} onChanged={onChanged} />
         {user.mfaEnabled && (
           <ResetMfaAction user={user} onChanged={onChanged} />

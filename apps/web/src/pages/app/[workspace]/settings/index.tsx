@@ -139,11 +139,7 @@ function DangerZone() {
   const canDelete = can(workspace, "workspace.destroy");
   if (!workspace.canLeave && !canDelete) return null;
   return (
-    <SettingsSection
-      title="Danger zone"
-      description="These take effect at once and can’t be undone."
-      variant="danger"
-    >
+    <SettingsSection title="Danger zone" variant="danger">
       {workspace.canLeave && <LeaveAction />}
       {canDelete && <DeleteWorkspaceAction />}
     </SettingsSection>

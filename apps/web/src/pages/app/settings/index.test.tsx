@@ -13,6 +13,7 @@ import AccountSettings from "@/pages/app/settings/index";
 import Login from "@/pages/auth/login/index";
 import { SessionProvider } from "@/lib/session";
 import { stubApi } from "@/test/api";
+import { openDangerZone } from "@/test/danger-zone";
 import { testSession } from "@/test/session";
 import { hover } from "@/test/hover";
 const session = testSession({ csrfToken: "csrf-old" });
@@ -563,6 +564,7 @@ describe("deleting the account", () => {
     };
   }
   async function openDeletion() {
+    await openDangerZone();
     const button = screen.getByRole("button", { name: "Delete account" });
     await waitFor(() => expect(button).not.toHaveAttribute("data-loading"));
     fireEvent.click(button);

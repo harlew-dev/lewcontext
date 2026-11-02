@@ -304,11 +304,7 @@ function Actions({
   const pending = workspace.pendingInvitations;
   return (
     <div className="mt-12">
-      <SettingsSection
-        title="Actions"
-        description="Takes effect at once, needs a code from your authenticator and a reason, and is recorded with both."
-        variant="danger"
-      >
+      <SettingsSection title="Actions" variant="danger">
         <DangerAction
           title="Revoke pending invitations"
           description={

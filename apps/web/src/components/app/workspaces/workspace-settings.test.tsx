@@ -47,7 +47,7 @@ function renderAs(
     data,
     pages: { current: 1, total: 1, perPage: 20, items: data.length },
   };
-  return render(
+  const view = render(
     <SWRConfig value={{ provider: () => new Map() }}>
       <SessionProvider session={session}>
         <WorkspaceProvider workspace={workspace} first={first}>
@@ -72,6 +72,10 @@ function renderAs(
       </SessionProvider>
     </SWRConfig>,
   );
+  // Opens the (collapsed) danger zone, which a role may not have.
+  const toggle = screen.queryByRole("button", { name: "Show danger zone" });
+  if (toggle) fireEvent.click(toggle);
+  return view;
 }
 describe("workspace settings", () => {
   it("lets owners and admins rename the workspace", async () => {

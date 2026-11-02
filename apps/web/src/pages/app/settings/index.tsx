@@ -95,11 +95,7 @@ export default function AccountSettings() {
         <DataExportControls />
       </SettingsSection>
       <Divider className="my-10" soft />
-      <SettingsSection
-        title="Danger zone"
-        description="Deleting your account takes effect at once and can’t be undone."
-        variant="danger"
-      >
+      <SettingsSection title="Danger zone" variant="danger">
         <DeleteAccountControls />
       </SettingsSection>
     </div>

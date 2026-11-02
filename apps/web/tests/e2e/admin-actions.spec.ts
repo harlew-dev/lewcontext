@@ -116,6 +116,10 @@ test("an operator suspends an account, which is signed out and told why at sign-
     admin.getByRole("heading", { name: "Tess Target" }),
   ).toBeVisible();
   const suspend = admin.getByRole("button", { name: "Suspend account" });
+  // The Actions zone starts closed: its buttons aren't visible until opened.
+  await expect(suspend).toBeHidden();
+  await admin.getByRole("button", { name: "Show actions" }).click();
+  await expect(suspend).toBeVisible();
   await suspend.scrollIntoViewIfNeeded();
   await shoot(admin, "user-page-actions");
 

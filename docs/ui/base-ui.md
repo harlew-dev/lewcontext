@@ -27,6 +27,7 @@ Import each part from its own path (`@base-ui/react/dialog`), so the app and adm
 | `combobox` (`multiple`) | `Combobox` (`combobox.tsx`) | Typing to search, ↑ ↓ and Enter, the popup kept open while picking. The tree logic (groups toggling their leaves, chips, `aria-checked`) is ours |
 | `menu` | `Dropdown` | Click trigger, positioning, arrow, Home and End keys, Escape and outside-click dismissal, menu ARIA, scroll lock |
 | `tooltip` | `Tooltip` | Hover and keyboard-focus trigger with delays, positioning, Escape |
+| `collapsible` | `SettingsSection variant="danger"` | Trigger `aria-expanded`/`aria-controls`, `data-panel-open`, the panel's `--collapsible-panel-height` and start/end styles for the height animation; `keepMounted` keeps a closed panel in the DOM, `hidden` |
 | `dialog` | `Dialog`, `ConfirmationDialog`, the mobile sidebar | Focus trap, Escape, backdrop click, scroll lock, `aria-labelledby` and `aria-describedby` from its title and description |
 | `toast` | `toast`, `Toaster` | The timer (paused while the stack is hovered or focused), stacking with `--toast-index` and friends, a module-level manager |
 | none | `Calendar` (`calendar.tsx`) | Base UI has no calendar: ours is a month grid on `Date` and `Intl` |

@@ -560,6 +560,7 @@ test("workspaces: switch, create, rename and copy the ID", async ({
   await page.keyboard.press("Escape");
   // The only owner can't leave (canLeave in the workspace response), so
   // Leave isn't offered.
+  await page.getByRole("button", { name: "Show danger zone" }).click();
   await expect(
     page.getByRole("button", { name: "Delete workspace" }),
   ).toBeVisible();
@@ -713,6 +714,7 @@ test("other people's workspaces are not found until you're a member; members can
   expect(refused.status()).toBe(403);
   await page.goto(`/app/${theirs}/settings`);
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Show danger zone" }).click();
   await expect(
     page.getByRole("button", { name: "Leave workspace" }),
   ).toBeEnabled();
@@ -992,6 +994,7 @@ test("deleting: a project from its row, the only workspace, then the account", a
 
   // The only owner of a workspace is sent there first.
   await page.goto("/app/settings");
+  await page.getByRole("button", { name: "Show danger zone" }).click();
   await expect(
     page.getByText(/You’re the only owner of a workspace/),
   ).toBeVisible();
@@ -1004,6 +1007,7 @@ test("deleting: a project from its row, the only workspace, then the account", a
   await expect(page).toHaveURL(`/app/${ws}/settings`);
   await expect(dialog).toHaveCount(0);
 
+  await page.getByRole("button", { name: "Show danger zone" }).click();
   await page.getByRole("button", { name: "Delete workspace" }).click();
   const confirm = dialog.getByRole("button", { name: "Delete workspace" });
   await dialog.getByLabel(/to confirm/).fill("Doomed");

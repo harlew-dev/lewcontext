@@ -59,7 +59,7 @@ Import each part from its own path (`@base-ui/react/dialog`) so the app and admi
 | `Tooltip` | `baseui/tooltip` | `tooltip` (`Provider`, `Root`, `Trigger`, `Positioner`, `Popup`) | `content`, `placement`, `open`, `disabled`, `onClick` unchanged. `Tooltip.Provider` in `root.tsx` for shared delays |
 | `Toaster`, `toast` | `baseui/toast` | `toast` (`Provider`, `Portal`, `Viewport`, `Root`, `Title`, `Close`) with `Toast.createToastManager()` | The imperative `toast.success(message, { duration })` is kept: the module-level manager is what `toast` calls, `duration` → `timeout` (`0` for `Infinity`). Pauses on hover/focus and keyboard-reachable close are built in, so `DismissButton` workaround goes. Stacked look, as in Base UI's demo: toasts overlap and scale behind the newest, and expand on hover/focus (`Toast.Root` `data-expanded`, `--toast-index`, `--toast-offset-y`; [decision 12](#decisions)) |
 | `Calendar` | `baseui/datepicker` | **none** | See [Calendar](#calendar) |
-| `SettingsSection collapsible` | not built | `collapsible` (`Root`, `Trigger`, `Panel`) | Not part of this migration: built afterwards in [collapsible-danger-zones.md](../collapsible-danger-zones.md) |
+| `SettingsSection collapsible` | not built | `collapsible` (`Root`, `Trigger`, `Panel`) | Not part of this migration: built afterwards in [collapsible-danger-zones.md](collapsible-danger-zones.md) |
 
 ### Calendar
 
@@ -73,7 +73,7 @@ Recommended: option 1. Its day cells use the same classes as today, and the loca
 
 ### Danger zones
 
-Collapsing the four danger zones behind a ghost **Show** / **Hide** button, on Base UI's `Collapsible`, is its own plan, [collapsible-danger-zones.md](../collapsible-danger-zones.md). It needs this migration finished first, and nothing here depends on it.
+Collapsing the four danger zones behind a ghost **Show** / **Hide** button, on Base UI's `Collapsible`, is its own plan, [collapsible-danger-zones.md](collapsible-danger-zones.md). It needs this migration finished first, and nothing here depends on it.
 
 ## What goes away
 
@@ -132,7 +132,7 @@ Each needs your confirmation before step 1.
 
 | # | Question | Recommendation |
 | --- | --- | --- |
-| 1 | Migrate at all? | **Yes, but not urgent.** `baseui` works today; the case is that Uber has limited engagement, the 130-package tree, the CSS-in-JS layer and a dozen workarounds. If none of that bothers you, the alternative is to stay, and build the collapsible danger zones by hand (about 20 lines) instead of waiting for [collapsible-danger-zones.md](../collapsible-danger-zones.md) |
+| 1 | Migrate at all? | **Yes, but not urgent.** `baseui` works today; the case is that Uber has limited engagement, the 130-package tree, the CSS-in-JS layer and a dozen workarounds. If none of that bothers you, the alternative is to stay, and build the collapsible danger zones by hand (about 20 lines) instead of waiting for [collapsible-danger-zones.md](collapsible-danger-zones.md) |
 | 2 | Strategy | **Incremental**, as in [Steps](#steps), overlays in one step. The alternative is one branch that swaps everything, which has the same end state and a harder review |
 | 3 | Calendar | **Our own** month grid. Alternatives: `react-day-picker` (new dependency), or two native date inputs |
 | 4 | Field wiring | **Keep our `Field`/`useField`** and put Base UI parts inside. Adopting Base UI's `Field.Root`/`Label`/`Description`/`Error` is possible but a second rewrite of every form with no visible gain |
@@ -141,7 +141,7 @@ Each needs your confirmation before step 1.
 | 7 | Guardrail | **Add an ESLint `no-restricted-imports`**: `@base-ui/react/*` only from `components/ui`, `components/layout`, `lib` and `root.tsx`, and `baseui` and `styletron-*` from nowhere. A new check, so it's yours to approve |
 | 8 | React version | **Stay on 18.3.1.** Base UI supports 17, 18 and 19, so this migration doesn't force the React 19 and React Router 8 upgrade; that stays a separate decision |
 | 9 | Entry files | **Delete `entry.client.tsx` and `entry.server.tsx`** and use React Router's defaults, if the build and the e2e CSP test pass |
-| 10 | Collapsible danger zones | **A separate plan, built after this one:** [collapsible-danger-zones.md](../collapsible-danger-zones.md), on Base UI's `Collapsible` |
+| 10 | Collapsible danger zones | **A separate plan, built after this one:** [collapsible-danger-zones.md](collapsible-danger-zones.md), on Base UI's `Collapsible` |
 | 11 | OTP | **Keep one invisible input** on Base UI `Input`, not `OTPField` |
 | 12 | Toast look | **Stacked toasts from Base UI** (the reviewer's change, replacing the earlier recommendation of today's flat stack). Collapsed they stack and scale behind the newest; hover or focus expands them. Reduced motion drops the transitions |
 

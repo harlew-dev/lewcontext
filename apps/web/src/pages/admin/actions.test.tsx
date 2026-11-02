@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ComponentType } from "react";
 import { adminLoader } from "@/lib/admin";
 import { stubApi, type Reply } from "@/test/api";
+import { openDangerZone } from "@/test/danger-zone";
 import { testSession } from "@/test/session";
 import type {
   AdminIPBlock,
@@ -104,6 +105,7 @@ function typeReason(dialog: HTMLElement) {
 describe("a user's actions", () => {
   it("are offered to operators: sign out, reset MFA and suspend", async () => {
     renderUser(userDetail());
+    await openDangerZone("Actions");
     expect(
       await screen.findByRole("button", { name: "Sign out everywhere" }),
     ).toBeInTheDocument();
@@ -157,6 +159,7 @@ describe("a user's actions", () => {
         body: { sessionsRevoked: 2, invitationsRevoked: 0 },
       },
     });
+    await openDangerZone("Actions");
     fireEvent.click(
       await screen.findByRole("button", { name: "Suspend account" }),
     );
@@ -194,6 +197,7 @@ describe("a user's actions", () => {
     const api = renderUser(userDetail(), {
       [`DELETE /api/admin/users/${userId}/mfa`]: { status: 204 },
     });
+    await openDangerZone("Actions");
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Reset two-factor authentication",
@@ -232,6 +236,7 @@ describe("a user's actions", () => {
       ],
       "POST /api/admin/step-up": { status: 204 },
     });
+    await openDangerZone("Actions");
     fireEvent.click(
       await screen.findByRole("button", { name: "Sign out everywhere" }),
     );
@@ -288,6 +293,7 @@ describe("a workspace's actions", () => {
   }
   it("revoke pending invitations, with a reason", async () => {
     const api = renderWorkspace(workspace);
+    await openDangerZone("Actions");
     fireEvent.click(
       await screen.findByRole("button", { name: "Revoke pending invitations" }),
     );
@@ -308,6 +314,7 @@ describe("a workspace's actions", () => {
   });
   it("are disabled with nothing pending", async () => {
     renderWorkspace({ ...workspace, pendingInvitations: 0 });
+    await openDangerZone("Actions");
     expect(
       await screen.findByRole("button", { name: "Revoke pending invitations" }),
     ).toBeDisabled();
