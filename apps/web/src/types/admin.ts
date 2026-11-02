@@ -195,6 +195,7 @@ export const failureKinds = [
   "password",
   "sign_up_code",
   "admin_door",
+  "email_change_code",
 ] as const;
 export type FailureKind = (typeof failureKinds)[number];
 export const failureLabels: Record<FailureKind, string> = {
@@ -203,6 +204,7 @@ export const failureLabels: Record<FailureKind, string> = {
   password: "Password checks",
   sign_up_code: "Sign-up codes",
   admin_door: "Admin door",
+  email_change_code: "Email-change codes",
 };
 // One column of a summary chart: its start, a count per series.
 export type SummaryBucket = { start: string; counts: number[] };
@@ -296,9 +298,13 @@ export type MailKind =
   | "invitation"
   | "registration_code"
   | "account_exists"
-  | "email_verification";
+  | "email_verification"
+  | "email_change_code"
+  | "email_change_exists"
+  | "email_changed_previous"
+  | "email_changed_current";
 export type RequestKind =
-  "password_reset" | "registration" | "email_verification";
+  "password_reset" | "registration" | "email_verification" | "email_change";
 export type AdminMail = {
   window: MailWindow;
   driver: {
@@ -325,6 +331,7 @@ export type AdminMail = {
     resets: number;
     invitations: number;
     registrations: number;
+    emailChanges: number;
   }[];
   lastDeliveredAt: string | null;
   lastFailure: { listener: string; failedAt: string; error: string } | null;

@@ -39,21 +39,29 @@ const logoContentID = "logo"
 type Template string
 
 const (
-	ForgotPassword      Template = "forgot-password"
-	WorkspaceInvitation Template = "workspace-invitation"
-	VerifyEmail         Template = "verify-email"
-	AccountExists       Template = "account-exists"
-	Alert               Template = "alert"
-	AlertDigest         Template = "alert-digest"
+	ForgotPassword       Template = "forgot-password"
+	WorkspaceInvitation  Template = "workspace-invitation"
+	VerifyEmail          Template = "verify-email"
+	AccountExists        Template = "account-exists"
+	EmailChangeCode      Template = "email-change-code"
+	EmailChangeExists    Template = "email-change-exists"
+	EmailChangedPrevious Template = "email-changed-previous"
+	EmailChangedCurrent  Template = "email-changed-current"
+	Alert                Template = "alert"
+	AlertDigest          Template = "alert-digest"
 )
 
 // Subjects are fixed text kept here rather than in the HTML file: a subject is
 // a mail header, which must hold no user data and isn't HTML-escaped.
 var subjects = map[Template]string{
-	ForgotPassword:      "Reset your password",
-	WorkspaceInvitation: "You’ve been invited to join a workspace",
-	VerifyEmail:         "Confirm your email address",
-	AccountExists:       "You already have an account",
+	ForgotPassword:       "Reset your password",
+	WorkspaceInvitation:  "You’ve been invited to join a workspace",
+	VerifyEmail:          "Confirm your email address",
+	AccountExists:        "You already have an account",
+	EmailChangeCode:      "Confirm your email change",
+	EmailChangeExists:    "Email change requested",
+	EmailChangedPrevious: "Your account email address changed",
+	EmailChangedCurrent:  "Your new account email address",
 	// Alert's subject is its data's (titled).
 	Alert:       "",
 	AlertDigest: "Several alerts opened",
@@ -140,6 +148,10 @@ type WorkspaceInvitationData struct {
 type VerifyEmailData struct {
 	Code string // spaced for reading (auth.FormatEmailCode): "482 913"
 }
+
+// EmailChangeNoticeData contains only a trusted fixed settings URL, never
+// information identifying the requesting account or the replacement address.
+type EmailChangeNoticeData struct{ SettingsURL string }
 
 // AccountExistsData fills templates/account-exists.html, sent instead of a
 // code to a sign-up for an email that already has an account.

@@ -85,7 +85,11 @@ func deliverVerification(t *testing.T, s *httpapi.Server, box *inbox, user strin
 	t.Helper()
 	id, occurred := newestEvent(t, s.Repo.DB, "auth.email_verification.requested")
 	listen := mail.EmailVerification(s.Repo, box.mailer, apitest.Must(auth.NewKeys(s.Config.AppKey))(t))
-	if err := listen(context.Background(), events.EmailVerificationRequested{User: user}, events.Delivered{EventID: id, OccurredAt: occurred, Attempt: 1}); err != nil {
+	var email string
+	if err := s.Repo.DB.NewSelect().TableExpr("users").Column("email").Where("public_id = ?", user).Scan(context.Background(), &email); err != nil {
+		t.Fatal(err)
+	}
+	if err := listen(context.Background(), events.EmailVerificationRequested{User: user, Email: email}, events.Delivered{EventID: id, OccurredAt: occurred, Attempt: 1}); err != nil {
 		t.Fatal(err)
 	}
 }

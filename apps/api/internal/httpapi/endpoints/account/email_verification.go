@@ -32,7 +32,7 @@ func (h EmailVerification) Store(w http.ResponseWriter, r *http.Request) {
 		!h.Allow(w, r, httpapi.EmailVerificationGlobal, httpapi.EmailVerificationGlobal.Everyone()) {
 		return
 	}
-	if err := h.Repo.Record(r.Context(), events.EmailVerificationRequested{User: user.PublicID}, store.EventScope{UserID: user.ID}); err != nil {
+	if err := h.Repo.Record(r.Context(), events.EmailVerificationRequested{User: user.PublicID, Email: user.Email}, store.EventScope{UserID: user.ID}); err != nil {
 		httpapi.InternalError(w, r, err)
 		return
 	}

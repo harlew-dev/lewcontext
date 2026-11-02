@@ -15,15 +15,16 @@ import (
 
 // Kinds of failed check, in the failures chart's order.
 const (
-	FailureSignIn       = "sign_in"
-	FailureSecondFactor = "second_factor"
-	FailurePassword     = "password"
-	FailureSignUpCode   = "sign_up_code"
-	FailureAdminDoor    = "admin_door"
+	FailureSignIn          = "sign_in"
+	FailureSecondFactor    = "second_factor"
+	FailurePassword        = "password"
+	FailureSignUpCode      = "sign_up_code"
+	FailureAdminDoor       = "admin_door"
+	FailureEmailChangeCode = "email_change_code"
 )
 
 // FailureKinds are the kinds, in the chart's order.
-var FailureKinds = []string{FailureSignIn, FailureSecondFactor, FailurePassword, FailureSignUpCode, FailureAdminDoor}
+var FailureKinds = []string{FailureSignIn, FailureSecondFactor, FailurePassword, FailureSignUpCode, FailureAdminDoor, FailureEmailChangeCode}
 
 // eventFailure is when an event named Name records a failed check of Kind:
 // Condition (fixed SQL over e.payload, its values as ? placeholders in
@@ -42,6 +43,7 @@ var adminEventFailures = []eventFailure{
 	{FailureSecondFactor, "auth.mfa.checked", "e.payload->>'ok' = ?", []any{"false"}},
 	{FailurePassword, "auth.password_checked", "e.payload->>'ok' = ?", []any{"false"}},
 	{FailureSignUpCode, "auth.registration.checked", "e.payload->>'ok' = ?", []any{"false"}},
+	{FailureEmailChangeCode, "auth.email_change.checked", "e.payload->>'ok' = ?", []any{"false"}},
 	{FailureAdminDoor, "admin.login_attempted", "e.payload->>'result' IN (?)",
 		[]any{bun.In([]string{events.AdminLoginWrongPassword, events.AdminLoginUnknownAccount, events.AdminLoginNotAdmin, events.AdminLoginMFAOff})}},
 	{FailureAdminDoor, "admin.access_refused", "TRUE", nil},

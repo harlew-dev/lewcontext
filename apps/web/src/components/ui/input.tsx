@@ -10,6 +10,7 @@ import {
   EyeIcon,
   EyeSlashIcon,
   LockClosedIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/16/solid";
 import {
   Input as BaseInput,
@@ -113,6 +114,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 ) {
   const field = useField();
   const lock = field?.lock;
+  const readOnlyLock = lock?.readOnly ? lock : undefined;
   const grouped = useContext(InputGroupContext);
   const overlay = blurred ? (
     <BlurredText value={String(props.value ?? "")} onReveal={onReveal} />
@@ -124,10 +126,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       disabled={field?.disabled}
       {...props}
       type={type}
-      readOnly={readOnly || Boolean(lock)}
+      readOnly={readOnly || Boolean(readOnlyLock)}
       onKeyDown={(event) => {
-        if (lock && event.key === "Escape") lock.hide();
-        else if (lock && isEdit(event)) lock.show();
+        if (readOnlyLock && event.key === "Escape") readOnlyLock.hide();
+        else if (readOnlyLock && isEdit(event)) readOnlyLock.show();
         onKeyDown?.(event);
       }}
       onBlur={(event) => {
@@ -143,8 +145,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           component: InputElement,
           props: {
             minLength,
-            onPaste: lock?.show,
-            onDrop: lock?.show,
+            onPaste: readOnlyLock?.show,
+            onDrop: readOnlyLock?.show,
             "data-blurred": blurred ? "" : undefined,
             className: type === "password" ? "pr-10 sm:pr-9" : undefined,
           },
@@ -260,8 +262,8 @@ type ActionProps<T> = Pick<
 // The lock trigger; Tooltip passes it the hover and focus handlers.
 const LockIcon = forwardRef<
   HTMLSpanElement,
-  ActionProps<HTMLSpanElement> & { label: string }
->(function LockIcon({ label, onFocus, onBlur, ...props }, ref) {
+  ActionProps<HTMLSpanElement> & { label: string; shield: boolean }
+>(function LockIcon({ label, shield, onFocus, onBlur, ...props }, ref) {
   const interactive = useInteractive<HTMLSpanElement>({ onFocus, onBlur });
   return (
     <span
@@ -273,16 +275,17 @@ const LockIcon = forwardRef<
       {...interactive}
       className={actionClasses}
     >
-      <LockClosedIcon />
+      {shield ? <ShieldCheckIcon /> : <LockClosedIcon />}
     </span>
   );
 });
-// A locked Field's lock. Its label says why, in the tooltip and as the icon's
-// accessible name. Focusable, so the tooltip also opens from the keyboard.
+// A locked Field's lock (a guarded Field's, still editable, is a shield). Its
+// label says why, in the tooltip and as the icon's accessible name. Focusable,
+// so the tooltip also opens from the keyboard.
 function InputLock({ lock }: { lock: FieldLock }) {
   return (
     <Tooltip content={lock.label} open={lock.open}>
-      <LockIcon label={lock.label} />
+      <LockIcon label={lock.label} shield={!lock.readOnly} />
     </Tooltip>
   );
 }

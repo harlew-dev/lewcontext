@@ -7,6 +7,8 @@ CREATE TABLE users (
  -- When the account proved it owns the email with a code (or a password
  -- reset link). Null for accounts made while EMAIL_VERIFICATION was off.
  email_verified_at timestamptz,
+ email_version bigint NOT NULL DEFAULT 0 CHECK (email_version >= 0),
+ email_changed_at timestamptz,
  -- The terms of service and privacy policy versions (their updated dates)
  -- agreed to at sign-up with POLICIES=on, and when; all null otherwise.
  terms_of_service_version date,

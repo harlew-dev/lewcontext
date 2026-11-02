@@ -64,8 +64,8 @@ func TestFoldSummary(t *testing.T) {
 	if s.TopNames[4].Name != "rate_limit.reached" || s.TopNames[5].Name != "email.blocked" {
 		t.Fatalf("ties: %v", s.TopNames)
 	}
-	if s.Failures == nil || s.Failures.Total != 7 || !slices.Equal(s.Failures.Buckets[0].Counts, []int{6, 0, 0, 0, 0}) ||
-		!slices.Equal(s.Failures.Buckets[1].Counts, []int{0, 0, 0, 0, 1}) || !slices.Equal(s.Failures.Series, FailureKinds) {
+	if s.Failures == nil || s.Failures.Total != 7 || !slices.Equal(s.Failures.Buckets[0].Counts, []int{6, 0, 0, 0, 0, 0}) ||
+		!slices.Equal(s.Failures.Buckets[1].Counts, []int{0, 0, 0, 0, 1, 0}) || !slices.Equal(s.Failures.Series, FailureKinds) {
 		t.Fatalf("failures: %+v", s.Failures)
 	}
 

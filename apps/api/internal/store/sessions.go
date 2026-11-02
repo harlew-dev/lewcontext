@@ -26,10 +26,11 @@ const seenEvery = time.Hour
 // ErrSuspended for a suspended account, checked under the user's lock,
 // which SuspendUser takes too: whatever the path to a session, a suspended
 // account never gets one.
-func (s *Store) CreateSession(ctx context.Context, userID int64, hash, csrf, oldHash string, expiry time.Time, e events.Event) error {
+func (s *Store) CreateSession(ctx context.Context, u User, hash, csrf, oldHash string, expiry time.Time, e events.Event) error {
+	userID := u.ID
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Serialize session creation per account so the cap survives concurrent logins.
-		if _, err := tx.NewSelect().Model((*User)(nil)).Column("id").Where("id = ?", userID).For("UPDATE").Exec(ctx); err != nil {
+		if err := lockEmailVersion(ctx, tx, u.ID, u.EmailVersion); err != nil {
 			return err
 		}
 		if err := checkNotSuspended(ctx, tx, userID); err != nil {
@@ -90,6 +91,7 @@ func (s *Store) FindSession(ctx context.Context, hash string) (Session, error) {
 		ColumnExpr("(?)", mfaEnabledAt(s.DB)).
 		Scan(ctx, &session.User.ID, &session.User.PublicID, &session.User.Name, &session.User.Email, &session.User.CreatedAt, &session.User.EmailVerifiedAt,
 			&session.User.TermsOfServiceVersion, &session.User.PrivacyPolicyVersion, &session.User.PoliciesAcceptedAt,
+			&session.User.EmailVersion, &session.User.EmailChangedAt,
 			&session.CSRF, &session.CreatedAt, &session.ExpiresAt, &session.User.MFAEnabledAt)
 	return session, err
 }
@@ -107,6 +109,9 @@ func deleteSessions(ctx context.Context, db bun.IDB, where string, args ...any) 
 // DeleteSession signs the user's session out and records auth.logged_out.
 func (s *Store) DeleteSession(ctx context.Context, u User, hash string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockUser(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		if _, err := deleteSessions(ctx, tx, "token_hash = ?", hash); err != nil {
 			return err
 		}
@@ -120,6 +125,9 @@ func (s *Store) DeleteSession(ctx context.Context, u User, hash string) error {
 // can't fill the audit trail).
 func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockUser(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		count, err := deleteSessions(ctx, tx, "user_id = ? AND token_hash <> ?", u.ID, hash)
 		if err != nil || count == 0 {
 			return err
@@ -132,7 +140,13 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 // too), expired reset and block links, expired IP blocks, sign-in challenges, sign-ups and
 // email codes, MFA setups left unconfirmed, and invitations that expired over 30 days ago (until then they're listed as expired, so
 // whoever sent one can see why it wasn't used).
-func (s *Store) Cleanup(ctx context.Context) error {
+func (s *Store) Cleanup(ctx context.Context, pseudonym func(string) string) error {
+	if _, err := s.DB.NewDelete().Model((*emailChange)(nil)).Where("expires_at <= clock_timestamp()").Exec(ctx); err != nil {
+		return err
+	}
+	if err := s.cleanupEmailHistory(ctx, pseudonym); err != nil {
+		return err
+	}
 	if _, err := s.DB.NewDelete().Model((*mfaChallenge)(nil)).Where("expires_at <= now()").Exec(ctx); err != nil {
 		return err
 	}

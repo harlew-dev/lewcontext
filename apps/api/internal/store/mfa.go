@@ -62,6 +62,7 @@ type mfaChallenge struct {
 	bun.BaseModel `bun:"table:mfa_challenges,alias:c"`
 	TokenHash     string `bun:",pk"`
 	UserID        int64
+	EmailVersion  int64
 	Purpose       string
 	Attempts      int
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`
@@ -107,9 +108,10 @@ func mfaEnabledAt(db bun.IDB) *bun.SelectQuery {
 
 // SetUpMFA stores a new sealed secret, waiting for its first code, replacing
 // any setup already pending. ErrMFAEnabled while MFA is on.
-func (s *Store) SetUpMFA(ctx context.Context, userID int64, sealed []byte) error {
+func (s *Store) SetUpMFA(ctx context.Context, u User, sealed []byte) error {
+	userID := u.ID
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if err := lockUser(ctx, tx, userID); err != nil {
+		if err := lockEmailVersion(ctx, tx, userID, u.EmailVersion); err != nil {
 			return err
 		}
 		current, err := lockTOTP(ctx, tx, userID)
@@ -137,7 +139,7 @@ func (s *Store) SetUpMFA(ctx context.Context, userID int64, sealed []byte) error
 // changes then).
 func (s *Store) EnableMFA(ctx context.Context, u User, sessionHash string, f SecondFactor, codeDigests []string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if err := lockUser(ctx, tx, u.ID); err != nil {
+		if err := lockEmailVersion(ctx, tx, u.ID, u.EmailVersion); err != nil {
 			return err
 		}
 		row, err := lockTOTP(ctx, tx, u.ID)
@@ -274,10 +276,15 @@ func (s *Store) ResetMFA(ctx context.Context, email string) (User, error) {
 }
 
 // CreateMFAChallenge starts a sign-in's wait for its second factor.
-func (s *Store) CreateMFAChallenge(ctx context.Context, userID int64, hash, purpose string, expires time.Time) error {
-	c := mfaChallenge{TokenHash: hash, UserID: userID, Purpose: purpose, ExpiresAt: expires}
-	_, err := s.DB.NewInsert().Model(&c).Exec(ctx)
-	return err
+func (s *Store) CreateMFAChallenge(ctx context.Context, u User, hash, purpose string, expires time.Time) error {
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockEmailVersion(ctx, tx, u.ID, u.EmailVersion); err != nil {
+			return err
+		}
+		c := mfaChallenge{TokenHash: hash, UserID: u.ID, EmailVersion: u.EmailVersion, Purpose: purpose, ExpiresAt: expires}
+		_, err := tx.NewInsert().Model(&c).Exec(ctx)
+		return err
+	})
 }
 
 // FindMFAChallenge returns the user (ID and public ID) of the live challenge
@@ -287,6 +294,7 @@ func (s *Store) FindMFAChallenge(ctx context.Context, hash, purpose string) (Use
 	err := s.DB.NewSelect().Model(&u).ColumnExpr("u.id, u.public_id").
 		Join("JOIN mfa_challenges AS c ON c.user_id = u.id").
 		Where("c.token_hash = ? AND c.purpose = ? AND c.expires_at > now()", hash, purpose).
+		Where("c.email_version = u.email_version").
 		Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, ErrNoChallenge
@@ -302,6 +310,10 @@ func (s *Store) FindMFAChallenge(ctx context.Context, hash, purpose string) (Use
 func (s *Store) AnswerMFAChallenge(ctx context.Context, hash, purpose string, userID int64, f SecondFactor) (MFAChallengeResult, error) {
 	var result MFAChallengeResult
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var current User
+		if err := tx.NewSelect().Model(&current).Where("u.id = ?", userID).For("UPDATE").Scan(ctx); err != nil {
+			return err
+		}
 		used, err := useConfirmedFactor(ctx, tx, userID, f)
 		if errors.Is(err, ErrMFANotEnabled) {
 			_, err := tx.NewDelete().Model((*mfaChallenge)(nil)).Where("token_hash = ?", hash).Exec(ctx)
@@ -316,6 +328,7 @@ func (s *Store) AnswerMFAChallenge(ctx context.Context, hash, purpose string, us
 		var challenge mfaChallenge
 		err = tx.NewSelect().Model(&challenge).
 			Where("token_hash = ? AND purpose = ? AND user_id = ? AND expires_at > now()", hash, purpose, userID).
+			Where("email_version = ?", current.EmailVersion).
 			For("UPDATE").Scan(ctx)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNoChallenge
@@ -395,6 +408,9 @@ func useConfirmedFactor(ctx context.Context, tx bun.Tx, userID int64, f SecondFa
 
 // replaceRecoveryCodes deletes the user's recovery codes and stores digests.
 func replaceRecoveryCodes(ctx context.Context, tx bun.Tx, userID int64, digests []string) error {
+	if err := deleteEmailChange(ctx, tx, userID); err != nil {
+		return err
+	}
 	if _, err := tx.NewDelete().Model((*recoveryCode)(nil)).Where("user_id = ?", userID).Exec(ctx); err != nil {
 		return err
 	}
@@ -411,7 +427,7 @@ func replaceRecoveryCodes(ctx context.Context, tx bun.Tx, userID int64, digests 
 
 // deleteMFA deletes the user's authenticator, recovery codes and challenges.
 func deleteMFA(ctx context.Context, tx bun.Tx, userID int64) error {
-	for _, model := range []any{(*mfaTOTP)(nil), (*recoveryCode)(nil), (*mfaChallenge)(nil)} {
+	for _, model := range []any{(*emailChange)(nil), (*mfaTOTP)(nil), (*recoveryCode)(nil), (*mfaChallenge)(nil)} {
 		if _, err := tx.NewDelete().Model(model).Where("user_id = ?", userID).Exec(ctx); err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@
 CREATE TABLE mfa_challenges (
  token_hash text PRIMARY KEY,
  user_id bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ email_version bigint NOT NULL DEFAULT 0 CHECK (email_version >= 0),
  purpose text NOT NULL CHECK (purpose IN ('login', 'admin', 'admin_setup')),
  attempts int NOT NULL DEFAULT 0,
  created_at timestamptz NOT NULL DEFAULT now(),

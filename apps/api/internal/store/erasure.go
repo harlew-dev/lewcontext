@@ -170,6 +170,19 @@ func (s *Store) eraseAccount(ctx context.Context, tx bun.Tx, target accountToEra
 	if err := redactEmail(ctx, tx, target.Email, pseudonym); err != nil {
 		return err
 	}
+	var history []userEmailHistory
+	if err := tx.NewSelect().Model(&history).Where("user_id = ?", target.ID).Scan(ctx); err != nil {
+		return err
+	}
+	for _, address := range history {
+		for _, q := range redactions(tx, address.Email, pseudonym) {
+			// Release is a hard upper bound: a recycled inbox's later owner
+			// and its raw/pseudonymised events must remain untouched.
+			if _, err := q.Where("e.created_at <= ?", address.ReleasedAt).Exec(ctx); err != nil {
+				return err
+			}
+		}
+	}
 	_, err := tx.NewDelete().Model((*account)(nil)).Where("id = ?", target.ID).Exec(ctx)
 	return err
 }
@@ -201,6 +214,9 @@ func redactions(db bun.IDB, email string, pseudonym func(string) string) []*bun.
 		db.NewUpdate().Model((*eventRecord)(nil)).
 			Set(`payload = e.payload || jsonb_build_object('email', ?::text) || CASE WHEN e.payload \? 'name' THEN jsonb_build_object('name', ?::text) ELSE '{}'::jsonb END`, Redacted, Redacted).
 			Where(`e.payload \? 'email' AND lower(e.payload->>'email') IN (?)`, matches),
+		db.NewUpdate().Model((*eventRecord)(nil)).
+			Set(`payload = jsonb_set(e.payload, '{previousEmail}', to_jsonb(?::text))`, Redacted).
+			Where(`e.payload \? 'previousEmail' AND lower(e.payload->>'previousEmail') IN (?)`, matches),
 		db.NewUpdate().Model((*eventRecord)(nil)).
 			Set(`payload = jsonb_set(e.payload, '{filters,email}', to_jsonb(?::text))`, Redacted).
 			Where("e.name IN (?)", searches).

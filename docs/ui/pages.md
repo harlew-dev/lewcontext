@@ -47,6 +47,8 @@ The admin dashboard's Alerts pages (`/admin/:key/alerts`, `/admin/:key/alerts/:a
 
 ## Signed-in pages
 
+**Email changes:** Account & security (`pages/app/settings/index.tsx`) has an editable, initially blurred, `guarded` email field (a shield with the tooltip “Protected”); Save saves a changed name at once, then opens the shared dialog for a changed email, already at confirming account access. Onboarding offers **Change email address** in its account menu. The required-verification page offers it before sending a code and during code entry, so losing the current inbox does not strand an authenticated account. All three mount the shared `ChangeEmailDialog` outside surrounding forms. Completion renews the session and shows a success screen in the dialog; settings and onboarding stay where they are once it is dismissed, while the gate then returns through its existing safe `next` handling after the replacement is verified. No new page URL or browser storage is introduced.
+
 Pages under `pages/app/` (except `/app` and onboarding) sit inside the **layout route** `pages/app/layout.tsx` in `routes.ts`. It wraps them in `ApplicationLayout`, which stays mounted between pages (including when switching workspaces), so sidebar state and the sliding current-page indicator survive navigation. A page renders only its content, reads the session with `useSession()` and the workspace with `useWorkspace()`, and fetches its own data. The layout wraps each page in `PageTransition` keyed by pathname, so a new page fades in ([design.md](design.md#styling-rules)):
 
 ```tsx

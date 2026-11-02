@@ -43,7 +43,11 @@ func (s *Server) BeginMFASetup(w http.ResponseWriter, r *http.Request, user stor
 		InternalError(w, r, err)
 		return
 	}
-	err = s.Repo.SetUpMFA(r.Context(), user.ID, sealed)
+	err = s.Repo.SetUpMFA(r.Context(), user, sealed)
+	if errors.Is(err, store.ErrNoChallenge) {
+		Fail(w, 401, MFASignInAgain)
+		return
+	}
 	if errors.Is(err, store.ErrMFAEnabled) {
 		Fail(w, 409, "Two-factor authentication is already on.")
 		return
@@ -70,6 +74,9 @@ func (s *Server) ConfirmMFASetup(w http.ResponseWriter, r *http.Request, user st
 	factor := s.totpFactor(r.Context(), user, code)
 	err = s.Repo.EnableMFA(r.Context(), user, sessionHash, factor, digests)
 	switch {
+	case errors.Is(err, store.ErrNoChallenge):
+		Fail(w, 401, MFASignInAgain)
+		return nil, false
 	case errors.Is(err, store.ErrMFAEnabled):
 		Fail(w, 409, "Two-factor authentication is already on.")
 		return nil, false
@@ -151,7 +158,11 @@ func (s *Server) StartMFAChallenge(w http.ResponseWriter, r *http.Request, user 
 		return
 	}
 	expires := time.Now().Add(auth.MFAChallengeLifetime)
-	if err := s.Repo.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, expires); err != nil {
+	if err := s.Repo.CreateMFAChallenge(r.Context(), user, auth.Digest(token), purpose, expires); err != nil {
+		if errors.Is(err, store.ErrNoChallenge) {
+			s.EndMFAChallenge(w, MFASignInAgain)
+			return
+		}
 		InternalError(w, r, err)
 		return
 	}

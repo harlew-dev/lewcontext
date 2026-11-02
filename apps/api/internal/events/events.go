@@ -30,6 +30,7 @@ var Catalogue = []Event{
 	PasswordResetRequested{}, PasswordResetSent{}, PasswordResetCompleted{},
 	RegistrationRequested{}, RegistrationSent{}, RegistrationChecked{},
 	EmailVerificationRequested{}, EmailVerificationSent{}, EmailVerified{},
+	EmailChangeRequested{}, EmailChangeSent{}, EmailChangeChecked{}, EmailChangeCancelled{}, EmailChanged{},
 	MFAEnabled{}, MFADisabled{}, MFAChecked{}, RecoveryCodesCreated{},
 	WorkspaceCreated{}, WorkspaceRenamed{}, WorkspaceDeleted{},
 	WorkspaceMemberUpdated{}, WorkspaceMemberRemoved{}, WorkspaceMemberLeft{},

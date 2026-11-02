@@ -302,36 +302,60 @@ function QueueStats({ mail }: { mail: AdminMail }) {
     </div>
   );
 }
-const kinds: ChartSeries<MailKind>[] = [
+// Keep five distinguishable series: group emailed codes and informational
+// notices, leaving one series for completed-change security notifications.
+type VolumeKind =
+  | "password_reset"
+  | "invitation"
+  | "email_codes"
+  | "account_exists"
+  | "email_changed";
+const kinds: ChartSeries<VolumeKind>[] = [
   { key: "password_reset", label: "Reset links" },
   { key: "invitation", label: "Invitations" },
-  { key: "registration_code", label: "Sign-up codes" },
-  { key: "account_exists", label: "“You already have an account”" },
-  { key: "email_verification", label: "Verification codes" },
+  { key: "email_codes", label: "Email codes" },
+  { key: "account_exists", label: "Existing-account notices" },
+  { key: "email_changed", label: "Email-change security notices" },
 ];
 const hour = 60 * 60 * 1000;
 // One row per hour of the window, oldest first, empty hours included.
-function volumeRows(mail: AdminMail): ChartRow<MailKind>[] {
+function volumeRows(mail: AdminMail): ChartRow<VolumeKind>[] {
   const hours = mail.window === "7d" ? 7 * 24 : 24;
   const last = Math.floor(Date.now() / hour) * hour;
-  const counts = new Map<number, Record<MailKind, number>>();
+  const counts = new Map<number, Record<VolumeKind, number>>();
   for (let i = hours - 1; i >= 0; i--) {
     counts.set(last - i * hour, {
       password_reset: 0,
       invitation: 0,
-      registration_code: 0,
+      email_codes: 0,
       account_exists: 0,
-      email_verification: 0,
+      email_changed: 0,
     });
   }
   for (const v of mail.volume) {
     const bucket = counts.get(new Date(v.hour).getTime());
-    if (bucket) bucket[v.kind] += v.count;
+    const kind = volumeKind(v.kind);
+    if (bucket) bucket[kind] += v.count;
   }
   return [...counts].map(([time, values]) => ({
     label: hourLabel(time, mail.window),
     values,
   }));
+}
+function volumeKind(kind: MailKind): VolumeKind {
+  switch (kind) {
+    case "registration_code":
+    case "email_verification":
+    case "email_change_code":
+      return "email_codes";
+    case "email_change_exists":
+      return "account_exists";
+    case "email_changed_previous":
+    case "email_changed_current":
+      return "email_changed";
+    default:
+      return kind;
+  }
 }
 // "14:00" over a day, "Oct 30, 14:00" over a week, in UTC like every date.
 function hourLabel(time: number, window: MailWindow): string {
@@ -371,6 +395,10 @@ function Volume({ mail }: { mail: AdminMail }) {
   );
 }
 const requestKinds: Record<RequestKind, { label: string; gap: string }> = {
+  email_change: {
+    label: "Email changes",
+    gap: "A request gets a code or an existing-account notice. Cancelled, expired and blocked requests send nothing; direct changes need no code.",
+  },
   password_reset: {
     label: "Password resets",
     gap: "Addresses without an account get nothing, so a wide gap is someone trying addresses.",
@@ -438,6 +466,9 @@ function TopRecipients({ mail }: { mail: AdminMail }) {
               <TableHeader className="text-right max-sm:hidden">
                 Sign-ups
               </TableHeader>
+              <TableHeader className="text-right max-sm:hidden">
+                Email changes
+              </TableHeader>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -464,6 +495,9 @@ function TopRecipients({ mail }: { mail: AdminMail }) {
                 </TableCell>
                 <TableCell className="text-right tabular-nums max-sm:hidden">
                   {r.registrations}
+                </TableCell>
+                <TableCell className="text-right tabular-nums max-sm:hidden">
+                  {r.emailChanges}
                 </TableCell>
               </TableRow>
             ))}

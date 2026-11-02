@@ -148,8 +148,8 @@ function okSummary(): EventSummary {
       total: 4,
       series: [...failureKinds],
       buckets: [
-        { start, counts: [3, 0, 0, 0, 0] },
-        { start: next, counts: [0, 1, 0, 0, 0] },
+        { start, counts: [3, 0, 0, 0, 0, 0] },
+        { start: next, counts: [0, 1, 0, 0, 0, 0] },
       ],
     },
     limitsReached: 1,
@@ -857,6 +857,7 @@ const mail: AdminMail = {
       resets: 5,
       invitations: 0,
       registrations: 0,
+      emailChanges: 0,
     },
   ],
   lastDeliveredAt: null,
@@ -867,6 +868,44 @@ const mail: AdminMail = {
   },
 };
 describe("the Mail page", () => {
+  it("counts email-change codes and informational notices without exceeding five chart series", async () => {
+    const hour = new Date(
+      Math.floor(Date.now() / 3_600_000) * 3_600_000,
+    ).toISOString();
+    stubApi({
+      "GET /api/admin/me": { body: me },
+      "GET /api/admin/mail": {
+        body: {
+          ...mail,
+          volume: [
+            { hour, kind: "email_change_code", count: 2 },
+            { hour, kind: "email_change_exists", count: 1 },
+          ],
+          requests: [{ kind: "email_change", requested: 3, sent: 3 }],
+        },
+      },
+      "GET /api/admin/deliveries": { body: { data: [], next: null } },
+    });
+    renderAdmin(`/admin/${key}/mail`);
+    await screen.findByText(/3 emails sent in the last 24 hours/);
+    const rows = within(
+      screen.getByRole("table", { name: "Emails sent per hour" }),
+    ).getAllByRole("row");
+    expect(
+      within(rows[24])
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["0", "0", "2", "1", "0", "3"]);
+    const request = screen.getByRole("row", {
+      name: /Email changes A request gets/,
+    });
+    expect(
+      within(request)
+        .getAllByRole("cell")
+        .slice(-2)
+        .map((cell) => cell.textContent),
+    ).toEqual(["3", "3"]);
+  });
   it("shows the queue, the volume as a table, frequent addresses and the failed tab first", async () => {
     const hour = new Date(
       Math.floor(Date.now() / 3_600_000) * 3_600_000,

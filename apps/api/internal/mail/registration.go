@@ -23,6 +23,11 @@ var AccountExistsPerAccount = struct {
 // RegistrationStore is what the sign-up listener needs: *store.Store.
 type RegistrationStore interface {
 	IssueRegistrationCode(ctx context.Context, request, codeHash string) (email string, existing *store.User, err error)
+	AccountNoticeStore
+}
+
+// AccountNoticeStore supplies the shared informational account-exists cap.
+type AccountNoticeStore interface {
 	CountHit(ctx context.Context, key string, window time.Duration) (hits int, resetsAt time.Time, err error)
 	Record(ctx context.Context, e events.Event, scope store.EventScope) error
 }
@@ -83,7 +88,7 @@ func sendAccountExists(ctx context.Context, s RegistrationStore, m *Mailer, u st
 // account's AccountExistsPerAccount, on the delivery's first attempt only, so
 // retrying a failed send doesn't spend more of it. The first refusal in a
 // window records rate_limit.reached, as a request's would.
-func allowAccountExists(ctx context.Context, s RegistrationStore, u store.User, d events.Delivered, limits bool) (bool, error) {
+func allowAccountExists(ctx context.Context, s AccountNoticeStore, u store.User, d events.Delivered, limits bool) (bool, error) {
 	if !limits || d.Attempt > 1 {
 		return true, nil
 	}
@@ -99,7 +104,7 @@ func allowAccountExists(ctx context.Context, s RegistrationStore, u store.User, 
 // EmailVerificationStore is what the signed-in verification listener needs:
 // *store.Store.
 type EmailVerificationStore interface {
-	IssueEmailVerification(ctx context.Context, publicID, codeHash string, expires time.Time) (store.User, error)
+	IssueEmailVerification(ctx context.Context, publicID, email, codeHash string, expires, requestedAt time.Time) (store.User, error)
 	Record(ctx context.Context, e events.Event, scope store.EventScope) error
 }
 
@@ -116,7 +121,7 @@ func EmailVerification(s EmailVerificationStore, m *Mailer, keys *auth.Keys) fun
 		if err != nil {
 			return err
 		}
-		user, err := s.IssueEmailVerification(ctx, e.User, keys.EmailCodeDigest(code), time.Now().Add(auth.EmailCodeLifetime))
+		user, err := s.IssueEmailVerification(ctx, e.User, e.Email, keys.EmailCodeDigest(code), d.OccurredAt.Add(auth.EmailCodeLifetime), d.OccurredAt)
 		if errors.Is(err, store.ErrAlreadyVerified) {
 			return nil
 		}

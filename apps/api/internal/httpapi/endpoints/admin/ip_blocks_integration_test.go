@@ -119,7 +119,7 @@ func TestAdminIPBlocks(t *testing.T) {
 		t.Fatalf("admin.ip.unblocked: %+v", e.Payload)
 	}
 	// The cleanup deletes expired blocks.
-	apitest.Must(0, s.Repo.Cleanup(ctx))(t)
+	apitest.Must(0, s.Repo.Cleanup(ctx, s.EmailPseudonym))(t)
 	if n := apitest.Must(db.NewSelect().TableExpr("ip_blocks").Count(ctx))(t); n != 2 {
 		t.Fatalf("blocks after the cleanup: %d", n)
 	}

@@ -138,6 +138,7 @@ func minimisePayload(name string, raw json.RawMessage, pseudonym func(string) st
 		return nil, err
 	}
 	minimiseEmail(payload, "email", pseudonym)
+	minimiseEmail(payload, "previousEmail", pseudonym)
 	if q, ok := payload["q"].(string); ok && strings.Contains(q, "@") {
 		minimiseEmail(payload, "q", pseudonym)
 	}

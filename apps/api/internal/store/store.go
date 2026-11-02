@@ -28,6 +28,10 @@ type User struct {
 	// or a password reset link), or nil: always set for accounts made with
 	// EMAIL_VERIFICATION on.
 	EmailVerifiedAt *time.Time `bun:"email_verified_at" json:"emailVerifiedAt"`
+	// EmailVersion and EmailChangedAt guard authentication and queued work
+	// against a previous period of address ownership. Never public fields.
+	EmailVersion   int64      `json:"-"`
+	EmailChangedAt *time.Time `json:"-"`
 	// MFAEnabledAt is when two-factor authentication was turned on, or nil
 	// while it's off. Read only where a query selects it (mfaEnabledAt);
 	// only ever sent in the user's own session responses.

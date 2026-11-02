@@ -32,6 +32,68 @@ function renderPage() {
   );
 }
 describe("the verify-email page", () => {
+  it.each([false, true])(
+    "can replace the unreachable inbox from the code step: %s",
+    async (atCode) => {
+      const pending = {
+        email: "replacement@example.test",
+        expiresAt: "2030-01-01T12:15:00Z",
+        state: "code",
+      };
+      const api = stubApi({
+        "GET /api/auth/me": { body: unverified },
+        "POST /api/auth/email-verification": { status: 202 },
+        "GET /api/auth/email-change": { body: { pending: null } },
+        "POST /api/auth/email-change": { status: 202, body: { pending } },
+        "PATCH /api/auth/email-change": {
+          body: {
+            ...unverified,
+            csrfToken: "rotated",
+            user: {
+              ...unverified.user,
+              email: pending.email,
+              emailVerifiedAt: "2026-11-02T12:00:00Z",
+            },
+          },
+        },
+      });
+      renderPage();
+      await screen.findByRole("button", { name: "Send code" });
+      if (atCode) {
+        fireEvent.click(screen.getByRole("button", { name: "Send code" }));
+        await screen.findByLabelText("Verification code");
+      }
+      fireEvent.click(
+        screen.getByRole("button", { name: "Change email address" }),
+      );
+      fireEvent.change(await screen.findByLabelText("New email address"), {
+        target: { value: pending.email },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      fireEvent.change(screen.getByLabelText("Current password"), {
+        target: { value: "current password" },
+      });
+      // The gate's ordinary Send code may be present too: submit the dialog's form.
+      fireEvent.submit(
+        screen.getByLabelText("Current password").closest("form")!,
+      );
+      fireEvent.change(await screen.findByLabelText("Email change code"), {
+        target: { value: "482913" },
+      });
+      // The success screen comes first; the page goes on once it's dismissed.
+      expect(
+        await screen.findByRole("heading", { name: "Email address changed" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Account settings")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+      expect(await screen.findByText("Account settings")).toBeInTheDocument();
+      expect(api.sent("PATCH")[0]).toMatchObject({
+        url: "/api/auth/email-change",
+        body: { code: "482913" },
+        csrf: "csrf-7",
+      });
+    },
+  );
   it("sends a code only when asked, then goes on to ?next=", async () => {
     const api = stubApi({
       "GET /api/auth/me": { body: unverified },

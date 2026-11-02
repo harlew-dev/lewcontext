@@ -38,21 +38,26 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `auth.registration.requested` | `email` (no `user`: the request doesn't look the account up) | `register` and `register/resend` with verification on, for every request past the limits, taken email or not |
 | `auth.registration.sent` | `email`, `request` (the requested event's `evt_` ID), `existingAccount`, `user` when it exists | the `mail.registration` listener, after sending a code, or "You already have an account" to an email with one (not when `account-exists:per-account` held it back) |
 | `auth.registration.checked` | `email`, `ok`, `attempt` (this sign-up's try, from 1) | `CompleteRegistration`, for every code that reached the check |
-| `auth.email_verification.requested` | `user` | `POST /api/auth/email-verification`: a signed-in account asked for a code |
+| `auth.email_verification.requested` | `user`, `email` (ownership snapshot) | `POST /api/auth/email-verification`: a signed-in account asked for a code; issuance refuses an old address/ownership period |
 | `auth.email_verification.sent` | `user`, `request` | the `mail.email_verification` listener, after sending the code |
 | `auth.email_verified` | `user`, `via`: `code` / `password_reset` (completing a reset link, which went only to that inbox) | `VerifyEmail`, `ResetPassword` (only when the email wasn't verified yet) |
+| `auth.email_change.requested` | `user`, `email` (destination), `verificationRequired` | `CreateEmailChange`, after fresh account proof and request limits; direct-mode unavailable destinations also record this fact |
+| `auth.email_change.sent` | `user`, `request`, `existingAccount`, `kind`: `code`, `existing_account`, `previous_notice`, `current_notice` | the request listener or the independent old/new completion listeners, only after sending; delivery evidence stays out of the requester's export |
+| `auth.email_change.checked` | `user`, `ok`, `attempt` | each issued replacement-inbox code checked; wrong attempts commit even though the change does not |
+| `auth.email_change.cancelled` | `user` | explicit cancellation when a pending row existed |
+| `auth.email_changed` | `user`, `email`, `previousEmail`, `verifiedBy`: `code` / `none`, app/admin session revocation counts | committed completion, in the same transaction as the address, history and revocations; queues independent security notices |
 | `auth.login_attempted` | `email`, `user` (if the account exists), `result`: `succeeded` / `mfa_required` (right password, a code still needed) / `wrong_password` / `unknown_account` / `suspended` (a [suspended](auth.md#suspended-accounts) account's right password, or right code: refused 403) | `login`, for every attempt that reaches the password check |
 | `auth.logged_in` | `user` | `CreateSession`, on login (after the code, with two-factor authentication on; not on registration or a password change) |
 | `auth.logged_out` | `user` | `DeleteSession` |
 | `auth.other_sessions_revoked` | `user`, `count` | `DeleteOtherSessions`, only when it signed at least one session out |
-| `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` / `mfa_setup` / `mfa_disable` / `recovery_codes` / `export_data` | both password endpoints (changing the password only without MFA), both deletions that need it, setting up, turning off and renewing the codes of two-factor authentication, and downloading the account's data, whenever the current password was checked |
+| `auth.password_checked` | `user`, `ok`, `step`: `verify` / `update` / `destroy_workspace` / `destroy_account` / `mfa_setup` / `mfa_disable` / `recovery_codes` / `export_data` / `email_change` | password confirmations, including email-change requests without MFA; never the password |
 | `auth.password_changed` | `user`, `otherSessionsRevoked` | `ChangePassword` |
 | `auth.password_reset.requested` | `email` (no `user`: the request doesn't look the account up) | `requestPasswordReset`, for every request that passes the rate limits, whether or not an account uses the email |
 | `auth.password_reset.sent` | `user`, `email`, `request` (the requested event's `evt_` ID) | the `mail.password_reset` listener, after writing the link |
 | `auth.password_reset.completed` | `user`, `otherSessionsRevoked` (every session the account had) | `ResetPassword` |
 | `auth.mfa.enabled` | `user`, `otherSessionsRevoked` | `EnableMFA`: the first code from the app turned two-factor authentication on (the first recovery codes come with it) |
 | `auth.mfa.disabled` | `user`, `reason`: `user` / `reset` (the operator's `admin reset-mfa`, with no actor, or the dashboard's Reset two-factor authentication, with the admin as actor beside `admin.user.mfa_reset`) | `DisableMFA`, `ResetMFA`, `ResetUserMFA` |
-| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `admin_login` / `admin_step_up` (opening an admin session's step-up window) / `enable` (also the admin door's setup) / `disable` / `recovery_codes` / `password_update` (changing the password with MFA on), and `recoveryCodesLeft` when a recovery code worked | every second-factor check that reached the code (not those a rate limit refused) |
+| `auth.mfa.checked` | `user`, `ok`, `method`: `totp` / `recovery_code`, `step`: `login` / `admin_login` / `admin_step_up` / `enable` / `disable` / `recovery_codes` / `password_update` / `email_change`, and `recoveryCodesLeft` when a recovery code was consumed | second-factor checks that reached the code, not requests refused by a limit |
 | `auth.recovery_codes.created` | `user`, `count` | `CreateRecoveryCodes`: a new set replaced the old |
 | `auth.profile_updated` | `user`, `changes.name` (`from`, `to`) | `UpdateProfile`, only when the name changed |
 | `auth.suspended` | `user`, `by`: `admin` (beside `admin.user.suspended`, which holds the reason; the admin is the actor) / `cli` (`admin suspend`, no actor, `reason` here), `sessionsRevoked` (app and admin), `invitationsRevoked`; `user_id` set | `SuspendUser` |
@@ -126,6 +131,8 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `server.stopped` | `server`, `reason`: `signal` (asked to stop) or `failed` (its listener failed, or startup failed after it was recorded). A crash records none | `RecordServerStop`, in a graceful shutdown's final phase ([observability.md](observability.md#shutdown)) |
 
 ## Groups
+
+Email changes reuse the existing password/MFA checked facts with `step: email_change`. Their audit class is the ordinary one-year `auth.*` class. Both `email` and `previousEmail` are minimised after 30 days and found by the admin email filter and indexed erasure; neither survives minimisation as raw event data. The separate former-address registry is retained only for erasure references ([compliance](../compliance.md#erasure)). `auth.email_change.sent` is excluded from account exports because its outcome could reveal destination availability; its `request` names the request event for codes/informational mail and the committed change event for completion notices.
 
 The admin dashboard's Events page picks names in groups (`internal/events/groups.go`, `events.Groups()`, served by `GET /api/admin/catalogue` as `eventGroups`). They're built from the catalogue, so a new event joins its group without anyone remembering:
 

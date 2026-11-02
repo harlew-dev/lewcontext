@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import {
   ArrowRightStartOnRectangleIcon,
+  AtSymbolIcon,
   EllipsisHorizontalIcon,
   TrashIcon,
 } from "@heroicons/react/16/solid";
 import { DeleteAccountDialog } from "@/components/app/account/delete-account-dialog";
+import { ChangeEmailDialog } from "@/components/app/account/change-email-dialog";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import {
@@ -107,6 +109,7 @@ function AccountMenu() {
   const navigate = useNavigate();
   const clearCache = useClearCache();
   const [deleting, setDeleting] = useState(false);
+  const [changingEmail, setChangingEmail] = useState(false);
   // Each opening starts with an empty password.
   const [opened, setOpened] = useState(0);
   async function signOut() {
@@ -131,6 +134,11 @@ function AccountMenu() {
             </Text>
           </DropdownHeader>
           <DropdownDivider />
+          <DropdownItem onClick={() => setChangingEmail(true)}>
+            <AtSymbolIcon />
+            <DropdownLabel>Change email address</DropdownLabel>
+          </DropdownItem>
+          <DropdownDivider />
           <DropdownItem onClick={signOut}>
             <ArrowRightStartOnRectangleIcon />
             <DropdownLabel>Sign out</DropdownLabel>
@@ -148,6 +156,10 @@ function AccountMenu() {
           </DropdownItem>
         </DropdownMenu>
       </Dropdown>
+      <ChangeEmailDialog
+        open={changingEmail}
+        onClose={() => setChangingEmail(false)}
+      />
       <DeleteAccountDialog
         key={opened}
         open={deleting}

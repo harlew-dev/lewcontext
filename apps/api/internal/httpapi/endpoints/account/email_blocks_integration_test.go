@@ -242,7 +242,7 @@ func TestDeadBlockLinks(t *testing.T) {
 	if countBlocks(t, db, expired.Email) != 0 {
 		t.Fatal("a dead link blocked its address")
 	}
-	if err := s.Repo.Cleanup(ctx); err != nil {
+	if err := s.Repo.Cleanup(ctx, s.EmailPseudonym); err != nil {
 		t.Fatal(err)
 	}
 	if n := apitest.Must(db.NewSelect().TableExpr("email_block_links").Count(ctx))(t); n != 0 {

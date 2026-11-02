@@ -78,6 +78,8 @@ Without a web build, the server serves the API only in development (Vite serves 
 
 ## Environment
 
+Email changes use the existing session `emailVerification` capability: `off` completes after fresh account proof without requiring mail; `optional`/`required` require the replacement-inbox code. No new setting or SMTP-details capability is exposed. Mail-off operation still supports changing an address, while completion notifications are queued only when mail listeners are configured ([auth](auth.md#changing-an-email-address)).
+
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | (required) | Production requires `sslmode=verify-full` |

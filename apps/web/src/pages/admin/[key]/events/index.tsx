@@ -634,6 +634,7 @@ function SummaryCharts({
       to: bucketEnd(row.start, summary.bucketSeconds),
     });
   const phrase = windowPhrase(filters);
+  const failurePlot = summary.failures ? failureChart(summary.failures) : null;
   return (
     <>
       <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
@@ -675,21 +676,18 @@ function SummaryCharts({
         />
       </div>
       <div className="mt-12 grid gap-12 lg:grid-cols-2">
-        {summary.failures && (
+        {summary.failures && failurePlot && (
           <div>
             <Subheading>Failed checks over time</Subheading>
             <BarChart
               label="Failed checks over time"
               summary={failuresSentence(summary.failures)}
               rows={bucketRows(
-                summary.failures.buckets,
-                summary.failures.series,
+                failurePlot.buckets,
+                failurePlot.series.map(({ key }) => key),
                 summary.bucketSeconds,
               )}
-              series={summary.failures.series.map((kind) => ({
-                key: kind,
-                label: failureLabels[kind],
-              }))}
+              series={failurePlot.series}
               onSelect={zoom}
               selectHint="Click to zoom in"
               className="mt-2"
@@ -753,6 +751,34 @@ function failuresSentence(failures: Failures): string {
   const totals = kindTotals(failures);
   const top = totals.indexOf(Math.max(...totals));
   return `${failures.total.toLocaleString("en-US")} failed checks, most of them ${failureLabels[failures.series[top]].toLowerCase()} (${totals[top].toLocaleString("en-US")}).`;
+}
+
+// The API retains distinct audit categories. Combine both emailed-code
+// checks for presentation so the chart stays within its five-colour bound.
+function failureChart(failures: Failures) {
+  type Kind = Failures["series"][number];
+  type Group =
+    Exclude<Kind, "sign_up_code" | "email_change_code"> | "email_codes";
+  const group = (kind: Kind): Group =>
+    kind === "sign_up_code" || kind === "email_change_code"
+      ? "email_codes"
+      : kind;
+  const keys = [...new Set(failures.series.map(group))];
+  return {
+    series: keys.map((key) => ({
+      key,
+      label: key === "email_codes" ? "Email codes" : failureLabels[key],
+    })),
+    buckets: failures.buckets.map((bucket) => ({
+      start: bucket.start,
+      counts: keys.map((key) =>
+        failures.series.reduce(
+          (n, kind, i) => n + (group(kind) === key ? bucket.counts[i] : 0),
+          0,
+        ),
+      ),
+    })),
+  };
 }
 type BucketRow = ChartRow<string> & { start: string };
 function bucketRows(

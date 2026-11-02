@@ -105,6 +105,10 @@ Names are `<feature>:<counted by>` ([naming.md](../naming.md#rate-limits-httpapi
 | `email-code:per-email` | 10 / day | the email | every emailed code checked: `register/verify` (the sign-up's email) and `PATCH /api/auth/email-verification` (the account's), from any browser or IP. Each code also ends after 5 wrong tries | 429 "Too many attempts. Try again in …" |
 | `email-verification:per-email` | 3 / hour | the session user's email | `POST /api/auth/email-verification` | 429 "You’ve asked for too many codes recently. Try again in …" |
 | `email-verification:global` | 500 / hour | everyone | `POST /api/auth/email-verification`, after the per-email limit: caps the mail when `EMAIL_VERIFICATION_EXISTING=required` sends many accounts to verify. Logs a warning | 503 "Email verification is busy. Try again in a few minutes." |
+| `email-change:per-user` | 6 / hour | user | every email-change POST, including resends/replacements | 429 with wait |
+| `email-change:per-email` | 3 / hour | destination | every email-change POST, available, taken or blocked alike; applies even without mail | 429 with wait |
+| `email-change:global` | 200 / hour | everyone | after subject limits on email-change POST; block-only, no CAPTCHA | 503 with wait |
+| `email-change-complete:per-user` | 1 / day | user | after correct account/inbox proof and final availability, before committing the address; preserved pending request on refusal | 429 with wait |
 | `password-reset:per-ip` | 10 / hour | IP | database | reset requests: one IP can't mail many people | 429 |
 | `password-reset:per-email` | 3 / hour | email | database | reset requests, known email or not: caps mail to one inbox | 429 |
 | `password-reset:global` | challenge above 50, block above 100 / hour | everyone | database | reset requests: caps mail in a distributed flood. Logs a warning | 503 "Password reset is busy. Try again later." |
@@ -122,6 +126,8 @@ Register counts `auth:per-ip` → `auth:per-account` → `register:per-ip` → `
 **Not limited:** a wrong admin key (no query is made, and guessing 122 bits or more is hopeless), `GET /api/health` and `/api/health/live` (orchestrator probes; put them behind an edge limiter if they're ever public), `GET /api/policies` (answered from memory) and the page gate (`GET /app/*`, a session lookup only). Page and anonymous floods belong to an edge limiter.
 
 ## Quotas
+
+Email-change request/factor/code limits run before row-locking transactions. The code budget uses a session-bound pending snapshot whose event correlation is rechecked under the lock, so a concurrent resend cannot switch its metered destination. The one-per-day completion reservation uses the change's own transaction and connection after correct proof and final availability; it commits with success, or retains a refused-window counter/event without consuming a factor or replacing a pending request. This avoids nested pool checkouts and works even with one database connection. Codes and existing-account notices share the request's three-per-hour destination bound; only informational notices share `account-exists:per-account`, never completion warnings.
 
 | Quota | Max | Checked in | Under | Refusal |
 | --- | --- | --- | --- | --- |

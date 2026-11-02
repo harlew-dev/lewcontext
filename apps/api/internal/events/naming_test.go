@@ -19,6 +19,7 @@ var storedResources = map[string]string{
 	"auth.password_reset":     "a reset link (password_resets)",
 	"auth.registration":       "a sign-up waiting for its code (pending_registrations)",
 	"auth.email_verification": "an emailed verification code (email_verifications)",
+	"auth.email_change":       "a session-bound pending email change (email_changes); confirmed change-email plan",
 	"auth.mfa":                "the account's authenticator (mfa_totp)",
 	"auth.recovery_codes":     "the account's recovery codes (mfa_recovery_codes)",
 	"admin.session":           "one admin session (admin_sessions)",

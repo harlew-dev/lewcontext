@@ -86,6 +86,8 @@ func (h Password) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case errors.Is(err, store.ErrNoChallenge):
+		httpapi.Fail(w, 401, httpapi.MFASignInAgain)
 	case errors.Is(err, errWrongPassword):
 		httpapi.FailField(w, 422, "currentPassword", httpapi.WrongCurrentPassword)
 	case errors.Is(err, store.ErrWrongCode):

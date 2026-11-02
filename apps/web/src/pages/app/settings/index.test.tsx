@@ -105,10 +105,11 @@ describe("profile", () => {
     expect(tooltip).toHaveTextContent("Click to reveal");
     fireEvent.click(within(tooltip).getByRole("button"));
     expect(email).not.toHaveAttribute("data-blurred");
-    expect(email).toHaveAttribute("readonly");
+    // Editable: Save asks for account access, so the lock only says that.
+    expect(email).not.toHaveAttribute("readonly");
     expect(email).not.toBeDisabled();
     expect(screen.queryByText("Member since")).toBeNull();
-    const reason = "Your email can’t be changed";
+    const reason = "Protected";
     fireEvent.mouseEnter(screen.getByRole("img", { name: reason }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
   });
@@ -125,6 +126,158 @@ describe("profile", () => {
       await screen.findByText("Use a name of 1–80 characters."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("Ada");
+  });
+});
+describe("email changes", () => {
+  const next = {
+    ...rotated,
+    user: {
+      ...session.user,
+      name: "New name",
+      email: "changed@example.test",
+      emailVerifiedAt: null,
+    },
+    emailVerification: "off",
+  };
+  const directSession = () =>
+    testSession({ emailVerification: "off", csrfToken: "csrf-old" });
+  it("saves the name at once, then opens the dialog for the edited email", async () => {
+    const api = stubApi({
+      "PATCH /api/auth/me": { body: { ...session.user, name: "New name" } },
+      "GET /api/auth/email-change": { body: { pending: null } },
+      "POST /api/auth/email-change": { body: next },
+    });
+    renderPage(directSession());
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    type("Name", "New name");
+    type("Email address", " changed@example.test ");
+    // Typing in the field reveals it.
+    expect(screen.getByLabelText("Email address")).not.toHaveAttribute(
+      "data-blurred",
+    );
+    // Nothing explains the flow: Save always asks for account access.
+    expect(screen.queryByText(/confirm it’s you/)).toBeNull();
+    fireEvent.click(save);
+    // Starts at account access: the address was already typed.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("changed@example.test")).toBeVisible();
+    expect(api.sent("PATCH").map((sent) => sent.body)).toEqual([
+      { name: "New name" },
+    ]);
+    type("Current password", "current password");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Change email address" }),
+    );
+    // It stays open on a success screen until dismissed.
+    expect(
+      await within(dialog).findByText(/Your sign-in email is now/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByLabelText("Email address")).toHaveValue(
+      "changed@example.test",
+    );
+    expect(screen.getByLabelText("Email address")).toHaveAttribute(
+      "data-blurred",
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+  it("saves nothing but the email when only it changed", async () => {
+    const api = stubApi({
+      "GET /api/auth/email-change": { body: { pending: null } },
+    });
+    renderPage(directSession());
+    type("Email address", "changed@example.test");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(api.sent("PATCH")).toEqual([]);
+  });
+  it("doesn't open the dialog when the name can't be saved", async () => {
+    stubApi({
+      "PATCH /api/auth/me": {
+        status: 422,
+        body: { error: "Use a name of 1–80 characters." },
+      },
+      "GET /api/auth/email-change": { body: { pending: null } },
+    });
+    renderPage(directSession());
+    type("Name", "Ada");
+    type("Email address", "changed@example.test");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Use a name of 1–80 characters."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByLabelText("Email address")).toHaveValue(
+      "changed@example.test",
+    );
+  });
+  describe("with an email change request already sent", () => {
+    const pendingRequest = {
+      email: "waiting@example.test",
+      expiresAt: "2030-01-01T12:15:00Z",
+      state: "code",
+    };
+    const verified = () => testSession({ csrfToken: "csrf-old" });
+    it("says so only then, and Continue resumes it at its code", async () => {
+      stubApi({
+        "GET /api/auth/email-change": { body: { pending: pendingRequest } },
+      });
+      renderPage(verified());
+      const description = await screen.findByText(
+        /You have an email change request\./,
+      );
+      // No address is spelled out in the page; the field stays blurred.
+      expect(description).not.toHaveTextContent("waiting@example.test");
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+      expect(
+        await screen.findByLabelText("Email change code"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/active change request/)).toBeNull();
+    });
+    it("replaces it when another address is saved, without mentioning it", async () => {
+      const api = stubApi({
+        "GET /api/auth/email-change": { body: { pending: pendingRequest } },
+        "POST /api/auth/email-change": {
+          status: 202,
+          body: { pending: { ...pendingRequest, email: "other@example.test" } },
+        },
+      });
+      renderPage(verified());
+      await screen.findByText(/You have an email change request\./);
+      // With verification on the label carries its status badge.
+      fireEvent.change(screen.getByLabelText(/^Email address/), {
+        target: { value: "other@example.test" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText("other@example.test")).toBeVisible();
+      expect(within(dialog).queryByText(/request|already|active/i)).toBeNull();
+      type("Current password", "current password");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Send code" }),
+      );
+      await within(dialog).findByLabelText("Email change code");
+      expect(api.sent("POST").map((sent) => sent.body)).toEqual([
+        { email: "other@example.test", currentPassword: "current password" },
+      ]);
+    });
+    it("shows nothing when there is no request", async () => {
+      stubApi({ "GET /api/auth/email-change": { body: { pending: null } } });
+      renderPage(verified());
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^Email address/)).toBeInTheDocument(),
+      );
+      expect(screen.queryByText(/email change request/)).toBeNull();
+      expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+    });
+  });
+  it("treats the current address, however typed, as no change", () => {
+    renderPage(directSession());
+    type("Email address", ` ${session.user.email.toUpperCase()} `);
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 });
 describe("email verification", () => {
@@ -155,7 +308,7 @@ describe("email verification", () => {
       screen.getByLabelText("Email address Not verified"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("We haven’t confirmed this address."),
+      screen.getByText(/We haven’t confirmed this address\./),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
     const dialog = await screen.findByRole("dialog");

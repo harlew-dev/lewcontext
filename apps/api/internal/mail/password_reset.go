@@ -15,7 +15,7 @@ const ResetLinkLifetime = 30 * time.Minute
 
 // ResetStore is what the password reset listener needs: *store.Store.
 type ResetStore interface {
-	IssuePasswordReset(ctx context.Context, email, hash string, expires time.Time) (store.User, error)
+	IssuePasswordReset(ctx context.Context, email, hash string, expires, requestedAt time.Time) (store.User, error)
 	Record(ctx context.Context, e events.Event, scope store.EventScope) error
 }
 
@@ -36,7 +36,7 @@ func PasswordReset(s ResetStore, m *Mailer, origin string) func(context.Context,
 		if err != nil {
 			return err
 		}
-		user, err := s.IssuePasswordReset(ctx, e.Email, auth.Digest(token), time.Now().Add(ResetLinkLifetime))
+		user, err := s.IssuePasswordReset(ctx, e.Email, auth.Digest(token), time.Now().Add(ResetLinkLifetime), d.OccurredAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}

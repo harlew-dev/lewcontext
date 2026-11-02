@@ -86,12 +86,16 @@ func (b *blockList) block(email string) {
 
 // Example data for every template, so each one is rendered at least once.
 var examples = map[Template]any{
-	ForgotPassword:      ForgotPasswordData{Name: "Ada", URL: "http://localhost:3000/auth/forgot-password/abc"},
-	WorkspaceInvitation: WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc", Home: "http://localhost:3000/"},
-	VerifyEmail:         VerifyEmailData{Code: "482 913"},
-	AccountExists:       AccountExistsData{Name: "Ada", LoginURL: "http://localhost:3000/auth/login?notice=account-exists", ResetURL: "http://localhost:3000/auth/forgot-password"},
-	Alert:               AlertData{Kind: "opened", Level: "Critical", Title: "Failed sign-ins", Value: "1,204", Opened: "1 Nov 2026, 14:30 UTC", Meaning: "Something happened."},
-	AlertDigest:         AlertDigestData{Count: "2", Alerts: []AlertDigestItem{{Level: "Warning", Title: "Failed sign-ins", Value: "12", Opened: "1 Nov 2026, 14:30 UTC"}, {Level: "Critical", Title: "Failed deliveries", Value: "10", Opened: "1 Nov 2026, 14:31 UTC"}}},
+	ForgotPassword:       ForgotPasswordData{Name: "Ada", URL: "http://localhost:3000/auth/forgot-password/abc"},
+	WorkspaceInvitation:  WorkspaceInvitationData{Workspace: "Acme", Inviter: "Ada", InviterEmail: "ada@example.com", Role: "a member", URL: "http://localhost:3000/auth/invitations/abc", Home: "http://localhost:3000/"},
+	VerifyEmail:          VerifyEmailData{Code: "482 913"},
+	EmailChangeCode:      VerifyEmailData{Code: "482 913"},
+	EmailChangeExists:    EmailChangeNoticeData{SettingsURL: "http://localhost:3000/app/settings"},
+	EmailChangedPrevious: EmailChangeNoticeData{SettingsURL: "http://localhost:3000/app/settings"},
+	EmailChangedCurrent:  EmailChangeNoticeData{SettingsURL: "http://localhost:3000/app/settings"},
+	AccountExists:        AccountExistsData{Name: "Ada", LoginURL: "http://localhost:3000/auth/login?notice=account-exists", ResetURL: "http://localhost:3000/auth/forgot-password"},
+	Alert:                AlertData{Kind: "opened", Level: "Critical", Title: "Failed sign-ins", Value: "1,204", Opened: "1 Nov 2026, 14:30 UTC", Meaning: "Something happened."},
+	AlertDigest:          AlertDigestData{Count: "2", Alerts: []AlertDigestItem{{Level: "Warning", Title: "Failed sign-ins", Value: "12", Opened: "1 Nov 2026, 14:30 UTC"}, {Level: "Critical", Title: "Failed deliveries", Value: "10", Opened: "1 Nov 2026, 14:31 UTC"}}},
 }
 
 // subjectFor is the subject a template's example is sent with.
@@ -106,8 +110,10 @@ func subjectFor(t Template) string {
 // name) unless the email has no name.
 func shows(t Template) string {
 	switch t {
-	case VerifyEmail:
+	case VerifyEmail, EmailChangeCode:
 		return "482 913"
+	case EmailChangeExists, EmailChangedPrevious, EmailChangedCurrent:
+		return "Account settings"
 	case Alert:
 		return "1,204"
 	case AlertDigest:
@@ -118,7 +124,7 @@ func shows(t Template) string {
 
 // withoutLinks are the emails that carry no link: a code is typed, never
 // clicked.
-var withoutLinks = map[Template]bool{VerifyEmail: true, Alert: true, AlertDigest: true}
+var withoutLinks = map[Template]bool{VerifyEmail: true, EmailChangeCode: true, Alert: true, AlertDigest: true}
 
 // Every email is a whole document from the shared layout, titled with its own
 // subject.
@@ -154,7 +160,7 @@ func TestEveryTemplateRenders(t *testing.T) {
 			t.Fatalf("%s rendered badly: %+v", msg.Template, msg)
 		}
 		// The plain-text part is text: the link as it is, and no markup.
-		if strings.Contains(msg.Text, "http://localhost:3000/auth/") == withoutLinks[msg.Template] || strings.Contains(msg.Text, "<") {
+		if strings.Contains(msg.Text, "http://localhost:3000/") == withoutLinks[msg.Template] || strings.Contains(msg.Text, "<") {
 			t.Fatalf("%s plain text:\n%s", msg.Template, msg.Text)
 		}
 	}
@@ -319,7 +325,7 @@ type resets struct {
 	recorded []events.Event
 }
 
-func (r *resets) IssuePasswordReset(_ context.Context, email, hash string, _ time.Time) (store.User, error) {
+func (r *resets) IssuePasswordReset(_ context.Context, email, hash string, _, _ time.Time) (store.User, error) {
 	u, ok := r.users[email]
 	if !ok {
 		return u, sql.ErrNoRows

@@ -1,0 +1,9 @@
+{{ define "content" -}}
+Use this code to change an existing account’s sign-in email address to this inbox:
+
+{{ .Code }}
+
+Enter it only in the browser where you requested the change. It expires 15 minutes after the request. Never share it with anyone.
+
+If you did not request this change, ignore this email. The code alone does not give access to an account.
+{{- end }}

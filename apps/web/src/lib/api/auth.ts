@@ -35,6 +35,24 @@ export function verificationRequired(error: unknown): boolean {
 }
 // A sign-up waiting for its code, as its own browser sees it.
 export type PendingRegistration = { email: string; expiresAt: string };
+// A pending replacement belongs to this browser session, never another one.
+export type PendingEmailChange = {
+  email: string;
+  expiresAt: string;
+  state: "sending" | "code";
+};
+export type EmailChangeInput = { email: string } & (
+  { currentPassword: string } | { code: string }
+);
+export type EmailChangeResult = { pending: PendingEmailChange } | Session;
+const emailChangePath = "/api/auth/email-change";
+const emailChangeRoutes = {
+  show: () => path<{ pending: PendingEmailChange | null }>(emailChangePath),
+  store: () => emailChangePath,
+  update: () => emailChangePath,
+  destroy: () => emailChangePath,
+  matches: (key: unknown) => key === emailChangePath,
+};
 // Login with two-factor authentication on starts no session: the password
 // was right, and the code goes to loginMfa (the challenge is in a cookie).
 export type MfaRequired = { mfaRequired: true };
@@ -63,6 +81,7 @@ export const authRoutes = {
   registerResend: () => "/api/auth/register/resend",
   registerVerify: () => "/api/auth/register/verify",
   emailVerification: () => "/api/auth/email-verification",
+  emailChange: () => emailChangeRoutes,
   logout: () => "/api/auth/logout",
   password: () => "/api/auth/password",
   verifyPassword: () => "/api/auth/password/verify",
@@ -131,6 +150,19 @@ export function auth(http: Http) {
     registerVerify: (code: string) =>
       http.send<SignedIn>("POST", authRoutes.registerVerify(), { code }),
     emailVerification: () => emailVerification(http),
+    emailChange: () => ({
+      show: () => http.get(emailChangeRoutes.show()),
+      store: (input: EmailChangeInput) =>
+        http.send<EmailChangeResult>("POST", emailChangeRoutes.store(), {
+          email: input.email,
+          ...("code" in input
+            ? { code: input.code }
+            : { currentPassword: input.currentPassword }),
+        }),
+      update: (code: string) =>
+        http.send<Session>("PATCH", emailChangeRoutes.update(), { code }),
+      destroy: () => http.send<void>("DELETE", emailChangeRoutes.destroy()),
+    }),
     logout: () => http.send<void>("POST", authRoutes.logout(), {}),
     // Deletes the account and signs it out. A wrong password is an ApiError
     // with field "password"; the only owner of a workspace gets a 409 whose
@@ -141,7 +173,7 @@ export function auth(http: Http) {
     // with field "password"; past five a day, a 429.
     exportData: ({ password }: { password: string }) =>
       http.send<AccountExport>("POST", authRoutes.dataExport(), { password }),
-    // Saves the user's name; the email address can't change.
+    // Saves only the user's name; email changes have a separate security flow.
     updateProfile: ({ name }: ProfileInput) =>
       http.send<User>("PATCH", authRoutes.me(), { name }),
     // Checks the current password; failures are an ApiError with field "password".

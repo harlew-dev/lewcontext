@@ -175,7 +175,7 @@ func run() error {
 		select {
 		case <-ticker.C:
 			cleanup, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err := repository.Cleanup(cleanup)
+			err := repository.Cleanup(cleanup, api.EmailPseudonym)
 			cancel()
 			if err != nil {
 				slog.Error("session cleanup failed", observe.ErrorAttr(err))
@@ -254,11 +254,14 @@ func listen(bus *events.Bus, repository *store.Store, c config.Config) (*mail.Ma
 	}
 	events.Listen(bus, "mail.password_reset", mail.PasswordReset(repository, mailer, c.Origin))
 	events.Listen(bus, "mail.workspace_invitation", mail.SendInvitation(repository, mailer, c.Origin))
+	keys, err := auth.NewKeys(c.AppKey)
+	if err != nil {
+		return nil, err
+	}
+	events.Listen(bus, "mail.email_change", mail.EmailChange(repository, mailer, keys, c.Origin, c.RateLimits == config.RateLimitsOn))
+	events.Listen(bus, "mail.email_changed_previous", mail.EmailChangedNotice(repository, mailer, c.Origin, true))
+	events.Listen(bus, "mail.email_changed_current", mail.EmailChangedNotice(repository, mailer, c.Origin, false))
 	if c.Verify {
-		keys, err := auth.NewKeys(c.AppKey)
-		if err != nil {
-			return nil, err
-		}
 		events.Listen(bus, "mail.registration", mail.Registration(repository, mailer, keys, c.Origin, c.RateLimits == config.RateLimitsOn))
 		events.Listen(bus, "mail.email_verification", mail.EmailVerification(repository, mailer, keys))
 	}

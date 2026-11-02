@@ -23,6 +23,8 @@ var DataTables = []string{
 	"mfa_challenges",
 	"pending_registrations",
 	"email_verifications",
+	"email_changes",
+	"user_email_history",
 	"email_block_links",
 	"email_blocks",
 	"admins",

@@ -26,6 +26,9 @@ export {
 } from "./auth";
 export type {
   Credentials,
+  EmailChangeInput,
+  EmailChangeResult,
+  PendingEmailChange,
   MfaConfirmation,
   MfaSetup,
   RecoveryCodes,

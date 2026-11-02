@@ -27,18 +27,32 @@ var ErrResetInvalid = errors.New("password reset link is invalid")
 // email until expires, replacing any earlier link. It returns sql.ErrNoRows
 // when no account uses the email, or the account is suspended: a reset
 // wouldn't let it in, and a suspended account's requests send no email.
-func (s *Store) IssuePasswordReset(ctx context.Context, email, hash string, expires time.Time) (User, error) {
+func (s *Store) IssuePasswordReset(ctx context.Context, email, hash string, expires, requestedAt time.Time) (User, error) {
 	var u User
-	if err := s.DB.NewSelect().Model(&u).Where("email = ?", email).Where("NOT EXISTS (?)", suspendedUser(s.DB, "u.id")).Scan(ctx); err != nil {
-		return u, err
-	}
-	reset := passwordReset{UserID: u.ID, TokenHash: hash, ExpiresAt: expires}
-	_, err := s.DB.NewInsert().Model(&reset).
-		On("CONFLICT (user_id) DO UPDATE").
-		Set("token_hash = EXCLUDED.token_hash").
-		Set("created_at = EXCLUDED.created_at").
-		Set("expires_at = EXCLUDED.expires_at").
-		Exec(ctx)
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := tx.NewSelect().Model(&u).Where("email = ?", email).For("UPDATE").Scan(ctx); err != nil {
+			return err
+		}
+		if requestedAt.Before(u.CreatedAt) {
+			return sql.ErrNoRows
+		}
+		if u.EmailChangedAt != nil && !requestedAt.After(*u.EmailChangedAt) {
+			return sql.ErrNoRows
+		}
+		if err := checkNotSuspended(ctx, tx, u.ID); errors.Is(err, ErrSuspended) {
+			return sql.ErrNoRows
+		} else if err != nil {
+			return err
+		}
+		reset := passwordReset{UserID: u.ID, TokenHash: hash, ExpiresAt: expires}
+		_, err := tx.NewInsert().Model(&reset).
+			On("CONFLICT (user_id) DO UPDATE").
+			Set("token_hash = EXCLUDED.token_hash").
+			Set("created_at = EXCLUDED.created_at").
+			Set("expires_at = EXCLUDED.expires_at").
+			Exec(ctx)
+		return err
+	})
 	return u, err
 }
 

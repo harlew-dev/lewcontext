@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { EmailCodeStep } from "@/components/app/email-verification/email-code-step";
+import { ChangeEmailDialog } from "@/components/app/account/change-email-dialog";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Button } from "@/components/ui/button";
@@ -45,14 +46,15 @@ function VerifySteps() {
   const [search] = useSearchParams();
   const [step, setStep] = useState<"send" | "code">("send");
   const [ended, setEnded] = useState("");
+  const [changingEmail, setChangingEmail] = useState(false);
   const send = useAction(() => api.auth().emailVerification().store());
   const email = session.user.email;
   async function sendCode() {
     setEnded("");
     if ((await send.run()).ok) setStep("code");
   }
-  if (step === "code")
-    return (
+  const content =
+    step === "code" ? (
       <EmailCodeStep
         email={email}
         heading="Verify your email"
@@ -68,25 +70,58 @@ function VerifySteps() {
           return true;
         }}
       >
+        <ChangeEmailAction onChange={() => setChangingEmail(true)} />
         <SignOut />
       </EmailCodeStep>
+    ) : (
+      <div className="grid grid-cols-1 gap-8">
+        <HeadingGroup>
+          <Heading>Verify your email</Heading>
+          <Text>
+            You must verify your email to continue. We’ll send a 6-digit code to{" "}
+            <Strong>{email}</Strong>.
+          </Text>
+        </HeadingGroup>
+        {ended && <Notice variant="error">{ended}</Notice>}
+        <ErrorNotice error={send.error} />
+        <Button className="w-full" loading={send.loading} onClick={sendCode}>
+          Send code
+        </Button>
+        <ChangeEmailAction
+          onChange={() => setChangingEmail(true)}
+          disabled={send.busy}
+        />
+        <SignOut />
+      </div>
     );
   return (
-    <div className="grid grid-cols-1 gap-8">
-      <HeadingGroup>
-        <Heading>Verify your email</Heading>
-        <Text>
-          You must verify your email to continue. We’ll send a 6-digit code to{" "}
-          <Strong>{email}</Strong>.
-        </Text>
-      </HeadingGroup>
-      {ended && <Notice variant="error">{ended}</Notice>}
-      <ErrorNotice error={send.error} />
-      <Button className="w-full" loading={send.loading} onClick={sendCode}>
-        Send code
-      </Button>
-      <SignOut />
-    </div>
+    <>
+      {content}
+      <ChangeEmailDialog
+        open={changingEmail}
+        onClose={() => setChangingEmail(false)}
+        onChanged={async () => {
+          await navigate(returnPath(search.get("next")) ?? routes.app);
+        }}
+      />
+    </>
+  );
+}
+
+function ChangeEmailAction({
+  onChange,
+  disabled = false,
+}: {
+  onChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Text>
+      Can’t receive email at this address?{" "}
+      <TextButton onClick={onChange} disabled={disabled}>
+        Change email address
+      </TextButton>
+    </Text>
   );
 }
 // The way out for the wrong account, or an address that can't get mail.

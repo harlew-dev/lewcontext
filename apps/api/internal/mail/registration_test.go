@@ -165,7 +165,7 @@ type verifications struct {
 	recorded   []events.Event
 }
 
-func (v *verifications) IssueEmailVerification(_ context.Context, publicID, codeHash string, _ time.Time) (store.User, error) {
+func (v *verifications) IssueEmailVerification(_ context.Context, publicID, _, codeHash string, _, _ time.Time) (store.User, error) {
 	u, ok := v.unverified[publicID]
 	if !ok {
 		return u, store.ErrAlreadyVerified

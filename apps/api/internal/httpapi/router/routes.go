@@ -47,6 +47,13 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	me := account.Me{Server: s}
 	password := account.Password{Server: s}
 	passwordResets := account.PasswordResets{Server: s}
+	emailChange := account.EmailChange{Server: s}
+	// Correcting an address is available before workspace creation and at
+	// the verification gate, but always needs the account's live session.
+	mux.Handle("GET /api/auth/email-change", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(emailChange.Show))))
+	mux.Handle("POST /api/auth/email-change", httpapi.AllowUnverified(s.RequireSession(s.LimitAuth(http.HandlerFunc(emailChange.Store)))))
+	mux.Handle("PATCH /api/auth/email-change", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(emailChange.Update))))
+	mux.Handle("DELETE /api/auth/email-change", httpapi.AllowUnverified(s.RequireSession(http.HandlerFunc(emailChange.Destroy))))
 	// Sign-up, sign-in and asking for a reset link may be asked to solve a
 	// CAPTCHA above a limit's challenge level (Challengeable, outside the
 	// counting); no other route is, least of all one on a page with a token

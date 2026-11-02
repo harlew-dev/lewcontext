@@ -44,6 +44,7 @@ CREATE INDEX events_admin_logged_in_idx ON events(actor_id, created_at DESC) WHE
 -- events_user_created_idx).
 CREATE INDEX events_ip_created_idx ON events(ip, created_at DESC) WHERE ip IS NOT NULL;
 CREATE INDEX events_email_created_idx ON events((lower(payload->>'email')), created_at DESC) WHERE payload ? 'email';
+CREATE INDEX events_previous_email_created_idx ON events((lower(payload->>'previousEmail')), created_at DESC) WHERE payload ? 'previousEmail';
 CREATE INDEX events_payload_workspace_idx ON events((payload->>'workspace'), created_at DESC) WHERE payload ? 'workspace';
 CREATE INDEX events_actor_created_idx ON events(actor_id, created_at DESC) WHERE actor_id IS NOT NULL;
 -- An event's detail lists the events naming it in their request field.

@@ -51,8 +51,12 @@ export async function mailTo(
 // The code in the newest "Confirm your email address" to `to`, shown spaced
 // ("482 913") in both parts, with no link in either: a code is typed, never
 // clicked.
-export async function mailedCode(to: string, other?: Mail) {
-  const mail = await mailTo(to, "Confirm your email address", other);
+export async function mailedCode(
+  to: string,
+  other?: Mail,
+  subject = "Confirm your email address",
+) {
+  const mail = await mailTo(to, subject, other);
   const code = mail.Text.match(/\b(\d{3}) (\d{3})\b/);
   expect(code, `a code in:\n${mail.Text}`).not.toBeNull();
   expect(mail.HTML).toContain(code![0]);

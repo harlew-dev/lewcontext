@@ -130,7 +130,7 @@ func TestMFASetupExpires(t *testing.T) {
 		t.CreatedAt = time.Now().Add(-16 * time.Minute)
 	}).CreateOne(ctx, db, f))(t)
 	apitest.Call(t, h, "POST", "/api/auth/mfa", apitest.CodeBody(pending.Code()), session.CSRFToken, session.Cookie(), 409)
-	apitest.Must(0, s.Repo.Cleanup(ctx))(t)
+	apitest.Must(0, s.Repo.Cleanup(ctx, s.EmailPseudonym))(t)
 	if apitest.CountRows(t, db, "mfa_totp", session.UserID) != 0 {
 		t.Fatal("cleanup kept an abandoned setup")
 	}

@@ -105,7 +105,7 @@ func TestAdminEventSummary(t *testing.T) {
 			kinds[i] += n
 		}
 	}
-	if fails.Total != 9 || !slices.Equal(kinds, []int{4, 1, 1, 1, 2}) {
+	if fails.Total != 9 || !slices.Equal(kinds, []int{4, 1, 1, 1, 2, 0}) {
 		t.Fatalf("failures: %d %v", fails.Total, kinds)
 	}
 	// The rows' Failed badges and outcome=failed agree with the chart.

@@ -29,6 +29,8 @@ type User struct {
 	// EmailVerifiedAt is set: accounts made with EMAIL_VERIFICATION on are
 	// always verified. Unverified clears it.
 	EmailVerifiedAt *time.Time
+	EmailVersion    int64
+	EmailChangedAt  *time.Time
 	// The policy versions agreed to at sign-up, and when: nil, as for an
 	// account made with POLICIES off, unless AgreedToPolicies.
 	TermsOfServiceVersion *time.Time

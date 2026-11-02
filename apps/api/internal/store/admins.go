@@ -96,6 +96,7 @@ type AdminSession struct {
 // IP and its User-Agent, already cut to 256 characters).
 type NewAdminSession struct {
 	UserID                   int64
+	EmailVersion             int64
 	TokenHash, KeyHash, CSRF string
 	ExpiresAt                time.Time
 	IP, UserAgent            string
@@ -103,14 +104,14 @@ type NewAdminSession struct {
 
 // scanDest is where a row of adminsWith goes, in its order, then extra.
 func (a *Admin) scanDest(extra ...any) []any {
-	return append([]any{&a.User.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.User.CreatedAt, &a.User.MFAEnabledAt, &a.MFASetupUntil, &a.Role, &a.CreatedAt}, extra...)
+	return append([]any{&a.User.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.User.CreatedAt, &a.User.EmailVersion, &a.User.MFAEnabledAt, &a.MFASetupUntil, &a.Role, &a.CreatedAt}, extra...)
 }
 
 // adminsWith selects admins with their accounts (MFAEnabledAt included),
 // in Admin.scanDest's order.
 func adminsWith(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().Model((*adminRecord)(nil)).
-		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at").
+		ColumnExpr("u.id, u.public_id, u.name, u.email, u.created_at, u.email_version").
 		ColumnExpr("(?)", mfaEnabledAt(db)).
 		ColumnExpr("adm.mfa_setup_until, adm.role, adm.created_at").
 		Join("JOIN users AS u ON u.id = adm.user_id")
@@ -264,6 +265,7 @@ func (s *Store) FindAdminChallenge(ctx context.Context, hash string) (Admin, str
 		Join("JOIN mfa_challenges AS c ON c.user_id = adm.user_id").
 		ColumnExpr("c.purpose").
 		Where("c.token_hash = ? AND c.purpose IN (?, ?) AND c.expires_at > now()", hash, ChallengeAdmin, ChallengeAdminSetup)
+	q = q.Where("c.email_version = u.email_version")
 	var a Admin
 	err := q.Scan(ctx, a.scanDest(&purpose)...)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -284,6 +286,9 @@ func (s *Store) DeleteMFAChallenge(ctx context.Context, hash string) error {
 // suspended account (never an admin; the backstop).
 func (s *Store) CreateAdminSession(ctx context.Context, n NewAdminSession, e events.Event) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockEmailVersion(ctx, tx, n.UserID, n.EmailVersion); err != nil {
+			return err
+		}
 		// The admin row's lock serialises sign-ins, so the cap holds.
 		var locked int64
 		err := tx.NewSelect().Model((*adminRecord)(nil)).Column("user_id").Where("user_id = ?", n.UserID).For("UPDATE").Scan(ctx, &locked)
@@ -359,6 +364,9 @@ func (s *Store) CheckAdminSession(ctx context.Context, hash, keyHash string) (bo
 // the admin as actor, only the first time: a session is flagged once.
 func (s *Store) FlagAdminSessionMoved(ctx context.Context, hash string, admin User, e events.AdminSessionMoved) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockUser(ctx, tx, admin.ID); err != nil {
+			return err
+		}
 		result, err := tx.NewUpdate().Model((*adminSessionRecord)(nil)).
 			Set("moved_at = now()").
 			Where("token_hash = ? AND moved_at IS NULL", hash).
@@ -404,6 +412,9 @@ type StepUpResult struct {
 func (s *Store) StepUpAdminSession(ctx context.Context, hash string, admin User, f SecondFactor) (StepUpResult, error) {
 	var result StepUpResult
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockUser(ctx, tx, admin.ID); err != nil {
+			return err
+		}
 		result = StepUpResult{}
 		factor, err := useConfirmedFactor(ctx, tx, admin.ID, f)
 		if errors.Is(err, ErrWrongCode) || errors.Is(err, ErrMFANotEnabled) {
@@ -469,6 +480,9 @@ func oneRow(res sql.Result) error {
 func (s *Store) DeleteOtherAdminSessions(ctx context.Context, admin User, hash string) (int, error) {
 	var count int
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockUser(ctx, tx, admin.ID); err != nil {
+			return err
+		}
 		result, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("user_id = ? AND token_hash <> ?", admin.ID, hash).Exec(ctx)
 		if err != nil {
 			return err
@@ -487,6 +501,9 @@ func (s *Store) DeleteOtherAdminSessions(ctx context.Context, admin User, hash s
 // admin.logged_out.
 func (s *Store) DeleteAdminSession(ctx context.Context, u User, hash string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockUser(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		if _, err := tx.NewDelete().Model((*adminSessionRecord)(nil)).Where("token_hash = ?", hash).Exec(ctx); err != nil {
 			return err
 		}

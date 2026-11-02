@@ -5,6 +5,7 @@ import {
   EyeSlashIcon,
 } from "@heroicons/react/16/solid";
 import { DeleteAccountDialog } from "@/components/app/account/delete-account-dialog";
+import { ChangeEmailDialog } from "@/components/app/account/change-email-dialog";
 import {
   AppOrRecoveryCode,
   CodeField,
@@ -111,15 +112,17 @@ function cleanName(value: string): string | null {
   const length = Array.from(name).length;
   return length >= 1 && length <= maxName ? name : null;
 }
-// Saves the name, then renews the session with the updated user so the new
-// name shows everywhere. The email address is how the user signs in, so it
-// can't be changed here; it starts blurred, in case the screen is shared, and
-// the eye shows it.
+// Saves the name at once, then renews the session with the updated user so
+// the new name shows everywhere. An edited email is never saved by this form:
+// Save opens the change-email dialog for it (account access, then the new
+// inbox's code), after the name, so a name edited with it isn't lost if that
+// is closed. The current address starts blurred in case the screen is shared.
 function ProfileForm() {
   const api = useApi();
   const session = useSession();
   const renew = useRenewSession();
   const [name, setName] = useState(session.user.name);
+  const [email, setEmail] = useState(session.user.email);
   const [emailVisible, setEmailVisible] = useState(false);
   // With email verification on, the email says whether it's verified, and an
   // unverified one offers to verify it.
@@ -127,18 +130,38 @@ function ProfileForm() {
   const unverified = verification && !session.user.emailVerifiedAt;
   const [verifying, setVerifying] = useState(false);
   const verifyOpened = useOpenCount(verifying);
+  // "new": Save opened it for the typed address. "resume": the description's
+  // Continue opened it for the request already sent.
+  const [changingEmail, setChangingEmail] = useState<"new" | "resume" | null>(
+    null,
+  );
+  // The same cached request the dialog reads and updates. A failed read just
+  // leaves the field without its description.
+  // With verification off a change completes at once, so none is ever waiting.
+  const emailChange = useResource(
+    verification ? paths.auth.emailChange().show() : null,
+  );
+  const resumable = Boolean(emailChange.data?.pending);
   const save = useAction((clean: string) =>
     api.auth().updateProfile({ name: clean }),
   );
   const clean = cleanName(name);
+  const newEmail = email.trim();
+  const nameChanged = clean !== null && clean !== session.user.name;
+  const emailChanged =
+    newEmail !== "" &&
+    newEmail.toLowerCase() !== session.user.email.toLowerCase();
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (clean === null) return;
-    const result = await save.run(clean);
-    if (!result.ok) return;
-    renew({ ...session, user: result.value });
-    setName(result.value.name);
-    toast.success("Profile updated.");
+    if (clean === null || (!nameChanged && !emailChanged)) return;
+    if (nameChanged) {
+      const result = await save.run(clean);
+      if (!result.ok) return;
+      renew({ ...session, user: result.value });
+      setName(result.value.name);
+      toast.success("Profile updated.");
+    }
+    if (emailChanged) setChangingEmail("new");
   }
   return (
     // The dialog sits outside the form: React passes a dialog form's submit
@@ -157,7 +180,7 @@ function ProfileForm() {
               onChange={(e) => setName(e.currentTarget.value)}
             />
           </Field>
-          <Field locked="Your email can’t be changed">
+          <Field guarded="Protected">
             <Label>
               Email address
               {verification && <EmailStatusBadge verified={!unverified} />}
@@ -165,9 +188,16 @@ function ProfileForm() {
             <InputGroup>
               <Input
                 type="email"
-                value={session.user.email}
+                name="email"
+                autoComplete="email"
+                maxLength={254}
+                value={email}
                 blurred={!emailVisible}
                 onReveal={() => setEmailVisible(true)}
+                onChange={(e) => {
+                  setEmailVisible(true);
+                  setEmail(e.currentTarget.value);
+                }}
               />
               <InputActions>
                 <Tooltip content={emailVisible ? "Hide" : "Reveal"}>
@@ -185,12 +215,28 @@ function ProfileForm() {
                 </Tooltip>
               </InputActions>
             </InputGroup>
-            {unverified && (
+            {(unverified || resumable) && (
               <Description>
-                We haven’t confirmed this address.{" "}
-                <TextButton onClick={() => setVerifying(true)}>
-                  Verify email
-                </TextButton>
+                {unverified && (
+                  <>
+                    We haven’t confirmed this address.{" "}
+                    <TextButton onClick={() => setVerifying(true)}>
+                      Verify email
+                    </TextButton>
+                    .{" "}
+                  </>
+                )}
+                {resumable && (
+                  <>
+                    You have an email change request.{" "}
+                    <TextButton
+                      onClick={() => setChangingEmail("resume")}
+                      disabled={save.busy}
+                    >
+                      Continue
+                    </TextButton>
+                  </>
+                )}
               </Description>
             )}
           </Field>
@@ -199,7 +245,7 @@ function ProfileForm() {
           <Button
             type="submit"
             loading={save.loading}
-            disabled={clean === null || clean === session.user.name}
+            disabled={clean === null || (!nameChanged && !emailChanged)}
             disabledReason={
               clean === null ? "Fill in required fields" : "No changes made"
             }
@@ -213,6 +259,15 @@ function ProfileForm() {
         key={verifyOpened}
         open={verifying}
         onClose={() => setVerifying(false)}
+      />
+      <ChangeEmailDialog
+        open={changingEmail !== null}
+        initialEmail={changingEmail === "new" ? newEmail : undefined}
+        onClose={() => setChangingEmail(null)}
+        onChanged={(changed) => {
+          setEmail(changed);
+          setEmailVisible(false);
+        }}
       />
     </>
   );

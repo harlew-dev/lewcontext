@@ -187,6 +187,10 @@ docker run --rm --env-file prod.env lewcontext admin grant -email ada@example.co
 
 ## Sign-in
 
+### Changing your own email
+
+Admins use the ordinary app's email-change dialog with their app session and fresh authenticator/recovery proof. Grants, roles and alert preferences remain attached to the same user ID. Completion revokes every admin session and pending sign-in; future app/admin sign-in uses the new address. A staff override for changing somebody else's email is not built. Expected email generations are checked under the account lock before admin sessions/challenges are created and when a challenge is answered, so a sign-in started with the former address cannot revive a revoked session.
+
 ```
 /admin/<key>   email + password → POST /api/admin/login
   the same 401 "Email or password is incorrect." for a wrong password, an unknown email (dummy hash),
@@ -295,6 +299,7 @@ One fixed table in the store, `adminEventFailures` (`internal/store/admin_event_
 | `second_factor` | `auth.mfa.checked` | `ok` is false |
 | `password` | `auth.password_checked` | `ok` is false |
 | `sign_up_code` | `auth.registration.checked` | `ok` is false |
+| `email_change_code` | `auth.email_change.checked` | `ok` is false; the UI combines both emailed-code categories into one chart series while retaining their distinct audit facts |
 | `admin_door` | `admin.login_attempted`; `admin.access_refused` | `result` is `wrong_password`, `unknown_account`, `not_admin` or `mfa_off`; always |
 
 ### The summary
@@ -317,6 +322,8 @@ One fixed table in the store, `adminEventFailures` (`internal/store/admin_event_
 - At a million events (`make seed only=events`), the default view's counts take about 0.1 s (an index-only scan), 7 days' about 1 s ([testing.md](../testing.md#volume-check-for-the-events-page)).
 
 ## Mail
+
+Email-change request/code/informational traffic appears as `email_change`, `email_change_code` and `email_change_exists`; security notice volume is counted separately as `email_changed_previous` / `email_changed_current`. Successful completion notices are not counted as requested codes. The volume chart groups all emailed codes and existing-account informational notices to stay within five distinguishable series. Frequent-recipient rows include `emailChanges`. Each completion delivery's `to` uses its captured old/new destination, not the user's current address; the Events email filter finds both `email` and `previousEmail`, including their minimised pseudonyms.
 
 `GET /api/admin/mail` (`window` `24h` or `7d`):
 

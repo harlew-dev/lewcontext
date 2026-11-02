@@ -301,6 +301,14 @@ func (s *Store) CheckInvitation(ctx context.Context, hash string) (InvitationPre
 func (s *Store) AcceptInvitation(ctx context.Context, hash string, u User) (Workspace, error) {
 	var w Workspace
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Read the current address under the account lock before any workspace
+		// lock: middleware may have loaded the previous address.
+		if err := tx.NewSelect().Model(&u).Where("u.id = ?", u.ID).For("UPDATE").Scan(ctx); err != nil {
+			return err
+		}
+		if err := checkNotSuspended(ctx, tx, u.ID); err != nil {
+			return err
+		}
 		var workspaceID int64
 		err := tx.NewSelect().Model((*invitationRecord)(nil)).Column("i.workspace_id").
 			Where("i.token_hash = ? AND i.expires_at > now()", hash).

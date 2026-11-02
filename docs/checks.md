@@ -21,6 +21,8 @@ The naming rules in [naming.md](naming.md) and the docs' links are checked by or
 
 ## Terminology
 
+The confirmed email-change feature registers `auth.email_change` in `storedResources` because `email_changes` is a stored session-bound singleton. The account client's singleton remains covered by the existing auth-area action convention; its four CRUD methods/typed paths have explicit client coverage. The exact unverified-route check is now `TestOnlyNineRoutesAllowUnverified`, including only the four additional email-change routes. No naming regex or convention rule was loosened.
+
 | Say | Not | Where |
 | --- | --- | --- |
 | `index` | `list`, `all` | the API's and client's actions, `Index…` store methods ([naming.md](naming.md#controllers-internalhttpapi)) |

@@ -1,0 +1,12 @@
+{{ define "content" -}}
+This is now your account’s sign-in and password-recovery email address.
+
+All previous sign-in sessions were ended. The account’s password, two-factor authentication and workspace memberships were kept.
+
+If you did not make this change, contact support.
+
+Open Account settings:
+{{ .SettingsURL }}
+
+Use this email address to sign in.
+{{- end }}

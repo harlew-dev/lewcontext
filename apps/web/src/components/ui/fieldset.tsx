@@ -15,6 +15,9 @@ import { cx } from "@/lib/cx";
 // edit the value (`show`), for a few seconds after the last one.
 export type FieldLock = {
   label: string;
+  // A locked field's input can't be edited. A guarded one's can: the lock
+  // only says what saving the change will ask for.
+  readOnly: boolean;
   open: boolean;
   show: () => void;
   hide: () => void;
@@ -77,7 +80,10 @@ export function FieldGroup({
   );
 }
 const lockShownFor = 3000;
-function useLock(locked: boolean | string): FieldLock | undefined {
+function useLock(
+  locked: boolean | string,
+  guarded: string | undefined,
+): FieldLock | undefined {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const hide = useCallback(() => {
@@ -91,26 +97,33 @@ function useLock(locked: boolean | string): FieldLock | undefined {
   }, []);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return useMemo(() => {
-    if (locked === false) return undefined;
-    const label = locked === true ? "Can’t be changed" : locked;
-    return { label, open, show, hide };
-  }, [locked, open, show, hide]);
+    if (locked !== false) {
+      const label = locked === true ? "Can’t be changed" : locked;
+      return { label, readOnly: true, open, show, hide };
+    }
+    if (guarded) return { label: guarded, readOnly: false, open, show, hide };
+    return undefined;
+  }, [locked, guarded, open, show, hide]);
 }
 // `locked` (true, or why: "Your email can’t be changed") makes the
 // Input read-only, puts a lock at the end of it, and shows the lock's tooltip
-// when someone tries to type in it.
+// when someone tries to type in it. `guarded` (the reason: "Confirming it’s
+// you is required to change this") keeps the Input editable but puts the same
+// lock at the end of it, whose tooltip opens on hover and focus only.
 export function Field({
   className,
   disabled = false,
   locked = false,
+  guarded,
   children,
   ...props
 }: {
   disabled?: boolean;
   locked?: boolean | string;
+  guarded?: string;
 } & ComponentPropsWithoutRef<"div">) {
   const id = useId();
-  const lock = useLock(locked);
+  const lock = useLock(locked, guarded);
   const [parts, setParts] = useState({ description: false, error: false });
   // Stable, so Description/ErrorMessage register once rather than on every change.
   const register = useCallback(

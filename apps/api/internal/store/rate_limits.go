@@ -21,9 +21,15 @@ type rateLimitRecord struct {
 // passes a level is known exactly. Counters persist across restarts and
 // multiple API processes.
 func (s *Store) CountHit(ctx context.Context, key string, window time.Duration) (hits int, resetsAt time.Time, err error) {
+	return countHit(ctx, s.DB, key, window)
+}
+
+// countHit also serves transactional limits whose reservation must commit
+// with the protected change, using the caller's existing connection.
+func countHit(ctx context.Context, db bun.IDB, key string, window time.Duration) (hits int, resetsAt time.Time, err error) {
 	hit := rateLimitRecord{Key: key, Hits: 1}
 	seconds := int(window.Seconds())
-	err = s.DB.NewInsert().Model(&hit).
+	err = db.NewInsert().Model(&hit).
 		Value("resets_at", "now() + make_interval(secs => ?)", seconds).
 		On("CONFLICT (key) DO UPDATE").
 		Set("hits = CASE WHEN l.resets_at <= now() THEN 1 ELSE l.hits + 1 END").

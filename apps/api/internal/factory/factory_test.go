@@ -92,7 +92,14 @@ func TestEveryTableHasAFactory(t *testing.T) {
 		t.Fatal(err)
 	}
 	user, other, third := users[0], users[1], users[2]
-	if _, err := SessionFor(ctx, db, f, user.ID); err != nil {
+	session, err := SessionFor(ctx, db, f, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EmailChanges.State(EmailChangeFor(user, session)).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := UserEmailHistories.State(func(h *UserEmailHistory) { h.UserID = user.ID }).CreateOne(ctx, db, f); err != nil {
 		t.Fatal(err)
 	}
 	workspace, err := WorkspaceFor(ctx, db, f, user.ID)

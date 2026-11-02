@@ -122,7 +122,7 @@ func TestAdminMail(t *testing.T) {
 	if kinds[store.MailPasswordReset] != 1 || kinds[store.MailInvitation] != 1 || kinds[store.MailRegistrationCode] != 1 || kinds[store.MailAccountExists] != 1 || kinds[store.MailEmailVerification] != 0 {
 		t.Fatalf("volume in 24 hours: %+v", kinds)
 	}
-	wantRequests := []store.AdminRequests{{Kind: "password_reset", Requested: 4, Sent: 1}, {Kind: "registration", Requested: 1, Sent: 2}, {Kind: "email_verification"}}
+	wantRequests := []store.AdminRequests{{Kind: "password_reset", Requested: 4, Sent: 1}, {Kind: "registration", Requested: 1, Sent: 2}, {Kind: "email_verification"}, {Kind: "email_change"}}
 	if !slices.Equal(day.Requests, wantRequests) {
 		t.Fatalf("requests: %+v", day.Requests)
 	}

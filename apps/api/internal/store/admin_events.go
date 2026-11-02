@@ -192,7 +192,10 @@ func (s *Store) filterAdminEvents(ctx context.Context, q *bun.SelectQuery, f Adm
 		if f.EmailPseudonym != "" {
 			emails = append(emails, f.EmailPseudonym)
 		}
-		q = q.Where(`e.payload \? 'email' AND lower(e.payload->>'email') IN (?)`, bun.In(emails))
+		q = q.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.Where(`e.payload \? 'email' AND lower(e.payload->>'email') IN (?)`, bun.In(emails)).
+				WhereOr(`e.payload \? 'previousEmail' AND lower(e.payload->>'previousEmail') IN (?)`, bun.In(emails))
+		})
 	}
 	if f.IP != "" {
 		// A minimised event's IP is its network: equal to the filter's

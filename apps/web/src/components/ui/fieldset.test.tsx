@@ -85,4 +85,24 @@ describe("Field", () => {
     fireEvent.paste(input);
     expect(await screen.findByRole("tooltip")).toBeInTheDocument();
   });
+  it("keeps a guarded field editable, with the lock explaining on hover only", async () => {
+    render(
+      <Field guarded="Protected">
+        <Label>Email</Label>
+        <Input value="ada@example.test" onChange={() => {}} />
+      </Field>,
+    );
+    const input = screen.getByLabelText("Email");
+    expect(input).not.toHaveAttribute("readonly");
+    // Typing, pasting and dropping never open the tooltip: nothing is refused.
+    fireEvent.keyDown(input, { key: "a" });
+    fireEvent.paste(input);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    const lock = screen.getByRole("img", {
+      name: "Protected",
+    });
+    expect(input).toHaveAccessibleDescription("Protected");
+    fireEvent.mouseEnter(lock);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Protected");
+  });
 });

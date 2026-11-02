@@ -24,6 +24,7 @@ const (
 	PasswordStepMFADisable       = "mfa_disable"
 	PasswordStepRecoveryCodes    = "recovery_codes"
 	PasswordStepExportData       = "export_data"
+	PasswordStepEmailChange      = "email_change"
 )
 
 // How a new account's email was verified (Registered.VerifiedBy), and how an
@@ -197,7 +198,8 @@ func (RegistrationChecked) EventName() string { return "auth.registration.checke
 // EmailVerificationRequested: a signed-in account asked for a code to verify
 // its email.
 type EmailVerificationRequested struct {
-	User string `json:"user"`
+	User  string `json:"user"`
+	Email string `json:"email"`
 }
 
 func (EmailVerificationRequested) EventName() string { return "auth.email_verification.requested" }

@@ -40,23 +40,34 @@ type EmailVerificationResult struct {
 // IssueEmailVerification makes codeHash the code of the unverified account
 // with publicID until expires, replacing any earlier one, and returns the
 // account. ErrAlreadyVerified for a verified (or deleted) account.
-func (s *Store) IssueEmailVerification(ctx context.Context, publicID, codeHash string, expires time.Time) (User, error) {
+func (s *Store) IssueEmailVerification(ctx context.Context, publicID, email, codeHash string, expires, requestedAt time.Time) (User, error) {
 	var u User
-	err := s.DB.NewSelect().Model(&u).Where("public_id = ? AND email_verified_at IS NULL", publicID).Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return u, ErrAlreadyVerified
-	}
-	if err != nil {
-		return u, err
-	}
-	row := emailVerification{UserID: u.ID, CodeHash: codeHash, ExpiresAt: expires}
-	_, err = s.DB.NewInsert().Model(&row).
-		On("CONFLICT (user_id) DO UPDATE").
-		Set("code_hash = EXCLUDED.code_hash").
-		Set("attempts = 0").
-		Set("created_at = EXCLUDED.created_at").
-		Set("expires_at = EXCLUDED.expires_at").
-		Exec(ctx)
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		err := tx.NewSelect().Model(&u).Where("public_id = ? AND email_verified_at IS NULL", publicID).For("UPDATE").Scan(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrAlreadyVerified
+		}
+		if err != nil {
+			return err
+		}
+		if u.Email != email || (u.EmailChangedAt != nil && !requestedAt.After(*u.EmailChangedAt)) {
+			return ErrAlreadyVerified
+		}
+		if err := checkNotSuspended(ctx, tx, u.ID); errors.Is(err, ErrSuspended) {
+			return ErrAlreadyVerified
+		} else if err != nil {
+			return err
+		}
+		row := emailVerification{UserID: u.ID, CodeHash: codeHash, ExpiresAt: expires}
+		_, err = tx.NewInsert().Model(&row).
+			On("CONFLICT (user_id) DO UPDATE").
+			Set("code_hash = EXCLUDED.code_hash").
+			Set("attempts = 0").
+			Set("created_at = EXCLUDED.created_at").
+			Set("expires_at = EXCLUDED.expires_at").
+			Exec(ctx)
+		return err
+	})
 	return u, err
 }
 

@@ -51,30 +51,51 @@ func (s *Server) SessionDigest(r *http.Request) string {
 // (store.ErrSuspended, checked under its lock): Suspended answers it, so a
 // sign-in that reached here only after its password and code learns why.
 func (s *Server) StartSession(w http.ResponseWriter, r *http.Request, u store.User, status int, e events.Event) {
+	err := s.startSession(w, r, u, status, e)
+	if errors.Is(err, store.ErrNoChallenge) {
+		s.ClearSessionCookie(w)
+		Fail(w, 401, MFASignInAgain)
+	} else if errors.Is(err, store.ErrSuspended) {
+		s.Suspended(w, r, u)
+	} else if err != nil {
+		InternalError(w, r, err)
+	}
+}
+
+// StartEmailChangeSession finishes a committed email change. If rotating the
+// browser fails, the address remains changed and every old session revoked:
+// send it back to sign-in rather than offering to repeat the committed action.
+func (s *Server) StartEmailChangeSession(w http.ResponseWriter, r *http.Request, u store.User) {
+	if err := s.startSession(w, r, u, 200, nil); err != nil {
+		s.ClearSessionCookie(w)
+		if ClientGone(r, err) {
+			abortedByClient(r, err)
+			return
+		}
+		reportFailure(r, "starting a session after email change failed", err)
+		Fail(w, 401, "Your email address changed. Sign in with your new address.")
+	}
+}
+
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u store.User, status int, e events.Event) error {
 	token, err := auth.Token()
 	if err != nil {
-		InternalError(w, r, err)
-		return
+		return err
 	}
 	csrf, err := auth.Token()
 	if err != nil {
-		InternalError(w, r, err)
-		return
+		return err
 	}
 	old := s.SessionDigest(r)
 	signedIn := time.Now()
 	expires := signedIn.Add(auth.SessionLifetime)
-	err = s.Repo.CreateSession(r.Context(), u.ID, auth.Digest(token), csrf, old, expires, e)
-	if errors.Is(err, store.ErrSuspended) {
-		s.Suspended(w, r, u)
-		return
-	}
+	err = s.Repo.CreateSession(r.Context(), u, auth.Digest(token), csrf, old, expires, e)
 	if err != nil {
-		InternalError(w, r, err)
-		return
+		return err
 	}
 	http.SetCookie(w, auth.Cookie(token, s.Config.Production))
 	JSON(w, status, map[string]any{"user": u, "csrfToken": csrf, "expiresAt": expires, "signedInAt": signedIn, "emailVerification": s.Config.VerificationMode()})
+	return nil
 }
 
 // ClearSessionCookie tells the browser to drop its session cookie.

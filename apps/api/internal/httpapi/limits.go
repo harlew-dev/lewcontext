@@ -85,6 +85,15 @@ var (
 		Busy:   "Email verification is busy. Try again in a few minutes.",
 	}
 
+	// EmailChangePerUser: requests, resends and replacements for one account.
+	EmailChangePerUser = ratelimit.Limit{Name: "email-change:per-user", Block: ratelimit.Above(6), Window: time.Hour}
+	// EmailChangePerEmail: requested changes to one destination, available or not.
+	EmailChangePerEmail = ratelimit.Limit{Name: "email-change:per-email", Block: ratelimit.Above(3), Window: time.Hour}
+	// EmailChangeGlobal: email-change requests made by everyone.
+	EmailChangeGlobal = ratelimit.Limit{Name: "email-change:global", Block: ratelimit.Above(200), Window: time.Hour, Busy: "Email changes are busy. Try again later."}
+	// EmailChangeCompletePerUser: successful changes, bounding address history.
+	EmailChangeCompletePerUser = ratelimit.Limit{Name: "email-change-complete:per-user", Block: ratelimit.Above(1), Window: 24 * time.Hour}
+
 	// APIPerUser: every signed-in write except the recovery routes (RequireSession).
 	APIPerUser = ratelimit.Limit{Name: "api:per-user", Block: ratelimit.Above(300), Window: 15 * time.Minute}
 	// APIReadPerUser: every signed-in read.
@@ -163,6 +172,7 @@ var RateLimits = []ratelimit.Limit{
 	PasswordResetPerIP, PasswordResetPerEmail, PasswordResetGlobal,
 	RegisterPerIP, RegisterPerEmail, RegisterGlobal,
 	EmailCodePerEmail, EmailVerificationPerEmail, EmailVerificationGlobal,
+	EmailChangePerUser, EmailChangePerEmail, EmailChangeGlobal, EmailChangeCompletePerUser,
 	APIPerUser, APIReadPerUser, AdminReadPerUser,
 	SessionsRevokePerUser,
 	WorkspacePerUser, ProjectPerUser,
@@ -270,6 +280,12 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, l ratelimit.Limit
 // is counted in rate_limit_refused_total (only the first in a window is an
 // event).
 func refuse(w http.ResponseWriter, l ratelimit.Limit, resetsAt time.Time) {
+	RefuseLimit(w, l, resetsAt)
+}
+
+// RefuseLimit formats a budget refusal already recorded/reserved by a store
+// transaction. Like Allow, it includes Retry-After and counts every refusal.
+func RefuseLimit(w http.ResponseWriter, l ratelimit.Limit, resetsAt time.Time) {
 	observe.RateLimitRefused.Inc(l.Name + ":block")
 	left := time.Until(resetsAt)
 	w.Header().Set("Retry-After", ratelimit.RetryAfter(left))

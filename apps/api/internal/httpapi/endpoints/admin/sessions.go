@@ -127,7 +127,11 @@ func (h Sessions) startAdminChallenge(w http.ResponseWriter, r *http.Request, us
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	if err := h.Repo.CreateMFAChallenge(r.Context(), user.ID, auth.Digest(token), purpose, time.Now().Add(lifetime)); err != nil {
+	if err := h.Repo.CreateMFAChallenge(r.Context(), user, auth.Digest(token), purpose, time.Now().Add(lifetime)); err != nil {
+		if errors.Is(err, store.ErrNoChallenge) {
+			h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
+			return
+		}
 		httpapi.InternalError(w, r, err)
 		return
 	}
@@ -276,12 +280,12 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 	// one (RequireAdminKey). Where it signed in from is kept for the Admins
 	// page and for noticing it move.
 	err = h.Repo.CreateAdminSession(r.Context(), store.NewAdminSession{
-		UserID: user.ID, TokenHash: auth.Digest(token), KeyHash: h.AdminKeyHash(), CSRF: csrf, ExpiresAt: expires,
+		UserID: user.ID, EmailVersion: user.EmailVersion, TokenHash: auth.Digest(token), KeyHash: h.AdminKeyHash(), CSRF: csrf, ExpiresAt: expires,
 		IP: httpapi.ClientIP(r), UserAgent: events.UserAgent(r.Context()),
 	}, e)
 	// A suspended account is never an admin (suspending refuses one,
 	// granting refuses it); answered as one who stopped being an admin.
-	if errors.Is(err, store.ErrNotAdmin) || errors.Is(err, store.ErrSuspended) {
+	if errors.Is(err, store.ErrNotAdmin) || errors.Is(err, store.ErrSuspended) || errors.Is(err, store.ErrNoChallenge) {
 		h.endAdminChallenge(w, r, "", httpapi.MFASignInAgain)
 		return
 	}

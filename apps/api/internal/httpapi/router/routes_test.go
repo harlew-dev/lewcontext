@@ -193,10 +193,10 @@ func TestAdminMutationsNeedARole(t *testing.T) {
 	}
 }
 
-// Only the five routes an unverified account needs skip the check: reading
+// Only the nine routes an unverified account needs skip the check: reading
 // the session, signing out, signing out other sessions, asking for a code
 // and entering it. A new route is covered unless someone adds it here.
-func TestOnlyFiveRoutesAllowUnverified(t *testing.T) {
+func TestOnlyNineRoutesAllowUnverified(t *testing.T) {
 	source, err := os.ReadFile("routes.go")
 	if err != nil {
 		t.Fatal(err)
@@ -207,6 +207,8 @@ func TestOnlyFiveRoutesAllowUnverified(t *testing.T) {
 	}
 	slices.Sort(allowed)
 	want := []string{"DELETE /api/auth/sessions", "GET /api/auth/me", "PATCH /api/auth/email-verification", "POST /api/auth/email-verification", "POST /api/auth/logout"}
+	want = append(want, "GET /api/auth/email-change", "POST /api/auth/email-change", "PATCH /api/auth/email-change", "DELETE /api/auth/email-change")
+	slices.Sort(want)
 	if !slices.Equal(allowed, want) || strings.Count(string(source), "httpapi.AllowUnverified(") != len(want) {
 		t.Fatalf("AllowUnverified on %v", allowed)
 	}

@@ -77,7 +77,11 @@ Every age is a registered prune target, so `make prune` (no target) lists the wh
 
 ## Erasure
 
-**Deleting an account** (Account & security, `DELETE /api/auth/me`) deletes the account, its sessions, memberships, MFA, reset link, admin row and the events *about* it (`events.user_id` cascades), and nulls it as the actor of events it caused for others. In the same transaction it erases the account's email from the events that remain (decision 3): wherever an event holds the address as typed (in any case) or as its pseudonym (already minimised), it becomes `"[deleted]"`, with the `name` beside it: a sign-in or sign-up attempt, a reset request, an invitation to it, the admin door, an admin's Events search (`filters.email`), and an admin's list search (`q`) when it is exactly the address. A partial search ("ada@") isn't found. IPs stay: they're minimised at 30 days anyway, and a record of an address's behaviour is a security interest that outlives the account. The lock order is unchanged: the user's row first, then the workspaces it owns in `id` order. Each of the three updates finds its rows through a partial expression index (the payload's `email`, `filters.email`, `q`; `TestErasureUsesItsIndexes` checks the plans), so a long admin trail can't push a deletion past the request's timeout.
+**Former addresses:** deleting the account also reads its retained `user_email_history` rows before the cascade removes them. For a former address, redaction is bounded by its `released_at`: a later owner of `admin@company.com` keeps its account, sessions, memberships and later raw/pseudonymised events when the former owner deletes `admin@new-company.com`. Events are deleted by account ID, never by email equality; another account's surviving event can have a matching historical address field redacted without deleting the event. Both `email` and `previousEmail`, exact admin address searches and their pseudonyms use expression indexes. Later address-only references cannot reliably be attributed to the former owner and are left intact.
+
+The former raw address is retained for this separate erasure purpose only while retained event references at/before release need it. Cleanup checks references in batches instead of dropping history blindly after a year; pending deliveries and overdue event pruning can extend retention. This is deliberately separate from events' 30-day email minimisation.
+
+**Deleting an account** (Account & security, `DELETE /api/auth/me`) deletes the account, its sessions, memberships, MFA, reset link, pending email change, history, admin row and events *about* it (`events.user_id` cascades), and nulls it as actor of others' events. In the same transaction, four indexed updates redact raw/pseudonymised addresses in surviving events: `email` (and the adjacent `name`), `previousEmail`, an admin's exact Events address search (`filters.email`) and exact list search (`q`). The current address is erased, and former addresses use the release-time boundary above. A partial search ("ada@") is not found. IPs stay, minimised at 30 days. Locks remain account first, then owned workspaces in `id` order. `TestErasureUsesItsIndexes` checks all four expression indexes.
 
 **Erasure handled by staff,** for someone who can't sign in: after confirming who is asking outside the app, the operator runs
 
@@ -96,6 +100,8 @@ Account & security → **Your data** → **Download your data**: the password in
 
 - `account`: `id`, `name`, `email`, `createdAt`, `emailVerifiedAt`, `lastSeenAt`, `mfaEnabledAt` (on or off; never the secret or codes);
 - `sessions`: the live ones, `createdAt`, `lastSeenAt`, `expiresAt` (never a token);
+- `pendingEmailChange`: the account's own live candidate address and expiry, or null; no session/code/request digests;
+- `formerEmails`: retained former addresses and their release times, never another account's history or login aliases;
 - `memberships`: each workspace, its name, the role and when they joined;
 - `ownedWorkspaces`: each workspace the account owns, with its projects and the live invitations **the account sent** (an address it typed);
 - `events`: the events about the account (`user_id`) and those it caused (`actor_id`), apart from the admin dashboard's: every event recorded in an admin request (`events.admin_request`, marked by the admin key's middleware whatever the event's name, so a dashboard action added later is left out too) and every `admin.*` name. An admin's reads and actions hold other people's data (a stranger's invitations it revoked, an address it unblocked, an account it suspended) and belong to the admin trail. Newest first, within their retention, at most 10,000 (`eventsTruncated` says when there were more), payloads as stored apart from an operator's note: `auth.suspended` and `auth.unsuspended` from the command line hold the reason the operator typed, which the export leaves out (keeping `by: cli`); from the dashboard the reason is in the `admin.*` event, never exported. The IP and user agent only on events it caused: an event someone else caused about it (an owner changing its role, a sign-in attempt on its address) carries theirs.
@@ -108,6 +114,7 @@ Account & security → **Your data** → **Download your data**: the password in
 | Invitations to the address sent by others (`workspace.invitation.created` and its row) | Another workspace's data, typed by its member; the account sees an invitation through its email and link. Erasure redacts the address in the events; the invitation itself stays with that workspace until it ends |
 | An admin's searches for the address (`filters.email`, `q`) | The admin trail's, not the account's: they record what an admin did, and exporting them would tell someone under investigation that they are. Whether a request for them must be met is the organisation's call (GDPR article 15(4) protects others' rights; restrictions under article 23 depend on national law). Erasure redacts them |
 | Anything the account did from the admin dashboard | Above: it holds other people's data |
+| `auth.email_change.sent` | The delivery outcome, its kind and suppression can reveal whether a candidate address belongs to an existing account; retained in the admin-only audit trail, not the initiating account's export |
 
 The account can ask for more by writing to the organisation, which decides case by case (`admin export` gives the same file; the Events page finds the rest by address).
 
@@ -144,7 +151,7 @@ Guidance for an auditor's questions, not a certification: an auditor decides wha
 | GDPR art. 5(1)(c) data minimisation, 25 privacy by design | Counts over names where a count answers the question; IPs and emails minimised at 30 days; no third-party scripts; error text scrubbed; access lines without paths |
 | GDPR art. 5(1)(e) storage limitation | The [retention schedule](#retention), enforced by prune targets, evidenced by `prune.completed` |
 | GDPR art. 15, 20 access and portability | [Download my data](#download-my-data); `admin export` |
-| GDPR art. 16 rectification | Name changes in Account & security; the email can't change yet ([Known gaps](#known-gaps)) |
+| GDPR art. 16 rectification | Name changes and a dedicated email-change security flow in Account & security ([auth](api/auth.md#changing-an-email-address)) |
 | GDPR art. 17 erasure | [Account deletion with email redaction](#erasure); `admin erase` |
 | GDPR art. 21 objection (email) | The block link in every invitation; the block list ([api/auth.md](api/auth.md#blocking-an-email-address)) |
 | GDPR art. 30 records of processing | The [data map](#data-map) (the organisation's record builds on it) |
@@ -162,7 +169,7 @@ Guidance for an auditor's questions, not a certification: an auditor decides wha
 Written down so nobody claims otherwise:
 
 - **`APP_KEY` can't be rotated:** changing it locks out every account with MFA on, and makes old pseudonyms unmatchable. Needs its own plan before a key-rotation policy can be claimed.
-- **No email change:** rectifying an address means deleting the account and signing up again. Email verification exists ([api/auth.md](api/auth.md#email-verification)).
+- **Lost credentials and old inbox:** self-service email change requires a live app session and fresh password/MFA proof. A staff email-change override or recovery procedure for losing both credentials and inbox is not built.
 - **No SSO (SAML, OIDC) or SCIM.**
 - **No audit log for workspace owners yet:** planned, once each event's data has been judged safe for owners to read (other members' IPs and emails, admins' reads). Until then events are admin-only.
 - **Erasure misses partial searches** an admin typed (`q` that's part of an address) and free-text admin reasons that name someone; both leave with the 1-year audit retention.

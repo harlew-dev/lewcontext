@@ -38,6 +38,7 @@ Client methods and typed paths use the API's action names (`index`, `show`, `sto
 | `invitations()` | `check(token)`, `accept(token)`: the link's page, by the token in the body |
 | `auth()` | `me`, `login(credentials)` (`needsMfa(result)` when it answers `{mfaRequired}`), `loginMfa(code)`, `register(registration)` (`needsVerification(result)` when it answers `{verificationRequired, email}`), `registerCheck()`, `registerResend()`, `registerVerify(code)` (the sign-up is in its cookie), `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces), `exportData({ password })` (Download my data: the JSON, which the page saves as a file) |
 | `auth().emailVerification()` | `store()` (emails a code), `update(code)` (`{user}`; a 410 means the code ended). `verificationRequired(error)` recognises the API's 403 for an account that must verify first |
+| `auth().emailChange()` | `show()` (this session's pending request or null), `store({email, currentPassword})` / `store({email, code})` (fresh account proof), `update(code)` (only the emailed code), `destroy()` (cancel). `store` returns `{pending}` when verification is on, a full rotated `Session` when off; `update` returns the rotated session. Typed paths are `paths.auth.emailChange()` |
 | `auth().mfa()` | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })` |
 | `sessions()` | `destroyOthers()`, which signs out every session except this one |
 | `emailBlocks()` | `check(token)` (`{email, registered, blocked}`), `store(token)` (blocks; a 409 for an address with an account), `destroy(token)` (unblocks): the block link's page, by the token in the body. `paths.emailBlocks()` names the three paths |
@@ -114,6 +115,8 @@ list.refresh()   // Retry, or after a mutation
 - **Success messages are toasts:** `toast.success("Workspace renamed.")` ([design.md](design.md#toasts)), not a `done` state and an inline Notice.
 
 ## Challenges
+
+`ChangeEmailDialog` renews the session immediately after completion and revalidates the user's cached representations without clearing available data. A refresh failure is handled by the data's existing notice; it cannot turn a committed email change into a failed/retryable mutation. Password/MFA values are cleared on submission/close, and a resend needs fresh proof. A 409 with `pending: true` keeps code entry; an unavailable-address 409 or a 410 returns to choosing a destination; 429/network errors keep the pending request; a 401 goes to sign-in.
 
 A rate limit's challenge level answers 428 with `{challenge: {provider, siteKey, action}}` ([../api/rate-limits.md](../api/rate-limits.md#challenges)). **No page handles it:** `request()` in `lib/api/http.ts` calls the transport's `solve` (`useApi()` passes `useChallenge()`'s, from `ChallengeProvider` in `root.tsx`), which opens `ChallengeDialog` and resolves with the CAPTCHA's token; the request is then resent once, same method, path and body, with `X-Challenge-Token`.
 

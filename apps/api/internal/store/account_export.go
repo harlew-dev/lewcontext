@@ -25,13 +25,27 @@ const MaxExportedEvents = 10_000
 
 // AccountExport is the document.
 type AccountExport struct {
-	ExportedAt      time.Time                `json:"exportedAt"`
-	Account         ExportedAccount          `json:"account"`
-	Sessions        []ExportedSession        `json:"sessions"`
-	Memberships     []ExportedMembership     `json:"memberships"`
-	OwnedWorkspaces []ExportedOwnedWorkspace `json:"ownedWorkspaces"`
-	Events          []ExportedEvent          `json:"events"`
-	EventsTruncated bool                     `json:"eventsTruncated"`
+	ExportedAt         time.Time                `json:"exportedAt"`
+	Account            ExportedAccount          `json:"account"`
+	Sessions           []ExportedSession        `json:"sessions"`
+	Memberships        []ExportedMembership     `json:"memberships"`
+	OwnedWorkspaces    []ExportedOwnedWorkspace `json:"ownedWorkspaces"`
+	Events             []ExportedEvent          `json:"events"`
+	EventsTruncated    bool                     `json:"eventsTruncated"`
+	PendingEmailChange *ExportedEmailChange     `json:"pendingEmailChange"`
+	FormerEmails       []ExportedFormerEmail    `json:"formerEmails"`
+}
+
+// ExportedEmailChange deliberately omits session, code and request digests.
+type ExportedEmailChange struct {
+	Email     string    `json:"email"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// ExportedFormerEmail is the account's retained erasure history, not an alias.
+type ExportedFormerEmail struct {
+	Email      string    `json:"email"`
+	ReleasedAt time.Time `json:"releasedAt"`
 }
 
 // ExportedAccount is the account's profile.
@@ -124,6 +138,18 @@ func (s *Store) FindAccountExport(ctx context.Context, userID int64) (AccountExp
 			return err
 		}
 		if out.OwnedWorkspaces, err = exportOwnedWorkspaces(ctx, tx, userID); err != nil {
+			return err
+		}
+		var pending ExportedEmailChange
+		err = tx.NewSelect().Model((*emailChange)(nil)).Column("email", "expires_at").Where("user_id = ? AND expires_at > now()", userID).Scan(ctx, &pending)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if err == nil {
+			out.PendingEmailChange = &pending
+		}
+		out.FormerEmails = []ExportedFormerEmail{}
+		if err := tx.NewSelect().Model((*userEmailHistory)(nil)).Column("email", "released_at").Where("user_id = ?", userID).Order("released_at").Scan(ctx, &out.FormerEmails); err != nil {
 			return err
 		}
 		out.Events, out.EventsTruncated, err = exportEvents(ctx, tx, userID)
@@ -235,6 +261,7 @@ func exportEvents(ctx context.Context, tx bun.Tx, userID int64) ([]ExportedEvent
 		ColumnExpr("coalesce(?, '') AS ip, e.user_agent", eventIPText).
 		ColumnExpr("e.actor_id IS NOT DISTINCT FROM ? AS own", userID).
 		Where("e.user_id = ? OR (e.actor_id = ? AND NOT e.admin_request AND split_part(e.name, '.', 1) <> 'admin')", userID, userID).
+		Where("e.name <> ?", events.EmailChangeSent{}.EventName()).
 		OrderExpr(newestFirst).
 		Limit(MaxExportedEvents+1).
 		Scan(ctx, &rows)

@@ -115,6 +115,9 @@ type PasswordConfirmed struct {
 func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, confirm PasswordConfirmation, replace func(current string) (string, error)) (PasswordConfirmed, error) {
 	var confirmed PasswordConfirmed
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockEmailVersion(ctx, tx, u.ID, u.EmailVersion); err != nil {
+			return err
+		}
 		var current string
 		if err := tx.NewSelect().Model((*account)(nil)).Column("password_hash").Where("id = ?", u.ID).For("UPDATE").Scan(ctx, &current); err != nil {
 			return err

@@ -99,7 +99,7 @@ func (s *Store) IndexAdminDeliveries(ctx context.Context, f AdminDeliveryFilter,
 	q := s.DB.NewSelect().Model((*deliveryRecord)(nil)).
 		ColumnExpr("d.*").
 		ColumnExpr("e.public_id AS event_public_id, e.name AS event_name, e.created_at AS event_created_at").
-		ColumnExpr("e.payload->>'email' AS email").
+		ColumnExpr("CASE WHEN d.listener = ? THEN e.payload->>'previousEmail' ELSE e.payload->>'email' END AS email", "mail.email_changed_previous").
 		Join("JOIN events AS e ON e.id = d.event_id").
 		OrderExpr(deliveryOrder).
 		Limit(int64(perPage + 1))
@@ -180,11 +180,16 @@ type AdminQueue struct {
 
 // Mail kinds, for the volume per template and the requests.
 const (
-	MailPasswordReset     = "password_reset"
-	MailInvitation        = "invitation"
-	MailRegistrationCode  = "registration_code"
-	MailAccountExists     = "account_exists"
-	MailEmailVerification = "email_verification"
+	MailPasswordReset        = "password_reset"
+	MailInvitation           = "invitation"
+	MailRegistrationCode     = "registration_code"
+	MailAccountExists        = "account_exists"
+	MailEmailVerification    = "email_verification"
+	MailEmailChange          = "email_change"
+	MailEmailChangeCode      = "email_change_code"
+	MailEmailChangeExists    = "email_change_exists"
+	MailEmailChangedPrevious = "email_changed_previous"
+	MailEmailChangedCurrent  = "email_changed_current"
 )
 
 // AdminVolume is how many emails of Kind were sent in the hour starting at
@@ -211,6 +216,7 @@ type AdminRecipient struct {
 	Resets        int    `bun:"resets" json:"resets"`
 	Invitations   int    `bun:"invitations" json:"invitations"`
 	Registrations int    `bun:"registrations" json:"registrations"`
+	EmailChanges  int    `bun:"email_changes" json:"emailChanges"`
 }
 
 // AdminFailure is the newest delivery given up on in the window.
@@ -236,6 +242,7 @@ var requestPairs = []struct {
 	{MailPasswordReset, events.PasswordResetRequested{}, events.PasswordResetSent{}},
 	{"registration", events.RegistrationRequested{}, events.RegistrationSent{}},
 	{MailEmailVerification, events.EmailVerificationRequested{}, events.EmailVerificationSent{}},
+	{MailEmailChange, events.EmailChangeRequested{}, events.EmailChangeSent{}},
 }
 
 // FindAdminMailSummary reads the Mail page's summary for the window since
@@ -317,14 +324,19 @@ func (s *Store) mailQueue(ctx context.Context, since time.Time, listeners []stri
 func (s *Store) mailVolume(ctx context.Context, since time.Time) ([]AdminVolume, error) {
 	reset, invitation := events.PasswordResetSent{}.EventName(), events.WorkspaceInvitationSent{}.EventName()
 	registration, verification := events.RegistrationSent{}.EventName(), events.EmailVerificationSent{}.EventName()
+	change := events.EmailChangeSent{}.EventName()
 	kind := `CASE e.name WHEN ? THEN ? WHEN ? THEN ? WHEN ? THEN ? ELSE
-		CASE WHEN (e.payload->>'existingAccount')::boolean THEN ? ELSE ? END END`
+		CASE WHEN e.name = ? THEN CASE e.payload->>'kind' WHEN ? THEN ? WHEN ? THEN ?
+		ELSE CASE WHEN (e.payload->>'existingAccount')::boolean THEN ? ELSE ? END END
+		ELSE CASE WHEN (e.payload->>'existingAccount')::boolean THEN ? ELSE ? END END END`
 	rows := []AdminVolume{}
 	err := s.DB.NewSelect().Model((*eventRecord)(nil)).
 		ColumnExpr("date_trunc('hour', e.created_at) AS hour").
-		ColumnExpr(kind+" AS kind", reset, MailPasswordReset, invitation, MailInvitation, verification, MailEmailVerification, MailAccountExists, MailRegistrationCode).
+		ColumnExpr(kind+" AS kind", reset, MailPasswordReset, invitation, MailInvitation, verification, MailEmailVerification, change,
+			events.EmailChangeMailPrevious, MailEmailChangedPrevious, events.EmailChangeMailCurrent, MailEmailChangedCurrent,
+			MailEmailChangeExists, MailEmailChangeCode, MailAccountExists, MailRegistrationCode).
 		ColumnExpr("count(*) AS count").
-		Where("e.name IN (?)", bun.In([]string{reset, invitation, registration, verification})).
+		Where("e.name IN (?)", bun.In([]string{reset, invitation, registration, verification, change})).
 		Where("e.created_at >= ?", since).
 		GroupExpr("1, 2").
 		OrderExpr("1, 2").
@@ -346,6 +358,7 @@ func (s *Store) mailRequests(ctx context.Context, since time.Time) ([]AdminReque
 		Column("e.name").
 		ColumnExpr("count(*) AS count").
 		Where("e.name IN (?)", bun.In(names)).
+		Where("e.name <> ? OR coalesce(e.payload->>'kind', '') NOT IN (?)", events.EmailChangeSent{}.EventName(), bun.In([]string{events.EmailChangeMailPrevious, events.EmailChangeMailCurrent})).
 		Where("e.created_at >= ?", since).
 		Group("e.name").
 		Scan(ctx, &counts)
@@ -366,6 +379,7 @@ func (s *Store) topRecipients(ctx context.Context, since time.Time) ([]AdminReci
 	reset := events.PasswordResetRequested{}.EventName()
 	invitation := events.WorkspaceInvitationCreated{}.EventName()
 	registration := events.RegistrationRequested{}.EventName()
+	change := events.EmailChangeRequested{}.EventName()
 	rows := []AdminRecipient{}
 	err := s.DB.NewSelect().Model((*eventRecord)(nil)).
 		ColumnExpr("lower(e.payload->>'email') AS email").
@@ -373,7 +387,8 @@ func (s *Store) topRecipients(ctx context.Context, since time.Time) ([]AdminReci
 		ColumnExpr("count(*) FILTER (WHERE e.name = ?) AS resets", reset).
 		ColumnExpr("count(*) FILTER (WHERE e.name = ?) AS invitations", invitation).
 		ColumnExpr("count(*) FILTER (WHERE e.name = ?) AS registrations", registration).
-		Where("e.name IN (?)", bun.In([]string{reset, invitation, registration})).
+		ColumnExpr("count(*) FILTER (WHERE e.name = ?) AS email_changes", change).
+		Where("e.name IN (?)", bun.In([]string{reset, invitation, registration, change})).
 		Where("e.created_at >= ?", since).
 		GroupExpr("1").
 		Having("count(*) >= ?", minRecipientRequests).

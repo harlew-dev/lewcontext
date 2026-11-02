@@ -93,6 +93,7 @@ type MFAChallenge struct {
 	bun.BaseModel `bun:"table:mfa_challenges,alias:c"`
 	TokenHash     string `bun:",pk"`
 	UserID        int64
+	EmailVersion  int64
 	Purpose       string
 	Attempts      int
 	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp"`

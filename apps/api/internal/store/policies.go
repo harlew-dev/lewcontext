@@ -93,4 +93,4 @@ func (p pendingRegistration) policies() PolicyVersions {
 
 // userColumns are the users columns of a User the account itself sees (a
 // session's), in the order of its fields.
-const userColumns = "u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at, u.terms_of_service_version, u.privacy_policy_version, u.policies_accepted_at"
+const userColumns = "u.id, u.public_id, u.name, u.email, u.created_at, u.email_verified_at, u.terms_of_service_version, u.privacy_policy_version, u.policies_accepted_at, u.email_version, u.email_changed_at"
