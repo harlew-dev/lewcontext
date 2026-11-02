@@ -78,7 +78,9 @@ function DangerZone({
         keepMounted
         className="group relative h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-in-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none"
       >
-        <div className="pt-6">
+        {/* Blurs and fades the content with the height, as Animate UI's
+            collapsible does. */}
+        <div className="pt-6 transition-[opacity,filter] duration-200 ease-in-out group-data-ending-style:opacity-0 group-data-ending-style:blur-xs group-data-starting-style:opacity-0 group-data-starting-style:blur-xs motion-reduce:transition-none">
           <div className="divide-y divide-red-600/10 rounded-xl border border-red-600/20 bg-red-500/5 px-4 dark:divide-red-500/15 dark:border-red-500/25 dark:bg-red-500/10">
             {children}
           </div>
