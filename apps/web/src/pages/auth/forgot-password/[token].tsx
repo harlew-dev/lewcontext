@@ -4,7 +4,7 @@ import {
   NewPasswordFields,
   newPasswordProblems,
 } from "@/components/app/account/password-fields";
-import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
+import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import { Heading, HeadingGroup } from "@/components/ui/heading";
@@ -42,7 +42,6 @@ export default function ResetPassword() {
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo href={routes.home} />
-        <BackButton href={routes.login} />
         {state.kind === "checking" &&
           (checking ? <Text role="status">Checking your link…</Text> : null)}
         {state.kind === "live" && (

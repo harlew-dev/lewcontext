@@ -25,37 +25,24 @@ export function AuthLayout({
     </main>
   );
 }
-// The way back from a sign-in page, right under its logo: a plain button
-// with an arrow, its arrow in line with the logo. With `href` it opens the
-// page before (with navigation `state`, e.g. the typed email); with
-// `onClick` it goes back a step on the same page (the code step to the
-// password). It replaces the "back to …" links at the foot of the form.
-export function BackButton(
-  props:
-    | { href: string; state?: unknown }
-    | { onClick: () => void; disabled?: boolean },
-) {
-  const className = "-mt-4 -ml-3 justify-self-start sm:-ml-2.5";
-  const content = (
-    <>
+// The way back a step on the same sign-in page: a plain button with an
+// arrow. It goes back to a step the browser's own Back can't reach (the code
+// step to the password). Moving to another page is the browser's Back, or a
+// link on the page. It usually sits left of the form's submit button, in
+// that action row; a screen with no submit places it under the logo.
+export function BackButton({
+  onClick,
+  disabled,
+  className,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <Button plain onClick={onClick} disabled={disabled} className={className}>
       <ArrowLeftIcon />
       Back
-    </>
-  );
-  if ("href" in props)
-    return (
-      <Button plain href={props.href} state={props.state} className={className}>
-        {content}
-      </Button>
-    );
-  return (
-    <Button
-      plain
-      onClick={props.onClick}
-      disabled={props.disabled}
-      className={className}
-    >
-      {content}
     </Button>
   );
 }

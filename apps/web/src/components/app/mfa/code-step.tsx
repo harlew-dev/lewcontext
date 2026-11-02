@@ -59,9 +59,6 @@ export function CodeStep({
       className="grid w-full max-w-sm grid-cols-1 gap-8"
     >
       <Logo href={routes.home} />
-      {/* Back to the password, as whoever is signing in: off from the
-          moment a code is sent, not only once loading shows. */}
-      <BackButton onClick={() => onRestart("")} disabled={busy} />
       <HeadingGroup>
         <Heading>Two-factor authentication</Heading>
         <Text>
@@ -82,9 +79,18 @@ export function CodeStep({
         autoSubmit
         autoFocus
       />
-      <Button type="submit" className="w-full" loading={loading}>
-        Verify
-      </Button>
+      {/* Back to the password, as whoever is signing in: off from the
+          moment a code is sent, not only once loading shows. */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <BackButton
+          onClick={() => onRestart("")}
+          disabled={busy}
+          className="w-full sm:w-auto"
+        />
+        <Button type="submit" className="w-full sm:flex-1" loading={loading}>
+          Verify
+        </Button>
+      </div>
       <Text>
         <TextButton onClick={switchMode} disabled={loading}>
           <Strong>

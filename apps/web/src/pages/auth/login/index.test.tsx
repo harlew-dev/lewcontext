@@ -106,11 +106,6 @@ describe("signing in with two-factor authentication", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
     expect(screen.getByLabelText("Password")).toHaveValue("");
-    // The password step's own Back leads to the homepage.
-    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
-      "href",
-      "/",
-    );
   });
 });
 describe("policy links", () => {

@@ -118,17 +118,8 @@ describe("signing up with an emailed code", () => {
       "POST /api/auth/register/verify": { status: 201, body: testSession() },
     });
     renderAt(`/auth/register?next=${encodeURIComponent(link)}`);
-    // Back on sign-up and on the code page keep the invitation in ?next=.
-    expect(await screen.findByRole("link", { name: "Back" })).toHaveAttribute(
-      "href",
-      `/auth/login?next=${encodeURIComponent(link)}`,
-    );
     await signUp();
     await screen.findByLabelText("Verification code");
-    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
-      "href",
-      `/auth/register?next=${encodeURIComponent(link)}`,
-    );
     fireEvent.change(screen.getByLabelText("Verification code"), {
       target: { value: "482913" },
     });

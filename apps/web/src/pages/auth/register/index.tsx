@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
 import { PolicyLinks } from "@/components/app/policies/policy-links";
-import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
+import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { ErrorNotice } from "@/components/ui/feedback";
@@ -110,11 +110,6 @@ export default function Register({ loaderData }: Route.ComponentProps) {
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
-        {/* Back to sign in, keeping ?next= and the invitation. */}
-        <BackButton
-          href={authPath(routes.login, search.get("next"))}
-          state={arrived.invitation ? { invitation: true } : undefined}
-        />
         <Heading>Create your account</Heading>
         <InvitationCallout
           check={invitation}

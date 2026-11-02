@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { EmailCodeStep } from "@/components/app/email-verification/email-code-step";
-import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
+import { AuthLayout } from "@/components/layout/auth-layout";
 import { ServiceUnavailable } from "@/components/layout/status-page";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/feedback";
@@ -54,11 +54,6 @@ function CodeStep({
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo href={routes.home} />
-        {/* Back to the form, with the email in it, to use another. */}
-        <BackButton
-          href={authPath(routes.register, next)}
-          state={{ ...state, email }}
-        />
         <EmailCodeStep
           email={email}
           heading="Check your email"

@@ -40,7 +40,6 @@ export default function ForgotPassword() {
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
-        <BackButton href={routes.login} state={{ email }} />
         <HeadingGroup>
           <Heading>Reset your password</Heading>
           <Text>
@@ -81,7 +80,10 @@ function LinkSent({
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">
         <Logo href={routes.home} />
         {/* Back to the form, with the email still in it, to try again. */}
-        <BackButton onClick={onTryAgain} />
+        <BackButton
+          onClick={onTryAgain}
+          className="-mt-4 -ml-3 justify-self-start sm:-ml-2.5"
+        />
         {/* Announced when it replaces the form. */}
         <HeadingGroup role="status">
           <Heading>Check your email</Heading>

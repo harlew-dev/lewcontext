@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { InvitationCallout } from "@/components/app/invitations/invitation-callout";
-import { AuthLayout, BackButton } from "@/components/layout/auth-layout";
+import { AuthLayout } from "@/components/layout/auth-layout";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import { Description, Field, Label } from "@/components/ui/fieldset";
@@ -71,7 +71,6 @@ export default function Login() {
         className="grid w-full max-w-sm grid-cols-1 gap-8"
       >
         <Logo href={routes.home} />
-        <BackButton href={routes.home} />
         <Heading>Sign in to your account</Heading>
         <InvitationCallout
           check={invitation}

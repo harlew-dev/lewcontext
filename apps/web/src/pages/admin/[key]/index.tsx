@@ -215,10 +215,6 @@ function AdminSetup({
     <form onSubmit={submit} className="grid w-full max-w-sm grid-cols-1 gap-8">
       {/* Real page load for the same reason as above: the app build's page. */}
       <Logo href={routes.home} reloadDocument />
-      {/* Back to the password before MFA is on; after, Users is the way on. */}
-      {!codes && (
-        <BackButton onClick={() => onRestart("")} disabled={confirm.busy} />
-      )}
       <HeadingGroup>
         <Heading>
           {codes
@@ -249,14 +245,32 @@ function AdminSetup({
           />
         </>
       )}
-      <Button
-        type="submit"
-        className="w-full"
-        loading={codes ? goOn.loading : confirm.loading}
-        disabled={codes !== null && !saved}
-      >
-        {codes ? "I’ve saved these codes" : "Verify"}
-      </Button>
+      {codes ? (
+        <Button
+          type="submit"
+          className="w-full"
+          loading={goOn.loading}
+          disabled={!saved}
+        >
+          I’ve saved these codes
+        </Button>
+      ) : (
+        // Back to the password before MFA is on; after, Users is the way on.
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <BackButton
+            onClick={() => onRestart("")}
+            disabled={confirm.busy}
+            className="w-full sm:w-auto"
+          />
+          <Button
+            type="submit"
+            className="w-full sm:flex-1"
+            loading={confirm.loading}
+          >
+            Verify
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
