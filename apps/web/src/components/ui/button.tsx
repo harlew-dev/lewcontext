@@ -1,10 +1,13 @@
-import { forwardRef, useId, type ReactNode, type Ref } from "react";
 import {
-  Button as BaseButton,
-  type ButtonProps as BaseButtonProps,
-} from "baseui/button";
-import { slot } from "@/lib/baseui";
+  forwardRef,
+  useId,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  type Ref,
+} from "react";
+import { Button as BaseButton } from "@base-ui/react/button";
 import { cx } from "@/lib/cx";
+import { useInteractive } from "@/lib/interactive";
 import { Link } from "./link";
 import { Tooltip } from "./tooltip";
 const styles = {
@@ -14,7 +17,7 @@ const styles = {
     "focus:not-data-focus:outline-hidden data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-blue-500",
     "data-disabled:opacity-50",
     "*:data-[slot=icon]:-mx-0.5 *:data-[slot=icon]:my-0.5 *:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 *:data-[slot=icon]:self-center *:data-[slot=icon]:text-(--btn-icon) sm:*:data-[slot=icon]:my-1 sm:*:data-[slot=icon]:size-4 forced-colors:[--btn-icon:ButtonText] forced-colors:data-hover:[--btn-icon:ButtonText]",
-    // Loading hides the label and icons; BaseUI renders the spinner on top.
+    // Loading hides the label and icons; Button draws the spinner on top.
     "data-loading:text-transparent data-loading:[--btn-icon:transparent]",
   ],
   solid: [
@@ -58,8 +61,8 @@ type Style =
   | { color?: never; outline: true; plain?: never }
   | { color?: never; outline?: never; plain: true };
 type ButtonElementProps = Omit<
-  BaseButtonProps,
-  "kind" | "size" | "shape" | "isLoading" | "overrides" | "children" | "href"
+  ComponentPropsWithoutRef<"button">,
+  "children" | "className"
 > & { href?: never };
 type LinkElementProps = {
   href: string;
@@ -88,10 +91,9 @@ function buttonClasses({ color, outline, plain }: Style, className?: string) {
     className,
   );
 }
-const ButtonRoot = slot("button", "cursor-default");
-// Button on top of BaseUI's Button, which tracks hover, press and
-// focus-visible. With `href` it renders a React Router Link instead. Loading is drawn
-// here rather than with BaseUI's isLoading, which collapses the content to 0px.
+// Button on top of Base UI's Button, with hover, press and focus-visible
+// tracked by useInteractive (as Link does). With `href` it renders a React
+// Router Link instead.
 export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   {
     color,
@@ -107,6 +109,7 @@ export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
 ) {
   const reasonId = useId();
   const buttonProps = props as ButtonElementProps;
+  const interactive = useInteractive<HTMLButtonElement>(buttonProps);
   // With a reason the button always sits in the tooltip's wrapper, so
   // becoming enabled doesn't remount it; className then places the wrapper.
   const wrapped = props.href === undefined && disabledReason !== undefined;
@@ -128,20 +131,14 @@ export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   const button = (
     <BaseButton
       {...buttonProps}
+      {...interactive}
       aria-describedby={explained ? reasonId : buttonProps["aria-describedby"]}
       ref={ref as Ref<HTMLButtonElement>}
       type={buttonProps.type ?? "button"}
       disabled={buttonProps.disabled || loading}
-      overrides={{
-        BaseButton: {
-          component: ButtonRoot,
-          props: {
-            className: classes,
-            "data-loading": loading ? "" : undefined,
-            "aria-busy": loading || undefined,
-          },
-        },
-      }}
+      className={cx("cursor-default", classes)}
+      data-loading={loading ? "" : undefined}
+      aria-busy={loading || undefined}
     >
       <TouchTarget>{children}</TouchTarget>
       {loading && (

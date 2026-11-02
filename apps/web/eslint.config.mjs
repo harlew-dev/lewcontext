@@ -13,6 +13,32 @@ const adminOnly =
 // isAdminModule (web-build.ts), which the app build checks itself.
 const adminImport =
   "(^|/)(admin|admin-routes|admin-layout|use-admin-resource)(\\.[cm]?[jt]sx?)?$|(^|/)admin/|(^|/)lib/admin";
+const baseWebGone =
+  "baseui and Styletron are gone: use Base UI (@base-ui/react) from components/ui, components/layout, lib and root.tsx (docs/ui/base-ui.md).";
+const baseUiOnlyInUi =
+  "Import Base UI (@base-ui/react) only from components/ui, components/layout, lib and root.tsx, so pages use our components (docs/ui/base-ui.md).";
+const baseWebBan = [
+  { regex: "^(baseui|styletron-.*)(/|$)", message: baseWebGone },
+];
+const baseUiBan = [{ regex: "^@base-ui/react(/|$)", message: baseUiOnlyInUi }];
+// Where Base UI may be imported.
+const baseUiFiles = [
+  "src/components/ui/**",
+  "src/components/layout/**",
+  "src/lib/**",
+  "src/root.tsx",
+];
+const adminModules = [
+  "src/pages/admin/**",
+  "src/components/app/admin/**",
+  "src/components/layout/admin-layout.tsx",
+  "src/lib/admin.tsx",
+  "src/lib/admin-routes.ts",
+  "src/lib/use-admin-resource.ts",
+  "src/lib/api/admin.ts",
+  "src/lib/api/admin.test.ts",
+  "src/types/admin.ts",
+];
 const config = ts.config(
   {
     ignores: [
@@ -60,23 +86,31 @@ const config = ts.config(
   // import it, so no module the app loads pulls it into the app build. The
   // app build also fails on any admin module (no-admin-modules in
   // vite.config.ts), and scripts/check-app-build.sh reads its output.
+  // Base UI only behind our components, and the old baseui and Styletron
+  // nowhere. Later blocks restate the rule (a rule's options are replaced,
+  // not merged) for the files that also get the admin check.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: [
-      "src/pages/admin/**",
-      "src/components/app/admin/**",
-      "src/components/layout/admin-layout.tsx",
-      "src/lib/admin.tsx",
-      "src/lib/admin-routes.ts",
-      "src/lib/use-admin-resource.ts",
-      "src/lib/api/admin.ts",
-      "src/lib/api/admin.test.ts",
-      "src/types/admin.ts",
-    ],
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [{ regex: adminImport, message: adminOnly }] },
+        { patterns: [...baseWebBan, ...baseUiBan] },
+      ],
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: adminModules,
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            { regex: adminImport, message: adminOnly },
+            ...baseWebBan,
+            ...baseUiBan,
+          ],
+        },
       ],
       // import("…") of an admin module, which no-restricted-imports doesn't
       // see. The selector's regex can't hold a "/", so it's written \u002F.
@@ -92,6 +126,33 @@ const config = ts.config(
             "Write import() with a plain string, so the admin-code checks can read it.",
         },
       ],
+    },
+  },
+  // The files allowed to import Base UI (the admin check still applies).
+  {
+    files: baseUiFiles,
+    ignores: adminModules,
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [{ regex: adminImport, message: adminOnly }, ...baseWebBan],
+        },
+      ],
+    },
+  },
+  // The admin modules among them (which may import admin code).
+  {
+    files: [
+      "src/components/layout/admin-layout.tsx",
+      "src/lib/admin.tsx",
+      "src/lib/admin-routes.ts",
+      "src/lib/use-admin-resource.ts",
+      "src/lib/api/admin.ts",
+      "src/lib/api/admin.test.ts",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: baseWebBan }],
     },
   },
 );

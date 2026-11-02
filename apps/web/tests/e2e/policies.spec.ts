@@ -118,9 +118,12 @@ test("policies on: published pages, and sign-up agrees to them", async ({
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(`${origin}/auth/register`);
   const box = page.getByRole("checkbox", { name: /^I agree to the Terms/ });
-  expect(await box.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(
-    false,
-  );
+  // The form's own check is on the checkbox's hidden input.
+  expect(
+    await page
+      .locator('input[type="checkbox"][required]')
+      .evaluate((el: HTMLInputElement) => el.validity.valid),
+  ).toBe(false);
   await page.getByText("I agree to the").click();
   await expect(box).toBeChecked();
   await page.getByRole("button", { name: "Create account" }).click();

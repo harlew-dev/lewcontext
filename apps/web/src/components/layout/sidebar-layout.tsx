@@ -1,9 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
-import { Drawer } from "baseui/drawer";
-import { slot } from "@/lib/baseui";
+import { Dialog } from "@base-ui/react/dialog";
 import { cx } from "@/lib/cx";
-import { useScrollLock } from "@/lib/scroll-lock";
 import { useDockedSidebar } from "@/lib/use-docked-sidebar";
 import { NavbarItem } from "@/components/ui/navbar";
 import {
@@ -34,26 +32,14 @@ function CloseMenuIcon() {
     </svg>
   );
 }
-// The mobile sidebar is a BaseUI Drawer (focus lock, Escape, backdrop click)
-// styled as a slide-over panel.
-const DrawerRoot = slot(
-  "div",
-  "fixed inset-0 data-closed:pointer-events-none lg:hidden",
-);
-const DrawerBackdrop = slot(
-  "div",
-  "fixed inset-0 bg-black/30 transition duration-300 ease-out data-closed:opacity-0 motion-reduce:transition-none",
-);
-const DrawerContainer = slot(
-  "div",
-  "fixed inset-y-0 w-full max-w-80 p-2 transition duration-300 ease-in-out data-closed:-translate-x-full motion-reduce:transition-none",
-  { props: () => ({ role: "dialog", "aria-label": "Navigation" }) },
-);
-const DrawerPanel = slot(
-  "div",
-  "flex h-full flex-col rounded-lg bg-white shadow-xs ring-1 ring-zinc-950/5 dark:bg-zinc-900 dark:ring-white/10",
-);
-const NoCloseButton = () => null;
+// The mobile sidebar is a Base UI Dialog (focus trap, Escape, backdrop click,
+// scroll lock) styled as a slide-over panel from the left.
+const backdropClasses =
+  "fixed inset-0 z-50 bg-black/30 transition duration-300 ease-out data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none lg:hidden";
+const popupClasses =
+  "fixed inset-y-0 left-0 z-50 w-full max-w-80 p-2 transition duration-300 ease-in-out data-starting-style:-translate-x-full data-ending-style:-translate-x-full motion-reduce:transition-none lg:hidden";
+const panelClasses =
+  "flex h-full flex-col rounded-lg bg-white shadow-xs ring-1 ring-zinc-950/5 dark:bg-zinc-900 dark:ring-white/10";
 function MobileSidebar({
   open,
   close,
@@ -63,35 +49,32 @@ function MobileSidebar({
   close: () => void;
   children: ReactNode;
 }) {
-  useScrollLock(open);
   return (
-    <Drawer
-      isOpen={open}
-      onClose={close}
-      anchor="left"
-      animate
-      autoFocus
-      closeable
-      overrides={{
-        Root: { component: DrawerRoot },
-        Backdrop: { component: DrawerBackdrop },
-        DrawerContainer: { component: DrawerContainer },
-        DrawerBody: { component: DrawerPanel },
-        Close: { component: NoCloseButton },
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) close();
       }}
     >
-      <SidebarToggleContext.Provider
-        value={{
-          label: "Close navigation",
-          icon: <CloseMenuIcon />,
-          onClick: close,
-        }}
-      >
-        <SidebarCloseContext.Provider value={close}>
-          {children}
-        </SidebarCloseContext.Provider>
-      </SidebarToggleContext.Provider>
-    </Drawer>
+      <Dialog.Portal>
+        <Dialog.Backdrop className={backdropClasses} />
+        <Dialog.Popup aria-label="Navigation" className={popupClasses}>
+          <div className={panelClasses}>
+            <SidebarToggleContext.Provider
+              value={{
+                label: "Close navigation",
+                icon: <CloseMenuIcon />,
+                onClick: close,
+              }}
+            >
+              <SidebarCloseContext.Provider value={close}>
+                {children}
+              </SidebarCloseContext.Provider>
+            </SidebarToggleContext.Provider>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 // The desktop sidebar's toggle is one button that never leaves: hiding the

@@ -132,7 +132,7 @@ The policy pages are prerendered this way, and their loaders read their Markdown
 
 To add a public page: register it in `routes.ts`, add its path to `prerender`, and keep it free of user data. A prerendered route may have a `loader`, which runs at build time.
 
-BaseUI styles itself with Styletron. `src/entry.server.tsx` runs only at build time: it renders each prerendered page (and the fallback) with a fresh Styletron server engine and writes the collected CSS into `<head>` as `<style class="_styletron_hydrate_">`. In the browser, `lib/styletron.ts` starts from those tags (`entry.client.tsx`).
+Styles are Tailwind's one stylesheet, linked from every page's `<head>`, so a prerendered page needs no style collection. `src/entry.server.tsx` runs only at build time and renders each prerendered page (and the fallback); the browser hydrates with React Router's default client entry.
 
 ## Signed-out pages
 

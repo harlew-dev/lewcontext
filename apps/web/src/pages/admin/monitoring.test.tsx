@@ -16,6 +16,7 @@ import AdminMonitoringOverview from "./[key]/monitoring";
 import AdminMonitoringLimits from "./[key]/monitoring/limits/index";
 import AdminMonitoringSecurity from "./[key]/monitoring/security/index";
 import AdminLayoutRoute from "./layout";
+import { pick } from "@/test/pick";
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
 const admin = testSession({
   user: { id: "usr_00000000000009", name: "Olive Admin" },
@@ -378,7 +379,7 @@ describe("the Monitoring Overview", () => {
     renderAdmin(`/admin/${key}/monitoring`);
     await screen.findByText("1,204");
     fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
-    fireEvent.click(await screen.findByRole("option", { name: "Last 7 days" }));
+    pick(await screen.findByRole("option", { name: "Last 7 days" }));
     expect(
       await screen.findByText("Monitoring is busy. Try again in a moment."),
     ).toBeInTheDocument();

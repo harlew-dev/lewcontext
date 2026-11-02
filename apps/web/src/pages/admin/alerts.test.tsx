@@ -11,6 +11,7 @@ import AdminAlertShow from "./[key]/alerts/[alert]";
 import AdminAdminIndex from "./[key]/admins";
 import AdminMonitoringError from "./[key]/monitoring/errors/[error]";
 import AdminLayoutRoute from "./layout";
+import { pick } from "@/test/pick";
 // The Alerts pages and the housekeeping actions: the list by state, the
 // sidebar's count, acknowledging, silencing (an action: a reason), the
 // error group's Resolve and the admin's own alert email setting.
@@ -277,7 +278,7 @@ describe("alert emails on the Admins page", () => {
     });
     renderAdmin(`/admin/${key}/admins`);
     fireEvent.click(await screen.findByRole("combobox", { name: /Email me/ }));
-    fireEvent.click(await screen.findByRole("option", { name: "None" }));
+    pick(await screen.findByRole("option", { name: "None" }));
     await waitFor(() =>
       expect(api.sent("PATCH")[0]).toMatchObject({
         url: "/api/admin/me",

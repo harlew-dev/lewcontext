@@ -1,37 +1,29 @@
 import {
   createContext,
-  forwardRef,
   useContext,
   useId,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { Select, type Option } from "baseui/select";
-import { LayoutGroup, useReducedMotion } from "motion/react";
-import {
-  popoverExit,
-  popoverOverrides,
-  slot,
-  usePopoverSettled,
-} from "@/lib/baseui";
+import { Combobox as BaseCombobox } from "@base-ui/react/combobox";
+import { LayoutGroup } from "motion/react";
 import { cx } from "@/lib/cx";
-import { usePopoverScrollLock } from "@/lib/scroll-lock";
 import { Badge } from "./badge";
 import { useField } from "./fieldset";
 import { Highlight } from "./highlight";
 import {
   ChevronUpDown,
-  ListboxButton,
-  ListboxIcons,
-  ListboxList,
-  ListboxOptionItem,
-  ListboxPanel,
-  ListboxRoot,
+  listboxButtonClasses,
+  listboxIconsClasses,
+  listboxListClasses,
+  listboxOptionClasses,
+  listboxPanelClasses,
 } from "./listbox";
 // A searchable multi-select over a tree: groups of options, picked whole or
-// one by one. On BaseUI's multi Select (searchable, kept open while
-// picking), styled like Listbox. Its value is the leaves picked; choosing a
+// one by one. On Base UI's multiple Combobox (kept open while picking),
+// styled like Listbox. Its value is the leaves picked; choosing a
 // group picks every leaf under it, or clears them when all are picked, and
 // a partly picked group shows a dash. Search keeps a group while any of its
 // leaves match, and lists every leaf of a matching group. Closed, the choice
@@ -50,7 +42,7 @@ export type ComboboxNode = {
 };
 // A row of the flattened tree: its depth, the leaves under it (itself for a
 // leaf) and the groups above it.
-type Row = Option & {
+type Row = {
   id: string;
   text: string;
   node: ComboboxNode;
@@ -60,14 +52,13 @@ type Row = Option & {
 };
 // How many chips the closed control shows before "+N".
 const maxChips = 2;
-// What rows and chips read while BaseUI renders them: the picked leaves and
+// What rows and chips read while Base UI renders them: the picked leaves and
 // the chips.
 type ComboboxState = { picked: Set<string>; chips: Row[] };
 const StateContext = createContext<ComboboxState>({
   picked: new Set(),
   chips: [],
 });
-const SettledContext = createContext(false);
 // The tree in order, depth first, groups before their children.
 function flatten(nodes: ComboboxNode[], depth = 0, ancestors: string[] = []) {
   const rows: Row[] = [];
@@ -131,7 +122,7 @@ type ComboboxProps = {
   value: string[];
   onChange: (value: string[]) => void;
   options: ComboboxNode[];
-  placeholder?: ReactNode;
+  placeholder?: string;
   disabled?: boolean;
   invalid?: boolean;
   className?: string;
@@ -149,10 +140,10 @@ export function Combobox({
 }: ComboboxProps) {
   const field = useField();
   const id = useId();
-  const reducedMotion = useReducedMotion();
+  const anchor = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  usePopoverScrollLock(open);
-  const settled = usePopoverSettled(open);
+  const [query, setQuery] = useState("");
   const rows = useMemo(() => flatten(options), [options]);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const order = useMemo(
@@ -167,6 +158,7 @@ export function Combobox({
         .filter((row): row is Row => row !== undefined),
     [options, picked, byId],
   );
+  const shown = useMemo(() => filterRows(rows, query), [rows, query]);
   // Choosing a row toggles its leaves: all picked → none, else all.
   const toggle = (row: Row) => {
     const next = new Set(picked);
@@ -177,131 +169,125 @@ export function Combobox({
     }
     onChange(order.filter((leaf) => next.has(leaf)));
   };
+  // Base UI holds the chips and reports each choice as one added or removed
+  // row; what that row stands for is ours to toggle.
+  const choose = (next: Row[]) => {
+    const before = new Set(chips.map((row) => row.id));
+    const after = new Set(next.map((row) => row.id));
+    const changed =
+      next.find((row) => !before.has(row.id)) ??
+      chips.find((row) => !after.has(row.id));
+    if (changed) toggle(changed);
+  };
   const state = useMemo(() => ({ picked, chips }), [picked, chips]);
+  const isDisabled = disabled ?? field?.disabled;
   return (
     <LayoutGroup id={id}>
       <StateContext.Provider value={state}>
-        <SettledContext.Provider value={settled}>
-          <Select
-            multi
-            searchable
-            options={rows}
-            // BaseUI holds the chips; the rows read what's picked from
-            // context, so a group shows checked, mixed or empty.
-            value={chips}
-            onChange={({ option, type }) => {
-              if (type === "clear") onChange([]);
-              else if (option)
-                toggle(byId.get(String(option.id)) ?? (option as Row));
-            }}
-            onOpen={() => setOpen(true)}
-            onClose={() => setOpen(false)}
-            filterOptions={(list, query) => filterRows(list as Row[], query)}
-            filterOutSelected={false}
-            closeOnSelect={false}
-            onSelectResetsInput={false}
-            onBlurResetsInput
-            backspaceRemoves={false}
-            clearable={false}
-            disabled={disabled ?? field?.disabled}
-            error={invalid}
-            placeholder={placeholder}
-            aria-label={ariaLabel}
-            aria-labelledby={ariaLabel ? undefined : field?.labelId}
-            aria-describedby={field?.describedBy}
-            labelKey="text"
-            valueKey="id"
-            getOptionLabel={({ option }) => (
-              <ComboboxRowLabel row={option as Row} />
-            )}
-            getValueLabel={({ option }) => {
-              const row = option as Row;
-              return row.node.chip ?? row.text;
-            }}
-            overrides={{
-              Root: { component: ListboxRoot, props: { className } },
-              ControlContainer: { component: ListboxButton },
-              ValueContainer: { component: ComboboxValueContainer },
-              Placeholder: { component: ComboboxPlaceholder },
-              InputContainer: { component: ComboboxInputContainer },
-              Input: { component: ComboboxInput },
-              MultiValue: { component: ComboboxChip },
-              IconsContainer: { component: ListboxIcons },
-              SelectArrow: { component: ChevronUpDown },
-              Popover: {
-                props: {
-                  animateOutTime: reducedMotion ? 0 : popoverExit,
-                  overrides: popoverOverrides,
-                },
-              },
-              DropdownContainer: { component: ListboxPanel },
-              Dropdown: { component: ListboxList },
-              DropdownListItem: { component: ComboboxOptionItem },
-              OptionContent: { component: ComboboxOptionContent },
-            }}
-          />
-        </SettledContext.Provider>
+        <BaseCombobox.Root<Row, true>
+          multiple
+          items={rows}
+          filteredItems={shown}
+          filter={null}
+          value={chips}
+          onValueChange={choose}
+          open={open}
+          onOpenChange={(next, details) => {
+            // Picking a row keeps the list open, for the next pick.
+            if (!next && details.reason === "item-press")
+              return details.cancel();
+            setOpen(next);
+            if (!next) setQuery("");
+          }}
+          inputValue={query}
+          onInputValueChange={(next, details) => {
+            if (details.reason !== "item-press") setQuery(next);
+          }}
+          isItemEqualToValue={(a, b) => a.id === b.id}
+          itemToStringLabel={(row) => row.text}
+          itemToStringValue={(row) => row.id}
+          disabled={isDisabled}
+        >
+          <div className={cx("relative block w-full", className)}>
+            <div
+              ref={anchor}
+              data-slot="control"
+              data-invalid={invalid ? "" : undefined}
+              data-disabled={isDisabled ? "" : undefined}
+              onClick={() => {
+                input.current?.focus();
+                setOpen(true);
+              }}
+              className={listboxButtonClasses}
+            >
+              <div className={comboboxValueClasses}>
+                {chips.slice(0, maxChips).map((row) => (
+                  <Badge
+                    key={row.id}
+                    className="max-w-48 min-w-0"
+                    onRemove={() => toggle(row)}
+                    removeLabel={`Remove ${row.node.chip ?? row.text}`}
+                  >
+                    <span className="truncate">
+                      {row.node.chip ?? row.text}
+                    </span>
+                  </Badge>
+                ))}
+                {chips.length > maxChips && (
+                  <span className="px-1 text-sm/5 text-zinc-500 sm:text-xs/5 dark:text-zinc-400">
+                    +{chips.length - maxChips}
+                  </span>
+                )}
+                <div className="relative flex min-w-16 flex-1 px-1">
+                  <BaseCombobox.Input
+                    ref={input}
+                    id={field?.id}
+                    placeholder={chips.length === 0 ? placeholder : undefined}
+                    aria-label={ariaLabel}
+                    aria-labelledby={ariaLabel ? undefined : field?.labelId}
+                    aria-describedby={field?.describedBy}
+                    aria-invalid={invalid || undefined}
+                    // Backspace in an empty search removes nothing.
+                    onKeyDown={(event) => {
+                      if (event.key === "Backspace" && query === "")
+                        event.preventBaseUIHandler();
+                    }}
+                    className="w-full min-w-0 appearance-none bg-transparent py-0.5 text-base/6 text-zinc-950 outline-hidden placeholder:text-zinc-500 sm:text-sm/6 dark:text-white"
+                  />
+                </div>
+              </div>
+              <span className={listboxIconsClasses}>
+                <ChevronUpDown />
+              </span>
+            </div>
+          </div>
+          <BaseCombobox.Portal>
+            <BaseCombobox.Positioner
+              anchor={anchor}
+              sideOffset={4}
+              className="z-[60] outline-hidden"
+            >
+              <BaseCombobox.Popup className={listboxPanelClasses}>
+                <BaseCombobox.List className={listboxListClasses}>
+                  {(row: Row) => <ComboboxOption key={row.id} row={row} />}
+                </BaseCombobox.List>
+              </BaseCombobox.Popup>
+            </BaseCombobox.Positioner>
+          </BaseCombobox.Portal>
+        </BaseCombobox.Root>
       </StateContext.Provider>
     </LayoutGroup>
   );
 }
-const ComboboxValueContainer = slot(
-  "div",
-  [
-    "relative flex min-h-11 w-full flex-wrap items-center gap-1 rounded-lg py-[calc(--spacing(2)-1px)] sm:min-h-9 sm:py-[calc(--spacing(1)-1px)]",
-    "pr-[calc(--spacing(7)-1px)] pl-[calc(--spacing(2.5)-1px)] sm:pl-[calc(--spacing(2)-1px)]",
-    "text-left text-base/6 text-zinc-950 sm:text-sm/6 dark:text-white forced-colors:text-[CanvasText]",
-    "border border-zinc-950/10 group-data-open:border-zinc-950/20 group-hover:border-zinc-950/20 dark:border-white/10 dark:group-data-open:border-white/20 dark:group-hover:border-white/20",
-    "bg-transparent dark:bg-white/5",
-    "group-data-invalid:border-red-500 dark:group-data-invalid:border-red-600",
-    "group-data-disabled:border-zinc-950/20 dark:group-data-disabled:border-white/15",
-  ].join(" "),
-);
-const ComboboxPlaceholder = slot(
-  "span",
-  "pointer-events-none absolute inset-y-0 right-7 left-[calc(--spacing(3.5)-1px)] flex items-center truncate text-zinc-500 sm:left-[calc(--spacing(3)-1px)]",
-);
-const ComboboxInputContainer = slot(
-  "div",
-  "relative flex min-w-16 flex-1 px-1",
-);
-const ComboboxInput = slot(
-  "input",
-  "w-full min-w-0 appearance-none bg-transparent py-0.5 text-base/6 text-zinc-950 outline-hidden sm:text-sm/6 dark:text-white",
-  { ignore: ["$isFocused"] },
-);
-// A chip in the closed control: the first `maxChips`, then "+N" for the
-// rest. Its × removes everything it stands for.
-function ComboboxChip({
-  value,
-  onActionClick,
-  children,
-}: {
-  value: Row;
-  // BaseUI's remove, as its Tag's action.
-  onActionClick: () => void;
-  children?: ReactNode;
-}) {
-  const { chips } = useContext(StateContext);
-  const index = chips.findIndex((chip) => chip.id === value.id);
-  if (index >= maxChips) {
-    if (index > maxChips) return null;
-    return (
-      <span className="px-1 text-sm/5 text-zinc-500 sm:text-xs/5 dark:text-zinc-400">
-        +{chips.length - maxChips}
-      </span>
-    );
-  }
-  return (
-    <Badge
-      className="max-w-48 min-w-0"
-      onRemove={onActionClick}
-      removeLabel={`Remove ${String(children)}`}
-    >
-      <span className="truncate">{children}</span>
-    </Badge>
-  );
-}
+const comboboxValueClasses = [
+  "relative flex min-h-11 w-full flex-wrap items-center gap-1 rounded-lg py-[calc(--spacing(2)-1px)] sm:min-h-9 sm:py-[calc(--spacing(1)-1px)]",
+  "pr-[calc(--spacing(7)-1px)] pl-[calc(--spacing(2.5)-1px)] sm:pl-[calc(--spacing(2)-1px)]",
+  "text-left text-base/6 text-zinc-950 sm:text-sm/6 dark:text-white forced-colors:text-[CanvasText]",
+  "border border-zinc-950/10 group-data-popup-open:border-zinc-950/20 group-hover:border-zinc-950/20 dark:border-white/10 dark:group-hover:border-white/20",
+  "bg-transparent dark:bg-white/5",
+  "group-data-invalid:border-red-500 dark:group-data-invalid:border-red-600",
+  "group-data-disabled:border-zinc-950/20 dark:group-data-disabled:border-white/15",
+].join(" ");
 // Whether a row is picked: all its leaves, none, or some (a group).
 function pickedState(row: Row, picked: Set<string>) {
   const count = row.leaves.filter((leaf) => picked.has(leaf)).length;
@@ -309,21 +295,33 @@ function pickedState(row: Row, picked: Set<string>) {
     count === 0 ? "empty" : count === row.leaves.length ? "checked" : "mixed";
   return { count, state };
 }
-const ariaChecked = { checked: "true", mixed: "mixed", empty: "false" };
-// A row's list item: BaseUI's aria-selected says which row is highlighted,
-// so the picked state is aria-checked ("true", "false" or "mixed").
-const ComboboxOptionItem = forwardRef<HTMLElement, Record<string, unknown>>(
-  function ComboboxOptionItem({ item, ...props }, ref) {
-    const { picked } = useContext(StateContext);
-    const checked = isRow(item)
-      ? ariaChecked[pickedState(item, picked).state]
-      : undefined;
-    return <ListboxOptionItem ref={ref} {...props} aria-checked={checked} />;
-  },
-);
-// BaseUI hands the list item its option as `item`.
-function isRow(item: unknown): item is Row {
-  return typeof item === "object" && item !== null && "leaves" in item;
+const ariaChecked = {
+  checked: "true",
+  mixed: "mixed",
+  empty: "false",
+} as const;
+// A row's option: the picked state is aria-checked ("true", "false" or
+// "mixed"; Base UI's aria-selected only knows the chips), with the grey
+// Highlight that slides between rows as Listbox's does.
+function ComboboxOption({ row }: { row: Row }) {
+  const { picked } = useContext(StateContext);
+  const checked = ariaChecked[pickedState(row, picked).state];
+  return (
+    <BaseCombobox.Item
+      value={row}
+      aria-checked={checked}
+      aria-selected={checked === "true"}
+      className={listboxOptionClasses}
+      render={(props, state) => (
+        <div {...props}>
+          {state.highlighted && (
+            <Highlight className="-z-10 bg-zinc-950/5 dark:bg-white/10" />
+          )}
+          <ComboboxRowLabel row={row} />
+        </div>
+      )}
+    />
+  );
 }
 // A row: indented by depth, a check box (checked, empty, or a dash for a
 // partly picked group), its label and, for a group, how many it holds.
@@ -386,27 +384,5 @@ function CheckBox({ state }: { state: "checked" | "mixed" | "empty" }) {
         </svg>
       )}
     </span>
-  );
-}
-// The highlighted (hovered or arrowed-to) row's grey background, sliding
-// between rows as Listbox's does.
-function ComboboxOptionContent({
-  $isHighlighted,
-  children,
-}: {
-  $isHighlighted?: boolean;
-  children?: ReactNode;
-}) {
-  const settled = useContext(SettledContext);
-  return (
-    <>
-      {$isHighlighted && (
-        <Highlight
-          slide={settled}
-          className="-z-10 bg-zinc-950/5 dark:bg-white/10"
-        />
-      )}
-      {children}
-    </>
   );
 }

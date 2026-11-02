@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { Description, ErrorMessage, Field, Label } from "./fieldset";
 import { Input, InputActions, InputGroup } from "./input";
+import { hover } from "@/test/hover";
 describe("Field", () => {
   it("labels the BaseUI input and links its description and error", () => {
     render(
@@ -102,7 +103,7 @@ describe("Field", () => {
       name: "Protected",
     });
     expect(input).toHaveAccessibleDescription("Protected");
-    fireEvent.mouseEnter(lock);
+    hover(lock);
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Protected");
   });
 });

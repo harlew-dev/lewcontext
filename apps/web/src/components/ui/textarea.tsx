@@ -1,25 +1,16 @@
-import {
-  Textarea as BaseTextarea,
-  type TextareaProps as BaseTextareaProps,
-} from "baseui/textarea";
-import { slot } from "@/lib/baseui";
+import type { ComponentPropsWithoutRef } from "react";
 import { cx } from "@/lib/cx";
 import { useField } from "./fieldset";
 import { controlClasses, fieldClasses } from "./input";
-const TextareaControl = slot("span", controlClasses, {
-  props: () => ({ "data-slot": "control" }),
-});
-const TextareaContainer = slot("span", "contents");
-const TextareaElement = slot("textarea", cx(fieldClasses, "h-full"));
 type TextareaProps = Omit<
-  BaseTextareaProps,
-  "overrides" | "size" | "error" | "resize"
+  ComponentPropsWithoutRef<"textarea">,
+  "className" | "size"
 > & {
   invalid?: boolean;
   resizable?: boolean;
   className?: string;
 };
-// Textarea on top of BaseUI's Textarea.
+// A styled <textarea> (Base UI has no Textarea part) wired through our Field.
 export function Textarea({
   invalid = false,
   resizable = true,
@@ -27,21 +18,23 @@ export function Textarea({
   ...props
 }: TextareaProps) {
   const field = useField();
+  const disabled = props.disabled ?? field?.disabled;
   return (
-    <BaseTextarea
-      id={field?.id}
-      aria-describedby={field?.describedBy}
-      disabled={field?.disabled}
-      {...props}
-      error={invalid}
-      overrides={{
-        Root: { component: TextareaControl, props: { className } },
-        InputContainer: { component: TextareaContainer },
-        Input: {
-          component: TextareaElement,
-          props: { className: resizable ? "resize-y" : "resize-none" },
-        },
-      }}
-    />
+    <span data-slot="control" className={cx(controlClasses, className)}>
+      <textarea
+        id={field?.id}
+        aria-describedby={field?.describedBy}
+        {...props}
+        disabled={disabled}
+        aria-invalid={invalid || undefined}
+        data-invalid={invalid ? "" : undefined}
+        data-disabled={disabled ? "" : undefined}
+        className={cx(
+          fieldClasses,
+          "h-full",
+          resizable ? "resize-y" : "resize-none",
+        )}
+      />
+    </span>
   );
 }

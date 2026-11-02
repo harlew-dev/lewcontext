@@ -219,7 +219,7 @@ test("register, create, loading, filter, edit, paginate, not found, security, mo
   await page.goto(dashboard);
   const response = await page.request.get(dashboard);
   const csp = response.headers()["content-security-policy"];
-  // Inline scripts run only by hash; inline CSS is allowed for Styletron.
+  // Inline scripts run only by hash; inline styles are allowed.
   expect(csp).toMatch(/script-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+;/);
   expect(csp.split(";").find((d) => d.includes("script-src"))).not.toContain(
     "unsafe",
@@ -330,7 +330,7 @@ test("/ is the prerendered homepage, /app needs a session, and the pre-workspace
   request,
 }) => {
   // Search engines get the homepage's content, title and description, and
-  // BaseUI's styles, in the HTML itself.
+  // its stylesheet, in the HTML itself.
   const root = await request.get("/", { maxRedirects: 0 });
   expect(root.status()).toBe(200);
   const html = await root.text();
@@ -339,7 +339,7 @@ test("/ is the prerendered homepage, /app needs a session, and the pre-workspace
   expect(html).toContain('<meta name="description"');
   expect(html).toContain("Context for AI agents.");
   expect(html).toContain('href="/auth/login"');
-  expect(html).toContain("_styletron_hydrate_");
+  expect(html).toMatch(/<link[^>]+rel="stylesheet"/);
   // Signed-out visitors get no app HTML, only a redirect to login.
   const app = await request.get("/app", { maxRedirects: 0 });
   expect(app.status()).toBe(302);
@@ -662,7 +662,7 @@ test("members: an owner changes a member to viewer, then removes them", async ({
   await dialog.getByRole("button", { name: "Save role" }).click();
   await expect(page.getByText("Terry Teammate is now a viewer.")).toBeVisible();
   await expect(row.getByText("Viewer", { exact: true })).toBeVisible();
-  // BaseUI keeps a closed dialog for its 500 ms exit animation.
+  // Base UI keeps a closed dialog until its exit transition ends.
   await expect(dialog).toHaveCount(0);
 
   await row.getByRole("button", { name: "Actions for Terry Teammate" }).click();

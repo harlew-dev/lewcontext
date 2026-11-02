@@ -23,6 +23,7 @@ import AdminEventIndex from "./[key]/events/index";
 import AdminEventShow from "./[key]/events/[event]";
 import AdminDeliveryIndex from "./[key]/mail/index";
 import AdminLayoutRoute from "./layout";
+import { pick } from "@/test/pick";
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
 const admin = testSession({
   user: { id: "usr_00000000000009", name: "Olive Admin" },
@@ -270,11 +271,14 @@ describe("the Events page", () => {
       target: { value: " ADA@example.com " },
     });
     fireEvent.click(within(dialog).getAllByRole("combobox")[0]);
+    pick(await screen.findByRole("option", { name: /^auth\.mfa\.\* / }));
+    // Base UI hides the rest of the page from assistive technology while the
+    // picker's list is open, so the button is found among the hidden.
     fireEvent.click(
-      await screen.findByRole("option", { name: /^auth\.mfa\.\* / }),
-    );
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Apply filters" }),
+      within(dialog).getByRole("button", {
+        name: "Apply filters",
+        hidden: true,
+      }),
     );
     const applied = `/admin/${key}/events?name=auth.mfa.*&email=ada%40example.com&ip=203.0.113.5`;
     await waitFor(() => expect(location()).toBe(applied));
@@ -352,7 +356,7 @@ describe("the Events page", () => {
     renderAdmin(`/admin/${key}/events?email=ada%40example.com`);
     await screen.findByText("wrong_password · ada@example.com");
     fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
-    fireEvent.click(await screen.findByRole("option", { name: "Last hour" }));
+    pick(await screen.findByRole("option", { name: "Last hour" }));
     await waitFor(() =>
       expect(location()).toBe(
         `/admin/${key}/events?window=1h&email=ada%40example.com`,
@@ -360,7 +364,7 @@ describe("the Events page", () => {
     );
     await waitFor(() => expect(eventRequests(api.sent())).toHaveLength(2));
     fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
-    fireEvent.click(await screen.findByRole("option", { name: "Last hour" }));
+    pick(await screen.findByRole("option", { name: "Last hour" }));
     await waitFor(() => expect(eventRequests(api.sent())).toHaveLength(3));
   });
   // The calendar hands back local dates at local midnight; the range is
@@ -380,9 +384,7 @@ describe("the Events page", () => {
         renderAdmin(`/admin/${key}/events`);
         await screen.findByText("wrong_password · ada@example.com");
         fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
-        fireEvent.click(
-          await screen.findByRole("option", { name: "Custom range…" }),
-        );
+        pick(await screen.findByRole("option", { name: "Custom range…" }));
         const dialog = await screen.findByRole("dialog");
         fireEvent.click(
           within(dialog).getByRole("gridcell", { name: /October 20th 2026/ }),
@@ -399,9 +401,11 @@ describe("the Events page", () => {
             `/admin/${key}/events?from=2026-10-20T00%3A00%3A00Z&to=2026-10-24T00%3A00%3A00Z`,
           ),
         );
-        expect(
-          await screen.findByRole("combobox", { name: /Oct 20 – Oct 23 UTC/ }),
-        ).toBeInTheDocument();
+        await waitFor(() =>
+          expect(
+            screen.getByRole("combobox", { name: /Time range/ }),
+          ).toHaveTextContent(/Oct 20 – Oct 23 UTC/),
+        );
       } finally {
         vi.useRealTimers();
         process.env.TZ = tz;
@@ -419,9 +423,7 @@ describe("the Events page", () => {
       renderAdmin(`/admin/${key}/events?ip=203.0.113.5`);
       await screen.findByText("wrong_password · ada@example.com");
       fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
-      fireEvent.click(
-        await screen.findByRole("option", { name: "Custom range…" }),
-      );
+      pick(await screen.findByRole("option", { name: "Custom range…" }));
       const dialog = await screen.findByRole("dialog");
       const apply = within(dialog).getByRole("button", { name: "Apply range" });
       expect(apply).toBeDisabled();
@@ -450,7 +452,7 @@ describe("the Events page", () => {
       );
       // Opened again, it starts from the applied range's days and times.
       fireEvent.click(screen.getByRole("combobox", { name: /Time range/ }));
-      fireEvent.click(
+      pick(
         await screen.findByRole("option", {
           name: /Oct 20, 14:00 – 14:30 UTC/,
         }),

@@ -14,6 +14,7 @@ import Login from "@/pages/auth/login/index";
 import { SessionProvider } from "@/lib/session";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
+import { hover } from "@/test/hover";
 const session = testSession({ csrfToken: "csrf-old" });
 const rotated = { ...session, csrfToken: "csrf-new" };
 // Account settings at /app/settings, with login (where deleting the account
@@ -60,7 +61,7 @@ describe("profile", () => {
     expect(save).toBeDisabled();
     // Disabled, it says why: on hover, and as its description.
     expect(save).toHaveAccessibleDescription("No changes made");
-    fireEvent.mouseEnter(save.parentElement!);
+    hover(save.parentElement!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "No changes made",
     );
@@ -100,7 +101,7 @@ describe("profile", () => {
     expect(email).not.toHaveAttribute("data-blurred");
     // And so does a click on its "Click to reveal" tooltip.
     fireEvent.click(screen.getByRole("button", { name: "Hide email address" }));
-    fireEvent.mouseEnter(screen.getByText(session.user.email).parentElement!);
+    hover(screen.getByText(session.user.email).parentElement!);
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent("Click to reveal");
     fireEvent.click(within(tooltip).getByRole("button"));
@@ -110,7 +111,7 @@ describe("profile", () => {
     expect(email).not.toBeDisabled();
     expect(screen.queryByText("Member since")).toBeNull();
     const reason = "Protected";
-    fireEvent.mouseEnter(screen.getByRole("img", { name: reason }));
+    hover(screen.getByRole("img", { name: reason }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
   });
   it("keeps the typed name when saving fails", async () => {
