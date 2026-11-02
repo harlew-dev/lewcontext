@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
 import { Dialog } from "@base-ui/react/dialog";
+import { motion } from "motion/react";
 import { cx } from "@/lib/cx";
 import { useDockedSidebar } from "@/lib/use-docked-sidebar";
 import { NavbarItem } from "@/components/ui/navbar";
@@ -100,6 +101,26 @@ function desktopSidebarClasses(docked: boolean) {
       : "invisible -translate-x-full transition-[translate,visibility]",
   );
 }
+// The sidebar's sliding indicator and hover background are `layoutId`
+// elements, which Motion measures in page coordinates (viewport position plus
+// the window's scroll) unless they sit under a fixed element it's told is a
+// scroll root. The sidebar is fixed, so without this a scroll between two
+// measurements (scrolling the page, or the scroll reset on navigation) shifts
+// where they slide in from. `layout="position"` with no transition only makes
+// this a projecting node: it never animates, and it's a separate element so
+// Motion never touches the wrapper's CSS `translate`.
+function SidebarScrollRoot({ children }: { children: ReactNode }) {
+  return (
+    <motion.div
+      layout="position"
+      layoutScroll
+      transition={{ duration: 0 }}
+      className="fixed inset-y-0 left-0 w-64"
+    >
+      {children}
+    </motion.div>
+  );
+}
 // The navbar: always on mobile; on desktop only while the sidebar is hidden,
 // opening and closing its height (grid rows 0fr ↔ 1fr) as it fades. There its
 // menu button only keeps the corner free for the sidebar's toggle.
@@ -153,7 +174,7 @@ export function SidebarLayout({
             className: desktopToggleClasses(docked),
           }}
         >
-          {sidebar}
+          <SidebarScrollRoot>{sidebar}</SidebarScrollRoot>
         </SidebarToggleContext.Provider>
       </div>
       {/* Sidebar on mobile */}

@@ -16,12 +16,30 @@ import {
   useHighlightGroup,
 } from "./highlight";
 import { SidebarToggleContext, useCloseSidebar } from "./sidebar-context";
+// The whole sidebar is one LayoutGroup with one hover group, so the current-page
+// indicator and the hover background slide between items of different sections
+// (main navigation, the bottom links) as they do within one. The background
+// is cleared when the pointer leaves the sidebar, not a section.
 export function Sidebar({
   className,
+  onPointerLeave,
   ...props
 }: ComponentPropsWithoutRef<"nav">) {
+  const id = useId();
+  const highlight = useHighlightGroup();
   return (
-    <nav {...props} className={cx(className, "flex h-full min-h-0 flex-col")} />
+    <LayoutGroup id={id}>
+      <HighlightProvider value={highlight}>
+        <nav
+          {...props}
+          onPointerLeave={(event) => {
+            highlight.setActive(null);
+            onPointerLeave?.(event);
+          }}
+          className={cx(className, "flex h-full min-h-0 flex-col")}
+        />
+      </HighlightProvider>
+    </LayoutGroup>
   );
 }
 export function SidebarHeader({
@@ -66,30 +84,17 @@ export function SidebarFooter({
     />
   );
 }
-// Each section is a LayoutGroup, so its current-page indicator and hover
-// background (a Highlight on the item the mouse is over) slide between items
-// (the app layout route stays mounted).
+// A section of items, in the sidebar's one layout group.
 export function SidebarSection({
   className,
-  onPointerLeave,
   ...props
 }: ComponentPropsWithoutRef<"div">) {
-  const id = useId();
-  const highlight = useHighlightGroup();
   return (
-    <LayoutGroup id={id}>
-      <HighlightProvider value={highlight}>
-        <div
-          {...props}
-          data-slot="section"
-          onPointerLeave={(event) => {
-            highlight.setActive(null);
-            onPointerLeave?.(event);
-          }}
-          className={cx(className, "flex flex-col gap-0.5")}
-        />
-      </HighlightProvider>
-    </LayoutGroup>
+    <div
+      {...props}
+      data-slot="section"
+      className={cx(className, "flex flex-col gap-0.5")}
+    />
   );
 }
 export function SidebarDivider({

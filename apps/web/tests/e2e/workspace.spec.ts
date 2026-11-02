@@ -11,6 +11,7 @@ const stamp = Date.now();
 const email = `e2e-${stamp}@lewcontext.test`;
 const returnEmail = `e2e-${stamp}-next@lewcontext.test`;
 const scrollEmail = `e2e-${stamp}-scroll@lewcontext.test`;
+const scrollEmail2 = `e2e-${stamp}-indicator@lewcontext.test`;
 const memberEmail = `e2e-${stamp}-member@lewcontext.test`;
 const ownerEmail = `e2e-${stamp}-owner@lewcontext.test`;
 const passwordEmail = `e2e-${stamp}-password@lewcontext.test`;
@@ -29,6 +30,7 @@ const emails = [
   email,
   returnEmail,
   scrollEmail,
+  scrollEmail2,
   memberEmail,
   ownerEmail,
   passwordEmail,
@@ -398,6 +400,96 @@ test("the desktop sidebar hides and is remembered without flashing; the mobile o
   await page.getByRole("menuitem", { name: "Account & security" }).click();
   await expect(page).toHaveURL("/app/settings");
   await expect(drawer).toBeHidden();
+});
+test("the sidebar's current-page indicator slides from the previous item even after the page was scrolled", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await register(page, scrollEmail2, "Sky Example");
+  await onboard(page, "Scroll studio");
+  const nav = page.getByLabel("Main navigation");
+  // The sidebar is fixed, so it stays put while the page scrolls.
+  await expect(nav).toBeVisible();
+  await page.evaluate(() => {
+    const filler = document.createElement("div");
+    filler.style.height = "3000px";
+    document.body.appendChild(filler);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        window.scrollTo(0, 1500);
+        return window.scrollY;
+      }),
+    )
+    .toBeGreaterThan(500);
+  // Record the indicator's vertical distance from its link on every frame of
+  // the move: it must start beside the item it left, not a scroll away.
+  await page.evaluate(() => {
+    const distances: number[] = [];
+    (window as unknown as { distances: number[] }).distances = distances;
+    const start = performance.now();
+    const sample = () => {
+      const link = document.querySelector(
+        '[aria-label="Main navigation"] a[aria-current="page"]',
+      );
+      const indicator = link?.parentElement?.querySelector(".w-0\\.5");
+      if (link && indicator) {
+        const to = link.getBoundingClientRect();
+        const from = indicator.getBoundingClientRect();
+        distances.push(
+          Math.abs(from.top + from.height / 2 - (to.top + to.height / 2)),
+        );
+      }
+      if (performance.now() - start < 700) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await nav.getByRole("link", { name: "Projects" }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.waitForTimeout(800);
+  const distances = await page.evaluate(
+    () => (window as unknown as { distances: number[] }).distances,
+  );
+  expect(distances.length).toBeGreaterThan(3);
+  // One item apart is about 40px; a scroll's offset would be over 500.
+  expect(Math.max(...distances)).toBeLessThan(120);
+  // The hover background stays inside the sidebar, and slides from an item in
+  // one section to an item in another.
+  const projects = nav.getByRole("link", { name: "Projects" });
+  const gettingStarted = page.getByRole("button", { name: "Getting started" });
+  await projects.hover();
+  const highlight = gettingStarted.locator("xpath=..").locator(".inset-0");
+  const hovered = projects.locator("xpath=..").locator(".inset-0");
+  await expect(hovered).toBeVisible();
+  expect((await hovered.boundingBox())!.width).toBeLessThanOrEqual(256);
+  await page.evaluate(() => {
+    const distances: number[] = [];
+    (window as unknown as { hover: number[] }).hover = distances;
+    const start = performance.now();
+    const sample = () => {
+      const item = Array.from(document.querySelectorAll("button")).find(
+        (b) => b.textContent === "Getting started",
+      );
+      const bg = item?.parentElement?.querySelector(".inset-0");
+      if (item && bg) {
+        const to = item.getBoundingClientRect();
+        const from = bg.getBoundingClientRect();
+        distances.push(Math.abs(from.top - to.top));
+      }
+      if (performance.now() - start < 700) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await gettingStarted.hover();
+  await page.waitForTimeout(800);
+  const slid = await page.evaluate(
+    () => (window as unknown as { hover: number[] }).hover,
+  );
+  await expect(highlight).toBeVisible();
+  // It starts away from "Getting started" (on Projects) and ends on it.
+  expect(Math.max(...slid)).toBeGreaterThan(20);
+  expect(slid[slid.length - 1]).toBeLessThan(2);
 });
 test("signing in returns to the page that needed it, and only to our pages", async ({
   page,
