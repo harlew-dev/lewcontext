@@ -166,6 +166,7 @@ Every "are you sure?" is a `ConfirmationDialog` (`components/ui/confirmation-dia
 - **Under the text while it slides.** In menus and listboxes the highlight is `-z-10` inside the panel's `isolate` stacking context, so it passes beneath every item's text. Don't make an item `isolate`: the highlight would then paint over the items before it mid-slide. In the sidebar and tabs it comes before the item's `relative` link in the DOM instead.
 - **Forced colours** hide it (`forced-colors:hidden`); the items' own `forced-colors:` backgrounds apply.
 - **Reduced motion** (`MotionConfig`) moves it without sliding.
+- **Fixed panes need a scroll root.** Motion measures `layoutId` elements in page coordinates (viewport position plus the window's scroll), which is wrong inside a `position: fixed` pane: the highlight or current-page indicator would slide in from a scroll's distance away after the page scrolls or a navigation resets the scroll. The desktop sidebar's content sits in `SidebarScrollRoot` (`sidebar-layout.tsx`), a fixed `motion.div` with `layoutScroll` that never animates, so Motion measures it in viewport coordinates. A new fixed or sticky pane holding sliding items needs the same. It is its own element because the sidebar wrapper animates `translate` in CSS, which Motion's `layout` would fight. The mobile drawer needs none: its scroll is locked while it's open.
 
 ## Toasts
 

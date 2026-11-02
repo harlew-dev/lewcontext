@@ -33,6 +33,7 @@ Build them in this order. Each one assumes the ones above it are done, and later
 | 23 | [change-email](features/implemented/change-email.md): self-service email changes with fresh account authentication, configurable replacement-inbox proof, old/new security notices, registered-destination notices, session revocation, race protections and time-bounded former-address erasure | 9, 10, 11, 19, 20 | implemented 2026-11-02 |
 | 24 | [api-keys](features/api-keys.md): workspace-owned and personal keys, All / Selected projects, action scopes, separate `/api/v1` bearer interface, settings management and revocation | workspace permissions, 4, 15, 19, 20 | proposed 2026-11-01; decisions to confirm |
 | 25 | [page-folders](features/implemented/page-folders.md): every page is a folder with the page in its `index.tsx` (`pages/app/[workspace]/projects/index.tsx` is `/app/wsp_…/projects`), a record's page `[<param>].tsx`, tests beside the page, checked by `src/pages/layout.test.ts` | 2 | implemented 2026-11-02 |
+| 26 | [rename-to-lewdocs](features/rename-to-lewdocs.md): rename the product, module, packages, image, database/roles, cookies, storage key and current docs from lewcontext to lewdocs; keep the cryptographic and advisory-lock labels | none | proposed 2026-11-02; decisions confirmed |
 | 26 | [base-ui](features/implemented/base-ui.md): the UI's behaviour layer moves from Uber's `baseui` and Styletron to Base UI (`@base-ui/react`, by MUI), with our own calendar and stacked toasts; no visual change | none | **implemented 2026-11-02** |
 
 ## Future plans
