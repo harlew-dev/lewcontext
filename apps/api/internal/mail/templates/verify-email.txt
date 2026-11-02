@@ -1,0 +1,9 @@
+{{ define "content" -}}
+Your verification code is:
+
+{{ .Code }}
+
+Enter it where you asked for it to confirm this email address. It works for 15 minutes. Never share it with anyone.
+
+If you didn’t ask for this, ignore this email.
+{{- end }}

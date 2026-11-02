@@ -1,0 +1,6 @@
+/* Tailwind entrypoint. Preflight and utilities live in cascade layers; BaseUI
+   controls render through Tailwind-styled override slots (see lib/baseui.tsx). */
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "./theme.css";
+@import "./base.css";

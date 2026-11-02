@@ -1,0 +1,6 @@
+/* We use Tailwind's default palette, spacing and breakpoints; only the
+   typeface is configured here (Inter, self-hosted via Fontsource for the CSP). */
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans--font-feature-settings: "cv11";
+}

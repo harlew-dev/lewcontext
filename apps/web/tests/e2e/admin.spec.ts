@@ -1,0 +1,547 @@
+import { expect, test, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { signUpThroughApi } from "./mail";
+import { codeFor } from "./totp";
+// The run's admin key, made by playwright.config.ts and passed to the server.
+const key = process.env.E2E_ADMIN_ROUTE_KEY!;
+const stamp = Date.now();
+const adminEmail = `e2e-${stamp}-admin@lewcontext.test`;
+const otherEmail = `e2e-${stamp}-not-admin@lewcontext.test`;
+// A reset request whose email failed, seeded for the Mail page.
+const brokenEmail = `e2e-${stamp}-broken@lewcontext.test`;
+const password = "A thoughtful test passphrase!";
+// Runs SQL against this run's database: granting admin (only the operator's
+// CLI does that, never the API), and cleanup.
+function sql(statement: string): string {
+  return execFileSync(
+    "psql",
+    [process.env.DATABASE_URL!, "-v", "ON_ERROR_STOP=1", "-Atc", statement],
+    { encoding: "utf8" },
+  ).trim();
+}
+// A credential stuffing burst, seeded for the Security page: one address
+// trying a list of emails.
+const stuffingIP = `203.0.113.${(stamp % 200) + 20}`;
+const listEmail = (i: number) => `e2e-${stamp}-list${i}@lewcontext.test`;
+test.afterAll(() => {
+  sql(`DELETE FROM users WHERE email IN ('${adminEmail}', '${otherEmail}')`);
+  sql(`DELETE FROM events WHERE payload->>'email' = '${brokenEmail}'`);
+  sql(
+    `DELETE FROM events WHERE payload->>'email' LIKE 'e2e-${stamp}-list%@lewcontext.test'`,
+  );
+  sql(`DELETE FROM app_errors WHERE message LIKE '% ${stamp}'`);
+});
+// Creates an account through the API, then forgets its session.
+async function register(page: Page, email: string, name: string) {
+  await signUpThroughApi(page.request, { name, email, password });
+  await page.context().clearCookies();
+}
+async function passwordStep(page: Page, email: string) {
+  await page.goto(`/admin/${key}`);
+  await expect(
+    page.getByRole("heading", { name: "Admin sign-in" }),
+  ).toBeVisible();
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
+// What the app build must never hold (scripts/check-app-build.sh checks the
+// files too): the admin API's paths and header, admin routes, and the admin
+// build's file path.
+const adminMarkers = [
+  "/api/admin",
+  "X-Admin-Key",
+  "pages/admin",
+  "admin-assets",
+];
+test("the public pages ship no admin code", async ({ page, request }) => {
+  const scripts: string[] = [];
+  // Scripts and module preloads alike: everything JavaScript it fetched.
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname.endsWith(".js"))
+      scripts.push(response.url());
+  });
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible();
+  const routes = await page.evaluate(() =>
+    Object.keys(
+      (window as unknown as { __reactRouterManifest: { routes: object } })
+        .__reactRouterManifest.routes,
+    ),
+  );
+  expect(routes.length).toBeGreaterThan(5);
+  expect(routes.filter((id) => id.includes("admin"))).toEqual([]);
+  // The manifest and every script the homepage loaded, read in full.
+  expect(scripts.some((url) => /\/assets\/manifest-/.test(url))).toBe(true);
+  for (const url of scripts) {
+    const body = await (await request.get(url)).text();
+    for (const marker of adminMarkers) expect(body, url).not.toContain(marker);
+  }
+});
+// The admin build's files open only with the pass the admin page sets: the
+// same file from a browser that never opened the page is the 404 page.
+test("admin files are the 404 page without the assets pass", async ({
+  page,
+  browser,
+}) => {
+  const door = await page.goto(`/admin/${key}`);
+  expect(door?.status()).toBe(200);
+  const html = await door!.text();
+  const file = /\/admin-assets\/assets\/[\w.-]+\.js/.exec(html)?.[0];
+  expect(file).toBeTruthy();
+  const pass = (await page.context().cookies()).find(
+    (c) => c.name === "lewcontext_admin_assets",
+  );
+  expect(pass?.path).toBe("/admin-assets/");
+  expect(pass?.httpOnly).toBe(true);
+  expect(pass?.sameSite).toBe("Strict");
+  const withPass = await page.request.get(file!);
+  expect(withPass.status()).toBe(200);
+  expect(withPass.headers()["cache-control"]).toBe(
+    "private, max-age=28800, immutable",
+  );
+
+  const fresh = await browser.newContext();
+  const stranger = await fresh.newPage();
+  const nowhere = await stranger.request.get("/nowhere");
+  const response = await stranger.goto(file!);
+  expect(response?.status()).toBe(404);
+  await expect(stranger.getByText("This page has wandered off.")).toBeVisible();
+  expect(await response!.text()).toBe(await nowhere.text());
+  expect(response!.headers()["cache-control"]).toBe("no-store");
+  await fresh.close();
+});
+test("a wrong key is the ordinary 404 page", async ({ page }) => {
+  for (const path of [`/admin/${key}x`, "/admin/x/users", "/admin"]) {
+    const response = await page.goto(path);
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText("This page has wandered off.")).toBeVisible();
+    await expect(page.getByText("Admin sign-in")).toHaveCount(0);
+  }
+});
+test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign out and back in with a code", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => {
+    if (m.type() === "error" && m.text().includes("Content Security Policy"))
+      errors.push(m.text());
+  });
+  await register(page, adminEmail, "Olive Admin");
+  await register(page, otherEmail, "Nora Notadmin");
+  // admin grant, as the operator's CLI does it: MFA off, so a 24-hour
+  // window to set it up at the first admin sign-in.
+  sql(
+    `INSERT INTO admins (user_id, mfa_setup_until) SELECT id, now() + interval '24 hours' FROM users WHERE email = '${adminEmail}'`,
+  );
+
+  // The door answers with stricter headers.
+  const door = await page.goto(`/admin/${key}`);
+  expect(door?.status()).toBe(200);
+  expect(door?.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(door?.headers()["x-robots-tag"]).toBe("noindex, nofollow");
+
+  // A non-admin's right password gets the same refusal as a wrong one.
+  await passwordStep(page, otherEmail);
+  await expect(page.getByText("Email or password is incorrect.")).toBeVisible();
+
+  // The first sign-in sets MFA up, with the QR code hidden until revealed.
+  await passwordStep(page, adminEmail);
+  await expect(
+    page.getByRole("heading", { name: "Set up two-factor authentication" }),
+  ).toBeVisible();
+  await expect(page.getByRole("img", { name: /QR code to add/ })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "Reveal QR code" }).click();
+  await expect(page.getByRole("img", { name: /QR code to add/ })).toBeVisible();
+  await page.getByRole("button", { name: "Use setup key instead" }).click();
+  await page.getByRole("button", { name: "Show the key" }).click();
+  const setupKey = await page
+    .getByLabel("Setup key", { exact: true })
+    .inputValue();
+  await page.getByLabel("Code from your app").fill(codeFor(setupKey, 0));
+  // The sixth digit submits.
+  const done = page.getByRole("button", { name: "I’ve saved these codes" });
+  await expect(done).toBeDisabled();
+  await page.getByRole("button", { name: "Reveal recovery codes" }).click();
+  await done.click();
+
+  // Users: search, open the admin's own row.
+  await expect(page).toHaveURL(`/admin/${key}/users`);
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  await page.getByRole("searchbox", { name: "Search users" }).fill(adminEmail);
+  await expect(page).toHaveURL(new RegExp(`/admin/${key}/users\\?q=`));
+  await page.getByRole("link", { name: "Open Olive Admin" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Olive Admin" }),
+  ).toBeVisible();
+  await expect(page.getByText("Not in any workspace.")).toBeVisible();
+
+  // Workspaces.
+  await page.getByRole("link", { name: "Workspaces" }).first().click();
+  // Exact: the empty list's "No workspaces yet" is a heading too.
+  await expect(
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
+  ).toBeVisible();
+  // The key is in the URL only, never in the page's text.
+  expect(await page.locator("body").innerText()).not.toContain(key);
+
+  // Signing out of the dashboard, then in again: a code this time.
+  await page.getByRole("button", { name: "Admin account menu" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Admin sign-in" }),
+  ).toBeVisible();
+  const inner = await page.goto(`/admin/${key}/users`);
+  expect(inner?.url()).toMatch(new RegExp(`/admin/${key}$`));
+  await passwordStep(page, adminEmail);
+  await expect(
+    page.getByRole("heading", { name: "Two-factor authentication" }),
+  ).toBeVisible();
+  await page.getByLabel("Authentication code").fill(codeFor(setupKey, 1));
+  // The sixth digit submits.
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  expect(errors).toEqual([]);
+
+  // Every read was recorded in the audit trail.
+  expect(
+    Number(
+      sql(
+        `SELECT count(*) FROM events WHERE name = 'admin.user.viewed' AND payload->>'admin' = (SELECT public_id FROM users WHERE email = '${adminEmail}')`,
+      ),
+    ),
+  ).toBe(1);
+
+  // Events: the charts for the last 24 hours, then the Filters dialog: the
+  // auth.* group and one workspace name picked, the other account's email
+  // typed in capitals. Applied, two badges and the URL say so.
+  await page.getByRole("link", { name: "Events" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Events", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/^[\d,]+ events in the last 24 hours, most at/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Events over time" }),
+  ).toBeAttached();
+  await page.getByRole("button", { name: /^Filters/ }).click();
+  const dialog = page.getByRole("dialog");
+  const picker = dialog.getByRole("combobox").first();
+  await picker.click();
+  await page.getByRole("option", { name: /^auth\.\* / }).click();
+  await picker.fill("workspace.created");
+  await page.getByRole("option", { name: /^workspace\.created,/ }).click();
+  await dialog.getByRole("heading", { name: "Filter events" }).click();
+  await dialog.getByLabel("Email").fill(otherEmail.toUpperCase());
+  await dialog.getByRole("button", { name: "Apply filters" }).click();
+  const email = encodeURIComponent(otherEmail);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/admin/${key}/events\\?name=auth\\.\\*,workspace\\.created&email=${email}$`,
+    ),
+  );
+  const applied = page.getByRole("list", { name: "Applied filters" });
+  await expect(
+    applied.getByText("Events: auth.*, workspace.created"),
+  ).toBeVisible();
+  await expect(applied.getByText(`Email: ${otherEmail}`)).toBeVisible();
+  // Removing a badge applies at once.
+  await page
+    .getByRole("button", {
+      name: "Remove filter: Events: auth.*, workspace.created",
+    })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/${key}/events\\?email=${email}$`),
+  );
+  // The time range: the last hour, then a custom range of today.
+  const range = page.getByRole("combobox", { name: /Time range/ });
+  await range.click();
+  await page.getByRole("option", { name: "Last hour" }).click();
+  await expect(page).toHaveURL(new RegExp(`\\?window=1h&email=${email}$`));
+  await range.click();
+  await page.getByRole("option", { name: "Custom range…" }).click();
+  const calendar = page.getByRole("dialog");
+  await calendar
+    .getByRole("gridcell", { name: /It's available/ })
+    .last()
+    .click();
+  await calendar.getByRole("button", { name: "Apply range" }).click();
+  const day = new Date().toISOString().slice(0, 10);
+  const nextDay = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `\\?email=${email}&from=${day}T00%3A00%3A00Z&to=${nextDay}T00%3A00%3A00Z$`,
+    ),
+  );
+  // Clicking a column zooms to its half hour (once today's chart is in).
+  await expect(
+    page.getByText(/ events in \w{3} \d+ UTC, most at \d\d:(00|30) UTC/),
+  ).toBeVisible();
+  // The tallest segment drawn: a column with events in it.
+  const bars = page.locator(".recharts-bar-rectangle path");
+  const tallest = await bars.evaluateAll((paths) =>
+    paths
+      .map((p) => (p as SVGGraphicsElement).getBBox().height)
+      .reduce((best, h, i, all) => (h > all[best] ? i : best), 0),
+  );
+  await bars.nth(tallest).click();
+  await expect(page).toHaveURL(
+    /&from=\d{4}-\d\d-\d\dT\d\d%3A(00|30)%3A00Z&to=\d{4}-\d\d-\d\dT\d\d%3A(00|30)%3A00Z$/,
+  );
+  const bucket = page.url();
+  // A Top events row filters to its name; Back restores the bucket.
+  await page
+    .getByRole("list", { name: "Top events" })
+    .getByRole("link", { name: /admin\.login_attempted/ })
+    .click();
+  await expect(page).toHaveURL(/name=admin\.login_attempted/);
+  await page.goBack();
+  await expect(page).toHaveURL(bucket);
+  await expect(page.getByRole("button", { name: /^Filters 1/ })).toBeVisible();
+  // Open the refused sign-in at the door and follow the account it names.
+  const attempt = page
+    .getByRole("row")
+    .filter({ hasText: "admin.login_attempted" });
+  await expect(attempt).toContainText("not_admin");
+  await expect(attempt).toContainText("Failed");
+  await attempt.getByRole("link").first().click();
+  await expect(
+    page.getByRole("heading", { name: "admin.login_attempted" }),
+  ).toBeVisible();
+  await expect(page.locator("pre")).toContainText(otherEmail);
+  // More like this: the same account over the last 7 days.
+  await expect(
+    page.getByRole("link", { name: "Events by Nora Notadmin" }),
+  ).toHaveAttribute("href", /\?window=7d&account=usr_/);
+  await page.getByRole("link", { name: "Nora Notadmin", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Nora Notadmin" }),
+  ).toBeVisible();
+  // The event's IP is the client's, kept in its column.
+  expect(
+    sql(
+      `SELECT host(ip) FROM events WHERE name = 'admin.login_attempted' AND payload->>'email' = '${otherEmail}'`,
+    ),
+  ).toMatch(/^(127\.0\.0\.1|::1)$/);
+
+  // The pass ends mid-visit (deleted here): the next page's code fails to
+  // load, React Router reloads the page, and the page gate renews the pass.
+  // Mail's code hasn't been loaded yet.
+  await page.context().clearCookies({ name: "lewcontext_admin_assets" });
+  await page.getByRole("link", { name: "Mail" }).first().click();
+  await expect
+    .poll(async () =>
+      (await page.context().cookies()).some(
+        (c) => c.name === "lewcontext_admin_assets",
+      ),
+    )
+    .toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Nora Notadmin" }),
+  ).toBeVisible();
+
+  // Mail: a delivery that failed (seeded, as a broken template leaves one)
+  // is listed under Failed with its error.
+  sql(
+    `WITH e AS (INSERT INTO events (name, payload) VALUES ('auth.password_reset.requested', '{"email": "${brokenEmail}"}') RETURNING id)
+     INSERT INTO event_deliveries (event_id, listener, attempts, failed_at, last_error)
+     SELECT id, 'mail.password_reset', 6, now(), 'render forgot-password: template: no such template' FROM e`,
+  );
+  await page.getByRole("link", { name: "Mail" }).first().click();
+  // Exact: "Emails sent per hour" and "How mail is sent" are headings too.
+  await expect(
+    page.getByRole("heading", { name: "Mail", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Emails sent per hour" }),
+  ).toBeAttached();
+  await page
+    .getByRole("navigation", { name: "Delivery status" })
+    .getByRole("link", { name: /^Failed/ })
+    .click();
+  const failed = page.getByRole("row").filter({ hasText: brokenEmail });
+  await expect(failed).toContainText("Failed");
+  await expect(failed).toContainText("no such template");
+  expect(errors).toEqual([]);
+
+  // Admins: the admin's own row (a viewer, as granted), this session with
+  // the address it signed in from, and no other session to sign out (the
+  // first one ended with Sign out). The read is recorded.
+  await page.getByRole("link", { name: "Admins" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Admins", exact: true }),
+  ).toBeVisible();
+  const own = page.getByRole("row").filter({ hasText: adminEmail });
+  await expect(own).toContainText("Viewer");
+  await expect(own).toContainText("MFA");
+  const thisSession = page.getByRole("row").filter({ hasText: "This session" });
+  await expect(thisSession).toContainText(/127\.0\.0\.1|::1/);
+  await expect(
+    page.getByRole("button", { name: "Sign out my other sessions" }),
+  ).toBeDisabled();
+  expect(
+    sql(
+      `SELECT host(ip) FROM admin_sessions WHERE user_id = (SELECT id FROM users WHERE email = '${adminEmail}')`,
+    ),
+  ).toMatch(/^(127\.0\.0\.1|::1)$/);
+  expect(
+    Number(
+      sql(
+        `SELECT count(*) FROM events WHERE name = 'admin.admin.listed' AND payload->>'admin' = (SELECT public_id FROM users WHERE email = '${adminEmail}')`,
+      ),
+    ),
+  ).toBe(1);
+  expect(errors).toEqual([]);
+
+  // Monitoring: an address trying twelve emails shows on Security, from
+  // the Overview's Failed sign-ins tile, and links to its events.
+  const values = Array.from(
+    { length: 12 },
+    (_, i) =>
+      `('auth.login_attempted', '{"email": "${listEmail(i)}", "result": "unknown_account"}', '${stuffingIP}', now() - interval '5 minutes')`,
+  ).join(", ");
+  sql(`INSERT INTO events (name, payload, ip, created_at) VALUES ${values}`);
+  await page.getByRole("link", { name: "Overview" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Overview", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Critical checks failing")).toBeVisible();
+  await page.getByRole("link", { name: "Failed sign-ins" }).click();
+  await expect(page).toHaveURL(`/admin/${key}/monitoring/security`);
+  await expect(
+    page.getByRole("heading", { name: "Credential stuffing" }),
+  ).toBeVisible();
+  const stuffing = page.getByRole("row").filter({ hasText: stuffingIP });
+  await expect(stuffing).toContainText("12");
+  await expect(
+    page.getByRole("link", { name: "Addresses trying many emails" }),
+  ).toBeVisible();
+  // The window is in the URL, and the read is recorded once per load.
+  await page.getByRole("combobox", { name: /Time range/ }).click();
+  await page.getByRole("option", { name: "Last hour" }).click();
+  await expect(page).toHaveURL(`/admin/${key}/monitoring/security?window=1h`);
+  await expect(stuffing).toContainText("12");
+  await stuffing.getByRole("link", { name: stuffingIP }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/${key}/events\\?`));
+  await expect(
+    page.getByRole("row").filter({ hasText: listEmail(3) }),
+  ).toHaveCount(1);
+  expect(
+    sql(
+      `SELECT string_agg(payload->>'page' || ':' || (payload->>'window'), ',' ORDER BY id) FROM events WHERE name = 'admin.monitoring.viewed' AND payload->>'admin' = (SELECT public_id FROM users WHERE email = '${adminEmail}')`,
+    ),
+  ).toBe("overview:24h,security:24h,security:1h");
+  await page.getByRole("link", { name: "Rate limits" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Shared limits" }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+
+  // IP addresses: the same address, sorted by failed sign-ins, opens its
+  // own page (one read recorded with the address); an IPv6 /64's page,
+  // its slash escaped, gets through the page gate and the router.
+  await page.getByRole("link", { name: "IP addresses" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Top addresses" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: /Failed sign-ins/ }).click();
+  await expect(page).toHaveURL(
+    `/admin/${key}/monitoring/ips?sort=failedSignIns`,
+  );
+  const address = page.getByRole("row").filter({ hasText: stuffingIP });
+  await expect(address).toContainText("12");
+  await address.getByRole("link", { name: stuffingIP }).click();
+  await expect(page).toHaveURL(`/admin/${key}/monitoring/ips/${stuffingIP}`);
+  await expect(
+    page.getByRole("heading", { name: stuffingIP, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("It tried 12 different emails with no account"),
+  ).toBeVisible();
+  expect(
+    sql(
+      `SELECT payload->>'address' FROM events WHERE name = 'admin.ip.viewed' ORDER BY id DESC LIMIT 1`,
+    ),
+  ).toBe(stuffingIP);
+  const network = `2001:db8:${(stamp % 9000).toString(16)}:1::/64`;
+  sql(
+    `INSERT INTO events (name, payload, ip) VALUES ('auth.logged_in', '{"user": "usr_00000000000001"}', '${network.replace("::/64", "::7")}'), ('auth.logged_in', '{"user": "usr_00000000000001"}', '${network.replace("::/64", "::8")}')`,
+  );
+  await page.goto(
+    `/admin/${key}/monitoring/ips/${network.replace("/", "%2F")}`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Addresses in this /64" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: network })).toBeVisible();
+  for (const name of ["Accounts", "Workspaces", "Usage"]) {
+    await page.getByRole("link", { name, exact: true }).last().click();
+    await expect(
+      page.getByRole("heading", { name, exact: true }),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Not seen for two years" }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+
+  // The Data page: retention per prune target, linking to every run.
+  await page.getByRole("link", { name: "Data", exact: true }).last().click();
+  await expect(
+    page.getByRole("heading", { name: "Retention", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "every run on Events" }),
+  ).toBeVisible();
+  expect(
+    sql(
+      `SELECT payload->>'page' FROM events WHERE name = 'admin.monitoring.viewed' ORDER BY id DESC LIMIT 1`,
+    ),
+  ).toBe("data");
+  expect(errors).toEqual([]);
+
+  // Part 3: Integrity, Performance, Errors and Configuration load; a
+  // group a browser reported is labelled user-reported, its text never a
+  // link, and its own page is a read recorded with the group.
+  const prize = `Claim your prize at <url> ${stamp}`;
+  sql(
+    `INSERT INTO app_errors (fingerprint, source, route, message, first_seen_at, last_seen_at) VALUES (md5('${stamp}') || md5('${stamp}x'), 'client', '/app/:workspace/projects', '${prize}', now() - interval '1 hour', now() - interval '5 minutes')`,
+  );
+  for (const [name, heading] of [
+    ["Integrity", "Checks"],
+    ["Performance", "Routes"],
+    ["Configuration", "Servers"],
+    ["Errors", "Error groups"],
+  ]) {
+    await page.getByRole("link", { name, exact: true }).last().click();
+    await expect(
+      page.getByRole("heading", { name: heading, exact: true }),
+    ).toBeVisible();
+  }
+  const reported = page.getByRole("row").filter({ hasText: prize });
+  await expect(reported).toContainText("User-reported");
+  await expect(reported.getByRole("link", { name: prize })).toHaveCount(0);
+  await reported.getByRole("link", { name: "Details" }).click();
+  await expect(page.getByRole("heading", { name: "Stack" })).toBeVisible();
+  await expect(page.getByText(/Reported by a browser/)).toBeVisible();
+  expect(
+    sql(
+      `SELECT payload->>'error' = (SELECT public_id FROM app_errors WHERE message = '${prize}') FROM events WHERE name = 'admin.error.viewed' ORDER BY id DESC LIMIT 1`,
+    ),
+  ).toBe("t");
+  expect(errors).toEqual([]);
+
+  // Back to app is another build: it loads as a new page, which Go answers
+  // (this browser has no app session, so login, returning to /app).
+  await page.getByRole("button", { name: "Admin account menu" }).click();
+  await page.getByRole("menuitem", { name: "Back to app" }).click();
+  await expect(page).toHaveURL(/\/auth\/login\?next=%2Fapp$/);
+  await expect(
+    page.getByRole("heading", { name: "Sign in to your account" }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});

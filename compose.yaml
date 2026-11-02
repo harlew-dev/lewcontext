@@ -1,0 +1,79 @@
+# Local stack: PostgreSQL 17 with the pgvector extension available (enable it
+# per database with CREATE EXTENSION vector), Mailpit (a local inbox that
+# catches every email the app sends), and the app built from the Dockerfile.
+# `make db` starts the database and Mailpit (for make dev and the tests on the
+# host); `make docker-up` starts everything. Credentials are for local
+# development only.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lewcontext
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: lewcontext
+    # Localhost only: the database is not reachable from the network.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lewcontext -d lewcontext"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Every email sent in development and by the tests lands here instead of a
+  # real inbox: read them at http://localhost:8025. Localhost only, like the
+  # database: its inbox holds working reset links.
+  mailpit:
+    image: axllent/mailpit:v1.31.0
+    restart: unless-stopped
+    environment:
+      # The oldest are deleted beyond this.
+      MP_MAX_MESSAGES: 5000
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web inbox and API
+
+  # The API and web app on http://localhost:3000, as make serve runs them.
+  # Migrations stay explicit: make docker-migrate (no migration on startup).
+  app:
+    build:
+      context: .
+      args:
+        APP_NAME: ${APP_NAME:-lewcontext}
+    image: lewcontext:local
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://lewcontext:password@postgres:5432/lewcontext?sslmode=disable
+      APP_ENV: development
+      APP_ORIGIN: http://localhost:3000
+      # Email goes to Mailpit: http://localhost:8025.
+      MAIL_DRIVER: smtp
+      MAIL_FROM_ADDRESS: no-reply@lewcontext.test
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_TLS: none
+      # Seals MFA secrets. .env's, or the example key (refused in production).
+      APP_KEY: ${APP_KEY:-O1Uo2N3TlBVsoKbrO0rTLwuE7DArCGLH2tWmaL8jMQA=}
+      # The admin dashboard's secret path: .env's, or the example key
+      # (refused in production).
+      ADMIN_ROUTE_KEY: ${ADMIN_ROUTE_KEY:-ZPycpaTc6D_ZYGNirUyhk42QUAMY-uT4M3ji3CEnzWw}
+      # Used only by the explicit seed command (make docker-seed).
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-password}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres:

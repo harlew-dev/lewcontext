@@ -1,0 +1,44 @@
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import useSWR from "swr";
+import { ApiError, errorMessage, type ApiPath } from "./api";
+import { useAdminApi } from "./api/admin";
+import { useAdminKey, useAdminSession } from "./admin";
+import { adminRoutes } from "./admin-routes";
+// useResource for the admin pages: a typed path from adminPaths, loaded with
+// the admin API. The SWR key is ["admin", the admin's user ID, path], apart
+// from the app's, and never holds the key. An ended admin session goes back
+// to the admin sign-in page. Every load is recorded in the audit trail, so
+// nothing reloads on its own (focus, reconnecting): only opening a page, a
+// new query, reloading the page, or Retry after a failure.
+export function useAdminResource<T>(path: ApiPath<T> | null) {
+  const api = useAdminApi();
+  const navigate = useNavigate();
+  const key = useAdminKey();
+  const adminId = useAdminSession().user.id;
+  const { data, error, isValidating, mutate } = useSWR<T>(
+    path === null ? null : ["admin", adminId, path],
+    () => api.get(path as ApiPath<T>),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      onError(error) {
+        if (error instanceof ApiError && error.status === 401)
+          void navigate(adminRoutes.login(key), { replace: true });
+      },
+    },
+  );
+  const [kept, setKept] = useState(data);
+  if (data !== undefined && data !== kept) setKept(data);
+  return {
+    data: data ?? kept,
+    // What's shown is the last query's answer, kept while this one loads
+    // or after it failed.
+    stale: data === undefined && kept !== undefined,
+    error: error ? errorMessage(error) : null,
+    missing: error instanceof ApiError && error.status === 404,
+    loading: data === undefined && isValidating,
+    refreshing: isValidating,
+    refresh: () => void mutate(),
+  };
+}

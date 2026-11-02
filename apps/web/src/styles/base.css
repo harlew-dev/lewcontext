@@ -1,0 +1,18 @@
+/* Element defaults beneath Tailwind utilities. */
+@layer base {
+  /* Keyboard focus for links and buttons that don't style their own. */
+  :where(a, button):focus-visible {
+    outline: 2px solid var(--color-blue-500);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,132 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { describe, expect, it } from "vitest";
+import { stubApi } from "@/test/api";
+import { testSession } from "@/test/session";
+import Login from "./index";
+// Login without its route loader (which only sends signed-in visitors on).
+function renderLogin() {
+  render(
+    <MemoryRouter initialEntries={["/auth/login?next=%2Fapp%2Fsettings"]}>
+      <Routes>
+        <Route path="/auth/login" element={<Login />} />
+        <Route path="/app/settings" element={<p>Account settings</p>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+function signIn() {
+  type("Email", "ada@example.com");
+  type("Password", "correct horse");
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+}
+const signedIn = testSession();
+describe("signing in with two-factor authentication", () => {
+  it("asks for a code after the password, then goes on to ?next=", async () => {
+    const api = stubApi({
+      "POST /api/auth/login": { body: { mfaRequired: true } },
+      "POST /api/auth/login/mfa": [
+        {
+          status: 422,
+          body: { error: "That code didn’t work.", field: "code" },
+        },
+        { body: signedIn },
+      ],
+    });
+    renderLogin();
+    signIn();
+    expect(
+      await screen.findByRole("heading", { name: "Two-factor authentication" }),
+    ).toBeInTheDocument();
+    const field = screen.getByLabelText("Authentication code");
+    expect(field).toHaveFocus();
+    expect(field).toHaveAttribute("autocomplete", "one-time-code");
+
+    type("Authentication code", "000000");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That code didn’t work.",
+    );
+    type("Authentication code", "123 456");
+    // Only the digits are kept, and the sixth submits.
+    expect(await screen.findByText("Account settings")).toBeInTheDocument();
+    expect(api.sent("POST").map((r) => r.body)).toEqual([
+      { email: "ada@example.com", password: "correct horse" },
+      { code: "000000" },
+      { code: "123456" },
+    ]);
+  });
+  it("takes a recovery code instead", async () => {
+    const api = stubApi({
+      "POST /api/auth/login": { body: { mfaRequired: true } },
+      "POST /api/auth/login/mfa": { body: signedIn },
+    });
+    renderLogin();
+    signIn();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Lost your device? Use a recovery code",
+      }),
+    );
+    type("Recovery code", "K7P2M-X9QFR");
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    expect(await screen.findByText("Account settings")).toBeInTheDocument();
+    expect(api.sent("POST")[1].body).toEqual({ code: "K7P2M-X9QFR" });
+  });
+  it("goes back to the password when the sign-in ends, saying why", async () => {
+    stubApi({
+      "POST /api/auth/login": { body: { mfaRequired: true } },
+      "POST /api/auth/login/mfa": {
+        status: 401,
+        body: { error: "Too many wrong codes. Enter your password again." },
+      },
+    });
+    renderLogin();
+    signIn();
+    await screen.findByLabelText("Authentication code");
+    type("Authentication code", "000000");
+    expect(
+      await screen.findByText(
+        "Too many wrong codes. Enter your password again.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
+    expect(screen.getByLabelText("Password")).toHaveValue("");
+  });
+  it("goes back to the password with Back, keeping the email", async () => {
+    stubApi({ "POST /api/auth/login": { body: { mfaRequired: true } } });
+    renderLogin();
+    signIn();
+    await screen.findByLabelText("Authentication code");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(
+      screen.getByRole("heading", { name: "Sign in to your account" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toHaveValue("ada@example.com");
+    expect(screen.getByLabelText("Password")).toHaveValue("");
+    // The password step's own Back leads to the homepage.
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+  });
+});
+describe("policy links", () => {
+  it("shows them below the form only while they're published", async () => {
+    stubApi({
+      "GET /api/policies": {
+        body: {
+          enabled: true,
+          termsOfService: "2026-11-01",
+          privacyPolicy: "2026-11-01",
+        },
+      },
+    });
+    renderLogin();
+    expect(
+      await screen.findByRole("link", { name: "Privacy Policy" }),
+    ).toHaveAttribute("href", "/policy/privacy-policy");
+  });
+});

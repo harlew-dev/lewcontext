@@ -1,0 +1,7 @@
+{{ app }}
+
+{{ template "content" . }}
+{{- with blockURL }}
+
+Don’t want email from {{ app }}? Block this address: {{ . }}
+{{- end }}

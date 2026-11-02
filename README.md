@@ -263,7 +263,7 @@ Fake records come from the factories in `apps/api/internal/factory`, one per tab
 | Command | Does |
 | --- | --- |
 | `make db` | Start PostgreSQL (with pgvector) in Docker |
-| `make dev` | API and Vite together in one terminal (or `make api` and `make web` in two) |
+| `make dev` | API and Vite (the app's, and the admin dashboard's behind it) together in one terminal (or `make api`, `make web` and `make web-admin` apart) |
 | `make serve` | Build the production binary and run it on `:3000` |
 | `make migrate` | Apply pending migrations |
 | `make migrate-status` | List migrations and whether they are applied |
@@ -271,6 +271,7 @@ Fake records come from the factories in `apps/api/internal/factory`, one per tab
 | `make migrate-rollback` | Preview undoing the last migration group; `CONFIRM=1` runs it and can drop data |
 | `make seed` | Seed the demo account (see [Sample data](#sample-data) for other seeders) |
 | `make docker-dev` | Start the whole app in Docker on `:3000`: database, build, migrate, seed, app |
+| `make docker-app` | After a code change (UI or API): rebuild the image and restart only the app container, without migrating or seeding |
 | `make docker-up` / `make docker-down` | Build and start, or stop, the whole app in Docker without migrating or seeding |
 | `make docker-migrate` / `make docker-seed` | Migrate or seed from the app container |
 
@@ -281,26 +282,16 @@ Migrations use Bun's migrator: explicit, versioned, transactional per file, grou
 ### Testing and checks
 
 ```sh
-make test     # Go unit tests (race detector), React and API client tests
+make db       # PostgreSQL, and the tests' database (lewcontext_test)
+make test     # Go unit and PostgreSQL integration tests (race detector), React and API client tests
 make check    # gofmt, go vet, TypeScript, ESLint, Prettier
-make build    # web build, embedded into one Go executable (bin/api)
+make build    # both web builds (app and admin), embedded into one Go executable (bin/api)
+make test-e2e # end-to-end tests in Chromium, against the production binary
 ```
 
-**Integration tests** run against a real PostgreSQL database, each in a fresh temporary schema that is removed afterwards:
+Tests use the committed `.env.testing` and nothing from `.env`, however they're started. **Integration tests** run against a real PostgreSQL database, `lewcontext_test`, each in a fresh temporary schema that is removed afterwards; `make test` fails if the database isn't running.
 
-```sh
-export TEST_DATABASE_URL='postgresql://lewcontext:password@127.0.0.1:5432/lewcontext?sslmode=disable'
-make test-integration
-```
-
-**End-to-end tests** run in Chromium against `make serve` (stop `make dev` first):
-
-```sh
-make serve      # in one terminal
-make test-e2e   # in another
-```
-
-They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium defaults to `/usr/bin/chromium`; set `CHROMIUM_PATH` to use another. With `TEST_DATABASE_URL` set, the uniquely created test account is removed after the run; without it, the account remains. See the [test environment guide](docs/testing.md).
+**End-to-end tests** build the single binary and start it on :3100 against a database of their own (`lewcontext_test_3100`), so they run beside `make dev`. Another run at the same time takes another port and database: `make test-e2e E2E_PORT=auto`. They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium comes from Playwright (`npx playwright install chromium`); set `CHROMIUM_PATH` to use a system browser instead. See the [test environment guide](docs/testing.md).
 
 ### Architecture
 
@@ -313,17 +304,17 @@ The app shell and API responses are never cached, while hashed assets are cached
 | Path | Contents |
 | --- | --- |
 | `cmd` | Server, migration and seed entrypoints |
-| `internal/httpapi/routes.go` | Every API route and its authentication requirement, plus the web app's page routes (signed-out `/app/*` requests go to login before any HTML is served) |
-| `internal/{auth,config,database,httpapi,store}` | Cryptography, validated configuration, Bun connection and migrator, HTTP boundary, Bun models and queries |
-| `internal/web` | Serves the embedded web build: prerendered pages, the single-page-app fallback (404 for unknown URLs), cached assets, security headers, and a CSP with each HTML file's inline-script hashes |
+| `internal/httpapi/router/routes.go` | Every API route and its authentication requirement, plus the web app's page routes (signed-out `/app/*` requests go to login before any HTML is served) |
+| `internal/{auth,config,database,httpapi,store}` | Cryptography, validated configuration, Bun connection and migrator, HTTP boundary (the core, with controllers in `httpapi/endpoints/<area>`), Bun models and queries |
+| `internal/web` | Serves the embedded web build: prerendered pages, the single-page-app fallback (404 for unknown URLs), cached assets, security headers, and a CSP with each HTML file's inline-script hashes; and the admin dashboard's own build, only behind its key and assets pass |
 | `migrations` | Embedded Bun SQL migrations (`.tx.up.sql` / `.tx.down.sql` pairs) |
 
 **Web (`apps/web`)**
 
 | Path | Contents |
 | --- | --- |
-| `src/routes.ts` | React Router page registry. `react-router.config.ts` prerenders `/` and builds everything else as a single-page app |
-| `src/pages` | Pages, nested as `home.tsx` (`/`), `auth/` (`/auth/login`, `/auth/register`) and `app/` (`/app/onboarding`, `/app/settings`, `/app/wsp_…/dashboard`, `/app/wsp_…/projects`, …). Each page holds its own content; `app/layout.tsx` is the signed-in layout route |
+| `src/routes.ts` | React Router page registry. `react-router.config.ts` prerenders `/` and builds everything else as a single-page app; the admin dashboard is a second build (`WEB_BUILD=admin`) |
+| `src/pages` | Pages, nested as `home/index.tsx` (`/`), `auth/` (`/auth/login`, `/auth/register`) and `app/` (`/app/onboarding`, `/app/settings`, `/app/wsp_…/dashboard`, `/app/wsp_…/projects`, …); every page is a folder with the page in its `index.tsx`, a record's page `[<param>].tsx`. Each page holds its own content; `app/layout.tsx` is the signed-in layout route |
 | `src/components/ui` | Tailwind components in kebab-case files (`button.tsx`, `input.tsx`, `fieldset.tsx`, `listbox.tsx`, `dialog.tsx`, `dropdown.tsx`, `sidebar.tsx`, `navbar.tsx`, `table.tsx`, …), with BaseUI underneath where there is behaviour |
 | `src/components/layout` | `sidebar-layout.tsx`, `auth-layout.tsx`, `application-layout.tsx` (the app's sidebar, navbar and account menu) and the status page |
 | `src/components/app/projects` | Project UI shared by the dashboard and projects pages |
@@ -335,23 +326,23 @@ The app shell and API responses are never cached, while hashed assets are cached
 - **Passwords** are hashed with Argon2id.
 - **Sessions** use 256-bit opaque random tokens, stored as SHA-256 digests, in HttpOnly/SameSite cookies. They expire after 30 minutes idle or 24 hours in total, rotate at login, are revoked at logout, and are limited to five per account.
 - **Mutations** require an exact trusted `Origin`, a JSON content type and an authenticated CSRF token.
-- **Auth endpoints** have persistent IP and account rate limits and bounded hashing concurrency.
+- **Rate limits:** auth endpoints have persistent IP and account limits and bounded hashing concurrency; every signed-in request has a budget per user, creating workspaces and projects has its own limit, and quotas cap how many can exist ([details](docs/api/rate-limits.md)).
 
 See [security details and limits](docs/api/auth.md).
 
 ### Deployment
 
-For a production-like run locally, use `make serve` (or `make build`, then run `./bin/api` with the configuration exported). `bin/api` refuses to start in production without the web build embedded.
+For a production-like run locally, use `make serve` (or `make build`, then run `./bin/api` with the configuration exported). `bin/api` refuses to start in production without the web build embedded, and anywhere with `ADMIN_ROUTE_KEY` set but no admin build.
 
 Before deploying to production:
 
 - Set `APP_ENV=production` and an HTTPS `APP_ORIGIN`.
 - Use a restricted database role with `sslmode=verify-full`.
-- Terminate TLS at a trusted reverse proxy and expose only the Go server behind it. The production session cookie uses the `__Host-` prefix and the Secure flag.
+- Terminate TLS at a trusted reverse proxy and expose only the Go server behind it. The production session cookie uses the `__Host-` prefix and the Secure flag. Set `CLIENT_IP_HEADER` and `TRUSTED_PROXIES` so per-IP limits and events see the real client address ([deployment](docs/deployment.md#behind-a-proxy-or-load-balancer)).
 - Do not use the demo credentials.
 
 > [!IMPORTANT]
-> lewcontext does not implement password reset, verified email, MFA or OIDC federation.
+> lewcontext does not implement verified email, MFA or OIDC federation. Password reset links and workspace invitations are emailed over SMTP; locally they land in Mailpit at `http://localhost:8025`.
 
 ## Documentation
 

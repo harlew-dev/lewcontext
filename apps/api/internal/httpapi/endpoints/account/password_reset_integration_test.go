@@ -1,0 +1,300 @@
+package account_test
+
+import (
+	"context"
+	"fmt"
+	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/config"
+	"lewcontext/api/internal/factory"
+	"lewcontext/api/internal/httpapi"
+	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/input"
+	"lewcontext/api/internal/httpapi/router"
+	"lewcontext/api/internal/mail"
+	"net/http"
+	"net/http/httptest"
+	"regexp"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// mailServer is an integration server whose reset links and invitations go
+// to a mailbox when deliver runs the worker once, as the server's worker would.
+func mailServer(t *testing.T) (s *httpapi.Server, db *bun.DB, box *apitest.Mailbox, deliver func()) {
+	t.Helper()
+	s, db = server(t)
+	box, deliver = apitest.Mail(t, s.Repo, s.Config.Origin)
+	return s, db, box, deliver
+}
+
+var resetLink = regexp.MustCompile(`href="http://localhost:3000/auth/forgot-password/([A-Za-z0-9_-]{43})"`)
+
+// tokenIn is the token in a reset email's link.
+func tokenIn(t *testing.T, m mail.Message) string {
+	t.Helper()
+	match := resetLink.FindStringSubmatch(m.HTML)
+	if match == nil {
+		t.Fatalf("no reset link in:\n%s", m.HTML)
+	}
+	return match[1]
+}
+
+// requestReset asks for a reset link for email and returns the response.
+func requestReset(t *testing.T, h http.Handler, email string, want int) *httptest.ResponseRecorder {
+	t.Helper()
+	return apitest.Call(t, h, "POST", "/api/auth/password-reset", fmt.Sprintf(`{"email":%q}`, email), "", nil, want)
+}
+
+func resetBody(token, password string) string {
+	return fmt.Sprintf(`{"token":%q,"newPassword":%q}`, token, password)
+}
+
+// hasReset reports whether the user has a live or expired reset link stored.
+func hasReset(t *testing.T, db bun.IDB, userID int64) bool {
+	t.Helper()
+	found, err := db.NewSelect().TableExpr("password_resets").Where("user_id = ?", userID).Exists(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return found
+}
+
+// The request answers the same whether or not an account uses the email;
+// only the listener, later, finds out.
+func TestPasswordResetRequestLooksTheSameForEveryEmail(t *testing.T) {
+	s, db, box, deliver := mailServer(t)
+	h := router.New(s)
+	user := apitest.Must(factory.Users.CreateOne(context.Background(), db, factory.TestFaker(t)))(t)
+	known := requestReset(t, h, "  "+strings.ToUpper(user.Email)+" ", 202)
+	unknown := requestReset(t, h, "nobody@example.com", 202)
+	if known.Body.String() != unknown.Body.String() || known.Header().Get("Content-Type") != unknown.Header().Get("Content-Type") {
+		t.Fatalf("responses differ: %q vs %q", known.Body.String(), unknown.Body.String())
+	}
+	requested := apitest.EventsNamed(t, db, "auth.password_reset.requested")
+	if len(requested) != 2 || requested[0].Payload["email"] != user.Email || requested[1].Payload["email"] != "nobody@example.com" ||
+		requested[0].IP != "127.0.0.1" || !apitest.Is(requested[0].UserID, 0) || !apitest.Is(requested[0].ActorID, 0) {
+		t.Fatalf("requested events: %+v", requested)
+	}
+	if len(box.Sent) != 0 {
+		t.Fatal("mail sent before the worker ran")
+	}
+
+	deliver()
+	if len(box.Sent) != 1 || box.Sent[0].To != user.Email || box.Sent[0].Subject != "Reset your password" {
+		t.Fatalf("sent: %+v", box.Sent)
+	}
+	token := tokenIn(t, box.Sent[0])
+	var stored string
+	if err := db.NewSelect().TableExpr("password_resets").Column("token_hash").Where("user_id = ?", user.ID).Scan(context.Background(), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != auth.Digest(token) {
+		t.Fatal("the stored digest isn't the link's token's")
+	}
+	sent := apitest.OnlyEvent(t, db, "auth.password_reset.sent")
+	if sent.Payload["user"] != user.PublicID || sent.Payload["email"] != user.Email || !input.PublicID("evt", sent.Payload["request"].(string)) ||
+		!apitest.Is(sent.UserID, user.ID) || strings.Contains(sent.Raw, token) || strings.Contains(sent.Raw, stored) {
+		t.Fatalf("sent event: %+v", sent)
+	}
+	apitest.Call(t, h, "POST", "/api/auth/password-reset", `{"email":"not an email"}`, "", nil, 422)
+}
+
+func TestPasswordResetSetsANewPassword(t *testing.T) {
+	s, db, box, deliver := mailServer(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
+	requestReset(t, h, user.Email, 202)
+	deliver()
+	token := tokenIn(t, box.Sent[0])
+
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(token), "", nil, 204)
+	short := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, "too short"), "", nil, 422)
+	if apitest.ErrorField(t, short) != "newPassword" || !storedPasswordIs(t, db, user.ID, factory.DefaultPassword) {
+		t.Fatal("a short password was accepted or changed something")
+	}
+	done := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, apitest.NewPassword), "", nil, 200)
+	if strings.TrimSpace(done.Body.String()) != fmt.Sprintf(`{"email":%q}`, user.Email) {
+		t.Fatalf("reset response: %s", done.Body.String())
+	}
+	if !storedPasswordIs(t, db, user.ID, apitest.NewPassword) || hasReset(t, db, user.ID) {
+		t.Fatal("password not saved, or the link outlived its use")
+	}
+	// Every session ends, including any an attacker held.
+	apitest.Call(t, h, "GET", "/api/auth/me", "", "", session.Cookie(), 401)
+	completed := apitest.OnlyEvent(t, db, "auth.password_reset.completed")
+	if completed.Payload["user"] != user.PublicID || completed.Payload["otherSessionsRevoked"] != 1.0 || !apitest.Is(completed.UserID, user.ID) {
+		t.Fatalf("completed event: %+v", completed)
+	}
+	// The link works once.
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(token), "", nil, 422)
+	again := apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, "yet another passphrase"), "", nil, 422)
+	if apitest.ErrorField(t, again) != "token" || !storedPasswordIs(t, db, user.ID, apitest.NewPassword) {
+		t.Fatal("a used link worked again")
+	}
+	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, apitest.NewPassword), "", nil, 200)
+	apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword), "", nil, 401)
+}
+
+// Links die when they expire, when a newer one is requested, and when the
+// password is changed while signed in.
+func TestPasswordResetLinkLifetime(t *testing.T) {
+	s, db, box, deliver := mailServer(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	for _, token := range []string{"", "short", strings.Repeat("!", 43), strings.Repeat("a", 44)} {
+		apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(token), "", nil, 422)
+		apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(token, apitest.NewPassword), "", nil, 422)
+	}
+	expiredUser := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	expired := apitest.Must(factory.PasswordResets.State(factory.ResetFor(expiredUser.ID)).State(factory.ExpiredReset).CreateOne(ctx, db, f))(t)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(expired.Token), "", nil, 422)
+	apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(expired.Token, apitest.NewPassword), "", nil, 422)
+
+	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	requestReset(t, h, user.Email, 202)
+	deliver()
+	requestReset(t, h, user.Email, 202)
+	deliver()
+	first, second := tokenIn(t, box.Sent[0]), tokenIn(t, box.Sent[1])
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(first), "", nil, 422)
+	apitest.Call(t, h, "POST", "/api/auth/password-reset/check", apitest.TokenBody(second), "", nil, 204)
+
+	session := apitest.Must(factory.SessionFor(ctx, db, f, user.ID))(t)
+	apitest.Call(t, h, "PATCH", "/api/auth/password", apitest.ChangeBody(factory.DefaultPassword, apitest.NewPassword), session.CSRFToken, session.Cookie(), 200)
+	apitest.Call(t, h, "PATCH", "/api/auth/password-reset", resetBody(second, "an attacker's passphrase"), "", nil, 422)
+	if !storedPasswordIs(t, db, user.ID, apitest.NewPassword) {
+		t.Fatal("a link from before the change undid it")
+	}
+}
+
+// Two tabs submitting the same link: exactly one sets the password.
+func TestPasswordResetLinkWorksOnceUnderConcurrency(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	user := apitest.Must(factory.Users.CreateOne(ctx, db, f))(t)
+	reset := apitest.Must(factory.PasswordResets.State(factory.ResetFor(user.ID)).CreateOne(ctx, db, f))(t)
+	passwords := []string{"first concurrent passphrase", "second concurrent passphrase"}
+	codes := make([]int, len(passwords))
+	var wg sync.WaitGroup
+	for i, password := range passwords {
+		wg.Go(func() {
+			r := httptest.NewRequest("PATCH", "/api/auth/password-reset", strings.NewReader(resetBody(reset.Token, password)))
+			r.Header.Set("Origin", "http://localhost:3000")
+			r.Header.Set("Content-Type", "application/json")
+			r.RemoteAddr = "127.0.0.1:1234"
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			codes[i] = w.Code
+		})
+	}
+	wg.Wait()
+	if !(codes[0] == 200 && codes[1] == 422) && !(codes[0] == 422 && codes[1] == 200) {
+		t.Fatalf("want one 200 and one 422, got %v", codes)
+	}
+	winner := passwords[0]
+	if codes[1] == 200 {
+		winner = passwords[1]
+	}
+	if !storedPasswordIs(t, db, user.ID, winner) || len(apitest.EventsNamed(t, db, "auth.password_reset.completed")) != 1 {
+		t.Fatal("the winning password wasn't the one saved, or two resets were recorded")
+	}
+}
+
+func TestPasswordResetLimits(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("per email, known or not", func(t *testing.T) {
+		s, db := server(t)
+		h := router.New(s)
+		for range 3 {
+			requestReset(t, h, "nobody@example.com", 202)
+		}
+		refused := requestReset(t, h, "nobody@example.com", 429)
+		apitest.RetryWithin(t, refused, time.Hour)
+		if !strings.Contains(refused.Body.String(), "Too many attempts. Try again in an hour.") {
+			t.Fatalf("refusal: %s", refused.Body.String())
+		}
+		requestReset(t, h, "nobody@example.com", 429)
+		if e := apitest.OnlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "password-reset:per-email:block" {
+			t.Fatalf("rate limited: %+v", e)
+		}
+		if n := len(apitest.EventsNamed(t, db, "auth.password_reset.requested")); n != 3 {
+			t.Fatalf("%d requests recorded; refused ones count too", n)
+		}
+		// Another email from the same IP still gets through.
+		requestReset(t, h, "somebody@example.com", 202)
+	})
+
+	t.Run("per IP", func(t *testing.T) {
+		s, db := server(t)
+		h := router.New(s)
+		f := factory.TestFaker(t)
+		apitest.Must(factory.RateLimits.State(factory.ForLimit("password-reset:per-ip", "127.0.0.1")).State(factory.Exhausted(10)).CreateOne(ctx, db, f))(t)
+		requestReset(t, h, "nobody@example.com", 429)
+		if e := apitest.OnlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "password-reset:per-ip:block" {
+			t.Fatalf("rate limited: %+v", e)
+		}
+		// Refused early, it spent none of the later limits.
+		later, err := db.NewSelect().TableExpr("rate_limits").
+			Where("key LIKE 'password-reset:per-email:%' OR key = 'password-reset:global'").
+			Count(ctx)
+		if err != nil || later != 0 {
+			t.Fatalf("later limits counted %d (%v)", later, err)
+		}
+	})
+
+	t.Run("global", func(t *testing.T) {
+		s, db := server(t)
+		h := router.New(s)
+		f := factory.TestFaker(t)
+		apitest.Must(factory.RateLimits.State(factory.ForLimit("password-reset:global", "")).State(factory.Exhausted(100)).CreateOne(ctx, db, f))(t)
+		busy := requestReset(t, h, "nobody@example.com", 503)
+		if !strings.Contains(busy.Body.String(), "Password reset is busy") {
+			t.Fatalf("busy: %s", busy.Body.String())
+		}
+		if e := apitest.OnlyEvent(t, db, "rate_limit.reached"); e.Payload["limit"] != "password-reset:global:block" {
+			t.Fatalf("rate limited: %+v", e)
+		}
+	})
+
+	t.Run("separate from sign-in", func(t *testing.T) {
+		s, db := server(t)
+		h := router.New(s)
+		user := apitest.Must(factory.Users.CreateOne(ctx, db, factory.TestFaker(t)))(t)
+		for range 3 {
+			requestReset(t, h, user.Email, 202)
+		}
+		requestReset(t, h, user.Email, 429)
+		apitest.Call(t, h, "POST", "/api/auth/login", fmt.Sprintf(`{"email":%q,"password":%q}`, user.Email, factory.DefaultPassword), "", nil, 200)
+	})
+}
+
+func TestPasswordResetRequestProtections(t *testing.T) {
+	s, db := server(t)
+	h := router.New(s)
+	r := httptest.NewRequest("POST", "/api/auth/password-reset", strings.NewReader(`{"email":"a@example.com"}`))
+	r.Header.Set("Origin", "https://evil.example")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatalf("cross-origin request: %d", w.Code)
+	}
+	apitest.Call(t, h, "POST", "/api/auth/password-reset", `{"email":"a@example.com","extra":1}`, "", nil, 400)
+
+	// Without email delivery, nothing could send the link.
+	s.Config.MailDriver = config.MailOff
+	requestReset(t, router.New(s), "a@example.com", 503)
+	if found := apitest.EventsNamed(t, db, "auth.password_reset.requested"); len(found) != 0 {
+		t.Fatalf("refused requests recorded: %+v", found)
+	}
+}
