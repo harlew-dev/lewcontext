@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 // confirmation-dialog.test.tsx. A `.server` suffix is React Router's mark
 // for a module kept out of the browser's bundles (policies.server.ts, which
 // runs only at build time), so it may come before `.test` and the
-// extension. pages/ is shaped like the URLs instead ([workspace]), so it
-// isn't checked.
+// extension. pages/ has its own check (pages/layout.test.ts): every page
+// is a folder with the page in index.tsx.
 const checked = ["components", "lib", "types", "test"];
 const kebab = /^[a-z0-9]+(-[a-z0-9]+)*(\.server)?(\.test)?\.(ts|tsx)$/;
 // What's wrong with a file's name, or null.

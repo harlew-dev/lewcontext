@@ -95,11 +95,20 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 | Other pages' default exports | what the page is | `Login`, `Onboarding`, `AccountSettings`, `Dashboard` |
 
 - **Delete is never a page.** It is a confirmation dialog that calls `destroy`.
-- **URLs read naturally and don't follow the action names:** the workspace `edit` page is `/app/<wsp>/settings`.
-- **Page files are shaped like the URL** (`pages/app/[workspace]/projects/[project].tsx`).
+- **URLs read naturally and don't follow the action names:** the workspace `edit` page is `/app/<wsp>/settings`, `pages/app/[workspace]/settings/index.tsx`, and it reads the same API the folder's `index.tsx` would name after its resource. Each page lines up with the actions it calls:
+
+  | Page file | Page | API it reads |
+  | --- | --- | --- |
+  | `pages/app/[workspace]/projects/index.tsx` | `ProjectIndex` | `projects.Index` |
+  | `pages/app/[workspace]/projects/[project].tsx` | `ProjectShow` | `projects.Show`, `.Update`, `.Destroy` |
+  | `pages/app/[workspace]/settings/index.tsx` | `WorkspaceEdit` | `workspaces.Show`, `workspaces.Update` (there is no settings resource) |
+  | `pages/app/[workspace]/settings/members/index.tsx` | `MemberIndex` | `members.Index`, `invitations.Index` |
+
+  The API side is already `<resources>.<Action>` in `router/routes.go`.
+- **Every page is a folder, and the page is the folder's `index.tsx`.** A page URL is one folder whose `index.tsx` is that page ("`pages/app/[workspace]/projects/index.tsx` is `/app/wsp_…/projects`"); pages beneath it are deeper folders (`register/verify/index.tsx`), and a record's page is `[<param>].tsx` in the resource's folder, named after the route param (`[project]`, `[token]`). Every file and folder stands for the URL it serves, and a folder with pages beneath it holds its bare URL's own page — this is the API's rule for a resource's folder plus one rule, that every page gets a folder. Pages that aren't a resource keep plain names in constants and exports (`routes.home`, `Login`); only the files are folders. Plan: [page folders](../plans/features/implemented/page-folders.md).
 - **Component files** are kebab-case, grouping a family of named exports (`button.tsx`, `confirmation-dialog.tsx`); see AGENTS.md rule 6.
 - **Files in `components/`, `lib/`, `types/` and `test/`** are kebab-case; a module that must never reach the browser keeps React Router's `.server` suffix before its extension (`lib/policies.server.ts`, run only at build time).
-- **Checked** ([checks.md](checks.md)): the API client's names, page route constants, resource pages' export names and kebab-case files.
+- **Checked** ([checks.md](checks.md)): the API client's names, page route constants, resource pages' export names, kebab-case files and the pages' folders (`src/pages/layout.test.ts`, [checks.md](checks.md#adding-a-check)).
 - **Variants:** components with alternatives take a `variant` prop (`<Notice variant="error">`, `<ConfirmationDialog variant="danger">`), never `tone`, and never one component per alternative.
 
 ## Lists of declarations

@@ -22,7 +22,7 @@ import { authPageState, authPath, invitationToken, routes } from "@/lib/routes";
 import { registerLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
 import { useInvitation } from "@/lib/use-invitation";
-import type { Route } from "./+types/register";
+import type { Route } from "./+types/index";
 // Signed-in visitors go on to ?next= or /app. It also asks whether sign-up
 // must agree to the policies.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { registerLoader } from "@/lib/loaders";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
-import Register from "./register";
+import Register from "./index";
 // Register with its real loader: the guest check and GET /api/policies.
 const signedOut = { status: 401, body: { error: "Please sign in." } };
 const published = {

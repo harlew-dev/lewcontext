@@ -6,7 +6,7 @@ import { adminLoader } from "@/lib/admin";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 import type { DataSections, MonitoringView, Signal } from "@/types/admin";
-import AdminMonitoringData from "./[key]/monitoring/data";
+import AdminMonitoringData from "./[key]/monitoring/data/index";
 import AdminLayoutRoute from "./layout";
 // The Monitoring Data page.
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";

@@ -2,7 +2,7 @@ import { PolicyPage } from "@/components/app/policies/policy-document";
 import { NotFound } from "@/components/layout/status-page";
 import { appName } from "@/lib/app";
 import { readPolicy } from "@/lib/policies.server";
-import type { Route } from "./+types/privacy-policy";
+import type { Route } from "./+types/index";
 // /policy/privacy-policy, prerendered: the loader reads
 // content/policy/privacy-policy.md at build time (lib/policies.server.ts).
 // Go serves it only with POLICIES=on (plans/features/implemented/policies.md).

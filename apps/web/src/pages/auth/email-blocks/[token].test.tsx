@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
 import { gate, stubApi } from "@/test/api";
-import EmailBlockShow from "./email-blocks/[token]";
+import EmailBlockShow from "./[token]";
 // The block link's page, without a loader: it has none.
 function renderAt(pathname: string) {
   render(

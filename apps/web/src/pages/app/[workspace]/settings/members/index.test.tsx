@@ -10,7 +10,7 @@ import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
 import { Toaster } from "@/components/ui/toast";
 import WorkspaceSettingsLayout from "@/pages/app/[workspace]/settings/layout";
-import MemberIndex from "@/pages/app/[workspace]/settings/members";
+import MemberIndex from "@/pages/app/[workspace]/settings/members/index";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { gate, stubApi } from "@/test/api";

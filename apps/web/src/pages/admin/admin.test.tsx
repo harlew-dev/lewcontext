@@ -19,7 +19,7 @@ import {
   type AdminUser,
 } from "@/types/admin";
 import AdminLogin from "./[key]/index";
-import AdminUserIndex from "./[key]/users";
+import AdminUserIndex from "./[key]/users/index";
 import AdminLayoutRoute from "./layout";
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
 const admin = testSession({

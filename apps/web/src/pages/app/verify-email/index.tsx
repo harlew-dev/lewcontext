@@ -14,7 +14,7 @@ import { returnPath, routes } from "@/lib/routes";
 import { SessionProvider, useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
 import { useClearCache } from "@/lib/use-clear-cache";
-import type { Route } from "./+types/verify-email";
+import type { Route } from "./+types/index";
 // An account that never verified its email, while the server requires it
 // (EMAIL_VERIFICATION_EXISTING=required): every signed-in page sends it here
 // first, and the API refuses it everything else. Outside the app layout, like

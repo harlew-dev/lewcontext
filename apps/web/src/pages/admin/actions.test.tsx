@@ -13,7 +13,7 @@ import type {
   AdminUserDetail,
   AdminWorkspaceDetail,
 } from "@/types/admin";
-import AdminIPBlockIndex from "./[key]/ip-blocks";
+import AdminIPBlockIndex from "./[key]/ip-blocks/index";
 import AdminUserShow from "./[key]/users/[user]";
 import AdminWorkspaceShow from "./[key]/workspaces/[workspace]";
 import AdminLayoutRoute from "./layout";

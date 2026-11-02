@@ -12,7 +12,7 @@ import { useApi } from "@/lib/api";
 import { guestLoader } from "@/lib/loaders";
 import { authPageState, routes } from "@/lib/routes";
 import { useAction } from "@/lib/use-action";
-import type { Route } from "./+types/forgot-password";
+import type { Route } from "./+types/index";
 // Signed-in visitors go on to /app; they can change their password in
 // account settings.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {

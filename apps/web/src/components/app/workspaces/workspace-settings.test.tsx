@@ -9,7 +9,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 import { Toaster } from "@/components/ui/toast";
-import WorkspaceEdit from "@/pages/app/[workspace]/settings";
+import WorkspaceEdit from "@/pages/app/[workspace]/settings/index";
 import WorkspaceSettingsLayout from "@/pages/app/[workspace]/settings/layout";
 import { onboardingState } from "@/lib/routes";
 import { SessionProvider } from "@/lib/session";

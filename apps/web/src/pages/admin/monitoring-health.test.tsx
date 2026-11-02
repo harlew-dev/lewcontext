@@ -22,11 +22,11 @@ import type {
   PerformanceSections,
   Signal,
 } from "@/types/admin";
-import AdminMonitoringConfiguration from "./[key]/monitoring/configuration";
-import AdminMonitoringErrors from "./[key]/monitoring/errors";
+import AdminMonitoringConfiguration from "./[key]/monitoring/configuration/index";
+import AdminMonitoringErrors from "./[key]/monitoring/errors/index";
 import AdminMonitoringError from "./[key]/monitoring/errors/[error]";
-import AdminMonitoringIntegrity from "./[key]/monitoring/integrity";
-import AdminMonitoringPerformance from "./[key]/monitoring/performance";
+import AdminMonitoringIntegrity from "./[key]/monitoring/integrity/index";
+import AdminMonitoringPerformance from "./[key]/monitoring/performance/index";
 import AdminLayoutRoute from "./layout";
 // The Monitoring pages of part 3: Integrity, Performance, Errors (and one
 // group), Configuration.

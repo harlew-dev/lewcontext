@@ -19,9 +19,9 @@ import {
   type AdminMail,
   type EventSummary,
 } from "@/types/admin";
-import AdminEventIndex from "./[key]/events";
+import AdminEventIndex from "./[key]/events/index";
 import AdminEventShow from "./[key]/events/[event]";
-import AdminDeliveryIndex from "./[key]/mail";
+import AdminDeliveryIndex from "./[key]/mail/index";
 import AdminLayoutRoute from "./layout";
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
 const admin = testSession({

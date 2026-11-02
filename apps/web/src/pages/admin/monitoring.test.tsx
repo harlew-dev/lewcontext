@@ -13,8 +13,8 @@ import type {
   Signal,
 } from "@/types/admin";
 import AdminMonitoringOverview from "./[key]/monitoring";
-import AdminMonitoringLimits from "./[key]/monitoring/limits";
-import AdminMonitoringSecurity from "./[key]/monitoring/security";
+import AdminMonitoringLimits from "./[key]/monitoring/limits/index";
+import AdminMonitoringSecurity from "./[key]/monitoring/security/index";
 import AdminLayoutRoute from "./layout";
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";
 const admin = testSession({

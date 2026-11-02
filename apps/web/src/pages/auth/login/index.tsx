@@ -18,7 +18,7 @@ import { guestLoader } from "@/lib/loaders";
 import { useAuthSubmit } from "@/lib/use-auth-submit";
 import { useInvitation } from "@/lib/use-invitation";
 import { usePolicies } from "@/lib/use-policies";
-import type { Route } from "./+types/login";
+import type { Route } from "./+types/index";
 // Signed-in visitors go on to ?next= or /app.
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return guestLoader(request);

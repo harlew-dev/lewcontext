@@ -17,7 +17,7 @@ import {
   invitationToken,
   routes,
 } from "@/lib/routes";
-import type { Route } from "./+types/verify";
+import type { Route } from "./+types/index";
 // A sign-up waiting for the code sent to its email (email verification on).
 // The sign-up lives in a cookie, so a reload, such as a phone switching to the
 // mail app and back, lands here again; the loader asks the API which email

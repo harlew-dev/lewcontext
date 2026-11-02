@@ -6,9 +6,9 @@ import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 import type { Session } from "@/lib/types";
 import type { InvitationPreview } from "@/types/invitations";
-import InvitationShow from "./invitations/[token]";
-import Login from "./login";
-import Register from "./register";
+import InvitationShow from "./[token]";
+import Login from "../login/index";
+import Register from "../register/index";
 const token = "aB3_-".repeat(8) + "xyz"; // 43 base64url characters
 const link = `/auth/invitations/${token}`;
 const next = `?next=${encodeURIComponent(link)}`;

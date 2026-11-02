@@ -12,7 +12,7 @@ import { adminCan, adminLoader } from "@/lib/admin";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 import type { AdminAccount, AdminRole, AdminSession } from "@/types/admin";
-import AdminAdminIndex from "./[key]/admins";
+import AdminAdminIndex from "./[key]/admins/index";
 import AdminUserIndex from "./[key]/users";
 import AdminLayoutRoute from "./layout";
 const key = "8a1f0c52-6d3e-4b7a-9c2d-5e8f1a3b7c90";

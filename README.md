@@ -314,7 +314,7 @@ The app shell and API responses are never cached, while hashed assets are cached
 | Path | Contents |
 | --- | --- |
 | `src/routes.ts` | React Router page registry. `react-router.config.ts` prerenders `/` and builds everything else as a single-page app; the admin dashboard is a second build (`WEB_BUILD=admin`) |
-| `src/pages` | Pages, nested as `home.tsx` (`/`), `auth/` (`/auth/login`, `/auth/register`) and `app/` (`/app/onboarding`, `/app/settings`, `/app/wsp_…/dashboard`, `/app/wsp_…/projects`, …). Each page holds its own content; `app/layout.tsx` is the signed-in layout route |
+| `src/pages` | Pages, nested as `home/index.tsx` (`/`), `auth/` (`/auth/login`, `/auth/register`) and `app/` (`/app/onboarding`, `/app/settings`, `/app/wsp_…/dashboard`, `/app/wsp_…/projects`, …); every page is a folder with the page in its `index.tsx`, a record's page `[<param>].tsx`. Each page holds its own content; `app/layout.tsx` is the signed-in layout route |
 | `src/components/ui` | Tailwind components in kebab-case files (`button.tsx`, `input.tsx`, `fieldset.tsx`, `listbox.tsx`, `dialog.tsx`, `dropdown.tsx`, `sidebar.tsx`, `navbar.tsx`, `table.tsx`, …), with BaseUI underneath where there is behaviour |
 | `src/components/layout` | `sidebar-layout.tsx`, `auth-layout.tsx`, `application-layout.tsx` (the app's sidebar, navbar and account menu) and the status page |
 | `src/components/app/projects` | Project UI shared by the dashboard and projects pages |

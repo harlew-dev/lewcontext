@@ -19,7 +19,7 @@ import {
   type AdminRole,
   type AdminSession,
 } from "@/types/admin";
-import AdminEmailBlockIndex from "./[key]/email-blocks";
+import AdminEmailBlockIndex from "./[key]/email-blocks/index";
 import AdminLayoutRoute from "./layout";
 // The Email blocks page (plans/features/implemented/admin/email-blocks.md):
 // the list's states, and Unblock behind a reason and, when the API asks, a

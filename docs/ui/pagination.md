@@ -1,6 +1,6 @@
 # Paginated lists
 
-The API pages, searches and sorts ([../api/pagination.md](../api/pagination.md)). The UI keeps that state in the URL and renders it with `PaginatedTable`. The projects page (`pages/app/projects.tsx`) is the reference implementation.
+The API pages, searches and sorts ([../api/pagination.md](../api/pagination.md)). The UI keeps that state in the URL and renders it with `PaginatedTable`. The projects page (`pages/app/[workspace]/projects/index.tsx`) is the reference implementation.
 
 ## Helpers (`lib/pagination.ts`)
 

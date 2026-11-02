@@ -7,9 +7,9 @@ import * as providers from "@/lib/challenge/providers";
 import { registerVerifyLoader } from "@/lib/loaders";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
-import Login from "./login";
-import Register from "./register";
-import RegisterVerify from "./register/verify";
+import Login from "../login/index";
+import Register from "./index";
+import RegisterVerify from "./verify/index";
 const token = "aB3_-".repeat(8) + "xyz"; // 43 base64url characters
 const link = `/auth/invitations/${token}`;
 const signedOut = { status: 401, body: { error: "Please sign in." } };

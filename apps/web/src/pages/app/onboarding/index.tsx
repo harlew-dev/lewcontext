@@ -32,7 +32,7 @@ import { onboardingLoader } from "@/lib/loaders";
 import { onboardingState, routes } from "@/lib/routes";
 import { useClearCache } from "@/lib/use-clear-cache";
 import { SessionProvider, useSession } from "@/lib/session";
-import type { Route } from "./+types/onboarding";
+import type { Route } from "./+types/index";
 // Signed in without a workspace yet: create the first one. Accounts that
 // already have one go on to /app.
 export function clientLoader() {

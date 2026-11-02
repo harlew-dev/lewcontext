@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
-import Login from "./login";
+import Login from "./index";
 // Login without its route loader (which only sends signed-in visitors on).
 function renderLogin() {
   render(

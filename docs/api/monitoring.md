@@ -285,7 +285,7 @@ From each server's configuration summary (`server_instances.config`, `config.Sum
 
 ## Alerts
 
-Code: `internal/alerts` (`evaluator.go`, `runner.go`, `listeners.go`, `webhook.go`, `outbound.go`, `format.go`), `internal/monitor/alerts.go` (the rules), `internal/store/alerts.go` and `admin_alerts.go`, `internal/database/lock.go` (the locks), `internal/httpapi/endpoints/admin/alerts.go`, `alert_silence.go` and `me.go`, `internal/mail/templates/alert*.{html,txt}`, `cmd/server/alerts.go`. Web: `pages/admin/[key]/alerts.tsx` and `alerts/[alert].tsx`, `components/app/admin/alerts.tsx`. Plan: [alerts](../../plans/features/implemented/admin/alerts.md) (A5).
+Code: `internal/alerts` (`evaluator.go`, `runner.go`, `listeners.go`, `webhook.go`, `outbound.go`, `format.go`), `internal/monitor/alerts.go` (the rules), `internal/store/alerts.go` and `admin_alerts.go`, `internal/database/lock.go` (the locks), `internal/httpapi/endpoints/admin/alerts.go`, `alert_silence.go` and `me.go`, `internal/mail/templates/alert*.{html,txt}`, `cmd/server/alerts.go`. Web: `pages/admin/[key]/alerts/index.tsx` and `alerts/[alert].tsx`, `components/app/admin/alerts.tsx`. Plan: [alerts](../../plans/features/implemented/admin/alerts.md) (A5).
 
 A dashboard only helps when someone looks at it, so a signal that stays at its warning or critical level **opens an alert**, which reaches admins by email and an optional webhook within minutes. An alert is a monitoring signal ([Signals](#signals-internalmonitor)) with a rule (`monitor.AlertRules`), so a page and its alert always agree.
 

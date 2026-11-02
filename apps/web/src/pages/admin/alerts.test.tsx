@@ -6,7 +6,7 @@ import { adminLoader } from "@/lib/admin";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
 import type { AdminAlert, AdminSession } from "@/types/admin";
-import AdminAlertIndex from "./[key]/alerts";
+import AdminAlertIndex from "./[key]/alerts/index";
 import AdminAlertShow from "./[key]/alerts/[alert]";
 import AdminAdminIndex from "./[key]/admins";
 import AdminMonitoringError from "./[key]/monitoring/errors/[error]";

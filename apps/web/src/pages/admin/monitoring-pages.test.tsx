@@ -20,11 +20,11 @@ import type {
   UsageSections,
   WorkspacesSections,
 } from "@/types/admin";
-import AdminMonitoringAccounts from "./[key]/monitoring/accounts";
-import AdminMonitoringIPs from "./[key]/monitoring/ips";
+import AdminMonitoringAccounts from "./[key]/monitoring/accounts/index";
+import AdminMonitoringIPs from "./[key]/monitoring/ips/index";
 import AdminMonitoringAddress from "./[key]/monitoring/ips/[ip]";
-import AdminMonitoringUsage from "./[key]/monitoring/usage";
-import AdminMonitoringWorkspaces from "./[key]/monitoring/workspaces";
+import AdminMonitoringUsage from "./[key]/monitoring/usage/index";
+import AdminMonitoringWorkspaces from "./[key]/monitoring/workspaces/index";
 import AdminLayoutRoute from "./layout";
 // The Monitoring pages of part 2: IP addresses and one address, Accounts,
 // Workspaces, Usage.

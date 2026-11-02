@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { SWRConfig } from "swr";
 import { describe, expect, it } from "vitest";
 import { Toaster } from "@/components/ui/toast";
-import ProjectIndex from "@/pages/app/[workspace]/projects";
+import ProjectIndex from "@/pages/app/[workspace]/projects/index";
 import ProjectShow from "@/pages/app/[workspace]/projects/[project]";
 import { SessionProvider } from "@/lib/session";
 import { WorkspaceProvider } from "@/lib/workspace";

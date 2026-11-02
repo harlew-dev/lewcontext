@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { stubApi } from "@/test/api";
-import Home from "./home";
+import Home from "./index";
 const stubMe = (status: number) =>
   stubApi({ "GET /api/auth/me": { status, body: {} } });
 describe("homepage", () => {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { verifyEmailLoader } from "@/lib/loaders";
 import { stubApi } from "@/test/api";
 import { testSession } from "@/test/session";
-import VerifyEmail from "./verify-email";
+import VerifyEmail from "./index";
 const unverified = testSession({
   csrfToken: "csrf-7",
   emailVerification: "required",

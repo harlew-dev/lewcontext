@@ -3,10 +3,10 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { appName } from "@/lib/app";
 import { stubApi } from "@/test/api";
-import ForgotPassword from "./forgot-password";
-import ResetPassword from "./forgot-password/[token]";
-import Login from "./login";
-import Register from "./register";
+import ForgotPassword from "./index";
+import ResetPassword from "./[token]";
+import Login from "../login/index";
+import Register from "../register/index";
 // The three sign-in pages a password reset passes through, without their
 // route loaders (which only send signed-in visitors on).
 function renderAt(pathname: string, state?: unknown) {
