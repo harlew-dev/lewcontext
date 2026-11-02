@@ -2,7 +2,7 @@
 
 Status: **proposed 2026-11-01**, decisions to confirm. A future plan, not in the build order in [`plans/README.md`](../README.md): start it after the open admin plans (A8, A2, A9, A3) are committed, since they change many of the files it moves. It turns this app's core into a framework that other apps import, and this app into the first app built on it.
 
-**The detailed plans live in the kit repo**, at `/home/homelab/dev/harlew-dev/kit/plans/`. Its `README.md` has the overview and a table of 23 implementation stages, and `features/` has one plan per stage, each listing the files in this repo that it ports. That's also where this repo's [convention checks](../features/convention-checks.md) and [CAPTCHA challenges](../features/captcha-challenges.md) plans now continue, rewritten for kit as stages 19 and 23. This file is lewcontext's side of the work: what moves out, what stays, and the design summary.
+**The detailed plans live in the kit repo**, at `/home/homelab/dev/harlew-dev/kit/plans/`. Its `README.md` has the overview and a table of 23 implementation stages, and `features/` has one plan per stage, each listing the files in this repo that it ports. That's also where this repo's [convention checks](../features/implemented/convention-checks.md) and [CAPTCHA challenges](../features/implemented/captcha-challenges.md) plans now continue, rewritten for kit as stages 19 and 23. This file is lewcontext's side of the work: what moves out, what stays, and the design summary.
 
 ## Why
 
@@ -490,7 +490,7 @@ Go needs two halves of `artisan` (kit stage 18). **`kit`** (`go install github.c
 
 ### `kit check`
 
-Absorbs the open [convention checks plan](../features/convention-checks.md) (decision 18) and adds the layout rules:
+Absorbs the open [convention checks plan](../features/implemented/convention-checks.md) (decision 18) and adds the layout rules:
 
 - Folder and file rules 1–6 above: one exported type per file, the file named after it, the folder cap, controllers only under `controllers/`, the import-rename pattern.
 - Event packages import nothing from the app; every event has an alias and every alias an event; every listener is registered.
@@ -591,6 +591,6 @@ Until stage 21, this repo carries on as it is. A `go.work` joining `apps/api` to
 - A general job queue, a scheduler, broadcasting or file storage. Listeners on the delivery queue cover background work today; each of these is its own plan when an app needs it.
 - Databases other than PostgreSQL, or several databases per app.
 - Passkeys, OIDC or social sign-in, and changing an account's email: still not built.
-- Admin actions defined by an app. Apps may add read-only admin routes and pages, behind kit's guards and audit (needed for this app's workspace projects page); actions wait for the [admin actions plan](../features/admin/actions.md).
+- Admin actions defined by an app. Apps may add read-only admin routes and pages, behind kit's guards and audit (needed for this app's workspace projects page); actions wait for the [admin actions plan](../features/implemented/admin/actions.md).
 - A public open-source release, a plugin system or third-party kit packages.
 - Optional workspaces (decision 17).
