@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { CheckIcon, DocumentDuplicateIcon } from "@heroicons/react/16/solid";
-import { popoverExit } from "@/lib/baseui";
+import { popoverExit } from "@/lib/transitions";
 import { cx } from "@/lib/cx";
 import { Button } from "./button";
 import { InputButton } from "./input";

@@ -198,7 +198,7 @@ The trace can be viewed two ways:
 
 ## The app
 
-The retrieval and graph features are being built into a working project workspace with a Go API, PostgreSQL, and a React single-page app with a prerendered public homepage. The UI is built with Tailwind (sidebar layout, auth layout, buttons, fields, listbox, dialog, dropdown, table) on **Uber Base Web (BaseUI)** for behaviour, with light and dark mode.
+The retrieval and graph features are being built into a working project workspace with a Go API, PostgreSQL, and a React single-page app with a prerendered public homepage. The UI is built with Tailwind (sidebar layout, auth layout, buttons, fields, listbox, dialog, dropdown, table) on **Base UI (`@base-ui/react`, by MUI)** for behaviour, with light and dark mode.
 
 It is a working app, not a mockup. The dashboard shows real database data: you can create and edit projects, change their status, search and filter them, manage other sessions and sign out. Data persists across reloads, and every account can access only its own projects.
 
@@ -295,7 +295,7 @@ Tests use the committed `.env.testing` and nothing from `.env`, however they're 
 
 ### Architecture
 
-In production, one Go process serves both the API and the web app from the same origin: no proxy and no Node runtime. Pages render in the browser. The signed-in layout loads the session once and pages fetch their data through SWR with skeletons, so moving between pages is instant. BaseUI's Styletron CSS for prerendered pages is collected at build time and hydrated on the client.
+In production, one Go process serves both the API and the web app from the same origin: no proxy and no Node runtime. Pages render in the browser. The signed-in layout loads the session once and pages fetch their data through SWR with skeletons, so moving between pages is instant. Styles are Tailwind's one stylesheet, so prerendered pages need no style collection.
 
 The app shell and API responses are never cached, while hashed assets are cached for a year. SWR caches are keyed by user ID, so data never carries across a change of account.
 
@@ -318,7 +318,7 @@ The app shell and API responses are never cached, while hashed assets are cached
 | `src/components/ui` | Tailwind components in kebab-case files (`button.tsx`, `input.tsx`, `fieldset.tsx`, `listbox.tsx`, `dialog.tsx`, `dropdown.tsx`, `sidebar.tsx`, `navbar.tsx`, `table.tsx`, …), with BaseUI underneath where there is behaviour |
 | `src/components/layout` | `sidebar-layout.tsx`, `auth-layout.tsx`, `application-layout.tsx` (the app's sidebar, navbar and account menu) and the status page |
 | `src/components/app/projects` | Project UI shared by the dashboard and projects pages |
-| `src/lib` | Typed API client, page URLs (`routes.ts`), route loaders, BaseUI theme and `slot()` override helper, interaction-state hook, Styletron setup, domain types |
+| `src/lib` | Typed API client, page URLs (`routes.ts`), route loaders, interaction-state hook (`useInteractive`), shared popup transitions, domain types |
 | `src/styles` | Tailwind entry (`globals.css`, which also loads Inter), font setting (`theme.css`) and element defaults (`base.css`). Colours and spacing are Tailwind's defaults |
 
 ### Security

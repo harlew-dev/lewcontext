@@ -20,8 +20,8 @@ type ThirdParty struct{ Script, Frame []string }
 // policy is the Content-Security-Policy for one HTML file. Scripts load only
 // from this origin, plus the file's own inline scripts by hash: React Router
 // writes a few (hydration context, module bootstrap, scroll restoration) into
-// the HTML it builds. Styles allow inline CSS because BaseUI's Styletron
-// writes <style> tags. extra adds exact third-party origins to script-src
+// the HTML it builds. Styles allow inline CSS because motion, Base UI's
+// positioning and Recharts set style attributes through React. extra adds exact third-party origins to script-src
 // and a frame-src (never an inline script).
 func policy(hashes []string, extra ThirdParty) string {
 	script := "script-src 'self'"

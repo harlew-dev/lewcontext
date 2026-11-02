@@ -1,28 +1,28 @@
-import type { ReactElement, ReactNode } from "react";
 import {
-  PLACEMENT,
-  StatefulContainer,
-  Tooltip as BaseTooltip,
-} from "baseui/tooltip";
-import { useReducedMotion } from "motion/react";
-import { popoverExit, popoverOverrides, popoverPanel } from "@/lib/baseui";
+  cloneElement,
+  useId,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { cx } from "@/lib/cx";
-const placements = {
-  top: PLACEMENT.top,
-  bottom: PLACEMENT.bottom,
-  left: PLACEMENT.left,
-  right: PLACEMENT.right,
-};
-// Tooltip on BaseUI's StatefulTooltip: shows `content` while the pointer is
-// over the child or it has keyboard focus, closes on Escape, and describes the
-// child (aria-describedby) while open. The child must be focusable, forward
-// its ref, and pass on the mouse and focus handlers it's given. With
-// `onClick` the tooltip itself is clickable too, as a shortcut for the
-// pointer ("Click to reveal"); it stays open while the pointer is over it.
-// Keyboard users need the same action elsewhere. `disabled` keeps it closed
-// without changing the child's place in the tree. `open` holds it open whatever
-// the pointer and focus do (a locked field's lock, after a try at typing). This
-// is StatefulTooltip with its container's open state widened by `open`.
+import { popoverPanel } from "@/lib/transitions";
+const sides = {
+  top: "top",
+  bottom: "bottom",
+  left: "left",
+  right: "right",
+} as const;
+// Tooltip on Base UI's Tooltip: shows `content` while the pointer is over the
+// child or it has keyboard focus, closes on Escape, and labels the child's
+// description while open. The child must be focusable, forward its ref, and
+// pass on the props it's given. With `onClick` the tooltip itself is
+// clickable too, as a shortcut for the pointer ("Click to reveal"); it stays
+// open while the pointer is over it. Keyboard users need the same action
+// elsewhere. `disabled` keeps it closed without changing the child's place in
+// the tree. `open` holds it open whatever the pointer and focus do (a locked
+// field's lock, after a try at typing).
 export function Tooltip({
   content,
   placement = "top",
@@ -32,52 +32,63 @@ export function Tooltip({
   children,
 }: {
   content: ReactNode;
-  placement?: keyof typeof placements;
+  placement?: keyof typeof sides;
   onClick?: () => void;
   disabled?: boolean;
   open?: boolean;
-  children: ReactElement;
+  children: ReactElement<{ "aria-describedby"?: string }>;
 }) {
-  const reducedMotion = useReducedMotion();
+  const id = useId();
+  const [shown, setShown] = useState(false);
+  const visible = !disabled && (shown || open);
   const classes = cx(
     popoverPanel,
     "rounded-md px-2 py-1 text-xs/5 font-medium",
     "bg-zinc-900 text-white shadow-sm dark:bg-zinc-700 dark:ring-1 dark:ring-white/10 dark:ring-inset",
-    // Already open when disabled (an enabled Save under the pointer).
-    disabled && "hidden",
   );
   return (
-    <StatefulContainer
-      placement={placements[placement]}
-      stateReducer={(_type, next) =>
-        disabled ? { ...next, isOpen: false } : next
-      }
-      popoverMargin={6}
-      animateOutTime={reducedMotion ? 0 : popoverExit}
-      overrides={popoverOverrides}
-      content={
-        onClick ? (
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={onClick}
-            className={cx(
-              classes,
-              "block cursor-pointer hover:bg-zinc-800 dark:hover:bg-zinc-600",
-            )}
-          >
-            {content}
-          </button>
-        ) : (
-          <div className={classes}>{content}</div>
-        )
-      }
+    <BaseTooltip.Root
+      open={visible}
+      onOpenChange={setShown}
+      disabled={disabled}
     >
-      {(props) => (
-        <BaseTooltip {...props} isOpen={!disabled && (props.isOpen || open)}>
-          {children}
-        </BaseTooltip>
-      )}
-    </StatefulContainer>
+      <BaseTooltip.Trigger
+        render={cloneElement(children, {
+          "aria-describedby":
+            [children.props["aria-describedby"], visible ? id : undefined]
+              .filter(Boolean)
+              .join(" ") || undefined,
+        })}
+      />
+      <BaseTooltip.Portal>
+        <BaseTooltip.Positioner
+          side={sides[placement]}
+          sideOffset={6}
+          className="z-[70]"
+        >
+          <BaseTooltip.Popup
+            id={id}
+            role="tooltip"
+            className={onClick ? popoverPanel : classes}
+          >
+            {onClick ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={onClick}
+                className={cx(
+                  classes,
+                  "block cursor-pointer hover:bg-zinc-800 dark:hover:bg-zinc-600",
+                )}
+              >
+                {content}
+              </button>
+            ) : (
+              content
+            )}
+          </BaseTooltip.Popup>
+        </BaseTooltip.Positioner>
+      </BaseTooltip.Portal>
+    </BaseTooltip.Root>
   );
 }

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopyButton, CopyFailure, useCopy } from "./copy-button";
+import { hover } from "@/test/hover";
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -44,11 +45,11 @@ describe("CopyButton", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent("Copied");
     // Not read again as the button's description.
     expect(button).not.toHaveAccessibleDescription("Copied");
-    act(() => vi.advanceTimersByTime(2900));
+    await act(() => vi.advanceTimersByTimeAsync(2900));
     expect(screen.getByRole("tooltip")).toHaveTextContent("Copied");
     // Closing starts the tooltip's fade-out, which then removes it.
-    act(() => vi.advanceTimersByTime(100));
-    act(() => vi.advanceTimersByTime(500));
+    await act(() => vi.advanceTimersByTimeAsync(100));
+    await act(() => vi.advanceTimersByTimeAsync(500));
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
   it("keeps what to do instead on the page until the next try", async () => {
@@ -61,7 +62,7 @@ describe("CopyButton", () => {
     const onCopied = vi.fn();
     render(<Copier value="codes" variant="button" onCopied={onCopied} />);
     // A labelled button has no "Copy" tooltip of its own.
-    fireEvent.mouseEnter(screen.getByRole("button", { name: "Copy ID" }));
+    hover(screen.getByRole("button", { name: "Copy ID" }));
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Copy ID" }));
     await settle();

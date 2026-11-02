@@ -31,7 +31,7 @@ Short summaries of how the system works. Start with the project rules in [`AGENT
 | [ui/design.md](ui/design.md) | build or style components |
 | [ui/forms-and-actions.md](ui/forms-and-actions.md) | add a form or a button: where actions go (bottom right; full width only on sign-in pages), their order and style |
 | [ui/testing.md](ui/testing.md) | write or run Vitest and Playwright tests |
-| [ui/base-ui.md](ui/base-ui.md) | use or customise a BaseUI component, or hit one of its known issues |
+| [ui/base-ui.md](ui/base-ui.md) | use or customise a Base UI component, or hit one of its known issues |
 | [ui/strict-mode.md](ui/strict-mode.md) | see something only under `make dev` (double renders, effects running twice) |
 
 ## Everything else

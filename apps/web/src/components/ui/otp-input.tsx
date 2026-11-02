@@ -6,8 +6,7 @@ import {
   useState,
   type SyntheticEvent,
 } from "react";
-import { Input as BaseInput } from "baseui/input";
-import { slot } from "@/lib/baseui";
+import { Input as BaseInput } from "@base-ui/react/input";
 import { cx } from "@/lib/cx";
 import { useField } from "./fieldset";
 // A one-time code is 6 digits (an authenticator app's code).
@@ -23,12 +22,8 @@ const boxClasses = [
 ].join(" ");
 // The real input lies over the boxes, invisible: it keeps typing, pasting,
 // autofill, the label and screen readers working as in any text field.
-const OtpRoot = slot("span", "absolute inset-0 block");
-const OtpContainer = slot("span", "contents");
-const OtpElement = slot(
-  "input",
-  "block size-full cursor-text bg-transparent text-transparent caret-transparent outline-hidden selection:bg-transparent",
-);
+const otpInputClasses =
+  "absolute inset-0 block size-full cursor-text bg-transparent text-transparent caret-transparent outline-hidden selection:bg-transparent";
 export type OtpInputProps = {
   value: string;
   onChange: (value: string) => void;
@@ -39,7 +34,7 @@ export type OtpInputProps = {
   name?: string;
   className?: string;
 };
-// A 6-digit code drawn as six boxes, on one input (BaseUI's Input) rather
+// A 6-digit code drawn as six boxes, on one input (Base UI's Input) rather
 // than six, so a pasted "123 456", a password manager's fill and a screen
 // reader all see one field. Only digits are kept. The caret stays after the
 // last digit (Backspace deletes from the end) unless everything is selected.
@@ -95,6 +90,7 @@ export const OtpInput = forwardRef<HTMLInputElement, OtpInputProps>(
           ))}
         </span>
         <BaseInput
+          ref={input}
           id={field?.id}
           aria-describedby={field?.describedBy}
           disabled={field?.disabled}
@@ -104,8 +100,7 @@ export const OtpInput = forwardRef<HTMLInputElement, OtpInputProps>(
           inputMode="numeric"
           required
           value={digits}
-          error={invalid}
-          inputRef={input}
+          aria-invalid={invalid || undefined}
           onChange={(event) =>
             onChange(
               event.currentTarget.value.replace(/\D/g, "").slice(0, otpLength),
@@ -113,14 +108,8 @@ export const OtpInput = forwardRef<HTMLInputElement, OtpInputProps>(
           }
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          overrides={{
-            Root: { component: OtpRoot },
-            InputContainer: { component: OtpContainer },
-            Input: {
-              component: OtpElement,
-              props: { onSelect: keepCaretAtEnd },
-            },
-          }}
+          onSelect={keepCaretAtEnd}
+          className={otpInputClasses}
         />
       </span>
     );

@@ -7,6 +7,15 @@
   }
 }
 
+/* The rule a Select would inject with alignItemWithTrigger, which
+   CSPProvider disableStyleElements switches off. */
+.base-ui-disable-scrollbar {
+  scrollbar-width: none;
+}
+.base-ui-disable-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,16 +1,7 @@
-import {
-  createContext,
-  useContext,
-  useId,
-  useState,
-  type ComponentPropsWithoutRef,
-  type ReactNode,
-} from "react";
-import { Modal } from "baseui/modal";
-import { slot } from "@/lib/baseui";
+import { useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { cx } from "@/lib/cx";
 import { ReturnFocus, focusedElement } from "@/lib/return-focus";
-import { useScrollLock } from "@/lib/scroll-lock";
 import { Text } from "./text";
 const sizes = {
   xs: "sm:max-w-xs",
@@ -23,28 +14,22 @@ const sizes = {
   "4xl": "sm:max-w-4xl",
   "5xl": "sm:max-w-5xl",
 };
-// BaseUI closes the modal on clicks that land on DialogContainer or an ancestor,
-// so the backdrop is the Root and the centring grid is the DialogContainer.
-const DialogBackdrop = slot(
-  "div",
-  "fixed inset-0 w-screen overflow-y-auto bg-zinc-950/25 pt-6 transition duration-150 ease-out focus:outline-0 data-closed:pointer-events-none data-closed:opacity-0 data-closed:ease-in motion-reduce:transition-none sm:pt-0 dark:bg-zinc-950/50",
-);
-const DialogGrid = slot(
-  "div",
-  "grid min-h-full grid-rows-[1fr_auto] justify-items-center sm:grid-rows-[1fr_auto_3fr] sm:p-4",
-);
-const DialogPanel = slot(
-  "div",
-  [
-    "row-start-2 w-full min-w-0 rounded-t-3xl bg-white p-(--gutter) shadow-lg ring-1 ring-zinc-950/10 [--gutter:--spacing(8)] sm:mb-auto sm:rounded-2xl dark:bg-zinc-900 dark:ring-white/10 forced-colors:outline",
-    "transition duration-150 ease-out will-change-transform data-closed:translate-y-12 data-closed:opacity-0 data-closed:ease-in motion-reduce:transition-none sm:data-closed:translate-y-0 sm:data-closed:scale-95",
-    "focus:outline-hidden",
-  ].join(" "),
-);
-const NoCloseButton = () => null;
-const DialogContext = createContext<{ titleId: string; descriptionId: string }>(
-  { titleId: "", descriptionId: "" },
-);
+// The backdrop dims the page and fades with the dialog. `starting:` (CSS
+// @starting-style) animates one that mounts already open (a dialog keyed per
+// opening, useOpenCount), which Base UI doesn't give data-starting-style.
+const backdropClasses =
+  "fixed inset-0 z-50 bg-zinc-950/25 transition duration-150 ease-out starting:opacity-0 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-in motion-reduce:transition-none dark:bg-zinc-950/50";
+// The viewport scrolls a tall dialog; the grid centres the panel (a sheet at
+// the bottom on phones).
+const viewportClasses =
+  "fixed inset-0 z-50 w-screen overflow-y-auto pt-6 focus:outline-0 sm:pt-0";
+const gridClasses =
+  "grid min-h-full grid-rows-[1fr_auto] justify-items-center sm:grid-rows-[1fr_auto_3fr] sm:p-4";
+const panelClasses = [
+  "row-start-2 w-full min-w-0 rounded-t-3xl bg-white p-(--gutter) shadow-lg ring-1 ring-zinc-950/10 [--gutter:--spacing(8)] sm:mb-auto sm:rounded-2xl dark:bg-zinc-900 dark:ring-white/10 forced-colors:outline",
+  "transition duration-150 ease-out will-change-transform starting:translate-y-12 starting:opacity-0 data-starting-style:translate-y-12 data-starting-style:opacity-0 data-ending-style:translate-y-12 data-ending-style:opacity-0 data-ending-style:ease-in motion-reduce:transition-none sm:starting:translate-y-0 sm:starting:scale-95 sm:data-starting-style:translate-y-0 sm:data-starting-style:scale-95 sm:data-ending-style:translate-y-0 sm:data-ending-style:scale-95",
+  "focus:outline-hidden",
+].join(" ");
 type DialogProps = {
   open: boolean;
   onClose: (value: false) => void;
@@ -64,9 +49,11 @@ function useOpener(open: boolean) {
   }
   return opener;
 }
-// Dialog on BaseUI's Modal (focus lock, Escape, backdrop click,
-// enter/leave transitions via data-closed). useScrollLock hides the page's
-// scrollbar without shifting the layout.
+// Dialog on Base UI's Dialog (focus trap, Escape, backdrop click, scroll
+// lock, enter and exit transitions on data-starting-style and
+// data-ending-style). Its title and description name it (aria-labelledby and
+// aria-describedby). Focus goes back to whatever had it when the dialog
+// opened, which Base UI loses for a dialog opened from a menu item.
 export function Dialog({
   open,
   onClose,
@@ -74,47 +61,37 @@ export function Dialog({
   className,
   children,
 }: DialogProps) {
-  const id = useId();
-  useScrollLock(open);
   const opener = useOpener(open);
-  const ids = { titleId: `${id}-title`, descriptionId: `${id}-description` };
   return (
-    <Modal
-      isOpen={open}
-      onClose={() => onClose(false)}
-      closeable
-      animate
-      autoFocus
-      focusLock
-      returnFocus={false}
-      role="dialog"
-      overrides={{
-        Root: { component: DialogBackdrop },
-        DialogContainer: { component: DialogGrid },
-        Dialog: {
-          component: DialogPanel,
-          props: {
-            className: cx(sizes[size], className),
-            "aria-label": undefined,
-            "aria-labelledby": ids.titleId,
-          },
-        },
-        Close: { component: NoCloseButton },
+    <BaseDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose(false);
       }}
     >
-      <DialogContext.Provider value={ids}>{children}</DialogContext.Provider>
-      <ReturnFocus opener={opener} />
-    </Modal>
+      <BaseDialog.Portal>
+        <BaseDialog.Backdrop className={backdropClasses} />
+        <BaseDialog.Viewport className={viewportClasses}>
+          <div className={gridClasses}>
+            <BaseDialog.Popup
+              finalFocus={false}
+              className={cx(panelClasses, sizes[size], className)}
+            >
+              {children}
+              <ReturnFocus opener={opener} />
+            </BaseDialog.Popup>
+          </div>
+        </BaseDialog.Viewport>
+      </BaseDialog.Portal>
+    </BaseDialog.Root>
   );
 }
 export function DialogTitle({
   className,
   ...props
 }: ComponentPropsWithoutRef<"h2">) {
-  const { titleId } = useContext(DialogContext);
   return (
-    <h2
-      id={titleId}
+    <BaseDialog.Title
       {...props}
       className={cx(
         className,
@@ -127,11 +104,10 @@ export function DialogDescription({
   className,
   ...props
 }: ComponentPropsWithoutRef<"p">) {
-  const { descriptionId } = useContext(DialogContext);
   return (
-    <Text
-      id={descriptionId}
+    <BaseDialog.Description
       {...props}
+      render={<Text />}
       className={cx(className, "mt-2 text-pretty")}
     />
   );

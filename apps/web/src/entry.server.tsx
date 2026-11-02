@@ -1,36 +1,25 @@
 import { PassThrough } from "node:stream";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type EntryContext } from "react-router";
-import { Server } from "styletron-engine-atomic";
-import { Provider as StyletronProvider } from "styletron-react";
 // Runs only at build time (ssr: false): it renders the prerendered pages and
-// the SPA fallback. BaseUI's Styletron CSS is collected per file and written
-// into <head> as <style class="_styletron_hydrate_">, which the browser's
-// engine (lib/styletron.ts) picks up.
+// the SPA fallback. React Router's default server entry needs
+// @react-router/node, which nothing else here uses, so this is the same
+// entry in a few lines.
 export default function handleRequest(
   request: Request,
   status: number,
   headers: Headers,
   context: EntryContext,
 ) {
-  const engine = new Server();
   return new Promise<Response>((resolve, reject) => {
     const { pipe } = renderToPipeableStream(
-      <StyletronProvider value={engine}>
-        <ServerRouter context={context} url={request.url} />
-      </StyletronProvider>,
+      <ServerRouter context={context} url={request.url} />,
       {
-        // Wait for the whole page, so every style has been collected.
+        // Wait for the whole page, so the HTML is complete.
         async onAllReady() {
           const html = await collect(pipe);
           headers.set("Content-Type", "text/html; charset=utf-8");
-          const styles = engine.getStylesheetsHtml("_styletron_hydrate_");
-          resolve(
-            new Response(html.replace("</head>", `${styles}</head>`), {
-              status,
-              headers,
-            }),
-          );
+          resolve(new Response(html, { status, headers }));
         },
         onShellError: reject,
         onError(error) {

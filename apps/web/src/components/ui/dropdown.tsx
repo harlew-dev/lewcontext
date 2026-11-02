@@ -1,33 +1,22 @@
 import {
   Children,
-  createContext,
   forwardRef,
   isValidElement,
-  useContext,
   useEffect,
   useId,
   useRef,
-  useState,
   type ComponentPropsWithoutRef,
   type ElementType,
   type FocusEvent,
-  type KeyboardEvent,
   type PointerEvent,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
-import { PLACEMENT, StatefulPopover } from "baseui/popover";
-import { LayoutGroup, useReducedMotion } from "motion/react";
-import {
-  popoverExit,
-  popoverOverrides,
-  popoverPanel,
-  usePopoverSettled,
-} from "@/lib/baseui";
+import { Menu } from "@base-ui/react/menu";
+import { LayoutGroup } from "motion/react";
 import { cx } from "@/lib/cx";
-import { ReturnFocus, focusedElement } from "@/lib/return-focus";
-import { usePopoverScrollLock } from "@/lib/scroll-lock";
+import { popoverExit, popoverPanel } from "@/lib/transitions";
 import { Button } from "./button";
 import {
   Highlight,
@@ -36,69 +25,47 @@ import {
   useHighlightGroup,
 } from "./highlight";
 import { Link } from "./link";
-const placements = {
-  bottom: PLACEMENT.bottom,
-  "bottom start": PLACEMENT.bottomLeft,
-  "bottom end": PLACEMENT.bottomRight,
-  top: PLACEMENT.top,
-  "top start": PLACEMENT.topLeft,
-  "top end": PLACEMENT.topRight,
-};
-type Anchor = keyof typeof placements;
-// Long enough for the menu's exit animation and focus return.
+const anchors = {
+  bottom: { side: "bottom", align: "center" },
+  "bottom start": { side: "bottom", align: "start" },
+  "bottom end": { side: "bottom", align: "end" },
+  top: { side: "top", align: "center" },
+  "top start": { side: "top", align: "start" },
+  "top end": { side: "top", align: "end" },
+} as const;
+type Anchor = keyof typeof anchors;
+// Long enough for the menu's exit transition and focus return.
 const afterClose = popoverExit + 50;
-// `settled`: the open menu has settled where BaseUI positions it, so its
-// highlight may slide (`usePopoverSettled`).
-const DropdownContext = createContext<{ close: () => void; settled: boolean }>({
-  close: () => {},
-  settled: false,
-});
 export type DropdownMenuProps = {
   anchor?: Anchor;
   className?: string;
   children: ReactNode;
 };
-// Dropdown on BaseUI's StatefulPopover (click trigger, positioning,
-// focus lock, Escape and outside-click dismissal, menu ARIA on the trigger).
-// Children: the trigger (a DropdownButton) and then the menu
+// Dropdown on Base UI's Menu (click trigger, positioning, focus handling,
+// arrow, Home and End keys, Escape and outside-click dismissal, menu ARIA,
+// scroll lock). Children: the trigger (a DropdownButton) and then the menu
 // (a DropdownMenu, or a component rendering one that accepts `anchor`).
 export function Dropdown({ children }: { children: ReactNode }) {
   const [trigger, menu] = Children.toArray(children).filter(isValidElement) as [
     ReactElement,
     ReactElement<Pick<DropdownMenuProps, "anchor">>,
   ];
-  const reducedMotion = useReducedMotion();
-  const [open, setOpen] = useState(false);
-  // The trigger, focused when the menu opens; focus returns to it on close.
-  const [opener, setOpener] = useState<HTMLElement | null>(null);
-  usePopoverScrollLock(open);
-  const settled = usePopoverSettled(open);
   if (!trigger || !menu) return null;
+  const { side, align } = anchors[menu.props.anchor ?? "bottom"];
   return (
-    <StatefulPopover
-      accessibilityType="menu"
-      triggerType="click"
-      placement={placements[menu.props.anchor ?? "bottom"]}
-      popoverMargin={8}
-      animateOutTime={reducedMotion ? 0 : popoverExit}
-      onOpen={() => {
-        setOpener(focusedElement());
-        setOpen(true);
-      }}
-      onClose={() => setOpen(false)}
-      focusLock
-      autoFocus
-      returnFocus={false}
-      overrides={popoverOverrides}
-      content={({ close }) => (
-        <DropdownContext.Provider value={{ close, settled }}>
+    <Menu.Root>
+      <Menu.Trigger render={trigger} />
+      <Menu.Portal>
+        <Menu.Positioner
+          side={side}
+          align={align}
+          sideOffset={8}
+          className="z-[60] outline-hidden"
+        >
           {menu}
-          <ReturnFocus opener={opener} />
-        </DropdownContext.Provider>
-      )}
-    >
-      {trigger}
-    </StatefulPopover>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }
 // Renders the trigger as `as` (Button by default), forwarding the ref and the
@@ -120,23 +87,6 @@ export const DropdownButton = forwardRef<HTMLElement, DropdownButtonProps>(
     return <Component ref={ref} {...props} />;
   },
 );
-function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
-  const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
-  if (!keys.includes(event.key)) return;
-  event.preventDefault();
-  const items = Array.from(
-    event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-  );
-  const index = items.indexOf(document.activeElement as HTMLElement);
-  const next =
-    event.key === "Home"
-      ? 0
-      : event.key === "End"
-        ? items.length - 1
-        : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-          items.length;
-  items[next]?.focus();
-}
 // Where focus starts when the menu opens, and returns when the mouse leaves
 // it: the `selected` item (the page you're on), or else the menu itself, so no
 // item is active until the pointer or arrow keys move to one (as Headless UI
@@ -153,17 +103,21 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
   const id = useId();
   const highlight = useHighlightGroup();
   const panel = useRef<HTMLDivElement>(null);
+  // After Base UI has focused the menu itself, as it opens.
   useEffect(() => {
     const menu = panel.current;
-    if (menu?.querySelector("[data-selected]")) focusHome(menu);
+    if (!menu?.querySelector("[data-selected]")) return;
+    const timer = window.setTimeout(() => focusHome(menu));
+    return () => window.clearTimeout(timer);
   }, []);
+  // The highlight stays through a divider or gap on the way from one item to
+  // the next (Base UI hands focus to the menu there), so it slides across them
+  // instead of vanishing and starting again. It goes when focus leaves the
+  // menu, or the pointer does (see below).
   function leaveItems(event: FocusEvent<HTMLDivElement>) {
     const next = event.relatedTarget;
-    const toItem =
-      next instanceof Element &&
-      event.currentTarget.contains(next) &&
-      next.closest('[role="menuitem"]') !== null;
-    if (!toItem) highlight.setActive(null);
+    if (!(next instanceof Element && event.currentTarget.contains(next)))
+      highlight.setActive(null);
   }
   return (
     <LayoutGroup id={id}>
@@ -173,7 +127,12 @@ export function DropdownMenu({ className, children }: DropdownMenuProps) {
           className={className}
           onBlur={leaveItems}
           onPointerLeave={(event) => {
-            if (event.pointerType === "mouse") focusHome(event.currentTarget);
+            if (event.pointerType !== "mouse") return;
+            focusHome(event.currentTarget);
+            // Nothing is highlighted until the pointer or arrows pick an item,
+            // unless the menu has a selected item to return to.
+            if (!event.currentTarget.querySelector("[data-selected]"))
+              highlight.setActive(null);
           }}
         >
           {children}
@@ -192,20 +151,13 @@ const MenuPanel = forwardRef<
   }
 >(function MenuPanel({ className, onBlur, onPointerLeave, children }, ref) {
   return (
-    <div
+    <Menu.Popup
       ref={ref}
-      role="menu"
-      // The popover's focus lock focuses the menu itself (data-autofocus); then
-      // DropdownMenu moves focus to a `selected` item, if there is one.
-      tabIndex={-1}
-      data-autofocus
-      data-popover-panel
-      onKeyDown={moveFocus}
       onBlur={onBlur}
       onPointerLeave={onPointerLeave}
       className={cx(
         className,
-        "isolate w-max rounded-xl p-1",
+        "isolate max-h-(--available-height) w-max origin-(--transform-origin) rounded-xl p-1",
         popoverPanel,
         "outline outline-transparent focus:outline-hidden",
         "overflow-y-auto",
@@ -215,19 +167,18 @@ const MenuPanel = forwardRef<
       )}
     >
       {children}
-    </div>
+    </Menu.Popup>
   );
 });
-// Headless UI marks the hovered or keyboard-active item with data-focus; here the
-// item takes real focus on hover, so `focus:` gives the same highlight. Its
-// background is the menu's sliding grey Highlight (-z-10 in the menu's
+// Base UI marks the hovered or keyboard-active item with data-highlighted
+// (it takes real focus on hover too). Its background is the menu's sliding grey Highlight (-z-10 in the menu's
 // `isolate` stacking context), so while it slides it passes under every
 // item's text.
 const itemClasses = cx(
   "group relative cursor-default rounded-lg px-3.5 py-2.5 focus:outline-hidden sm:px-3 sm:py-1.5",
   "text-left text-base/6 sm:text-sm/6 forced-colors:text-[CanvasText]",
-  "disabled:opacity-50",
-  "forced-color-adjust-none forced-colors:focus:bg-[Highlight] forced-colors:focus:text-[HighlightText] forced-colors:focus:*:data-[slot=icon]:text-[HighlightText]",
+  "data-disabled:opacity-50",
+  "forced-color-adjust-none forced-colors:data-highlighted:bg-[Highlight] forced-colors:data-highlighted:text-[HighlightText] forced-colors:data-highlighted:*:data-[slot=icon]:text-[HighlightText]",
   "col-span-full grid grid-cols-[auto_1fr_1.5rem_0.5rem_auto] items-center supports-[grid-template-columns:subgrid]:grid-cols-subgrid",
   "*:data-[slot=icon]:col-start-1 *:data-[slot=icon]:row-start-1 *:data-[slot=icon]:mr-2.5 *:data-[slot=icon]:-ml-0.5 *:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:mr-2 sm:*:data-[slot=icon]:size-4",
   "*:data-[slot=avatar]:mr-2.5 *:data-[slot=avatar]:-ml-1 *:data-[slot=avatar]:size-6 sm:*:data-[slot=avatar]:mr-2 sm:*:data-[slot=avatar]:size-5",
@@ -237,7 +188,7 @@ const itemClasses = cx(
 // never for Sign out, which isn't one.
 const itemVariants = {
   default:
-    "text-zinc-950 *:data-[slot=icon]:text-zinc-500 focus:*:data-[slot=icon]:text-zinc-950 dark:text-white dark:*:data-[slot=icon]:text-zinc-400 dark:focus:*:data-[slot=icon]:text-white",
+    "text-zinc-950 *:data-[slot=icon]:text-zinc-500 data-highlighted:*:data-[slot=icon]:text-zinc-950 dark:text-white dark:*:data-[slot=icon]:text-zinc-400 dark:data-highlighted:*:data-[slot=icon]:text-white",
   danger:
     "text-red-600 *:data-[slot=icon]:text-red-500 dark:text-red-400 dark:*:data-[slot=icon]:text-red-400",
 };
@@ -269,36 +220,55 @@ export function DropdownItem({
   children,
   ...props
 }: DropdownItemProps) {
-  const { close, settled } = useContext(DropdownContext);
-  const highlight = useHighlight();
-  const content = (
-    <>
-      {highlight.active && (
-        <Highlight
-          slide={settled}
-          className="-z-10 bg-zinc-950/5 dark:bg-white/10"
-        />
-      )}
-      {children}
-    </>
-  );
   const shared = {
-    role: "menuitem",
     "data-selected": selected ? "" : undefined,
     className: cx(className, itemClasses, itemVariants[variant]),
-    children: content,
-    onFocus: () => highlight.activate(),
-    onPointerEnter: (event: React.PointerEvent<HTMLElement>) =>
-      event.currentTarget.focus(),
+    closeOnClick: !keepOpen,
     onClick: (event: MouseEvent<HTMLElement>) => {
       if (keepOpen) return onClick?.(event);
-      close();
       if (onClick) window.setTimeout(() => onClick(event), afterClose);
     },
   };
+  const content = (state: { highlighted: boolean }) => (
+    <>
+      <ItemHighlight highlighted={state.highlighted} />
+      {children}
+    </>
+  );
   if ("href" in props && props.href)
-    return <Link {...props} href={props.href} {...shared} />;
-  return <button type="button" {...props} {...shared} />;
+    return (
+      <Menu.LinkItem
+        {...props}
+        {...shared}
+        render={(linkProps, state) => (
+          <Link {...linkProps} href={props.href}>
+            {content(state)}
+          </Link>
+        )}
+      />
+    );
+  return (
+    <Menu.Item
+      {...props}
+      {...shared}
+      render={(itemProps, state) => (
+        <button type="button" {...itemProps}>
+          {content(state)}
+        </button>
+      )}
+    />
+  );
+}
+// The sliding background: this item takes the menu's highlight when Base UI
+// highlights it (hover or arrows), and keeps it until another item does.
+function ItemHighlight({ highlighted }: { highlighted: boolean }) {
+  const highlight = useHighlight();
+  const { activate } = highlight;
+  useEffect(() => {
+    if (highlighted) activate();
+  }, [highlighted, activate]);
+  if (!highlight.active) return null;
+  return <Highlight className="-z-10 bg-zinc-950/5 dark:bg-white/10" />;
 }
 export function DropdownHeader({
   className,

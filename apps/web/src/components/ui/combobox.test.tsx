@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Combobox, compressPicked, type ComboboxNode } from "./combobox";
+import { pick } from "@/test/pick";
 // A tree like the Events picker's: a group holding a sub-group and names.
 const leaf = (value: string): ComboboxNode => ({
   value,
@@ -73,7 +74,7 @@ describe("Combobox", () => {
     const changes = vi.fn();
     render(<Picker onChange={changes} />);
     open();
-    fireEvent.click(option("auth.mfa.* Two-factor"));
+    pick(option("auth.mfa.* Two-factor"));
     expect(changes).toHaveBeenLastCalledWith([
       "auth.mfa.enabled",
       "auth.mfa.disabled",
@@ -93,18 +94,18 @@ describe("Combobox", () => {
     );
     expect(option("auth.* Accounts")).toHaveAttribute("aria-checked", "mixed");
     expect(option("auth.logged_in")).toHaveAttribute("aria-checked", "false");
-    fireEvent.click(option("auth.mfa.checked"));
+    pick(option("auth.mfa.checked"));
     expect(
       screen.getByText("auth.mfa.* Two-factor, group, 2 of 3 selected"),
     ).toBeInTheDocument();
     // A partly picked group, chosen, picks the rest; chosen again, clears.
-    fireEvent.click(option("auth.mfa.* Two-factor"));
+    pick(option("auth.mfa.* Two-factor"));
     expect(changes).toHaveBeenLastCalledWith([
       "auth.mfa.enabled",
       "auth.mfa.disabled",
       "auth.mfa.checked",
     ]);
-    fireEvent.click(option("auth.mfa.* Two-factor"));
+    pick(option("auth.mfa.* Two-factor"));
     expect(changes).toHaveBeenLastCalledWith([]);
     expect(
       screen.getByText("auth.* Accounts, group, 0 of 4 selected"),
@@ -134,10 +135,21 @@ describe("Combobox", () => {
     fireEvent.click(input);
     fireEvent.keyDown(input, { key: "Backspace", keyCode: 8 });
     expect(changes).not.toHaveBeenCalled();
-    // The picked row is highlighted on opening: Enter toggles it off, and
-    // on again.
+    // Arrow to the row: Enter toggles it off, and (arrowing back) on again.
+    fireEvent.change(input, { target: { value: "project.created" } });
+    const arrowTo = () => {
+      for (
+        let i = 0;
+        i < 4 && !option("project.created").hasAttribute("data-highlighted");
+        i++
+      )
+        fireEvent.keyDown(input, { key: "ArrowDown", keyCode: 40 });
+      expect(option("project.created")).toHaveAttribute("data-highlighted");
+    };
+    arrowTo();
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
     expect(changes).toHaveBeenLastCalledWith([]);
+    arrowTo();
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
     expect(changes).toHaveBeenLastCalledWith(["project.created"]);
   });

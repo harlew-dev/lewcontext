@@ -1,14 +1,6 @@
 # React StrictMode
 
-`<StrictMode>` is a React component that renders nothing itself and switches on extra checks for everything inside it, **in development only**. lewcontext wraps the whole app in it in `apps/web/src/entry.client.tsx`:
-
-```tsx
-<StrictMode>
-  <StyletronProvider value={styletron}>
-    <HydratedRouter />
-  </StyletronProvider>
-</StrictMode>
-```
+`<StrictMode>` is a React component that renders nothing itself and switches on extra checks for everything inside it, **in development only**. lewcontext wraps the whole app in it through React Router's default client entry (`apps/web` has no `entry.client.tsx`), which renders `<StrictMode><HydratedRouter /></StrictMode>`.
 
 Keep it on. It costs production nothing and catches real bugs early.
 
@@ -46,7 +38,7 @@ So only the dev server shows StrictMode behaviour. Something that happens only u
 
 ## What it means for our code
 
-- **Every effect cleans up** what it set up: timers (`RouteProgress`), listeners, scroll locks (`lib/scroll-lock.ts`), focus. Code that's correct under the mount/unmount/mount cycle is correct when a component really unmounts and comes back.
+- **Every effect cleans up** what it set up: timers (`RouteProgress`), listeners, focus. Code that's correct under the mount/unmount/mount cycle is correct when a component really unmounts and comes back.
 - **Don't count on an effect running once.** Data loads through route loaders and SWR (`useResource`), not fetches in `useEffect`, so dev doesn't send duplicate requests from effects.
 - **Refs survive the remount** (React 18 keeps state and refs), so guards like `useAction`'s `running` ref keep working.
 - **Measure timing and animation on the production build.** Dev adds an extra render and remount on first appearance, which can change what you see in the first frames.
@@ -55,4 +47,4 @@ So only the dev server shows StrictMode behaviour. Something that happens only u
 
 A library that isn't written for the mount, unmount, mount cycle can behave differently in dev. Known cases:
 
-- **BaseUI dialogs don't animate open under `make dev`** (production is fine). BaseUI's `Layer` creates a new container on the second mount, so React rebuilds the dialog after it has already opened. See [base-ui.md](base-ui.md#dialogs-dont-animate-open-in-dev).
+- **Base UI overlays are written for it:** they portal once and animate from `data-starting-style`, so a dialog animates open under `make dev` as in production (the old BaseUI `Layer` rebuilt the dialog on the second mount, which is why that one didn't).

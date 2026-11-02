@@ -7,7 +7,8 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { BaseProvider } from "baseui";
+import { CSPProvider } from "@base-ui/react/csp-provider";
+import { Tooltip } from "@base-ui/react/tooltip";
 import { ChallengeProvider } from "@/lib/challenge/challenge";
 import { MotionConfig } from "motion/react";
 import { SWRConfig } from "swr";
@@ -17,7 +18,6 @@ import { requestIdOf } from "@/lib/api";
 import { appName } from "@/lib/app";
 import { listenForClientErrors, reportClientError } from "@/lib/client-errors";
 import { swrConfig } from "@/lib/swr";
-import { theme } from "@/lib/theme";
 import type { Route } from "./+types/root";
 import "@/styles/globals.css";
 export const meta: Route.MetaFunction = () => [
@@ -52,17 +52,21 @@ export function Layout({ children }: { children: ReactNode }) {
     </html>
   );
 }
-// BaseUI's theme, SWR defaults and reduced-motion support for every page.
-// Styletron's provider is in entry.client.tsx and entry.server.tsx.
+// Base UI's CSP and tooltip settings, SWR defaults and reduced-motion support
+// for every page. Base UI needs no theme or style provider.
 function Providers({ children }: { children: ReactNode }) {
   return (
-    <BaseProvider theme={theme}>
-      <SWRConfig value={swrConfig}>
-        <MotionConfig reducedMotion="user">
-          <ChallengeProvider>{children}</ChallengeProvider>
-        </MotionConfig>
-      </SWRConfig>
-    </BaseProvider>
+    // disableStyleElements: Base UI injects no <style>; the one rule it would
+    // (hiding a select's native scrollbar) is in styles/base.css.
+    <CSPProvider disableStyleElements>
+      <Tooltip.Provider delay={200}>
+        <SWRConfig value={swrConfig}>
+          <MotionConfig reducedMotion="user">
+            <ChallengeProvider>{children}</ChallengeProvider>
+          </MotionConfig>
+        </SWRConfig>
+      </Tooltip.Provider>
+    </CSPProvider>
   );
 }
 export default function App() {

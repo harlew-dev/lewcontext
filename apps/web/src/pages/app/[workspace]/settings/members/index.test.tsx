@@ -19,6 +19,7 @@ import { testWorkspace } from "@/test/workspace";
 import type { Invitation } from "@/types/invitations";
 import type { Member } from "@/types/members";
 import type { Role } from "@/types/workspaces";
+import { pick } from "@/test/pick";
 const session = testSession();
 const members = "/api/workspaces/wsp_2yEHYLwiwPVhLW/members";
 const invitations = "/api/workspaces/wsp_2yEHYLwiwPVhLW/invitations";
@@ -162,7 +163,7 @@ describe("workspace members", () => {
       (option) => option.textContent,
     );
     expect(options).toEqual(["Member", "Viewer"]);
-    fireEvent.click(screen.getByRole("option", { name: "Viewer" }));
+    pick(screen.getByRole("option", { name: "Viewer" }));
     fireEvent.click(save);
     expect(
       await screen.findByText("Mia Member is now a viewer."),
@@ -237,7 +238,7 @@ describe("invitations", () => {
     expect(
       (await screen.findAllByRole("option")).map((o) => o.textContent),
     ).toEqual(["Member", "Viewer"]);
-    fireEvent.click(screen.getByRole("option", { name: "Viewer" }));
+    pick(screen.getByRole("option", { name: "Viewer" }));
     fireEvent.change(within(dialog).getByLabelText("Email"), {
       target: { value: " bob@example.com " },
     });

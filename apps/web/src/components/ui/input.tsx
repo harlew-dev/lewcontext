@@ -2,6 +2,7 @@ import {
   createContext,
   forwardRef,
   useContext,
+  useState,
   type ComponentPropsWithoutRef,
   type FocusEventHandler,
   type ReactNode,
@@ -12,11 +13,7 @@ import {
   LockClosedIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/16/solid";
-import {
-  Input as BaseInput,
-  type InputProps as BaseInputProps,
-} from "baseui/input";
-import { slot } from "@/lib/baseui";
+import { Input as BaseInput } from "@base-ui/react/input";
 import { cx } from "@/lib/cx";
 import { useInteractive } from "@/lib/interactive";
 import { useField, type FieldLock } from "./fieldset";
@@ -29,8 +26,8 @@ export const controlClasses = [
   "after:pointer-events-none after:absolute after:inset-0 after:rounded-lg after:ring-transparent after:ring-inset sm:focus-within:after:ring-2 sm:focus-within:after:ring-blue-500",
   "has-data-disabled:opacity-50 has-data-disabled:before:bg-zinc-950/5 has-data-disabled:before:shadow-none",
 ].join(" ");
-// Text field styles shared with Textarea. BaseUI does not report hover, so the
-// hover states use `hover:` rather than `data-hover:`.
+// Text field styles shared with Textarea. The hover states use `hover:`
+// rather than `data-hover:`: a text field has no interactive state attributes.
 export const fieldClasses = [
   "relative block w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]",
   "text-base/6 text-zinc-950 placeholder:text-zinc-500 sm:text-sm/6 dark:text-white",
@@ -40,40 +37,40 @@ export const fieldClasses = [
   "data-invalid:border-red-500 data-invalid:hover:border-red-500 dark:data-invalid:border-red-600 dark:data-invalid:hover:border-red-600",
   "data-disabled:border-zinc-950/20 dark:data-disabled:border-white/15 dark:data-disabled:bg-white/2.5 dark:hover:data-disabled:border-white/15",
 ].join(" ");
-const InputControl = slot("span", controlClasses, {
-  props: () => ({ "data-slot": "control" }),
-});
-const InputContainer = slot("span", "contents");
-// The control with anything drawn over the input, e.g. its blurred text.
-const InputRoot = forwardRef<
-  HTMLSpanElement,
-  { overlay?: ReactNode; children?: ReactNode }
->(function InputRoot({ overlay, children, ...props }, ref) {
-  return (
-    <InputControl ref={ref} {...props}>
-      {children}
-      {overlay}
-    </InputControl>
-  );
-});
 // Blurred, the input's own text is invisible and BlurredText draws it.
-const InputElement = slot(
-  "input",
-  cx(
-    fieldClasses,
-    "data-blurred:text-transparent data-blurred:caret-transparent",
-    "dark:scheme-dark",
-  ),
+const inputClasses = cx(
+  fieldClasses,
+  "data-blurred:text-transparent data-blurred:caret-transparent",
+  "dark:scheme-dark",
 );
-const MaskToggle = slot(
-  "button",
-  "absolute inset-y-0 right-0 z-10 flex items-center px-3 text-zinc-500 hover:text-zinc-700 focus:outline-hidden data-focus:text-zinc-950 sm:px-2.5 dark:text-zinc-400 dark:hover:text-zinc-200 dark:data-focus:text-white",
-);
+const maskToggleClasses =
+  "absolute inset-y-0 right-0 z-10 flex items-center px-3 text-zinc-500 hover:text-zinc-700 focus:outline-hidden data-focus:text-zinc-950 sm:px-2.5 dark:text-zinc-400 dark:hover:text-zinc-200 dark:data-focus:text-white";
+// The eye on a password field that shows or hides its text.
+function MaskToggle({
+  masked,
+  onToggle,
+}: {
+  masked: boolean;
+  onToggle: () => void;
+}) {
+  const interactive = useInteractive<HTMLButtonElement>({});
+  return (
+    <button
+      type="button"
+      aria-label={masked ? "Show password text" : "Hide password text"}
+      onClick={onToggle}
+      {...interactive}
+      className={maskToggleClasses}
+    >
+      {masked ? <ShowIcon /> : <HideIcon />}
+    </button>
+  );
+}
 const ShowIcon = () => <EyeIcon className="size-5 sm:size-4" />;
 const HideIcon = () => <EyeSlashIcon className="size-5 sm:size-4" />;
 export type InputProps = Omit<
-  BaseInputProps,
-  "overrides" | "size" | "error" | "inputRef" | "startEnhancer" | "endEnhancer"
+  ComponentPropsWithoutRef<"input">,
+  "className" | "size"
 > & {
   invalid?: boolean;
   // Something sensitive but not secret, e.g. an email address: it's in the
@@ -92,7 +89,7 @@ function isEdit(event: { key: string; ctrlKey: boolean; metaKey: boolean }) {
   if (event.ctrlKey || event.metaKey) return /^[vx]$/i.test(event.key);
   return event.key.length === 1;
 }
-// Input on top of BaseUI's Input. Inside a <Field> it takes the field's
+// Input on top of Base UI's Input. Inside a <Field> it takes the field's
 // id, description, disabled state and lock: a locked field's input is
 // read-only, ends with the lock (in its InputGroup's InputActions, or its own
 // when it has no group), and a try at typing, deleting, pasting or dropping
@@ -116,46 +113,43 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const lock = field?.lock;
   const readOnlyLock = lock?.readOnly ? lock : undefined;
   const grouped = useContext(InputGroupContext);
+  const [masked, setMasked] = useState(true);
   const overlay = blurred ? (
     <BlurredText value={String(props.value ?? "")} onReveal={onReveal} />
   ) : null;
+  const password = type === "password";
   const input = (
-    <BaseInput
-      id={field?.id}
-      aria-describedby={field?.describedBy}
-      disabled={field?.disabled}
-      {...props}
-      type={type}
-      readOnly={readOnly || Boolean(readOnlyLock)}
-      onKeyDown={(event) => {
-        if (readOnlyLock && event.key === "Escape") readOnlyLock.hide();
-        else if (readOnlyLock && isEdit(event)) readOnlyLock.show();
-        onKeyDown?.(event);
-      }}
-      onBlur={(event) => {
-        lock?.hide();
-        onBlur?.(event);
-      }}
-      error={invalid}
-      inputRef={ref as React.RefObject<HTMLInputElement>}
-      overrides={{
-        Root: { component: InputRoot, props: { className, overlay } },
-        InputContainer: { component: InputContainer },
-        Input: {
-          component: InputElement,
-          props: {
-            minLength,
-            onPaste: readOnlyLock?.show,
-            onDrop: readOnlyLock?.show,
-            "data-blurred": blurred ? "" : undefined,
-            className: type === "password" ? "pr-10 sm:pr-9" : undefined,
-          },
-        },
-        MaskToggleButton: { component: MaskToggle },
-        MaskToggleShowIcon: { component: ShowIcon },
-        MaskToggleHideIcon: { component: HideIcon },
-      }}
-    />
+    <span data-slot="control" className={cx(controlClasses, className)}>
+      <BaseInput
+        id={field?.id}
+        aria-describedby={field?.describedBy}
+        disabled={field?.disabled}
+        {...props}
+        type={password && !masked ? "text" : type}
+        readOnly={readOnly || Boolean(readOnlyLock)}
+        ref={ref}
+        minLength={minLength}
+        aria-invalid={invalid || undefined}
+        data-invalid={invalid ? "" : undefined}
+        data-blurred={blurred ? "" : undefined}
+        onPaste={readOnlyLock?.show}
+        onDrop={readOnlyLock?.show}
+        onKeyDown={(event) => {
+          if (readOnlyLock && event.key === "Escape") readOnlyLock.hide();
+          else if (readOnlyLock && isEdit(event)) readOnlyLock.show();
+          onKeyDown?.(event);
+        }}
+        onBlur={(event) => {
+          lock?.hide();
+          onBlur?.(event);
+        }}
+        className={cx(inputClasses, password && "pr-10 sm:pr-9")}
+      />
+      {password && (
+        <MaskToggle masked={masked} onToggle={() => setMasked((m) => !m)} />
+      )}
+      {overlay}
+    </span>
   );
   if (!lock || grouped) return input;
   return (

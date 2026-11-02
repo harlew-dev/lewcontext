@@ -234,7 +234,9 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   await page.getByRole("option", { name: /^auth\.\* / }).click();
   await picker.fill("workspace.created");
   await page.getByRole("option", { name: /^workspace\.created,/ }).click();
-  await dialog.getByRole("heading", { name: "Filter events" }).click();
+  // Escape closes the list (the dialog stays), which hides the rest of the
+  // page from assistive technology while it is open.
+  await picker.press("Escape");
   await dialog.getByLabel("Email").fill(otherEmail.toUpperCase());
   await dialog.getByRole("button", { name: "Apply filters" }).click();
   const email = encodeURIComponent(otherEmail);
@@ -265,8 +267,10 @@ test("the admin door: first sign-in sets up MFA, then Users, Workspaces, sign ou
   await range.click();
   await page.getByRole("option", { name: "Custom range…" }).click();
   const calendar = page.getByRole("dialog");
+  // The latest day that can be picked: today.
   await calendar
-    .getByRole("gridcell", { name: /It's available/ })
+    .getByRole("gridcell")
+    .and(page.locator(":not([aria-disabled])"))
     .last()
     .click();
   await calendar.getByRole("button", { name: "Apply range" }).click();

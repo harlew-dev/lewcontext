@@ -9,8 +9,8 @@ type Handlers<T> = {
 };
 const flag = (on: boolean) => (on ? "" : undefined);
 // Sets the data-hover / data-active / data-focus attributes the Tailwind classes
-// target (Headless UI's convention), for plain links and buttons. BaseUI-backed
-// controls get the same attributes from their state props (see lib/baseui.tsx).
+// target (Headless UI's convention), for plain links and buttons. Base UI parts
+// carry their own state attributes (data-highlighted, data-open…).
 export function useInteractive<T extends HTMLElement>(handlers: Handlers<T>) {
   const [hover, setHover] = useState(false);
   const [active, setActive] = useState(false);
