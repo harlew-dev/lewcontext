@@ -12,7 +12,7 @@ const svg = readFileSync(new URL("apps/web/public/favicon.svg", root), "utf8");
 const out = new URL("apps/api/internal/mail/templates/logo.png", root);
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
+  executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ["--no-sandbox"],
 });
 const page = await browser.newPage({

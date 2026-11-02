@@ -291,7 +291,7 @@ make test-e2e # end-to-end tests in Chromium, against the production binary
 
 Tests use the committed `.env.testing` and nothing from `.env`, however they're started. **Integration tests** run against a real PostgreSQL database, `lewcontext_test`, each in a fresh temporary schema that is removed afterwards; `make test` fails if the database isn't running.
 
-**End-to-end tests** build the single binary and start it on :3100 against a database of their own (`lewcontext_test_3100`), so they run beside `make dev`. Another run at the same time takes another port and database: `make test-e2e E2E_PORT=auto`. They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium defaults to `/usr/bin/chromium`; set `CHROMIUM_PATH` to use another. See the [test environment guide](docs/testing.md).
+**End-to-end tests** build the single binary and start it on :3100 against a database of their own (`lewcontext_test_3100`), so they run beside `make dev`. Another run at the same time takes another port and database: `make test-e2e E2E_PORT=auto`. They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium comes from Playwright (`npx playwright install chromium`); set `CHROMIUM_PATH` to use a system browser instead. See the [test environment guide](docs/testing.md).
 
 ### Architecture
 

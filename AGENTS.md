@@ -107,7 +107,7 @@ Before claiming completion, run relevant checks and report failures:
 
 - `make test` and `make check`. `make check` also checks the docs' relative links and anchors (`scripts/check-doc-links.mjs`); fix a dead link or anchor rather than ignoring it.
 - `make test` includes the PostgreSQL integration tests (auth, SQL, migrations, middleware, authorization) and fails without the database (`make db`). Tests read the committed `.env.testing`, never `.env`; keep only local, throwaway values in it.
-- `make test-e2e E2E_PORT=auto` for user flows (it covers the Go page gate and CSP, which the Vite dev server doesn't have). Playwright builds and starts the server on its own port and database (`lewcontext_test_<port>`); use the URLs and database it reports. Default installed Chromium path can be changed with `CHROMIUM_PATH`.
+- `make test-e2e E2E_PORT=auto` for user flows (it covers the Go page gate and CSP, which the Vite dev server doesn't have). Playwright builds and starts the server on its own port and database (`lewcontext_test_<port>`); use the URLs and database it reports. Chromium comes from Playwright's installed browser (`npx playwright install chromium`); `CHROMIUM_PATH` overrides it.
 - `make build` when changing frontend/build integration or backend composition.
 - Check dependency audits for dependency/auth changes. Preserve lockfiles. Explain compatibility overrides in `docs/ui/README.md` (Dependencies); do not suppress type errors with `any`/unsafe casts instead of fixing dependencies.
 - Do not add tests that merely mirror trivial styling. Prefer behavior, security boundaries, and real persistence coverage.
