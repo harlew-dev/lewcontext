@@ -1,0 +1,12 @@
+{{ define "content" -}}
+A request was made to change another account’s email address to this one.
+
+This address is already associated with an account, so the change cannot be completed.
+
+If you made this request, first free this address by changing the existing account’s email address or deleting that account. Deleting an account permanently removes its data; accounts and their data will not be merged. Once the address is available, start a new email-change request.
+
+Open Account settings:
+{{ .SettingsURL }}
+
+If you did not make this request, you can ignore this email. This request has not changed your account or given anyone access to it.
+{{- end }}

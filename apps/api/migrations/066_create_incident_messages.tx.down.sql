@@ -1,0 +1,2 @@
+ALTER TABLE incident_cycles DROP CONSTRAINT incident_cycles_resolution_message_fkey;
+DROP TABLE incident_messages;

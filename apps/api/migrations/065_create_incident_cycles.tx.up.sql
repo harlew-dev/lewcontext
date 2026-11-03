@@ -1,0 +1,40 @@
+CREATE TABLE incident_cycles (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    public_id text NOT NULL UNIQUE DEFAULT public_id('inc') CHECK (public_id ~ '^inc_[0-9A-Za-z]{14}$'),
+    alert_id bigint REFERENCES alerts(id) ON DELETE CASCADE,
+    app_error_id bigint REFERENCES app_errors(id) ON DELETE CASCADE,
+    number integer NOT NULL CHECK (number > 0),
+    opened_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    resolution_source text CHECK (resolution_source IN ('admin', 'automatic_legacy', 'unknown_legacy')),
+    resolved_by bigint REFERENCES users(id) ON DELETE SET NULL,
+    resolution_message_id bigint,
+    state text NOT NULL DEFAULT 'active' CHECK (state IN ('active','confirming','recovered','unknown','resolved')),
+    level text NOT NULL DEFAULT 'warn' CHECK (level IN ('warn','critical')),
+    peak_value double precision NOT NULL DEFAULT 0,
+    healthy_since timestamptz,
+    healthy_checks integer NOT NULL DEFAULT 0 CHECK (healthy_checks >= 0),
+    recovered_at timestamptz,
+    last_checked_at timestamptz,
+    last_successful_at timestamptz,
+    current_level text NOT NULL DEFAULT 'unknown',
+    raw_level text NOT NULL DEFAULT 'unknown',
+    last_bucket timestamptz,
+    hourly boolean NOT NULL DEFAULT false,
+    recovery_interrupted boolean NOT NULL DEFAULT false,
+    recovery_pending_relapse boolean NOT NULL DEFAULT false,
+    revision bigint NOT NULL DEFAULT 1,
+    transition_sequence bigint NOT NULL DEFAULT 0,
+    acknowledged_at timestamptz,
+    acknowledged_by bigint REFERENCES users(id) ON DELETE SET NULL,
+    notified text NOT NULL DEFAULT 'quiet',
+    reminder_anchor timestamptz NOT NULL DEFAULT now(),
+    CHECK ((alert_id IS NULL) <> (app_error_id IS NULL)),
+    CHECK ((resolved_at IS NULL) = (resolution_source IS NULL)),
+    CHECK (resolved_at IS NOT NULL OR (resolved_by IS NULL AND resolution_message_id IS NULL)),
+    CHECK (resolution_source IS DISTINCT FROM 'admin' OR resolution_message_id IS NOT NULL)
+);
+CREATE UNIQUE INDEX incident_cycles_alert_number_idx ON incident_cycles(alert_id, number DESC) WHERE alert_id IS NOT NULL;
+CREATE UNIQUE INDEX incident_cycles_error_number_idx ON incident_cycles(app_error_id, number DESC) WHERE app_error_id IS NOT NULL;
+CREATE UNIQUE INDEX incident_cycles_alert_open_idx ON incident_cycles(alert_id) WHERE alert_id IS NOT NULL AND resolved_at IS NULL;
+CREATE UNIQUE INDEX incident_cycles_error_open_idx ON incident_cycles(app_error_id) WHERE app_error_id IS NOT NULL AND resolved_at IS NULL;

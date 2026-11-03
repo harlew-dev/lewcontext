@@ -1,0 +1,59 @@
+# HELP build_info This server's build.
+# TYPE build_info gauge
+build_info{go="go1.27.1",version="abc123def456"} 1
+# HELP deliveries_pending Event deliveries waiting to run.
+# TYPE deliveries_pending gauge
+deliveries_pending 2
+# HELP delivery_lag_ms Time to a listener's first attempt, in milliseconds.
+# TYPE delivery_lag_ms histogram
+delivery_lag_ms_bucket{listener="mail.registration",le="10"} 1
+delivery_lag_ms_bucket{listener="mail.registration",le="100"} 2
+delivery_lag_ms_bucket{listener="mail.registration",le="+Inf"} 3
+delivery_lag_ms_sum{listener="mail.registration"} 444
+delivery_lag_ms_count{listener="mail.registration"} 3
+# HELP errors_total Failures, by source and route.
+# TYPE errors_total counter
+errors_total{route="GET /api/\"quoted\"\\path",source="request"} 1
+# HELP http_request_duration_ms How long requests took, by route, in milliseconds.
+# TYPE http_request_duration_ms histogram
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="5"} 1
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="10"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="25"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="50"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="100"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="250"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="500"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="1000"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="2500"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="5000"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="10000"} 2
+http_request_duration_ms_bucket{route="GET /api/auth/me",le="+Inf"} 2
+http_request_duration_ms_sum{route="GET /api/auth/me"} 10
+http_request_duration_ms_count{route="GET /api/auth/me"} 2
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="5"} 0
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="10"} 0
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="25"} 0
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="50"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="100"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="250"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="500"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="1000"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="2500"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="5000"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="10000"} 1
+http_request_duration_ms_bucket{route="POST /api/workspaces/{workspace}/projects",le="+Inf"} 2
+http_request_duration_ms_sum{route="POST /api/workspaces/{workspace}/projects"} 11030
+http_request_duration_ms_count{route="POST /api/workspaces/{workspace}/projects"} 2
+# HELP http_requests_total Requests answered, by route and status class; aborted got no answer.
+# TYPE http_requests_total counter
+http_requests_total{route="GET /api/auth/me",status="2xx"} 1
+http_requests_total{route="GET /api/auth/me",status="4xx"} 1
+http_requests_total{route="POST /api/workspaces/{workspace}/projects",status="5xx"} 1
+http_requests_total{route="POST /api/workspaces/{workspace}/projects",status="aborted"} 1
+# HELP http_timeouts_total Requests the 10 s deadline ended, by route: a write may have committed though the client saw an error.
+# TYPE http_timeouts_total counter
+http_timeouts_total{route="POST /api/workspaces/{workspace}/projects"} 1
+# HELP rate_limit_refused_total Requests refused by a rate limit, by limit and level.
+# TYPE rate_limit_refused_total counter
+rate_limit_refused_total{limit="auth:per-ip:block"} 3
+rate_limit_refused_total{limit="project:per-user:block"} 1

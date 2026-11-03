@@ -1,0 +1,6 @@
+/* Tailwind entrypoint. Preflight and utilities live in cascade layers; Base UI
+   parts are styled with Tailwind classes and their data attributes. */
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "./theme.css";
+@import "./base.css";

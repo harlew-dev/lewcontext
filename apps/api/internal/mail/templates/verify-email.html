@@ -1,0 +1,9 @@
+{{ define "title" }}Confirm your email address{{ end }}
+{{ define "content" }}
+<p style="margin: 0 0 16px; font-size: 16px; line-height: 24px">Your verification code is:</p>
+<p style="margin: 0 0 24px; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: 4px; font-family: ui-monospace, Menlo, Consolas, monospace">{{ .Code }}</p>
+<p style="margin: 0 0 24px; font-size: 14px; line-height: 22px; color: #52525b">
+  Enter it where you asked for it to confirm this email address. It works for 15 minutes. Never share it with anyone.
+</p>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: #71717a">If you didn’t ask for this, ignore this email.</p>
+{{ end }}

@@ -1,0 +1,21 @@
+{{ define "title" }}Several alerts opened{{ end }}
+{{ define "content" }}
+<p style="margin: 0 0 16px; font-size: 18px; line-height: 26px; font-weight: 600">{{ .Count }} more alerts opened</p>
+<p style="margin: 0 0 24px; font-size: 14px; line-height: 22px; color: #52525b">
+  Many alerts opened within 10 minutes, so these are gathered into one email.
+</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 0 24px; font-size: 14px; line-height: 22px">
+  {{ range .Alerts }}
+  <tr>
+    <td style="padding: 0 16px 6px 0; font-weight: 600; color: {{ if eq .Level "Critical" }}#b91c1c{{ else }}#b45309{{ end }}">{{ .Level }}</td>
+    <td style="padding: 0 16px 6px 0">{{ .Title }}</td>
+    <td style="padding: 0 16px 6px 0; color: #52525b">{{ .Value }}</td>
+    <td style="padding: 0 0 6px; color: #71717a">{{ .Opened }}</td>
+  </tr>
+  {{ end }}
+</table>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: #71717a">
+  Open the admin dashboard to see the details, and acknowledge each alert there.
+  You get these emails as an admin of {{ app }}; choose which on the dashboard’s Admins page.
+</p>
+{{ end }}

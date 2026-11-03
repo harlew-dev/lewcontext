@@ -1,0 +1,10 @@
+{{ define "content" -}}
+{{ .Count }} more alerts opened
+
+Many alerts opened within 10 minutes, so these are gathered into one email.
+{{ range .Alerts }}
+- {{ .Level }}: {{ .Title }}, {{ .Value }}, opened {{ .Opened }}{{ end }}
+
+Open the admin dashboard to see the details, and acknowledge each alert there.
+You get these emails as an admin of {{ app }}; choose which on the dashboard’s Admins page.
+{{- end }}

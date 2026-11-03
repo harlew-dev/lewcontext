@@ -1,0 +1,8 @@
+{{ define "title" }}Your account email address changed{{ end }}
+{{ define "content" }}
+<p style="margin: 0 0 16px; font-size: 16px; line-height: 24px">Your account’s sign-in and recovery email address has changed. This inbox is no longer its sign-in or password-reset address.</p>
+<p style="margin: 0 0 16px; font-size: 14px; line-height: 22px">All previous sign-in sessions were ended. The account’s password, two-factor authentication and workspace memberships were kept.</p>
+<p style="margin: 0 0 16px; font-size: 14px; line-height: 22px">If you did not make this change, contact support. This email does not undo the change.</p>
+<p style="margin: 0; font-size: 14px; line-height: 22px"><a href="{{ .SettingsURL }}">Open Account settings</a></p>
+<p style="margin: 16px 0 0; font-size: 14px; line-height: 22px">Use your new email address to sign in.</p>
+{{ end }}
