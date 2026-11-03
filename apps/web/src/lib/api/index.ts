@@ -11,6 +11,7 @@ import { memberRoutes, members } from "./members";
 import { policies, policyRoutes } from "./policies";
 import { projectRoutes, projects } from "./projects";
 import { workspaceRoutes, workspaces } from "./workspaces";
+import { apiKeyRoutes, apiKeys } from "./api-keys";
 export { ApiError, errorMessage, requestIdOf } from "./http";
 export type { ApiPath } from "./paths";
 export type { ClientErrorReport } from "./client-errors";
@@ -46,6 +47,7 @@ export type {
 // Typed API paths, for SWR keys and module constants:
 //   paths.workspaces.index()   paths.projects(workspace).index({ page: 2 })
 export const paths = {
+  apiKeys: apiKeyRoutes,
   workspaces: workspaceRoutes,
   projects: projectRoutes,
   members: memberRoutes,
@@ -77,6 +79,7 @@ export function loaderApi(): ApiClient {
 // Builds the API on a transport (browserHttp, or a stub in tests).
 export function client(http: Http) {
   return {
+    apiKeys: (workspace?: string) => apiKeys(http, workspace),
     // Loads any typed path from `paths`, for SWR.
     get: <T>(path: ApiPath<T>) => http.get(path),
     workspaces: () => workspaces(http),

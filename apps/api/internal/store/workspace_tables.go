@@ -17,6 +17,9 @@ type WorkspaceTable struct {
 // the same test checks: the counts read one workspace at a time.
 var WorkspaceTables = []WorkspaceTable{
 	{Name: "projects", Label: "Projects"},
+	{Name: "api_keys", Label: "API keys"},
+	{Name: "api_key_projects", Label: "API key project selections"},
+	{Name: "api_idempotency_requests", Label: "API create retries"},
 	{Name: "workspace_user", Label: "Members"},
 	{Name: "workspace_invitations", Label: "Invitations"},
 	// Events about the workspace: kept 90 days (make prune), and set to

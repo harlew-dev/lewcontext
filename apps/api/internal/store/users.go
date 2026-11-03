@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -174,6 +175,9 @@ func (s *Store) ChangePassword(ctx context.Context, u User, sessionHash string, 
 // locks in id order means two such deletions can't deadlock.
 func (s *Store) DeleteAccount(ctx context.Context, u User, pseudonym func(string) string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, true); err != nil {
+			return err
+		}
 		target, err := lockAccount(ctx, tx, "u.id = ?", u.ID)
 		if err != nil {
 			return err

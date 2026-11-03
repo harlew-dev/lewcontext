@@ -6,6 +6,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 )
 
@@ -68,6 +69,9 @@ func (s *Store) FindWorkspace(ctx context.Context, userID int64, publicID string
 func (s *Store) CreateWorkspace(ctx context.Context, userID int64, in WorkspaceInput) (Workspace, error) {
 	w := Workspace{Name: in.Name}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		if err := checkOwnedWorkspaces(ctx, tx, userID); err != nil {
 			return err
 		}
@@ -91,6 +95,9 @@ func (s *Store) CreateWorkspace(ctx context.Context, userID int64, in WorkspaceI
 func (s *Store) RenameWorkspace(ctx context.Context, id int64, in WorkspaceInput) (Workspace, error) {
 	w := Workspace{Name: in.Name}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		var before string
 		if err := tx.NewSelect().Model((*Workspace)(nil)).Column("name").Where("id = ?", id).For("UPDATE").Scan(ctx, &before); err != nil {
 			return err
@@ -122,6 +129,9 @@ func (s *Store) RenameWorkspace(ctx context.Context, id int64, in WorkspaceInput
 // Callers check the member's permission and password first.
 func (s *Store) DeleteWorkspace(ctx context.Context, w Workspace, name string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		var current string
 		if err := tx.NewSelect().Model((*Workspace)(nil)).Column("w.name").Where("w.id = ?", w.ID).For("UPDATE").Scan(ctx, &current); err != nil {
 			return err

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -116,6 +117,9 @@ type InvitationInput struct {
 func (s *Store) CreateInvitation(ctx context.Context, w Workspace, actorID int64, in InvitationInput) (Invitation, error) {
 	inv := invitationRecord{WorkspaceID: w.ID, Email: in.Email, Role: in.Role, InvitedBy: actorID, ExpiresAt: time.Now().Add(InvitationLifetime)}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		if err := lockInviter(ctx, tx, actorID); err != nil {
 			return err
 		}
@@ -301,6 +305,9 @@ func (s *Store) CheckInvitation(ctx context.Context, hash string) (InvitationPre
 func (s *Store) AcceptInvitation(ctx context.Context, hash string, u User) (Workspace, error) {
 	var w Workspace
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		// Read the current address under the account lock before any workspace
 		// lock: middleware may have loaded the previous address.
 		if err := tx.NewSelect().Model(&u).Where("u.id = ?", u.ID).For("UPDATE").Scan(ctx); err != nil {
@@ -370,6 +377,9 @@ func (s *Store) AcceptInvitation(ctx context.Context, hash string, u User) (Work
 // in this workspace.
 func (s *Store) RevokeInvitation(ctx context.Context, w Workspace, actor auth.Role, publicID string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		if err := lockWorkspace(ctx, tx, w.ID); err != nil {
 			return err
 		}

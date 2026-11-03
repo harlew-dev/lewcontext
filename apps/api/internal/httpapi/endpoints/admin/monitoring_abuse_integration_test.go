@@ -500,7 +500,7 @@ func TestAdminMonitoringWorkspaces(t *testing.T) {
 	if len(page.Rows.Tables) != len(store.WorkspaceTables) || page.Rows.Workspaces[0].Workspace.ID != full.PublicID {
 		t.Fatalf("rows: %+v", page.Rows)
 	}
-	want := []int64{800, 1, 0, 1}
+	want := []int64{800, 0, 0, 0, 1, 0, 1}
 	for i, n := range page.Rows.Workspaces[0].Counts {
 		if n != want[i] {
 			t.Fatalf("%s: %d rows, want %d (%+v)", page.Rows.Tables[i].Name, n, want[i], page.Rows.Workspaces[0])

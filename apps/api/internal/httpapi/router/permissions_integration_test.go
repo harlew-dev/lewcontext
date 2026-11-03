@@ -50,6 +50,7 @@ type workspaceRoute struct {
 func workspaceRoutesMatrix(projectID string) []workspaceRoute {
 	project := `{"name":"Matrix","description":"","status":"Planned","color":"blue"}`
 	deletion := fmt.Sprintf(`{"name":"Matrix","password":%q}`, factory.DefaultPassword)
+	key := fmt.Sprintf(`{"name":"Matrix key","projectAccess":"all","projects":[],"scopes":["project.index","project.show"],"expiresAt":null,"password":%q}`, factory.DefaultPassword)
 	owners := []auth.Role{auth.RoleOwner, auth.RoleAdmin}
 	editors := []auth.Role{auth.RoleOwner, auth.RoleAdmin, auth.RoleMember}
 	return []workspaceRoute{
@@ -62,6 +63,10 @@ func workspaceRoutesMatrix(projectID string) []workspaceRoute {
 		{pattern: "PATCH /api/workspaces/{workspace}/projects/{project}", path: "/projects/" + projectID, body: project, ok: 200, allowed: editors},
 		{pattern: "DELETE /api/workspaces/{workspace}/projects/{project}", path: "/projects", ok: 204, allowed: owners, target: "project"},
 		{pattern: "GET /api/workspaces/{workspace}/members", path: "/members", ok: 200, allowed: owners},
+		{pattern: "GET /api/workspaces/{workspace}/api-keys", path: "/api-keys", ok: 200, allowed: owners},
+		{pattern: "POST /api/workspaces/{workspace}/api-keys", path: "/api-keys", body: key, ok: 201, allowed: owners},
+		{pattern: "PATCH /api/workspaces/{workspace}/api-keys/{key}", path: "/api-keys", body: key, ok: 200, allowed: owners, target: "api-key"},
+		{pattern: "DELETE /api/workspaces/{workspace}/api-keys/{key}", path: "/api-keys", ok: 204, allowed: owners, target: "api-key"},
 		{pattern: "PATCH /api/workspaces/{workspace}/members/{member}", path: "/members", body: `{"role":"member"}`, ok: 200, allowed: owners, target: "member"},
 		{pattern: "DELETE /api/workspaces/{workspace}/members/{member}", path: "/members", ok: 204, allowed: owners, target: "member"},
 		{pattern: "GET /api/workspaces/{workspace}/invitations", path: "/invitations", ok: 200, allowed: owners},
@@ -109,6 +114,14 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 	newProject := func() string {
 		return apitest.Must(factory.ProjectsIn(workspace.ID).CreateOne(ctx, db, f))(t).PublicID
 	}
+	newApiKey := func() string {
+		key := apitest.Must(factory.ApiKeys.State(func(k *factory.ApiKey) {
+			k.WorkspaceID = workspace.ID
+			k.TokenHash = auth.Digest(f.UUID())
+			k.RevokedAt = nil
+		}).CreateOne(ctx, db, f))(t)
+		return key.PublicID
+	}
 	newInvitation := func() string {
 		return apitest.Must(factory.InvitationsTo(workspace.ID).State(factory.InvitedAs(fmt.Sprintf("revoke-%d@example.test", invitees.Add(1)), auth.RoleViewer)).CreateOne(ctx, db, f))(t).PublicID
 	}
@@ -124,6 +137,7 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 
 	var registered, listed []string
 	workspaceRoutes(s, routeGroup{mux: http.NewServeMux(), prefix: "/api/workspaces/{workspace}", registered: &registered})
+	workspaceKeyRecoveryRoutes(s, routeGroup{mux: http.NewServeMux(), prefix: "/api/workspaces/{workspace}", registered: &registered})
 	for _, route := range matrix {
 		listed = append(listed, route.pattern)
 	}
@@ -147,6 +161,8 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 				return apitest.WorkspacePath(id, route.path+"/"+newProject())
 			case "invitation":
 				return apitest.WorkspacePath(id, route.path+"/"+newInvitation())
+			case "api-key":
+				return apitest.WorkspacePath(id, route.path+"/"+newApiKey())
 			}
 			return apitest.WorkspacePath(id, route.path)
 		}

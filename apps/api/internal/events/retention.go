@@ -15,6 +15,9 @@ var AuditAreas = []string{"auth", "admin", "alert", "server", "prune"}
 
 // Audit reports whether the event named name is an audit event.
 func Audit(name string) bool {
+	if strings.HasPrefix(name, "workspace.api_key.") {
+		return true
+	}
 	area, _, _ := strings.Cut(name, ".")
 	for _, a := range AuditAreas {
 		if area == a {

@@ -61,7 +61,7 @@ function AccountDropdownMenu({
   anchor,
   onSignOut,
 }: Pick<DropdownMenuProps, "anchor"> & { onSignOut: () => void }) {
-  const current = useCurrentPath() === routes.settings;
+  const current = useCurrentPath().startsWith(routes.settings);
   return (
     <DropdownMenu className="min-w-64" anchor={anchor}>
       <DropdownItem
@@ -249,7 +249,7 @@ export function ApplicationLayout({ children }: { children: ReactNode }) {
   const [creating, setCreating] = useState(false);
   const currentPath = useCurrentPath();
   // On account settings the account menu's buttons are selected.
-  const onAccount = currentPath === routes.settings;
+  const onAccount = currentPath.startsWith(routes.settings);
   const userInitials = initials(session.user.name);
   async function signOut() {
     try {

@@ -33,7 +33,7 @@ var PrunableAuditEvents = Prunable{
 }
 
 // auditEvent is true for an audit event's row (events.Audit, in SQL).
-var auditEvent = bun.SafeQuery("split_part(e.name, '.', 1) IN (?)", bun.In(events.AuditAreas))
+var auditEvent = bun.SafeQuery("(split_part(e.name, '.', 1) IN (?) OR e.name LIKE 'workspace.api_key.%')", bun.In(events.AuditAreas))
 
 // withPendingDeliveries narrows q to events a listener hasn't run for yet.
 func withPendingDeliveries(q *bun.SelectQuery) *bun.SelectQuery {

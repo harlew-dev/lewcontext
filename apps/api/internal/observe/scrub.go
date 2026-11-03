@@ -61,9 +61,10 @@ var (
 	// inv, evt, err, ipb, and the generated req, srv, alt), an underscore and
 	// 14 base62 characters. Only the real prefixes, so a random token isn't
 	// cut up by an ID-shaped piece (Scrub also scrubs token runs first).
-	publicIDPattern  = regexp.MustCompile(`\b(?:usr|wsp|prj|inv|evt|err|ipb|req|srv|alt)_[0-9A-Za-z]{14}\b`)
-	uuidPattern      = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
-	wholeUUIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	publicIDPattern      = regexp.MustCompile(`\b(?:usr|wsp|prj|inv|evt|err|ipb|req|srv|alt|apk)_[0-9A-Za-z]{14}\b`)
+	apiCredentialPattern = regexp.MustCompile(`lc_(?:wk|pk)_apk_[A-Za-z0-9]{14}_[A-Za-z0-9_-]{0,43}`)
+	uuidPattern          = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+	wholeUUIDPattern     = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	// An IPv4 address, with a port when it has one.
 	ipv4Pattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b`)
 	// What could be an IPv6 address (hex digits, colons, dots, maybe in
@@ -163,6 +164,7 @@ func ErrorAttr(err error) slog.Attr {
 // characters, at most MaxMessage characters.
 func Scrub(message string) string {
 	s := oneLine(capInput(message, maxScrubInput))
+	s = apiCredentialPattern.ReplaceAllString(s, scrubbedToken)
 	s = jsonSnippetPattern.ReplaceAllString(s, `"…"$1`)
 	s = keyValuePattern.ReplaceAllString(s, ")=(…)")
 	s = failingRowPattern.ReplaceAllString(s, "${1}(…)")

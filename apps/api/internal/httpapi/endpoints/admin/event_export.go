@@ -36,7 +36,7 @@ const (
 )
 
 // eventExportColumns are the CSV's header.
-var eventExportColumns = []string{"time", "event", "name", "failed", "actor", "actor_email", "user", "user_email", "workspace", "workspace_name", "ip", "payload"}
+var eventExportColumns = []string{"time", "event", "name", "failed", "actor", "actor_email", "user", "user_email", "workspace", "workspace_name", "ip", "payload", "api_key"}
 
 func (h EventExport) Show(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
@@ -125,7 +125,7 @@ func eventExportRow(e store.AdminEvent) []string {
 	if e.Workspace != nil {
 		workspace, workspaceName = e.Workspace.PublicID, e.Workspace.Name
 	}
-	row := []string{e.CreatedAt.UTC().Format(time.RFC3339Nano), e.PublicID, e.Name, failed, actor, actorEmail, user, userEmail, workspace, workspaceName, ip, string(e.Payload)}
+	row := []string{e.CreatedAt.UTC().Format(time.RFC3339Nano), e.PublicID, e.Name, failed, actor, actorEmail, user, userEmail, workspace, workspaceName, ip, string(e.Payload), e.ApiKeyPublicID}
 	for i, cell := range row {
 		row[i] = csvCell(cell)
 	}

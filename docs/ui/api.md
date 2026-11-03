@@ -3,47 +3,49 @@
 All API calls go through the typed client in `src/lib/api/`, with one file per resource. Nothing else calls `fetch` or builds `/api/...` paths.
 
 ```ts
-const api = useApi();                                    // in a component body
-const { id: ws } = useWorkspace();                       // projects belong to a workspace
-api.projects(ws).index({ status: "Planned", page: 2 })   // Promise<Page<Project>>
-api.projects(ws).show("prj_j292s2S2j7Qx4B")              // Promise<Project>
-api.projects(ws).store(input)                            // input: ProjectInput
-api.workspaces().store({ name: "Acme" })                 // Promise<Workspace>, you're the owner
-paths.projects(ws).show(id)                              // ApiPath<Project>: "/api/workspaces/wsp_…/projects/prj_…"
+const api = useApi(); // in a component body
+const { id: ws } = useWorkspace(); // projects belong to a workspace
+api.projects(ws).index({ status: "Planned", page: 2 }); // Promise<Page<Project>>
+api.projects(ws).show("prj_j292s2S2j7Qx4B"); // Promise<Project>
+api.projects(ws).store(input); // input: ProjectInput
+api.workspaces().store({ name: "Acme" }); // Promise<Workspace>, you're the owner
+paths.projects(ws).show(id); // ApiPath<Project>: "/api/workspaces/wsp_…/projects/prj_…"
 ```
 
 ## Conventions
 
+`api.apiKeys(workspace?)` and `paths.apiKeys(workspace?)` provide Index/Store/Update/Destroy for workspace credentials, or own personal keys when workspace is omitted. Only the personal creation body adds `workspace`; ownership is immutable. Lists cache metadata only. Project picking uses remote Combobox search and infinite API pages, retaining selected IDs/names across result sets. MFA proof is collected in a nested modal after submitting the key form; the code accompanies the actual creation/broadening request, never a separate client-side verification. Cancelling sends no mutation and preserves the parent form. Creation returns `{key, secret}` directly into dialog component state, never through SWR, module state or browser storage; no automatic retry after uncertain issuance. Navigation, workspace switch, sign-out or Done discards the secret. Expiry is an explicit ISO timestamp or null (Never), never omitted ([../api/api-keys.md](../api/api-keys.md)).
+
 Client methods and typed paths use the API's action names (`index`, `show`, `store`, `update`, `destroy`, plus named verbs such as `accept`); see [../naming.md](../naming.md#web-app).
 
-| Method | HTTP | Returns |
-| --- | --- | --- |
-| `index(query?)` | `GET /api/<resource>?…` | `Page<T>` ([pagination.md](pagination.md)) |
-| `show(id)` | `GET /api/<resource>/{id}` | `T` |
-| `store(input)` | `POST /api/<resource>` | `T` |
-| `update(id, input)` | `PATCH /api/<resource>/{id}` | `T` |
-| `destroy(id)` | `DELETE /api/<resource>/{id}` | `void` |
+| Method              | HTTP                          | Returns                                    |
+| ------------------- | ----------------------------- | ------------------------------------------ |
+| `index(query?)`     | `GET /api/<resource>?…`       | `Page<T>` ([pagination.md](pagination.md)) |
+| `show(id)`          | `GET /api/<resource>/{id}`    | `T`                                        |
+| `store(input)`      | `POST /api/<resource>`        | `T`                                        |
+| `update(id, input)` | `PATCH /api/<resource>/{id}`  | `T`                                        |
+| `destroy(id)`       | `DELETE /api/<resource>/{id}` | `void`                                     |
 
 - `paths.<resource>` has a path helper for each method, plus `matches(key)` to recognise the resource's paths. **Workspace resources take the workspace ID explicitly**, both in `paths.projects(ws)` and `api.projects(ws)`, so the same paths work in components, SWR keys and route loaders.
 - Resources implement only what the API supports.
 - **`index()` takes a typed query object** (`ProjectIndexQuery`: `page`, `perPage`, `q`, `status`, `sort`). Unknown keys and values the API would reject are type errors. Defaults are left out, so each query has one path.
 - **Bodies contain only the editable fields** (`store`/`update` pick them from the input), because the API rejects unknown fields.
 
-| Resource | Methods |
-| --- | --- |
-| `workspaces()` | `index({ page, perPage, canLeave: false })`, `show(id)`, `store({ name })`, `update(id, { name })` (owners and admins), `destroy(id, { name, password })` (owners), `leave(id)` (`DELETE …/membership`) |
-| `projects(workspace)` | `index`, `show`, `store`, `update`, `destroy` (owners and admins) |
-| `members(workspace)` | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins) |
-| `invitations(workspace)` | `index({ page, perPage })`, `store({ email, role })`, `destroy(id)` (owners and admins) |
-| `invitations()` | `check(token)`, `accept(token)`: the link's page, by the token in the body |
-| `auth()` | `me`, `login(credentials)` (`needsMfa(result)` when it answers `{mfaRequired}`), `loginMfa(code)`, `register(registration)` (`needsVerification(result)` when it answers `{verificationRequired, email}`), `registerCheck()`, `registerResend()`, `registerVerify(code)` (the sign-up is in its cookie), `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces), `exportData({ password })` (Download my data: the JSON, which the page saves as a file) |
-| `auth().emailVerification()` | `store()` (emails a code), `update(code)` (`{user}`; a 410 means the code ended). `verificationRequired(error)` recognises the API's 403 for an account that must verify first |
-| `auth().emailChange()` | `show()` (this session's pending request or null), `store({email, currentPassword})` / `store({email, code})` (fresh account proof), `update(code)` (only the emailed code), `destroy()` (cancel). `store` returns `{pending}` when verification is on, a full rotated `Session` when off; `update` returns the rotated session. Typed paths are `paths.auth.emailChange()` |
-| `auth().mfa()` | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })` |
-| `sessions()` | `destroyOthers()`, which signs out every session except this one |
-| `emailBlocks()` | `check(token)` (`{email, registered, blocked}`), `store(token)` (blocks; a 409 for an address with an account), `destroy(token)` (unblocks): the block link's page, by the token in the body. `paths.emailBlocks()` names the three paths |
-| `policies()` | `show()`: `{enabled: false}` or `{enabled: true, termsOfService, privacyPolicy}` (`paths.policies.show()`). `auth().register` sends `policies` (the versions) when given |
-| `clientErrors()` | `store({ message, stack, route, release })`: the web app's own error, signed in only (`lib/client-errors.ts` calls it; components don't). `paths.clientErrors().store()` |
+| Resource                     | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces()`               | `index({ page, perPage, canLeave: false })`, `show(id)`, `store({ name })`, `update(id, { name })` (owners and admins), `destroy(id, { name, password })` (owners), `leave(id)` (`DELETE …/membership`)                                                                                                                                                                                                                                                                                                              |
+| `projects(workspace)`        | `index`, `show`, `store`, `update`, `destroy` (owners and admins)                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `members(workspace)`         | `index({ page, perPage, q })`, `update(id, { role })`, `destroy(id)` (owners and admins)                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `invitations(workspace)`     | `index({ page, perPage })`, `store({ email, role })`, `destroy(id)` (owners and admins)                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `invitations()`              | `check(token)`, `accept(token)`: the link's page, by the token in the body                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `auth()`                     | `me`, `login(credentials)` (`needsMfa(result)` when it answers `{mfaRequired}`), `loginMfa(code)`, `register(registration)` (`needsVerification(result)` when it answers `{verificationRequired, email}`), `registerCheck()`, `registerResend()`, `registerVerify(code)` (the sign-up is in its cookie), `logout()`, `destroy({ password })` (deletes the account; `lastOwnerWorkspaces(error)` reads the 409's workspaces), `exportData({ password })` (Download my data: the JSON, which the page saves as a file) |
+| `auth().emailVerification()` | `store()` (emails a code), `update(code)` (`{user}`; a 410 means the code ended). `verificationRequired(error)` recognises the API's 403 for an account that must verify first                                                                                                                                                                                                                                                                                                                                       |
+| `auth().emailChange()`       | `show()` (this session's pending request or null), `store({email, currentPassword})` / `store({email, code})` (fresh account proof), `update(code)` (only the emailed code), `destroy()` (cancel). `store` returns `{pending}` when verification is on, a full rotated `Session` when off; `update` returns the rotated session. Typed paths are `paths.auth.emailChange()`                                                                                                                                          |
+| `auth().mfa()`               | `setup(password)` (`{secret, uri}`), `store(code)` (turns it on; `{recoveryCodes}`), `destroy({ password, code })`, `recoveryCodes().store({ password, code })`                                                                                                                                                                                                                                                                                                                                                      |
+| `sessions()`                 | `destroyOthers()`, which signs out every session except this one                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `emailBlocks()`              | `check(token)` (`{email, registered, blocked}`), `store(token)` (blocks; a 409 for an address with an account), `destroy(token)` (unblocks): the block link's page, by the token in the body. `paths.emailBlocks()` names the three paths                                                                                                                                                                                                                                                                            |
+| `policies()`                 | `show()`: `{enabled: false}` or `{enabled: true, termsOfService, privacyPolicy}` (`paths.policies.show()`). `auth().register` sends `policies` (the versions) when given                                                                                                                                                                                                                                                                                                                                             |
+| `clientErrors()`             | `store({ message, stack, route, release })`: the web app's own error, signed in only (`lib/client-errors.ts` calls it; components don't). `paths.clientErrors().store()`                                                                                                                                                                                                                                                                                                                                             |
 
 The admin dashboard has its own client, `lib/api/admin.ts`, which only admin code imports (`lib/api/index.ts` holds nothing of it, so the app build doesn't either): `const api = useAdminApi()` (inside `AdminProvider`) sends the URL's key in `X-Admin-Key` and the admin session's CSRF token, never the app's; `api.login`, `.loginMfaSetup()`, `.loginMfa(code)`, `.logout()`, `.users().index(query)`, `.show(id)`, `.workspaces().index(query)`, `.show(id)`, `.projects(workspace).index(query)`, `.events().index(filters)`, `.show(id)`, `.eventExport().show(filters)` (the Events CSV as `{ csv, truncated }`: the text, through `Http.text`, the one call answered with a file rather than JSON, which returns the text with the response's headers; `truncated` is the API's `X-Export-Truncated`, never guessed from the row count), `.catalogue()`, `.mail(window)`, `.deliveries().index(query)` (`adminPaths.events.index(...)` returns a `CursorPage`), `.admins().index()`, `.sessions().destroyOthers()`, `.emailBlocks().index(query)`, `.emailBlocks().destroy({ email, reason })` (the address only in the body), `.stepUp(code)`, and the actions, each taking the reason: `.userSessions(id).destroy(reason)`, `.userMfa(id).destroy({ reason, confirmed })`, `.userSuspension(id).store({ reason, revokeInvitations })`, `.destroy(reason)`, `.workspaceInvitations(id).destroy(reason)`, `.deliveries().retry(event, listener, reason)`, `.failedDeliveries().retry({ listener, failedSince, reason })`, `.ipBlocks().index()`, `.store({ network, expiresIn, reason })`, `.destroy(id, reason)`, `.adminSessions(id).destroy(reason)` (ids are public IDs; addresses and reasons only in bodies), with `needsStepUp(error)` recognising the 403 that asks for a code (`AdminActionDialog`); typed paths in `adminPaths` (the key is never in one); `adminHttp(key, csrf, onPreviousKey)`, its transport, which calls `onPreviousKey` on any answer with `X-Admin-Key-Status: previous` (through the transport's `onResponse`, which sees every response); `loaderAdminApi(key, onPreviousKey)` for its loaders. Pages read with `useAdminResource(path)`, whose SWR key is `["admin", adminUserId, path]`, which doesn't reload on focus or reconnect (every load is a recorded read), and whose 401 goes back to `/admin/<key>` ([../api/admin.md](../api/admin.md#web-app)).
 
@@ -69,12 +71,12 @@ await api.get(path); // load any typed path
 
 ```ts
 const list = useResource(path);
-list.data        // the last loaded data, kept while a new path loads
-list.loading     // nothing loaded for this path yet → <ListSkeleton />
-list.error       // message → <Notice variant="error"> with Retry
-list.missing     // the API answered 404 → render "not found"
-list.refreshing  // revalidating in the background
-list.refresh()   // Retry, or after a mutation
+list.data; // the last loaded data, kept while a new path loads
+list.loading; // nothing loaded for this path yet → <ListSkeleton />
+list.error; // message → <Notice variant="error"> with Retry
+list.missing; // the API answered 404 → render "not found"
+list.refreshing; // revalidating in the background
+list.refresh(); // Retry, or after a mutation
 ```
 
 - **SWR key** is `[path, userId]`, with the user ID from the session context, so one user never sees another's cached data.
@@ -99,14 +101,15 @@ list.refresh()   // Retry, or after a mutation
 
   It has two pending flags:
 
-  | Flag | True | Use it for |
-  | --- | --- | --- |
-  | `busy` | At once, from `run` until the action settles | Logic: refusing to close a dialog mid-save (`onClose={() => !save.busy && onClose()}`, Cancel too) |
-  | `loading` | Once `busy` has lasted 200 ms, then for at least 400 ms (`useDelayedLoading`, `lib/use-delayed-loading.ts`) | What the user sees: `<Button loading>`, disabled fields |
+  | Flag      | True                                                                                                        | Use it for                                                                                         |
+  | --------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+  | `busy`    | At once, from `run` until the action settles                                                                | Logic: refusing to close a dialog mid-save (`onClose={() => !save.busy && onClose()}`, Cancel too) |
+  | `loading` | Once `busy` has lasted 200 ms, then for at least 400 ms (`useDelayedLoading`, `lib/use-delayed-loading.ts`) | What the user sees: `<Button loading>`, disabled fields                                            |
 
   So a quick request shows no spinner and doesn't grey out the form for a moment, and a slower one doesn't flash it for a few milliseconds. A double submit is refused regardless, as soon as `run` starts.
 
   `run` ignores calls while one is in flight (a double click submits once) and awaits everything the action awaits, so an action that ends with `navigate(...)` stays busy (and loading) until the next page has loaded. A failure goes to `save.error` for `<ErrorNotice>`, unless `onError` handles it and returns `true`: an action that is only a button, with no fields (sign out other sessions), shows `toast.error(errorMessage(e))` there instead; and when the API names the field (`ApiError.field`, e.g. the change-password dialog's `currentPassword`), show the message on that field with `ErrorMessage`.
+
 - **After a project is saved,** `useProjectEditor` revalidates every cached key that `paths.projects(workspace.id).matches()` (that workspace's lists, counts and single projects), because one change can move a project between pages, filters and counts. Do the same for new resources.
 - **After a workspace is created or renamed,** call `useRefreshWorkspaces()`'s function, with the workspace's ID after a rename, so the switcher and the current workspace reload.
 - **Errors** are `ApiError`s with the message, `status`, the `field` the API named, and `details` (the rest of the body, e.g. the 409's `workspaces`). A 500's body has the request's ID: `error.requestId` (or `requestIdOf(error)` for any thrown value) reads it, only in the shape the API sends. `useAction` keeps it with the message, so `<ErrorNotice>` shows "Reference: req_…" under it, and a loader that can't load answers `unavailable(error)` (`lib/loaders.ts`), whose `requestId` the page passes to `<ServiceUnavailable requestId>`. Someone can quote the reference, and the log lines are found by it ([../api/observability.md](../api/observability.md#request-ids)).

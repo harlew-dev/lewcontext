@@ -8,13 +8,13 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 
 ## Controllers (`internal/httpapi`)
 
-| Action | Method | Path | Does | Controller method |
-| --- | --- | --- | --- | --- |
-| `index` | GET | `/things` | one page of the list | `Things.Index` |
-| `show` | GET | `/things/{thing}` | one record | `Things.Show` |
-| `store` | POST | `/things` | create, 201 with the record | `Things.Store` |
-| `update` | PATCH | `/things/{thing}` | change, 200 with the record | `Things.Update` |
-| `destroy` | DELETE | `/things/{thing}` | delete, 204 | `Things.Destroy` |
+| Action    | Method | Path              | Does                        | Controller method |
+| --------- | ------ | ----------------- | --------------------------- | ----------------- |
+| `index`   | GET    | `/things`         | one page of the list        | `Things.Index`    |
+| `show`    | GET    | `/things/{thing}` | one record                  | `Things.Show`     |
+| `store`   | POST   | `/things`         | create, 201 with the record | `Things.Store`    |
+| `update`  | PATCH  | `/things/{thing}` | change, 200 with the record | `Things.Update`   |
+| `destroy` | DELETE | `/things/{thing}` | delete, 204                 | `Things.Destroy`  |
 
 - **One package per area, under `httpapi/endpoints/`.** An area is the URL's first segment after `/api`, singular: `workspace` (`/api/workspaces/*`, and `/api/invitations/*` with the other invitation routes) and `admin` (`/api/admin/*`). `/api/auth/*` is the `account` area, so it doesn't clash with `internal/auth`; `/api/email-blocks/*` (`account.EmailBlocks`) lives there too, with the other signed-out links, rather than in an area of its own for three routes, and so do `/api/client-errors` (`account.ClientErrors`, the signed-in browser's own errors), one route, and `GET /api/policies` (`account.Policies.Show`, a public singleton), rather than a `policy` area for one route.
 - **One controller per file, named after its resource:** `type Projects struct{ *httpapi.Server }` in `endpoints/workspace/projects.go`, `WorkspaceProjects` in `workspace_projects.go`. The file holds the controller, its input types and its validation. An area exports only its controllers.
@@ -45,13 +45,13 @@ The vocabulary is Laravel's resource controller, used at the HTTP boundary and i
 
 Every method starts with a verb:
 
-| Verb | For | Examples |
-| --- | --- | --- |
-| `Index<Resources>` | one page of a list, search and filters included (a filter is a field on the query, not a new method) | `IndexProjects`, `IndexMembers`, `IndexWorkspaces` |
-| `Find<Resource>` | one record; `sql.ErrNoRows` when it's missing or out of scope | `FindUser`, `FindProject`, `FindWorkspace` |
-| `Create` / `Update` / `Delete<Resource>` | plain writes | `CreateProject`, `UpdateProject`, `DeleteProject` |
-| a domain verb | when it says more than create, update or delete | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation`, `CountHit` |
-| `Check<Thing>` | a yes/no question about a record | `CheckPasswordReset` |
+| Verb                                     | For                                                                                                  | Examples                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Index<Resources>`                       | one page of a list, search and filters included (a filter is a field on the query, not a new method) | `IndexProjects`, `IndexMembers`, `IndexWorkspaces`                                                                                                |
+| `Find<Resource>`                         | one record; `sql.ErrNoRows` when it's missing or out of scope                                        | `FindUser`, `FindProject`, `FindWorkspace`                                                                                                        |
+| `Create` / `Update` / `Delete<Resource>` | plain writes                                                                                         | `CreateProject`, `UpdateProject`, `DeleteProject`                                                                                                 |
+| a domain verb                            | when it says more than create, update or delete                                                      | `RenameWorkspace`, `UpdateMemberRole`, `RemoveMember`, `LeaveWorkspace`, `IssuePasswordReset`, `AcceptInvitation`, `RevokeInvitation`, `CountHit` |
+| `Check<Thing>`                           | a yes/no question about a record                                                                     | `CheckPasswordReset`                                                                                                                              |
 
 - There are no noun-only methods (`Project`, `Session`).
 - `TestStoreMethodNames` checks the verbs (the domain verbs are listed in it, each with its reason) and that `Index…` returns a list ([checks.md](checks.md)).
@@ -69,7 +69,7 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 
 - **The resource** is what the event is about, spelled as in its permission: a top-level resource is one segment (`project`, `workspace`), and a resource inside another adds one (`workspace.member`, `workspace.invitation`, `auth.password_reset`). The permission `workspace.member.update` guards the route that records `workspace.member.updated`.
 - **The fact** is the last segment: past tense, a fact rather than a command (`created`, `updated`, `removed`, `left`, `sent`). Everything before it is what the fact is about, so filtering by resource is a prefix (`workspace.member.%`).
-- **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`, `auth.email_verified`); only stored sub-resources (reset links, pending sign-ups, email codes, members, invitations) get a segment (`auth.registration.requested`, `auth.email_verification.sent`). A sign-up waiting for its code is a *registration*, after the `register` route; the table is `pending_registrations`.
+- **The account and its session** are the `auth` area. Facts about them as a whole stay one segment under `auth` (`auth.registered`, `auth.logged_in`, `auth.login_attempted`, `auth.profile_updated`, `auth.password_changed`, `auth.email_verified`); only stored sub-resources (reset links, pending sign-ups, email codes, members, invitations) get a segment (`auth.registration.requested`, `auth.email_verification.sent`). A sign-up waiting for its code is a _registration_, after the `register` route; the table is `pending_registrations`.
 - **Email addresses on their own**, apart from any account, are the `email` area: `email.blocked`, `email.unblocked` (the block list).
 - **Retention** is the `prune` area: `prune.completed`, one per confirmed prune run ([database.md](api/database.md#pruning)).
 - **Alerts** are the `alert` area: `alert.opened`, `alert.escalated`, `alert.recovered`, `alert.reopened`, `alert.resolved`, `alert.reminded`, `alert.digested`, recorded by the evaluator with no actor ([monitoring.md](api/monitoring.md#alerts)); what an admin does about one is `admin.alert.acknowledged` / `.silenced` (and `admin.error.resolved`); discussions are `admin.alert.commented` / `.redacted` and `admin.error.commented` / `.redacted`, the operator-managed receivers `admin.alert_webhook.created`, `.updated` and `.deleted` (reads: `.listed`, and `.viewed` for a webhook's signing key) and the catalog's read `admin.alert_rule.listed`.
@@ -82,29 +82,32 @@ The admin dashboard has roles instead (`auth.AdminRole`: `viewer`, `operator`, l
 
 ## Rate limits (`httpapi/limits.go`)
 
+API keys add the approved counting kinds `per-key` and `per-workspace` for credential and aggregate workspace budgets. Their personal lifecycle events name the stored resource `auth.api_key`; workspace credentials use the permission resource `workspace.api_key`. The optional `/api/v1` transport prefix does not create a controller area: versioned projects remain `workspace.ApiProjects` in `endpoints/workspace/api_projects.go`.
+
 `<feature>:<counted by>`: `auth:per-ip`, `auth:per-account`, `project:per-user`, `password-reset:global`. Counted by is `per-ip`, `per-account`, `per-email`, `per-user` or `global` (a limit shared by everyone); `TestRateLimitNames` checks it. In `rate_limit.reached`, the level reached follows the name: `auth:per-ip:challenge`, `register:global:block`. A limit's levels are `Challenge` and `Block`, each `ratelimit.Above(n)` or `ratelimit.Never`; challenge actions (`httpapi.ChallengeLogin`, …) are the route's verb in snake_case (`password_reset`). The declarations are grouped by feature ([Lists of declarations](#lists-of-declarations)).
 
 ## Web app
 
-| What | Names | Examples |
-| --- | --- | --- |
-| API client (`lib/api/<resource>.ts`), calls and typed paths | the API's actions, plus named verbs | `api.projects(ws).index()`, `.show(id)`, `.store(input)`, `.update(id, input)`, `.destroy(id)`; `paths.projects(ws).store()`; `api.invitations().accept(token)` |
-| Page route constants (`lib/routes.ts`) | grouped by resource, with the page actions `index`, `show`, `create`, `edit` | `routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`, `routes.members.index(ws)` |
-| Pages that aren't a resource | plain names | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)`, `routes.termsOfService`, `routes.privacyPolicy` |
-| Resource pages' default exports | `<Resource><Action>` | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex`; the admin dashboard's add `Admin` (`AdminUserIndex`, `AdminWorkspaceShow`), its route constants are `adminRoutes` in `lib/admin-routes.ts` and take the key (`adminRoutes.users.show(key, usr)`), and its API paths are `adminPaths` in `lib/api/admin.ts` |
-| Other pages' default exports | what the page is | `Login`, `Onboarding`, `AccountSettings`, `Dashboard` |
+| What                                                        | Names                                                                        | Examples                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API client (`lib/api/<resource>.ts`), calls and typed paths | the API's actions, plus named verbs                                          | `api.projects(ws).index()`, `.show(id)`, `.store(input)`, `.update(id, input)`, `.destroy(id)`; `paths.projects(ws).store()`; `api.invitations().accept(token)`                                                                                                                                                           |
+| Page route constants (`lib/routes.ts`)                      | grouped by resource, with the page actions `index`, `show`, `create`, `edit` | `routes.projects.index(ws)`, `routes.projects.show(ws, prj)`, `routes.workspaces.edit(ws)`, `routes.members.index(ws)`                                                                                                                                                                                                    |
+| Pages that aren't a resource                                | plain names                                                                  | `routes.home`, `routes.login`, `routes.settings`, `routes.dashboard(ws)`, `routes.termsOfService`, `routes.privacyPolicy`                                                                                                                                                                                                 |
+| Resource pages' default exports                             | `<Resource><Action>`                                                         | `ProjectIndex`, `ProjectShow`, `WorkspaceEdit`, `MemberIndex`; the admin dashboard's add `Admin` (`AdminUserIndex`, `AdminWorkspaceShow`), its route constants are `adminRoutes` in `lib/admin-routes.ts` and take the key (`adminRoutes.users.show(key, usr)`), and its API paths are `adminPaths` in `lib/api/admin.ts` |
+| Other pages' default exports                                | what the page is                                                             | `Login`, `Onboarding`, `AccountSettings`, `Dashboard`                                                                                                                                                                                                                                                                     |
 
 - **Delete is never a page.** It is a confirmation dialog that calls `destroy`.
 - **URLs read naturally and don't follow the action names:** the workspace `edit` page is `/app/<wsp>/settings`, `pages/app/[workspace]/settings/index.tsx`, and it reads the same API the folder's `index.tsx` would name after its resource. Each page lines up with the actions it calls:
 
-  | Page file | Page | API it reads |
-  | --- | --- | --- |
-  | `pages/app/[workspace]/projects/index.tsx` | `ProjectIndex` | `projects.Index` |
-  | `pages/app/[workspace]/projects/[project].tsx` | `ProjectShow` | `projects.Show`, `.Update`, `.Destroy` |
-  | `pages/app/[workspace]/settings/index.tsx` | `WorkspaceEdit` | `workspaces.Show`, `workspaces.Update` (there is no settings resource) |
-  | `pages/app/[workspace]/settings/members/index.tsx` | `MemberIndex` | `members.Index`, `invitations.Index` |
+  | Page file                                          | Page            | API it reads                                                           |
+  | -------------------------------------------------- | --------------- | ---------------------------------------------------------------------- |
+  | `pages/app/[workspace]/projects/index.tsx`         | `ProjectIndex`  | `projects.Index`                                                       |
+  | `pages/app/[workspace]/projects/[project].tsx`     | `ProjectShow`   | `projects.Show`, `.Update`, `.Destroy`                                 |
+  | `pages/app/[workspace]/settings/index.tsx`         | `WorkspaceEdit` | `workspaces.Show`, `workspaces.Update` (there is no settings resource) |
+  | `pages/app/[workspace]/settings/members/index.tsx` | `MemberIndex`   | `members.Index`, `invitations.Index`                                   |
 
   The API side is already `<resources>.<Action>` in `router/routes.go`.
+
 - **Every page is a folder, and the page is the folder's `index.tsx`.** A page URL is one folder whose `index.tsx` is that page ("`pages/app/[workspace]/projects/index.tsx` is `/app/wsp_…/projects`"); pages beneath it are deeper folders (`register/verify/index.tsx`), and a record's page is `[<param>].tsx` in the resource's folder, named after the route param (`[project]`, `[token]`). Every file and folder stands for the URL it serves, and a folder with pages beneath it holds its bare URL's own page — this is the API's rule for a resource's folder plus one rule, that every page gets a folder. Pages that aren't a resource keep plain names in constants and exports (`routes.home`, `Login`); only the files are folders. Plan: [page folders](../plans/features/implemented/page-folders.md).
 - **Component files** are kebab-case, grouping a family of named exports (`button.tsx`, `confirmation-dialog.tsx`); see AGENTS.md rule 6.
 - **Files in `components/`, `lib/`, `types/` and `test/`** are kebab-case; a module that must never reach the browser keeps React Router's `.server` suffix before its extension (`lib/policies.server.ts`, run only at build time).
@@ -134,4 +137,3 @@ var (
 - **Comments are `//`**, never `/* */`, like every other comment in the code.
 - **A list that repeats the declarations** (`RateLimits`, beside them) follows the same groups and order, one line per group.
 - **A new declaration joins its group;** a new kind of thing starts a group of its own, after a blank line.
-

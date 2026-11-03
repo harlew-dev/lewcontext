@@ -16,6 +16,7 @@ import (
 
 // storedResources are the event resources no permission guards.
 var storedResources = map[string]string{
+	"auth.api_key":            "the account's personal API credential; approved api-keys plan",
 	"admin.alert_webhook":     "operator-managed alert webhooks and heartbeats; approved alert-webhooks plan",
 	"auth.password_reset":     "a reset link (password_resets)",
 	"auth.registration":       "a sign-up waiting for its code (pending_registrations)",

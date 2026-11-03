@@ -10,7 +10,7 @@ const go = readFileSync(
 );
 describe("workspace permissions", () => {
   it("mirrors the API's permission names", () => {
-    const names = [...go.matchAll(/\w+\s+Permission = "([a-z.]+)"/g)].map(
+    const names = [...go.matchAll(/\w+\s+Permission = "([a-z_.]+)"/g)].map(
       (m) => m[1],
     );
     expect(names.sort()).toEqual([...permissions].sort());

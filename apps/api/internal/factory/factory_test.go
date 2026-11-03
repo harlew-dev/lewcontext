@@ -118,6 +118,19 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if user.PublicID == "" || workspace.PublicID == "" || projects[0].PublicID == "" {
 		t.Fatal("RETURNING did not fill public IDs")
 	}
+	key, err := ApiKeys.State(func(k *ApiKey) { k.WorkspaceID = workspace.ID; k.CreatedBy = user.ID }).CreateOne(ctx, db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApiKeyProjects.State(func(p *ApiKeyProject) { p.WorkspaceID, p.ApiKeyID, p.ProjectID = workspace.ID, key.ID, projects[0].ID }).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApiIdempotencyRequests.State(func(r *ApiIdempotencyRequest) {
+		r.WorkspaceID, r.ApiKeyID = workspace.ID, key.ID
+		r.ProjectPublicID = projects[0].PublicID
+	}).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := RateLimits.Create(ctx, db, f, 3); err != nil {
 		t.Fatal(err)
 	}

@@ -33,8 +33,9 @@ type eventRecord struct {
 	IP string `bun:"ip,type:inet,nullzero"`
 	// RequestID is the ID of the request it was recorded in
 	// (events.WithRequest), its log lines' requestId; "" outside one.
-	RequestID string
-	UserAgent string
+	RequestID      string
+	ApiKeyPublicID string
+	UserAgent      string
 	// AdminRequest marks an event recorded in an admin dashboard request
 	// (events.WithAdminRequest): an admin's reads and actions, left out
 	// of the admin's own Download my data.
@@ -64,14 +65,15 @@ func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope 
 		scope.ActorID = events.Actor(ctx)
 	}
 	row := eventRecord{
-		Name:        e.EventName(),
-		ActorID:     scope.ActorID,
-		UserID:      scope.UserID,
-		WorkspaceID: scope.WorkspaceID,
-		Payload:     payload,
-		IP:          events.IP(ctx),
-		RequestID:   events.RequestID(ctx),
-		UserAgent:   events.UserAgent(ctx),
+		Name:           e.EventName(),
+		ActorID:        scope.ActorID,
+		UserID:         scope.UserID,
+		WorkspaceID:    scope.WorkspaceID,
+		Payload:        payload,
+		IP:             events.IP(ctx),
+		RequestID:      events.RequestID(ctx),
+		ApiKeyPublicID: events.ApiKey(ctx),
+		UserAgent:      events.UserAgent(ctx),
 		// Marked from the context alone, so a dashboard action added later
 		// is marked too.
 		AdminRequest: events.AdminRequest(ctx),

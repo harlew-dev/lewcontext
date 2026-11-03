@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"strings"
 )
@@ -46,6 +47,9 @@ type accountToErase struct {
 func (s *Store) EraseAccount(ctx context.Context, email string, pseudonym func(string) string) (ErasedAccount, error) {
 	var done ErasedAccount
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, true); err != nil {
+			return err
+		}
 		target, err := lockAccount(ctx, tx, "lower(u.email) = ?", strings.ToLower(strings.TrimSpace(email)))
 		if err != nil {
 			return err

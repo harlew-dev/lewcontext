@@ -30,6 +30,7 @@ func TestAdminEventExport(t *testing.T) {
 	}).CreateOne(ctx, db, f))(t)
 	apitest.Must(factory.Events.State(func(e *factory.Event) {
 		e.Name, e.CreatedAt = "project.created", at.Add(time.Minute)
+		e.ApiKeyPublicID = "apk_00000000000001"
 		e.Payload = map[string]any{"project": "prj_00000000000001", "workspace": "wsp_00000000000001", "name": "-2+3"}
 	}).CreateOne(ctx, db, f))(t)
 
@@ -38,7 +39,7 @@ func TestAdminEventExport(t *testing.T) {
 		t.Fatalf("headers: %v", w.Header())
 	}
 	rows := apitest.Must(csv.NewReader(strings.NewReader(w.Body.String())).ReadAll())(t)
-	if len(rows) != 3 || strings.Join(rows[0], ",") != "time,event,name,failed,actor,actor_email,user,user_email,workspace,workspace_name,ip,payload" {
+	if len(rows) != 3 || strings.Join(rows[0], ",") != "time,event,name,failed,actor,actor_email,user,user_email,workspace,workspace_name,ip,payload,api_key" || rows[1][12] != "apk_00000000000001" {
 		t.Fatalf("rows: %q", rows)
 	}
 	if rows[1][2] != "project.created" || rows[2][2] != "auth.login_attempted" || rows[2][10] != "198.51.100.7" || rows[2][3] != "true" {

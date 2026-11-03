@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -80,6 +81,9 @@ type Suspended struct {
 func (s *Store) SuspendUser(ctx context.Context, publicID string, in Suspension, admin *AdminAction) (Suspended, error) {
 	var done Suspended
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		u, err := s.lockSuspensionTarget(ctx, tx, publicID, admin)
 		if err != nil {
 			return err
@@ -97,6 +101,9 @@ func (s *Store) SuspendUser(ctx context.Context, publicID string, in Suspension,
 			return err
 		}
 		done = Suspended{User: u}
+		if err := s.revokePersonalApiKeys(ctx, tx, u.ID, 0, "account_suspended"); err != nil {
+			return err
+		}
 		if done.SessionsRevoked, err = endAccess(ctx, tx, u.ID); err != nil {
 			return err
 		}

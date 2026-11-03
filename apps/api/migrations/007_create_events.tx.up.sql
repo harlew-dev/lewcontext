@@ -21,7 +21,8 @@ CREATE TABLE events (
  -- Recorded in an admin dashboard request (behind the admin key): an
  -- admin's reads and actions, left out of the admin's own Download my data
  -- (docs/compliance.md#download-my-data).
- admin_request boolean NOT NULL DEFAULT false,
+  admin_request boolean NOT NULL DEFAULT false,
+  api_key_public_id text NOT NULL DEFAULT '' CHECK (api_key_public_id = '' OR api_key_public_id ~ '^apk_[A-Za-z0-9]{14}$'),
  created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX events_user_created_idx ON events(user_id, created_at DESC);

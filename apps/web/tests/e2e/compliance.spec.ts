@@ -133,7 +133,7 @@ test("an admin downloads the Events list as CSV, recorded with its filters", asy
   expect(file.suggestedFilename()).toMatch(/^events-\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await file.path())!, "utf8");
   expect(csv.split("\r\n")[0]).toBe(
-    "time,event,name,failed,actor,actor_email,user,user_email,workspace,workspace_name,ip,payload",
+    "time,event,name,failed,actor,actor_email,user,user_email,workspace,workspace_name,ip,payload,api_key",
   );
   expect(csv).toContain("auth.registration.requested");
   await expect(page.getByText(/^Downloaded \d+ events?\.$/)).toBeVisible();

@@ -32,6 +32,8 @@ var Catalogue = []Event{
 	EmailVerificationRequested{}, EmailVerificationSent{}, EmailVerified{},
 	EmailChangeRequested{}, EmailChangeSent{}, EmailChangeChecked{}, EmailChangeCancelled{}, EmailChanged{},
 	MFAEnabled{}, MFADisabled{}, MFAChecked{}, RecoveryCodesCreated{},
+	PersonalApiKeyCreated{}, PersonalApiKeyUpdated{}, PersonalApiKeyRevoked{},
+	WorkspaceApiKeyCreated{}, WorkspaceApiKeyUpdated{}, WorkspaceApiKeyRevoked{},
 	WorkspaceCreated{}, WorkspaceRenamed{}, WorkspaceDeleted{},
 	WorkspaceMemberUpdated{}, WorkspaceMemberRemoved{}, WorkspaceMemberLeft{},
 	WorkspaceInvitationCreated{}, WorkspaceInvitationSent{}, WorkspaceInvitationRevoked{}, WorkspaceInvitationAccepted{},
@@ -80,13 +82,24 @@ const maxUserAgent = 256
 // carried in the request context so store methods can record it without
 // extra arguments.
 type meta struct {
-	actorID      int64
-	ip           string
-	requestID    string
-	userAgent    string
-	adminRequest bool
+	actorID        int64
+	ip             string
+	requestID      string
+	userAgent      string
+	adminRequest   bool
+	apiKeyPublicID string
 }
 type metaKey struct{}
+
+// WithApiKey attributes automation to its credential, independently of a human actor.
+func WithApiKey(ctx context.Context, publicID string) context.Context {
+	m := current(ctx)
+	m.apiKeyPublicID = publicID
+	return context.WithValue(ctx, metaKey{}, m)
+}
+
+// ApiKey is a non-secret public credential identifier, or empty for browser requests.
+func ApiKey(ctx context.Context) string { return current(ctx).apiKeyPublicID }
 
 func current(ctx context.Context) meta {
 	m, _ := ctx.Value(metaKey{}).(meta)

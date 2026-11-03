@@ -39,6 +39,7 @@ type Server struct {
 	authSlots chan struct{}
 	// memoryLimits counts the limits kept in memory (api-read:per-user).
 	memoryLimits *ratelimit.Memory
+	apiAnonymous *ratelimit.BoundedMemory
 	// adminRefusals records addresses outside ADMIN_ALLOWED_IPS, each once
 	// per window, through a bounded queue and one worker (admin_access.go).
 	adminRefusals *adminRefusals
@@ -76,6 +77,7 @@ func New(s *store.Store, c config.Config) (*Server, error) {
 	}
 	server := &Server{Repo: s, Config: c, dummyHash: dummy, keys: keys, authSlots: make(chan struct{}, 4), memoryLimits: ratelimit.NewMemory(), adminRefusals: newAdminRefusals(), Summaries: newSummaries(), Metrics: observe.Metrics}
 	go server.runAdminRefusals()
+	server.apiAnonymous = ratelimit.NewBoundedMemory(100000)
 	return server, nil
 }
 

@@ -22,14 +22,37 @@ import (
 // 500 (RecoverPanics).
 func New(s *httpapi.Server) http.Handler {
 	api := s.Security(httpapi.RecoverPanics(unknownRoutesAsJSON(apiRoutes(s))))
+	v1 := s.ApiSecurity(httpapi.RecoverPanics(unknownRoutesAsJSON(publicApiRoutes(s))))
 	pages := httpapi.RecoverPanics(pageRoutes(s))
 	return s.ClientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/") {
+			v1.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			api.ServeHTTP(w, r)
 			return
 		}
 		pages.ServeHTTP(w, r)
 	}))
+}
+
+// publicApiRoutes explicitly names a scope for every supported machine route.
+func publicApiRoutes(s *httpapi.Server) *http.ServeMux {
+	mux := http.NewServeMux()
+	v1 := group(mux, "/api/v1/workspaces/{workspace}", s.RequireApiKey)
+	publicProjectRoutes(s, v1)
+	return mux
+}
+
+func publicProjectRoutes(s *httpapi.Server, v1 routeGroup) {
+	projects := workspace.ApiProjects{Server: s}
+	v1.requireApiScopes, v1.server = true, s
+	v1.Scope("GET", "/projects", "project.index", projects.Index)
+	v1.Scope("POST", "/projects", "project.store", projects.Store)
+	v1.Scope("GET", "/projects/{project}", "project.show", projects.Show)
+	v1.Scope("PATCH", "/projects/{project}", "project.update", projects.Update)
+	v1.Scope("DELETE", "/projects/{project}", "project.destroy", projects.Destroy)
 }
 
 // apiRoutes are the JSON endpoints under /api.
@@ -45,6 +68,13 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	registrations := account.Registrations{Server: s}
 	sessions := account.Sessions{Server: s}
 	me := account.Me{Server: s}
+	userApiKeys := account.ApiKeys{Server: s}
+	// Recovery reads/revocation have dedicated session-specific allowances,
+	// independent of the ordinary browser and machine budgets.
+	mux.Handle("GET /api/auth/api-keys", s.RequireSessionUnmetered(s.LimitSession(httpapi.ApiKeyManagementReadPerUser, userApiKeys.Index)))
+	mux.Handle("POST /api/auth/api-keys", s.RequireSession(s.Limit(httpapi.ApiKeyCreatePerUser, userApiKeys.Store)))
+	mux.Handle("PATCH /api/auth/api-keys/{key}", s.RequireSession(http.HandlerFunc(userApiKeys.Update)))
+	mux.Handle("DELETE /api/auth/api-keys/{key}", s.RequireSessionUnmetered(s.LimitSession(httpapi.ApiKeyRevokePerUser, userApiKeys.Destroy)))
 	password := account.Password{Server: s}
 	passwordResets := account.PasswordResets{Server: s}
 	emailChange := account.EmailChange{Server: s}
@@ -124,8 +154,17 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 
 	// Everything inside a workspace requires a session and membership.
 	workspaceRoutes(s, group(mux, "/api/workspaces/{workspace}", s.RequireSession, s.RequireWorkspace))
+	recovery := group(mux, "/api/workspaces/{workspace}", s.RequireSessionUnmetered, s.RequireWorkspace)
+	workspaceKeyRecoveryRoutes(s, recovery)
 	adminRoutes(s, mux)
 	return mux
+}
+
+func workspaceKeyRecoveryRoutes(s *httpapi.Server, recovery routeGroup) {
+	keys := workspace.ApiKeys{Server: s}
+	recovery.requirePermissions = true
+	recovery.Can("GET", "/api-keys", auth.WorkspaceApiKeyIndex, s.LimitSession(httpapi.ApiKeyManagementReadPerUser, keys.Index))
+	recovery.Can("DELETE", "/api-keys/{key}", auth.WorkspaceApiKeyDestroy, s.LimitSession(httpapi.ApiKeyRevokePerUser, keys.Destroy))
 }
 
 // verificationRoutes exist only with EMAIL_VERIFICATION on
@@ -348,6 +387,9 @@ func workspaceRoutes(s *httpapi.Server, ws routeGroup) {
 	members := workspace.Members{Server: s}
 	membership := workspace.Membership{Server: s}
 	invitations := workspace.Invitations{Server: s}
+	apiKeys := workspace.ApiKeys{Server: s}
+	ws.Can("POST", "/api-keys", auth.WorkspaceApiKeyStore, s.Limit(httpapi.ApiKeyCreatePerUser, apiKeys.Store))
+	ws.Can("PATCH", "/api-keys/{key}", auth.WorkspaceApiKeyUpdate, apiKeys.Update)
 	ws.HandleFunc("GET", "", workspaces.Show)
 	ws.Can("PATCH", "", auth.WorkspaceUpdate, workspaces.Update)
 	// Deleting checks the owner's password, so it shares sign-in's limits.
@@ -436,6 +478,7 @@ type routeGroup struct {
 	// requirePermissions makes Handle refuse anything but GET and HEAD, so
 	// each mutation has to be registered with Can.
 	requirePermissions bool
+	requireApiScopes   bool
 	// requireAdminRoles does the same for the admin dashboard: each
 	// mutation is registered with Role, Action, Housekeeping or
 	// OwnSessions.
@@ -451,6 +494,9 @@ func group(mux *http.ServeMux, prefix string, middleware ...func(http.Handler) h
 	return routeGroup{mux: mux, prefix: prefix, middleware: middleware}
 }
 func (g routeGroup) Handle(method, path string, h http.Handler) {
+	if g.requireApiScopes {
+		panic("public API routes require an explicit Scope")
+	}
 	if g.requirePermissions && method != "GET" && method != "HEAD" {
 		panic(fmt.Sprintf("%s %s%s: register it with Can and the permission it needs", method, g.prefix, path))
 	}
@@ -539,7 +585,25 @@ func (g routeGroup) OwnSessions(method, path string, h http.HandlerFunc) {
 // Can registers a route only members whose role grants p may use; others get
 // 403. auth.AnyMember allows every member.
 func (g routeGroup) Can(method, path string, p auth.Permission, h http.HandlerFunc) {
+	if g.requireApiScopes {
+		panic("public API routes require Scope, not a human permission")
+	}
 	g.handle(method, path, httpapi.RequirePermission(p, h))
+}
+
+// Scope registers one fixed v1 action; missing or unknown scopes fail at startup.
+func (g routeGroup) Scope(method, path, scope string, h http.HandlerFunc) {
+	if !g.requireApiScopes || g.server == nil {
+		panic("Scope is only for the public API group")
+	}
+	valid := false
+	for _, known := range auth.ApiKeyScopes {
+		valid = valid || known == scope
+	}
+	if !valid {
+		panic("unknown public API scope")
+	}
+	g.handle(method, path, g.server.RequireApiScope(scope, h))
 }
 func (g routeGroup) handle(method, path string, h http.Handler) {
 	for i := len(g.middleware) - 1; i >= 0; i-- {

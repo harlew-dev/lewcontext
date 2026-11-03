@@ -36,7 +36,6 @@ import {
   FieldGroup,
   Label,
 } from "@/components/ui/fieldset";
-import { Heading } from "@/components/ui/heading";
 import {
   Input,
   InputActions,
@@ -68,9 +67,7 @@ import { useResource } from "@/lib/use-resource";
 export default function AccountSettings() {
   const session = useSession();
   return (
-    <div className="mx-auto max-w-4xl">
-      <Heading>Account & security</Heading>
-      <Divider className="my-10 mt-6" />
+    <div>
       <SettingsSection title="Profile">
         <ProfileForm key={session.user.id} />
       </SettingsSection>

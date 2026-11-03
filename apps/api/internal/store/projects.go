@@ -2,8 +2,9 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"strings"
 )
@@ -83,14 +84,15 @@ func (s *Store) FindProject(ctx context.Context, workspaceID int64, publicID str
 func (s *Store) CreateProject(ctx context.Context, w Workspace, in ProjectInput) (Project, error) {
 	p := Project{WorkspaceID: w.ID, Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockBrowserProjectWrite(ctx, tx, w.ID, auth.ProjectStore); err != nil {
+			return err
+		}
 		if err := checkWorkspaceProjects(ctx, tx, w.ID); err != nil {
 			return err
 		}
-		if _, err := tx.NewInsert().Model(&p).Returning("*").Exec(ctx); err != nil {
-			return err
-		}
-		e := events.ProjectCreated{Project: p.PublicID, Workspace: w.PublicID, Name: p.Name, Description: p.Description, Status: p.Status, Color: p.Color}
-		return s.record(ctx, tx, e, EventScope{WorkspaceID: w.ID})
+		var err error
+		p, err = s.createProject(ctx, tx, w, in)
+		return err
 	})
 	return p, err
 }
@@ -101,6 +103,9 @@ func (s *Store) CreateProject(ctx context.Context, w Workspace, in ProjectInput)
 func (s *Store) UpdateProject(ctx context.Context, w Workspace, publicID string, in ProjectInput) (Project, error) {
 	p := Project{Name: in.Name, Description: in.Description, Status: in.Status, Color: in.Color}
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockBrowserProjectWrite(ctx, tx, w.ID, auth.ProjectUpdate); err != nil {
+			return err
+		}
 		var before Project
 		err := tx.NewSelect().Model(&before).
 			Where("p.public_id = ? AND p.workspace_id = ?", publicID, w.ID).
@@ -109,20 +114,8 @@ func (s *Store) UpdateProject(ctx context.Context, w Workspace, publicID string,
 		if err != nil {
 			return err
 		}
-		err = tx.NewUpdate().Model(&p).
-			Column("name", "description", "status", "color").
-			Set("updated_at = now()").
-			Where("id = ?", before.ID).
-			Returning("*").
-			Scan(ctx)
-		if err != nil {
-			return err
-		}
-		changes := projectChanges(before, p)
-		if len(changes) == 0 {
-			return nil
-		}
-		return s.record(ctx, tx, events.ProjectUpdated{Project: p.PublicID, Workspace: w.PublicID, Changes: changes}, EventScope{WorkspaceID: w.ID})
+		p, err = s.updateProject(ctx, tx, w, before, in)
+		return err
 	})
 	return p, err
 }
@@ -132,23 +125,48 @@ func (s *Store) UpdateProject(ctx context.Context, w Workspace, publicID string,
 // workspace.
 func (s *Store) DeleteProject(ctx context.Context, w Workspace, publicID string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := lockBrowserProjectWrite(ctx, tx, w.ID, auth.ProjectDestroy); err != nil {
+			return err
+		}
 		var p Project
-		result, err := tx.NewDelete().Model(&p).
+		err := tx.NewSelect().Model(&p).
 			Where("p.public_id = ? AND p.workspace_id = ?", publicID, w.ID).
-			Returning("p.public_id, p.name").
-			Exec(ctx)
+			For("UPDATE").Scan(ctx)
 		if err != nil {
 			return err
 		}
-		n, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return sql.ErrNoRows
-		}
-		return s.record(ctx, tx, events.ProjectDeleted{Project: p.PublicID, Workspace: w.PublicID, Name: p.Name}, EventScope{WorkspaceID: w.ID})
+		return s.deleteProject(ctx, tx, w, p)
 	})
+}
+
+// lockBrowserProjectWrite shares v1's commit boundary without inventing a service
+// membership. The trusted request actor is re-read after acquiring its row lock.
+func lockBrowserProjectWrite(ctx context.Context, tx bun.Tx, workspaceID int64, permission auth.Permission) error {
+	if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+		return err
+	}
+	actor := events.Actor(ctx)
+	if actor == 0 {
+		return ErrApiKeyForbidden
+	}
+	var u User
+	if err := tx.NewSelect().Model(&u).Where("u.id = ?", actor).For("NO KEY UPDATE").Scan(ctx); err != nil {
+		return err
+	}
+	if err := checkNotSuspended(ctx, tx, actor); err != nil {
+		return err
+	}
+	if err := lockWorkspace(ctx, tx, workspaceID); err != nil {
+		return err
+	}
+	role, err := memberRole(ctx, tx, workspaceID, actor)
+	if err != nil {
+		return err
+	}
+	if !role.Can(permission) {
+		return ErrApiKeyForbidden
+	}
+	return nil
 }
 
 // projectChanges lists the editable fields that differ between before and after.

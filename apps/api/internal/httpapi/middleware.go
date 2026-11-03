@@ -206,17 +206,27 @@ func RequirePermission(p auth.Permission, next http.Handler) http.Handler {
 }
 func (s *Server) LimitAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
+		release, ok := s.authSlot(w, r)
+		if !ok {
 			return
 		}
-		select {
-		case s.authSlots <- struct{}{}:
-			defer func() { <-s.authSlots }()
-		default:
-			observe.PasswordHashBusy.Inc()
-			Fail(w, 503, "Sign-in is busy. Please try again shortly.")
-			return
-		}
+		defer release()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// authSlot also serves conditional fresh proof: narrowing API-key metadata
+// changes do not spend password/MFA guessing limits or occupy hashing slots.
+func (s *Server) authSlot(w http.ResponseWriter, r *http.Request) (func(), bool) {
+	if !s.Allow(w, r, AuthPerIP, AuthPerIP.IPKey(ClientIP(r))) {
+		return nil, false
+	}
+	select {
+	case s.authSlots <- struct{}{}:
+		return func() { <-s.authSlots }, true
+	default:
+		observe.PasswordHashBusy.Inc()
+		Fail(w, 503, "Sign-in is busy. Please try again shortly.")
+		return nil, false
+	}
 }

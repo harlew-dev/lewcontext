@@ -90,6 +90,14 @@ function EventDetails({ event }: { event: AdminEventDetail }) {
           <DescriptionDetails>
             {event.actor ? <AccountLink account={event.actor} /> : "None"}
           </DescriptionDetails>
+          {event.apiKeyPublicId && (
+            <>
+              <DescriptionTerm>API credential</DescriptionTerm>
+              <DescriptionDetails>
+                <Code>{event.apiKeyPublicId}</Code>
+              </DescriptionDetails>
+            </>
+          )}
           <DescriptionTerm>Account</DescriptionTerm>
           <DescriptionDetails>
             {event.user ? <AccountLink account={event.user} /> : "None"}

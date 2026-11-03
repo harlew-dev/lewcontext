@@ -141,6 +141,9 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, u User, hash string) er
 // email codes, MFA setups left unconfirmed, and invitations that expired over 30 days ago (until then they're listed as expired, so
 // whoever sent one can see why it wasn't used).
 func (s *Store) Cleanup(ctx context.Context, pseudonym func(string) string) error {
+	if err := s.cleanupApiKeys(ctx); err != nil {
+		return err
+	}
 	if _, err := s.DB.NewDelete().Model((*emailChange)(nil)).Where("expires_at <= clock_timestamp()").Exec(ctx); err != nil {
 		return err
 	}

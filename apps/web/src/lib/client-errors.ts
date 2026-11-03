@@ -29,6 +29,7 @@ export const clientRoutePatterns = [
   "/app/onboarding",
   "/app/verify-email",
   "/app/settings",
+  "/app/settings/api-keys",
   "/auth/forgot-password/:token",
   "/auth/invitations/:token",
   "/auth/email-blocks/:token",
@@ -37,6 +38,7 @@ export const clientRoutePatterns = [
   "/app/:workspace/projects/:project",
   "/app/:workspace/settings",
   "/app/:workspace/settings/members",
+  "/app/:workspace/settings/api-keys",
 ] as const;
 const notFoundPattern = "*";
 // The route pattern of a page's path: never the path itself.

@@ -41,7 +41,7 @@ var (
 // acting admin; ErrActionOnAdmin for another admin.
 func lockActionTarget(ctx context.Context, tx bun.Tx, publicID string, a AdminAction) (User, error) {
 	var u User
-	if err := tx.NewSelect().Model(&u).Where("u.public_id = ?", publicID).For("UPDATE").Scan(ctx); err != nil {
+	if err := tx.NewSelect().Model(&u).Where("u.public_id = ?", publicID).For("NO KEY UPDATE").Scan(ctx); err != nil {
 		return u, err
 	}
 	if u.ID == a.Admin.ID {

@@ -7,17 +7,6 @@ import (
 	"lewcontext/api/internal/httpapi/input"
 	"lewcontext/api/internal/store"
 	"net/http"
-	"slices"
-	"strings"
-	"unicode/utf8"
-)
-
-var projectColors = []string{"violet", "blue", "amber", "emerald", "rose"}
-
-const (
-	invalidProject            = "Check the project name, description, status, and color."
-	invalidProjectName        = "Use a project name of 1–100 characters, without invisible formatting characters."
-	invalidProjectDescription = "Use a description of up to 500 characters, without invisible formatting characters."
 )
 
 // validProject trims the name and description and checks them, the status
@@ -28,18 +17,7 @@ const (
 // NUL among them, which PostgreSQL can't store), though a description may
 // break lines.
 func validProject(in *store.ProjectInput) (field, message string, ok bool) {
-	in.Name = strings.TrimSpace(in.Name)
-	in.Description = strings.TrimSpace(in.Description)
-	n := utf8.RuneCountInString(in.Name)
-	switch {
-	case n < 1 || n > 100 || !input.ValidText(in.Name, false):
-		return "name", invalidProjectName, false
-	case utf8.RuneCountInString(in.Description) > 500 || !input.ValidText(in.Description, true):
-		return "description", invalidProjectDescription, false
-	case !slices.Contains(input.ProjectStatuses, in.Status) || !slices.Contains(projectColors, in.Color):
-		return "", invalidProject, false
-	}
-	return "", "", true
+	return input.ValidProject(in)
 }
 
 // decodeProject reads a project from the body: 400 for a body that isn't
@@ -116,6 +94,18 @@ func (h Projects) Store(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.Repo.CreateProject(r.Context(), httpapi.Workspace(r), in)
+	if errors.Is(err, store.ErrApiKeyForbidden) {
+		httpapi.Fail(w, 403, "You don’t have permission to do that in this workspace.")
+		return
+	}
+	if errors.Is(err, store.ErrSuspended) {
+		httpapi.Fail(w, 401, httpapi.SessionExpired)
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		httpapi.NotFound(w, r)
+		return
+	}
 	var quota store.QuotaError
 	if errors.As(err, &quota) {
 		httpapi.Fail(w, 422, "A workspace can have up to "+thousands(quota.Max)+" projects.")
@@ -138,6 +128,14 @@ func (h Projects) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.Repo.UpdateProject(r.Context(), httpapi.Workspace(r), id, in)
+	if errors.Is(err, store.ErrApiKeyForbidden) {
+		httpapi.Fail(w, 403, "You don’t have permission to do that in this workspace.")
+		return
+	}
+	if errors.Is(err, store.ErrSuspended) {
+		httpapi.Fail(w, 401, httpapi.SessionExpired)
+		return
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		httpapi.Fail(w, 404, "Project not found.")
 		return
@@ -155,6 +153,14 @@ func (h Projects) Destroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.Repo.DeleteProject(r.Context(), httpapi.Workspace(r), id)
+	if errors.Is(err, store.ErrApiKeyForbidden) {
+		httpapi.Fail(w, 403, "You don’t have permission to do that in this workspace.")
+		return
+	}
+	if errors.Is(err, store.ErrSuspended) {
+		httpapi.Fail(w, 401, httpapi.SessionExpired)
+		return
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		httpapi.Fail(w, 404, "Project not found.")
 		return

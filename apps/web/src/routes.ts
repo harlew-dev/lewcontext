@@ -33,7 +33,10 @@ const appRoutes = [
   route("app/onboarding", "pages/app/onboarding/index.tsx"),
   route("app/verify-email", "pages/app/verify-email/index.tsx"),
   layout("pages/app/layout.tsx", [
-    route("app/settings", "pages/app/settings/index.tsx"),
+    route("app/settings", "pages/app/settings/layout.tsx", [
+      index("pages/app/settings/index.tsx"),
+      route("api-keys", "pages/app/settings/api-keys/index.tsx"),
+    ]),
     route(
       "app/:workspace/dashboard",
       "pages/app/[workspace]/dashboard/index.tsx",
@@ -53,6 +56,7 @@ const appRoutes = [
       [
         index("pages/app/[workspace]/settings/index.tsx"),
         route("members", "pages/app/[workspace]/settings/members/index.tsx"),
+        route("api-keys", "pages/app/[workspace]/settings/api-keys/index.tsx"),
       ],
     ),
   ]),

@@ -27,6 +27,17 @@ func LockEmail(ctx context.Context, tx bun.Tx, email string) error {
 // schema of their own, don't wait on each other.
 const ipBlocksLock = "lewcontext:ip-blocks:"
 
+// LockWorkspaceGraph prevents account cascades reversing workspace/event FK
+// locks. Ordinary graph writers share the barrier; account erasure takes it
+// exclusively, before any row lock. Never upgrade it inside a transaction.
+func LockWorkspaceGraph(ctx context.Context, tx bun.Tx, deletingAccount bool) error {
+	var locked string
+	if deletingAccount {
+		return tx.NewSelect().ColumnExpr("pg_advisory_xact_lock(hashtextextended(? || current_schema(), 0))::text", "lewcontext:workspace-graph:").Scan(ctx, &locked)
+	}
+	return tx.NewSelect().ColumnExpr("pg_advisory_xact_lock_shared(hashtextextended(? || current_schema(), 0))::text", "lewcontext:workspace-graph:").Scan(ctx, &locked)
+}
+
 // LockIPBlocks takes the IP blocks' advisory lock for tx, waiting for it,
 // held until tx commits or rolls back: creating a block takes it before
 // counting the live ones, so two admins blocking at once can't both pass

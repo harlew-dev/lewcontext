@@ -169,6 +169,31 @@ var (
 	IncidentCommentPerUser = ratelimit.Limit{Name: "incident-comment:per-user", Block: ratelimit.Above(60), Window: time.Hour}
 	// AlertSubscriptionPerUser: personal global and per-signal preference patches.
 	AlertSubscriptionPerUser = ratelimit.Limit{Name: "alert-subscription:per-user", Block: ratelimit.Above(60), Window: time.Hour}
+
+	// ApiKeyIngressPerIP: coarse machine-traffic flood ceiling before lookup.
+	ApiKeyIngressPerIP = ratelimit.Limit{Name: "api-key-ingress:per-ip", Block: ratelimit.Above(10000), Window: 5 * time.Minute, InMemory: true}
+	// ApiKeyAuthPerIP: failed credential guesses, never successful traffic.
+	ApiKeyAuthPerIP = ratelimit.Limit{Name: "api-key-auth:per-ip", Block: ratelimit.Above(300), Window: 5 * time.Minute, InMemory: true}
+	// ApiKeyReadPerKey: each credential's reads, per process.
+	ApiKeyReadPerKey = ratelimit.Limit{Name: "api-key-read:per-key", Block: ratelimit.Above(1000), Window: 5 * time.Minute, InMemory: true}
+	// ApiKeyWritePerKey: each credential's writes, shared across servers.
+	ApiKeyWritePerKey = ratelimit.Limit{Name: "api-key-write:per-key", Block: ratelimit.Above(300), Window: 15 * time.Minute}
+	// ApiKeyReadPerWorkspace: all credentials' reads in one workspace.
+	ApiKeyReadPerWorkspace = ratelimit.Limit{Name: "api-key-read:per-workspace", Block: ratelimit.Above(5000), Window: 5 * time.Minute, InMemory: true}
+	// ApiKeyWritePerWorkspace: all credentials' writes in one workspace.
+	ApiKeyWritePerWorkspace = ratelimit.Limit{Name: "api-key-write:per-workspace", Block: ratelimit.Above(1500), Window: 15 * time.Minute}
+	// ApiKeyReadPerUser: one owner's personal credentials' reads.
+	ApiKeyReadPerUser = ratelimit.Limit{Name: "api-key-read:per-user", Block: ratelimit.Above(1000), Window: 5 * time.Minute, InMemory: true}
+	// ApiKeyWritePerUser: one owner's personal credentials' writes.
+	ApiKeyWritePerUser = ratelimit.Limit{Name: "api-key-write:per-user", Block: ratelimit.Above(300), Window: 15 * time.Minute}
+	// ApiKeyCreatePerUser: issuance across personal and workspace kinds.
+	ApiKeyCreatePerUser = ratelimit.Limit{Name: "api-key-create:per-user", Block: ratelimit.Above(20), Window: time.Hour}
+	// ApiKeyProjectPerWorkspace: new project creates, not idempotent replays.
+	ApiKeyProjectPerWorkspace = ratelimit.Limit{Name: "api-key-project:per-workspace", Block: ratelimit.Above(100), Window: time.Hour}
+	// ApiKeyRevokePerUser: session-specific recovery allowance for revocation.
+	ApiKeyRevokePerUser = ratelimit.Limit{Name: "api-key-revoke:per-user", Block: ratelimit.Above(60), Window: time.Hour}
+	// ApiKeyManagementReadPerUser: session-specific recovery metadata reads.
+	ApiKeyManagementReadPerUser = ratelimit.Limit{Name: "api-key-management-read:per-user", Block: ratelimit.Above(1000), Window: 5 * time.Minute, InMemory: true}
 )
 
 // RateLimits lists every limit, for TestRateLimitNames.
@@ -187,6 +212,7 @@ var RateLimits = []ratelimit.Limit{
 	AdminActionPerUser,
 	IncidentCommentPerUser,
 	AlertSubscriptionPerUser,
+	ApiKeyIngressPerIP, ApiKeyAuthPerIP, ApiKeyReadPerKey, ApiKeyWritePerKey, ApiKeyReadPerWorkspace, ApiKeyWritePerWorkspace, ApiKeyReadPerUser, ApiKeyWritePerUser, ApiKeyCreatePerUser, ApiKeyProjectPerWorkspace, ApiKeyRevokePerUser, ApiKeyManagementReadPerUser,
 }
 
 // Allow counts a request against l under key. Above the block level it

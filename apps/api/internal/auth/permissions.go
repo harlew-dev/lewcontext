@@ -28,6 +28,10 @@ const (
 	WorkspaceMemberIndex       Permission = "workspace.member.index"       // see who is in the workspace
 	WorkspaceMemberUpdate      Permission = "workspace.member.update"      // change a role
 	WorkspaceMemberDestroy     Permission = "workspace.member.destroy"     // remove from the workspace; the account stays
+	WorkspaceApiKeyIndex       Permission = "workspace.api_key.index"
+	WorkspaceApiKeyStore       Permission = "workspace.api_key.store"
+	WorkspaceApiKeyUpdate      Permission = "workspace.api_key.update"
+	WorkspaceApiKeyDestroy     Permission = "workspace.api_key.destroy"
 	ProjectStore               Permission = "project.store"
 	ProjectUpdate              Permission = "project.update"
 	ProjectDestroy             Permission = "project.destroy"
@@ -45,12 +49,14 @@ var grants = map[Role][]Permission{
 		WorkspaceUpdate, WorkspaceDestroy,
 		WorkspaceInvitationIndex, WorkspaceInvitationStore, WorkspaceInvitationDestroy,
 		WorkspaceMemberIndex, WorkspaceMemberUpdate, WorkspaceMemberDestroy,
+		WorkspaceApiKeyIndex, WorkspaceApiKeyStore, WorkspaceApiKeyUpdate, WorkspaceApiKeyDestroy,
 		ProjectStore, ProjectUpdate, ProjectDestroy,
 	},
 	RoleAdmin: {
 		WorkspaceUpdate,
 		WorkspaceInvitationIndex, WorkspaceInvitationStore, WorkspaceInvitationDestroy,
 		WorkspaceMemberIndex, WorkspaceMemberUpdate, WorkspaceMemberDestroy,
+		WorkspaceApiKeyIndex, WorkspaceApiKeyStore, WorkspaceApiKeyUpdate, WorkspaceApiKeyDestroy,
 		ProjectStore, ProjectUpdate, ProjectDestroy,
 	},
 	RoleMember: {ProjectStore, ProjectUpdate},

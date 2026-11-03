@@ -1,6 +1,8 @@
 getting started like tembo, is in sidebar shows items like - Create a project, Invite a member, create an API key, in like a `getting started progress` card bottom of sidebar? 
 
 
+there's an issue with the admin sidebar, when you scroll down on the page content.
+select a admin sidebar item. the sidebar selected/hover movement goes from bottom to top, even when the previously selected item was above it. can you investigate, no fix needed yet.
 
   
 Task/Notes

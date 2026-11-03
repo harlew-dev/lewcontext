@@ -59,11 +59,13 @@ var clientRoutes = map[string]bool{
 	"/app/onboarding":                   true,
 	"/app/verify-email":                 true,
 	"/app/settings":                     true,
+	"/app/settings/api-keys":            true,
 	"/app/:workspace/dashboard":         true,
 	"/app/:workspace/projects":          true,
 	"/app/:workspace/projects/:project": true,
 	"/app/:workspace/settings":          true,
 	"/app/:workspace/settings/members":  true,
+	"/app/:workspace/settings/api-keys": true,
 	"*":                                 true,
 }
 

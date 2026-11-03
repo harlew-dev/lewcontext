@@ -200,7 +200,7 @@ The trace can be viewed two ways:
 
 The retrieval and graph features are being built into a working project workspace with a Go API, PostgreSQL, and a React single-page app with a prerendered public homepage. The UI is built with Tailwind (sidebar layout, auth layout, buttons, fields, listbox, dialog, dropdown, table) on **Base UI (`@base-ui/react`, by MUI)** for behaviour, with light and dark mode.
 
-It is a working app, not a mockup. The dashboard shows real database data: you can create and edit projects, change their status, search and filter them, manage other sessions and sign out. Data persists across reloads, and every account can access only its own projects.
+It is a working app, not a mockup. The dashboard shows real database data: you can create and edit projects, change their status, search and filter them, manage other sessions and sign out. Data persists across reloads, and workspace memberships determine which projects an account can access. Workspace and personal [API keys](docs/api/api-keys.md) let integrations use the scoped `/api/v1` project API; manage them from the API Keys tab in workspace or account settings.
 
 ### Getting started
 
@@ -291,7 +291,7 @@ make test-e2e # end-to-end tests in Chromium, against the production binary
 
 Tests use the committed `.env.testing` and nothing from `.env`, however they're started. **Integration tests** run against a real PostgreSQL database, `lewcontext_test`, each in a fresh temporary schema that is removed afterwards; `make test` fails if the database isn't running.
 
-**End-to-end tests** build the single binary and start it on :3100 against a database of their own (`lewcontext_test_3100`), so they run beside `make dev`. Another run at the same time takes another port and database: `make test-e2e E2E_PORT=auto`. They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout and persistence. Chromium comes from Playwright (`npx playwright install chromium`); set `CHROMIUM_PATH` to use a system browser instead. See the [test environment guide](docs/testing.md).
+**End-to-end tests** build the single binary and start it on :3100 against a database of their own (`lewcontext_test_3100`), so they run beside `make dev`. Another run at the same time takes another port and database: `make test-e2e E2E_PORT=auto`. They cover registration, login failures, project creation and editing, pending states, filters, the prerendered homepage, the `/app` session redirect, CSP hashes (no violations), security headers, mobile layout, session revocation, logout, scoped API-key access and revocation, and persistence. Chromium comes from Playwright (`npx playwright install chromium`); set `CHROMIUM_PATH` to use a system browser instead. See the [test environment guide](docs/testing.md).
 
 ### Architecture
 
@@ -325,7 +325,8 @@ The app shell and API responses are never cached, while hashed assets are cached
 
 - **Passwords** are hashed with Argon2id.
 - **Sessions** use 256-bit opaque random tokens, stored as SHA-256 digests, in HttpOnly/SameSite cookies. They expire after 30 minutes idle or 24 hours in total, rotate at login, are revoked at logout, and are limited to five per account.
-- **Mutations** require an exact trusted `Origin`, a JSON content type and an authenticated CSRF token.
+- **Browser mutations** require an exact trusted `Origin`, a JSON content type and an authenticated CSRF token.
+- **API keys** authenticate only the supported `/api/v1` project routes with a bearer credential, bound to one workspace and explicit project/action grants. Machine mutations require JSON; key management requires a browser session and fresh account proof when issuing or broadening access.
 - **Rate limits:** auth endpoints have persistent IP and account limits and bounded hashing concurrency; every signed-in request has a budget per user, creating workspaces and projects has its own limit, and quotas cap how many can exist ([details](docs/api/rate-limits.md)).
 
 See [security details and limits](docs/api/auth.md).

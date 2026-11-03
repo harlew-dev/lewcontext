@@ -4,12 +4,35 @@ import (
 	"context"
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi/apitest"
+	"lewcontext/api/internal/httpapi/ratelimit"
 	"lewcontext/api/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func TestAnonymousApiLimitsRecordOneCrossingForInFlightFailures(t *testing.T) {
+	for _, limit := range []ratelimit.Limit{ApiKeyAuthPerIP, ApiKeyIngressPerIP} {
+		t.Run(limit.Name, func(t *testing.T) {
+			s := budgetServer(t)
+			for range limit.Block.At() - 1 {
+				s.apiAnonymous.Count(limit.IPKey("127.0.0.1"), limit.Window, true)
+			}
+			// Two failures may both pass the pre-auth check before either
+			// completes. Count both completions: only one may emit the event.
+			h := s.ClientAddress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if s.anonymousApiLimit(w, r, limit, true) {
+					w.WriteHeader(http.StatusOK)
+				}
+			}))
+			apitest.Call(t, h, "GET", "/api/v1/example", "", "", nil, 200)
+			refused := apitest.Call(t, h, "GET", "/api/v1/example", "", "", nil, 429)
+			apitest.RetryWithin(t, refused, limit.Window)
+			apitest.Reached(t, s.Repo.DB, limit.Name+":block")
+		})
+	}
+}
 
 // The in-memory budgets are tested through the middleware, since only this
 // package can fill the counter (memoryLimits). Which routes are metered is

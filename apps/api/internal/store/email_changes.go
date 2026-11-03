@@ -108,6 +108,9 @@ func lockEmailChangeAccount(ctx context.Context, tx bun.Tx, userID int64, sessio
 	err = tx.NewSelect().Model(&session).
 		Where("s.user_id = ? AND s.token_hash = ? AND s.expires_at > clock_timestamp() AND s.last_seen_at > clock_timestamp() - interval '30 minutes'", userID, sessionHash).
 		For("UPDATE").Scan(ctx)
+	if err == nil && (!session.ExpiresAt.After(time.Now()) || !session.LastSeenAt.After(time.Now().Add(-30*time.Minute))) {
+		err = sql.ErrNoRows
+	}
 	return a, err
 }
 

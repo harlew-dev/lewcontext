@@ -7,6 +7,7 @@ CREATE TABLE projects (
  status text NOT NULL DEFAULT 'In progress' CHECK (status IN ('In progress','Planned','Completed')),
  color text NOT NULL DEFAULT 'violet' CHECK (color IN ('violet','blue','amber','emerald','rose')),
  created_at timestamptz NOT NULL DEFAULT now(),
- updated_at timestamptz NOT NULL DEFAULT now()
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT projects_id_workspace_unique UNIQUE (id, workspace_id)
 );
 CREATE INDEX projects_workspace_updated_idx ON projects(workspace_id, updated_at DESC);

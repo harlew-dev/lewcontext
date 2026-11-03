@@ -30,6 +30,7 @@ export function PasswordField({
   error,
   disabled,
   autoFocus = true,
+  required = true,
 }: {
   label: string;
   description?: string;
@@ -39,6 +40,7 @@ export function PasswordField({
   error?: string;
   disabled: boolean;
   autoFocus?: boolean;
+  required?: boolean;
 }) {
   return (
     <Field disabled={disabled}>
@@ -48,7 +50,7 @@ export function PasswordField({
         type="password"
         autoComplete={autoComplete}
         autoFocus={autoFocus}
-        required
+        required={required}
         maxLength={128}
         invalid={Boolean(error)}
         value={value}

@@ -15,6 +15,8 @@ The app build's output check (`scripts/check-app-build.sh`) has a shell self-tes
 
 ## Vitest + React Testing Library
 
+API-key dialog tests cover creation-only local secret state, no credential in masked DOM, copying while masked, reveal/Done disposal, uncertain-response messaging, proof-free renaming versus grant broadening, API searches from the project Combobox (including description-only matches), observer-driven pagination, selection/label preservation across queries/pages, empty results with Escape, and no unauthorized workspace fetch. MFA coverage checks no proof field before submission, a genuinely nested modal, initial focus, cancellation with retained form, wrong-code handling and recovery proof in the creation request. `tests/e2e/api-keys.spec.ts` exercises both settings areas, selected-project list/update isolation, UI revocation and subsequent bearer 401, personal-key creation, live demotion/promotion and permanent revocation after removal/rejoining, mobile layout, page errors/CSP, and saves screenshots with credentials concealed. Browser coverage also scrolls beyond the first 20 projects, searches by description through the Combobox, and enables real MFA to test the nested modal, focus restoration, rejected reused authenticator code and successful recovery-code issuance.
+
 - Files sit next to the code as `*.test.ts(x)` and run in jsdom (`vitest.config.ts`, setup in `tests/setup.ts`). Vitest runs from `apps/web`. It has its own config, without the React Router Vite plugin.
 - **Shared setup:** `tests/setup.ts` runs `cleanup()` and `vi.unstubAllGlobals()` after every test, so test files don't repeat them.
 - **Faking the API:** `stubApi` from `src/test/api.ts` answers `fetch` from a table of `"METHOD url"` keys (the exact URL, then the path without its query, then `"*"`) and records what was sent:
@@ -22,13 +24,17 @@ The app build's output check (`scripts/check-app-build.sh`) has a shell self-tes
   ```ts
   const api = stubApi({
     "POST /api/auth/password/verify": { status: 204 },
-    "PATCH /api/auth/password": [{ status: 422, body: { error, field } }, { body: session }],
+    "PATCH /api/auth/password": [
+      { status: 422, body: { error, field } },
+      { body: session },
+    ],
     "*": { body: {} },
   });
   api.sent("PATCH"); // [{ method, url, body, csrf }]
   ```
 
   A list of replies is used in order and its last one repeats; anything unmatched gets a 404 naming the missing stub. A reply may carry response `headers` (the admin pages' `X-Admin-Key-Status`). A reply can hold its response until a `gate()` is released (to check pending states) or fail as if the network were down (`network: true`). `testSession(overrides)` from `src/test/session.ts` is a signed-in session to pass to `SessionProvider`. Only `lib/api/http.test.ts` (the transport, with raw `Response`s) and `lib/use-resource-pages.test.tsx` (an outage that changes mid-test) stub `fetch` themselves.
+
 - **Routing in tests:** components that render links need a router: `render(ui, { wrapper: MemoryRouter })`. Hooks that navigate are tested by mocking `useNavigate`/`useLocation` with `vi.mock("react-router", async (importOriginal) => ({ ...(await importOriginal()), useNavigate: () => navigate }))`.
 - **Query by role and accessible name** (`getByRole("link", { name: "Page 2" })`), and assert on behaviour: links, `aria-current`, `aria-sort`, `aria-busy`, disabled state, callbacks. Don't write tests that only mirror styling.
 - **Naming checks** ([../checks.md](../checks.md)): `lib/api/naming.test.ts` (the API client's methods and typed paths are the API's actions or listed verbs), `lib/routes.test.ts` (page route constants are resource groups of `index`, `show`, `create`, `edit`, or listed plain pages), `pages/naming.test.ts` (each resource page, found through `src/routes.ts`, exports `<Resource><Action>`) and `naming.test.ts` (kebab-case files outside `pages/`). Each is a pure function with a table test of names it must refuse, then a run on the real modules; exceptions are lists in the test, with reasons.
@@ -86,11 +92,11 @@ The app build's output check (`scripts/check-app-build.sh`) has a shell self-tes
 
 Other people or agents may run the suite on the same machine. Each run gets its own port and database from one variable, and finds out within a second, before anything is built, if it can't have them:
 
-| `E2E_PORT` | Server | Database |
-| --- | --- | --- |
-| unset (3100, from `.env.testing`) | `http://localhost:3100` | `lewcontext_test_3100` |
-| a port, e.g. `3101` | `http://localhost:3101` | `lewcontext_test_3101`, created on first use |
-| `auto` | the first free port from 3101 up | `lewcontext_test_<port>` |
+| `E2E_PORT`                        | Server                           | Database                                     |
+| --------------------------------- | -------------------------------- | -------------------------------------------- |
+| unset (3100, from `.env.testing`) | `http://localhost:3100`          | `lewcontext_test_3100`                       |
+| a port, e.g. `3101`               | `http://localhost:3101`          | `lewcontext_test_3101`, created on first use |
+| `auto`                            | the first free port from 3101 up | `lewcontext_test_<port>`                     |
 
 ```sh
 make test-e2e                  # :3100
@@ -108,6 +114,7 @@ make test-e2e E2E_PORT=auto    # pick a free one; it prints what it took
   ```
 
   A run that gets its port says what it uses: `E2E run: app http://localhost:3104 · database lewcontext_test_3104`.
+
 - **Why a lock, not only a port check:** the build takes a while and the server rebuilds its database before binding the port, so two runs starting together would both pass a port check, and the second would wipe the first's database. The lock is taken before both. It's the same file for every checkout and worktree on the machine.
 - **Shared on purpose:** the PostgreSQL container (a database per port) and Mailpit. Go and Vitest runs don't collide: Go tests use throwaway schemas in `lewcontext_test`.
 - **`make serve-test` on its own** (a server to check something by hand) reserves the port the same way; under `make test-e2e` it uses the reservation its parent holds. Accounts you make by hand on it vanish at the next start, when its database is rebuilt.

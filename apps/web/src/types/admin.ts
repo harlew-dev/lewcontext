@@ -140,6 +140,7 @@ export type AdminRef = { id: string; name?: string; email?: string };
 // event's own fields (docs/api/events.md). `failed`: it records a failed
 // check (a wrong password, a refused code, …).
 export type AdminEvent = {
+  apiKeyPublicId?: string;
   id: string;
   name: string;
   createdAt: string;

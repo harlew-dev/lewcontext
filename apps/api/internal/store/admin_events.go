@@ -53,16 +53,17 @@ type AdminRef struct {
 // its column or, once that's empty, from the payload. Failed: it records a
 // failed check (adminEventFailures).
 type AdminEvent struct {
-	ID        int64           `json:"-"`
-	PublicID  string          `json:"id"`
-	Name      string          `json:"name"`
-	CreatedAt time.Time       `json:"createdAt"`
-	Failed    bool            `json:"failed"`
-	Actor     *AdminRef       `json:"actor"`
-	User      *AdminRef       `json:"user"`
-	Workspace *AdminRef       `json:"workspace"`
-	IP        *string         `json:"ip"`
-	Payload   json.RawMessage `json:"payload"`
+	ApiKeyPublicID string          `json:"apiKeyPublicId"`
+	ID             int64           `json:"-"`
+	PublicID       string          `json:"id"`
+	Name           string          `json:"name"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	Failed         bool            `json:"failed"`
+	Actor          *AdminRef       `json:"actor"`
+	User           *AdminRef       `json:"user"`
+	Workspace      *AdminRef       `json:"workspace"`
+	IP             *string         `json:"ip"`
+	Payload        json.RawMessage `json:"payload"`
 }
 
 // AdminEventPage is one page of events and the cursor for the next, older
@@ -100,23 +101,24 @@ const maxRelatedEvents = 20
 
 // adminEventRow is an event as scanned, before its references are named.
 type adminEventRow struct {
-	ID          int64           `bun:"id"`
-	PublicID    string          `bun:"public_id"`
-	Name        string          `bun:"name"`
-	CreatedAt   time.Time       `bun:"created_at"`
-	Failed      bool            `bun:"failed"`
-	ActorID     sql.NullInt64   `bun:"actor_id"`
-	UserID      sql.NullInt64   `bun:"user_id"`
-	WorkspaceID sql.NullInt64   `bun:"workspace_id"`
-	IP          sql.NullString  `bun:"ip"`
-	Payload     json.RawMessage `bun:"payload"`
-	UserAgent   string          `bun:"user_agent"`
+	ApiKeyPublicID string          `bun:"api_key_public_id"`
+	ID             int64           `bun:"id"`
+	PublicID       string          `bun:"public_id"`
+	Name           string          `bun:"name"`
+	CreatedAt      time.Time       `bun:"created_at"`
+	Failed         bool            `bun:"failed"`
+	ActorID        sql.NullInt64   `bun:"actor_id"`
+	UserID         sql.NullInt64   `bun:"user_id"`
+	WorkspaceID    sql.NullInt64   `bun:"workspace_id"`
+	IP             sql.NullString  `bun:"ip"`
+	Payload        json.RawMessage `bun:"payload"`
+	UserAgent      string          `bun:"user_agent"`
 }
 
 // adminEvents selects events with their columns as the dashboard reads them.
 func adminEvents(db bun.IDB) *bun.SelectQuery {
 	return db.NewSelect().Model((*eventRecord)(nil)).
-		ColumnExpr("e.id, e.public_id, e.name, e.created_at, e.actor_id, e.user_id, e.workspace_id").
+		ColumnExpr("e.id, e.public_id, e.name, e.created_at, e.actor_id, e.user_id, e.workspace_id, e.api_key_public_id").
 		ColumnExpr("?, e.payload, e.user_agent", eventIP).
 		ColumnExpr("? AS failed", failedCondition())
 }
@@ -318,7 +320,8 @@ func (s *Store) nameEventRefs(ctx context.Context, rows []adminEventRow) ([]Admi
 	out := make([]AdminEvent, len(rows))
 	for i, row := range rows {
 		out[i] = AdminEvent{
-			ID: row.ID, PublicID: row.PublicID, Name: row.Name, CreatedAt: row.CreatedAt, Failed: row.Failed, Payload: row.Payload,
+			ApiKeyPublicID: row.ApiKeyPublicID,
+			ID:             row.ID, PublicID: row.PublicID, Name: row.Name, CreatedAt: row.CreatedAt, Failed: row.Failed, Payload: row.Payload,
 			Actor:     users.ref(row.ActorID, refs[i].Admin),
 			User:      users.ref(row.UserID, refs[i].User),
 			Workspace: workspaces.ref(row.WorkspaceID, refs[i].Workspace),

@@ -34,6 +34,7 @@ type AccountExport struct {
 	EventsTruncated    bool                     `json:"eventsTruncated"`
 	PendingEmailChange *ExportedEmailChange     `json:"pendingEmailChange"`
 	FormerEmails       []ExportedFormerEmail    `json:"formerEmails"`
+	ApiKeys            []ExportedApiKey         `json:"apiKeys"`
 }
 
 // ExportedEmailChange deliberately omits session, code and request digests.
@@ -128,6 +129,9 @@ func (s *Store) FindAccountExport(ctx context.Context, userID int64) (AccountExp
 	out := AccountExport{ExportedAt: time.Now().UTC()}
 	err := s.DB.RunInTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}, func(ctx context.Context, tx bun.Tx) error {
 		var err error
+		if out.ApiKeys, err = exportApiKeys(ctx, tx, userID); err != nil {
+			return err
+		}
 		if out.Account, err = exportAccount(ctx, tx, userID); err != nil {
 			return err
 		}

@@ -4,6 +4,8 @@ Code: `internal/auth` (primitives), `internal/httpapi/endpoints/account` (the co
 
 ## Passwords
 
+API keys are separate credentials ([api-keys.md](api-keys.md)): password change/reset and operator MFA reset preserve them under the confirmed product policy. Suspension and workspace leaving/removal permanently revoke personal keys, atomically; workspace credentials survive creator changes. Required email verification temporarily gates personal-key use with generic 401. Only the explicit v1 project routes use bearer authentication; browser key management retains sessions, exact Origin and CSRF plus fresh proof for issuance/broadening.
+
 - Argon2id: 19 MiB, 2 iterations, 1 lane, random 16-byte salt, 32-byte digest, constant-time comparison.
 - Sign-up requires 12+ Unicode characters; every password is at most 128 UTF-8 bytes. Login only checks that cap, so seeded development accounts with a short `DEMO_PASSWORD` (`password`) can sign in. Emails are trimmed and lowercased; names are 1–80 characters.
 - Login against an unknown email still checks a dummy hash, and every failure gives the same message.
@@ -176,19 +178,19 @@ Sign-ups (requested, sent, each code checked, completed), email verifications, l
 
 Data belongs to workspaces; users reach a workspace through a `workspace_user` row with a role: `owner`, `admin`, `member` or `viewer`. What each role may do is a list of named permissions, `<resource>.<action>` after the route's CRUD action, granted in one table (`grants` in `internal/auth/permissions.go`):
 
-| Permission | owner | admin | member | viewer | Guards |
-| --- | --- | --- | --- | --- | --- |
-| *(membership)* | ✓ | ✓ | ✓ | ✓ | `GET` the workspace and its projects |
-| `workspace.update` | ✓ | ✓ | | | `PATCH /workspaces/{ws}` |
-| `workspace.destroy` | ✓ | | | | `DELETE /workspaces/{ws}` |
-| `workspace.invitation.index` / `.store` / `.destroy` | ✓ | ✓ | | | `GET`, `POST …/invitations`, `DELETE …/invitations/{inv}` ([Invitations](#invitations)) |
-| `workspace.member.index` | ✓ | ✓ | | | `GET …/members` |
-| `workspace.member.update` | ✓ | ✓ | | | `PATCH …/members/{usr}` |
-| `workspace.member.destroy` | ✓ | ✓ | | | `DELETE …/members/{usr}` |
-| `auth.AnyMember` | ✓ | ✓ | ✓ | ✓ | `DELETE …/membership` (leave) |
-| `project.store` | ✓ | ✓ | ✓ | | `POST …/projects` |
-| `project.update` | ✓ | ✓ | ✓ | | `PATCH …/projects/{prj}` |
-| `project.destroy` | ✓ | ✓ | | | `DELETE …/projects/{prj}` |
+| Permission                                           | owner | admin | member | viewer | Guards                                                                                  |
+| ---------------------------------------------------- | ----- | ----- | ------ | ------ | --------------------------------------------------------------------------------------- |
+| _(membership)_                                       | ✓     | ✓     | ✓      | ✓      | `GET` the workspace and its projects                                                    |
+| `workspace.update`                                   | ✓     | ✓     |        |        | `PATCH /workspaces/{ws}`                                                                |
+| `workspace.destroy`                                  | ✓     |       |        |        | `DELETE /workspaces/{ws}`                                                               |
+| `workspace.invitation.index` / `.store` / `.destroy` | ✓     | ✓     |        |        | `GET`, `POST …/invitations`, `DELETE …/invitations/{inv}` ([Invitations](#invitations)) |
+| `workspace.member.index`                             | ✓     | ✓     |        |        | `GET …/members`                                                                         |
+| `workspace.member.update`                            | ✓     | ✓     |        |        | `PATCH …/members/{usr}`                                                                 |
+| `workspace.member.destroy`                           | ✓     | ✓     |        |        | `DELETE …/members/{usr}`                                                                |
+| `auth.AnyMember`                                     | ✓     | ✓     | ✓      | ✓      | `DELETE …/membership` (leave)                                                           |
+| `project.store`                                      | ✓     | ✓     | ✓      |        | `POST …/projects`                                                                       |
+| `project.update`                                     | ✓     | ✓     | ✓      |        | `PATCH …/projects/{prj}`                                                                |
+| `project.destroy`                                    | ✓     | ✓     |        |        | `DELETE …/projects/{prj}`                                                               |
 
 A viewer reads everything except the member and invitation lists (which hold other people's emails) and changes nothing. For actions on another person's role, `Role.AssignableRoles()` also says which roles may be targeted: an owner any role, an admin only `member` and `viewer` (so only owners create admins or touch owners), others none. An action on a member needs the permission, and the target's current role (and, for a role change, the new one) in that list; otherwise 403. Acting on yourself goes through leaving, not `members/{usr}` (422).
 
@@ -197,7 +199,7 @@ A viewer reads everything except the member and invitation lists (which hold oth
 - The workspace response carries `permissions` and `assignableRoles`, computed from the role, and the web app hides controls with `can(workspace, permission)` instead of keeping its own copy of the rules. The API is what enforces them.
 - Creating a workspace makes the creator its `owner`, in the same transaction.
 - **Members** (`internal/store/members.go`): changing a role, removing someone and leaving each run in one transaction that first locks the workspace row (`FOR UPDATE`), then re-reads the actor's role and the target's membership, so concurrent changes are serialised. A change that would leave no owner (demoting, removing or leaving as the only owner) is refused with 409 (`ErrLastOwner`); two owners demoting each other at once leave one. Promoting someone to owner, then stepping down, is how ownership moves. Workspace responses carry `canLeave` (false for the only owner) so the web app can say so before you try.
-- **Removal** deletes only the `workspace_user` row: the user's next request to that workspace gets 404, their sessions and account stay, and the workspace's projects stay (projects have no owner). Only owners and admins can list members, so members and viewers never see other members' emails.
+- **Removal** deletes the `workspace_user` row and permanently revokes that user's personal API keys for the workspace in the same transaction: the user's next browser request gets 404 and the key gets generic 401. Their sessions/account and the workspace's projects stay (projects have no owner). Only owners and admins can list members, so members and viewers never see other members' emails.
 - **Transferring ownership** is promoting someone to owner, then leaving or stepping down; there is no separate transfer flow.
 - Public IDs are unguessable (about 83 random bits), but access never depends on that: every workspace route checks membership.
 

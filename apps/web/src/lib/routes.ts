@@ -27,6 +27,12 @@ export const routes = {
   members: {
     index: (workspace: string) => `/app/${workspace}/settings/members`,
   },
+  workspaceApiKeys: {
+    index: (workspace: string) => `/app/${workspace}/settings/api-keys`,
+  },
+  userApiKeys: {
+    index: () => "/app/settings/api-keys",
+  },
   // The terms of service and privacy policy, prerendered; Go serves them
   // only with POLICIES=on.
   termsOfService: "/policy/terms-of-service",
@@ -75,11 +81,13 @@ const returnRoutes = [
   invitationLink,
   /^\/app$/,
   /^\/app\/settings$/,
+  /^\/app\/settings\/api-keys$/,
   new RegExp(`^/app/${wsp}/dashboard$`),
   new RegExp(`^/app/${wsp}/projects$`),
   new RegExp(`^/app/${wsp}/projects/${prj}$`),
   new RegExp(`^/app/${wsp}/settings$`),
   new RegExp(`^/app/${wsp}/settings/members$`),
+  new RegExp(`^/app/${wsp}/settings/api-keys$`),
 ];
 const origin = "http://lewcontext.invalid";
 // A same-site path and query from ?next=, or null. It must start with "/";

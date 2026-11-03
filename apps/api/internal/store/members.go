@@ -6,6 +6,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"lewcontext/api/internal/auth"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -77,6 +78,9 @@ func (s *Store) IndexMembers(ctx context.Context, workspaceID int64, f MemberFil
 func (s *Store) UpdateMemberRole(ctx context.Context, w Workspace, actorID int64, memberID string, role auth.Role) (Member, error) {
 	var member Member
 	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		actor, target, err := lockMembers(ctx, tx, w.ID, actorID, memberID)
 		if err != nil {
 			return err
@@ -113,6 +117,9 @@ func (s *Store) UpdateMemberRole(ctx context.Context, w Workspace, actorID int64
 // Callers refuse actorID removing themselves (that's leaving).
 func (s *Store) RemoveMember(ctx context.Context, w Workspace, actorID int64, memberID string) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		actor, target, err := lockMembers(ctx, tx, w.ID, actorID, memberID)
 		if err != nil {
 			return err
@@ -126,6 +133,9 @@ func (s *Store) RemoveMember(ctx context.Context, w Workspace, actorID int64, me
 		if err := deleteMembership(ctx, tx, w.ID, target.UserID); err != nil {
 			return err
 		}
+		if err := s.revokePersonalApiKeys(ctx, tx, target.UserID, w.ID, "membership_removed"); err != nil {
+			return err
+		}
 		e := events.WorkspaceMemberRemoved{Workspace: w.PublicID, User: target.PublicID, Role: string(target.Role)}
 		return s.record(ctx, tx, e, EventScope{WorkspaceID: w.ID, UserID: target.UserID})
 	})
@@ -135,6 +145,9 @@ func (s *Store) RemoveMember(ctx context.Context, w Workspace, actorID int64, me
 // workspace.member.left, unless they are its last owner (ErrLastOwner).
 func (s *Store) LeaveWorkspace(ctx context.Context, w Workspace, userID int64) error {
 	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := database.LockWorkspaceGraph(ctx, tx, false); err != nil {
+			return err
+		}
 		if err := lockWorkspace(ctx, tx, w.ID); err != nil {
 			return err
 		}
@@ -146,6 +159,9 @@ func (s *Store) LeaveWorkspace(ctx context.Context, w Workspace, userID int64) e
 			return err
 		}
 		if err := deleteMembership(ctx, tx, w.ID, userID); err != nil {
+			return err
+		}
+		if err := s.revokePersonalApiKeys(ctx, tx, userID, w.ID, "membership_left"); err != nil {
 			return err
 		}
 		e := events.WorkspaceMemberLeft{Workspace: w.PublicID, Role: string(role)}

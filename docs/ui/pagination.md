@@ -4,16 +4,16 @@ The API pages, searches and sorts ([../api/pagination.md](../api/pagination.md))
 
 ## Helpers (`lib/pagination.ts`)
 
-| Helper | Does |
-| --- | --- |
-| `Page<T>`, `Pages` | Types for the API response `{ data, pages: { current, total, perPage, items } }` |
-| `url(path, params)` | Builds `path?…` with `URLSearchParams`, leaving out empty values and page 1, so each state has exactly one URL and one SWR key |
-| `page(query)` | Page number from `router.query` / `context.query`; anything invalid is 1 |
-| `param(query, key)` | One query value; repeated keys count as absent |
-| `sort(query, fields, fallback)` | Allowed sort from the query, else the fallback |
-| `sortDirection(sort, field)` | `"ascending"`, `"descending"` or undefined, for `aria-sort` |
-| `toggleSort(sort, field, first)` | Next sort when a header is clicked: reverses the current field, otherwise starts in the `first` direction |
-| `pageRange(pages)` | Page numbers with `"gap"` markers for the selector |
+| Helper                           | Does                                                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `Page<T>`, `Pages`               | Types for the API response `{ data, pages: { current, total, perPage, items } }`                                               |
+| `url(path, params)`              | Builds `path?…` with `URLSearchParams`, leaving out empty values and page 1, so each state has exactly one URL and one SWR key |
+| `page(query)`                    | Page number from `router.query` / `context.query`; anything invalid is 1                                                       |
+| `param(query, key)`              | One query value; repeated keys count as absent                                                                                 |
+| `sort(query, fields, fallback)`  | Allowed sort from the query, else the fallback                                                                                 |
+| `sortDirection(sort, field)`     | `"ascending"`, `"descending"` or undefined, for `aria-sort`                                                                    |
+| `toggleSort(sort, field, first)` | Next sort when a header is clicked: reverses the current field, otherwise starts in the `first` direction                      |
+| `pageRange(pages)`               | Page numbers with `"gap"` markers for the selector                                                                             |
 
 ## Sort fields live in `types/`
 
@@ -30,10 +30,12 @@ The API doesn't publish its sort keys. A Vitest test reads the Go allowlist and 
 
 ```ts
 const [search] = useSearchParams();
-const query = projectQuery(search);            // URL state; bad values → defaults
+const query = projectQuery(search); // URL state; bad values → defaults
 // indexQuery() turns it into the typed ProjectIndexQuery ("all" statuses → no filter)
 const list = useResource(paths.projects(workspace.id).index(indexQuery(query)));
-navigate(projectsPath(workspace.id, { ...query, page: 1, status }), { preventScrollReset: true });
+navigate(projectsPath(workspace.id, { ...query, page: 1, status }), {
+  preventScrollReset: true,
+});
 ```
 
 - **Changing the URL** re-renders the page with the new query, and SWR fetches the new key. Pages have no loaders, so nothing else runs. Opening the URL directly renders the same state.
@@ -68,16 +70,18 @@ The admin dashboard's Events and the Mail page's deliveries page by a cursor ([.
 
 ## Infinite lists
 
+API-key project choices use the Combobox’s own input for server search (300 ms debounce, normalised with `cleanSearch`), without a separate search field. `useResourcePages` loads the existing project API’s numbered pages; an IntersectionObserver rooted in the popup scroller fetches the next page near its end. Show more and Retry stay inside the popup for keyboards, failures and browsers without the observer. Selected IDs and names live separately from visible results, so changing search or loading another page preserves chips and grants without presenting old selections as search matches. Workspace choices retain their paged Show more control. Changing workspace clears projects and resets personal permissions. Metadata lists use ordinary numbered pages/search in the URL, separately for workspace-owned and personal review sections.
+
 Lists shown in a menu (the workspace switcher) load a page at a time as they scroll, instead of a page selector. `useResourcePages(pathFor, initial)` (`lib/use-resource-pages.ts`) wraps SWR's `useSWRInfinite`:
 
 ```ts
 const workspacePage = (page: number) => paths.workspaces.index({ page }); // a module constant
 const list = useResourcePages(workspacePage, props.workspaces); // page 1 from the server
-list.items        // every loaded page, de-duplicated by id (offset pages shift when records are added)
-list.hasMore      // the last loaded page isn't the last page
-list.loadMore()   // load the next page (ignored while one is loading, at the end, or after an error)
-list.loadingMore  // → a skeleton row
-list.error        // keeps the loaded items → a "Couldn’t load more · Retry" item calling list.retry()
+list.items; // every loaded page, de-duplicated by id (offset pages shift when records are added)
+list.hasMore; // the last loaded page isn't the last page
+list.loadMore(); // load the next page (ignored while one is loading, at the end, or after an error)
+list.loadingMore; // → a skeleton row
+list.error; // keeps the loaded items → a "Couldn’t load more · Retry" item calling list.retry()
 ```
 
 - **Keys** are `[path, userId]` per page, like `useResource`, and stop after the last page. Page 1 revalidates with the list (mount, focus, refresh), so new records show up.

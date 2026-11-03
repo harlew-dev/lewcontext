@@ -1,16 +1,21 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { Combobox as BaseCombobox } from "@base-ui/react/combobox";
 import { LayoutGroup } from "motion/react";
 import { cx } from "@/lib/cx";
+import { cleanSearch } from "@/lib/pagination";
 import { Badge } from "./badge";
+import { Button } from "./button";
+import { Notice } from "./feedback";
 import { useField } from "./fieldset";
 import { Highlight } from "./highlight";
 import {
@@ -122,6 +127,18 @@ type ComboboxProps = {
   value: string[];
   onChange: (value: string[]) => void;
   options: ComboboxNode[];
+  // Metadata for selected values outside the current remote result page.
+  selectedOptions?: ComboboxNode[];
+  remote?: {
+    query: string;
+    onSearch: (query: string) => void;
+    loading: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
+    loadMore: () => void;
+    error: string | null;
+    retry: () => void;
+  };
   placeholder?: string;
   disabled?: boolean;
   invalid?: boolean;
@@ -132,6 +149,8 @@ export function Combobox({
   value,
   onChange,
   options,
+  selectedOptions = [],
+  remote,
   placeholder,
   disabled,
   invalid = false,
@@ -142,10 +161,21 @@ export function Combobox({
   const id = useId();
   const anchor = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rows = useMemo(() => flatten(options), [options]);
-  const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+  const selectionOptions = useMemo(() => {
+    const ids = new Set(rows.map((row) => row.id));
+    return [
+      ...options,
+      ...selectedOptions.filter((node) => !ids.has(node.value)),
+    ];
+  }, [options, selectedOptions, rows]);
+  const byId = useMemo(
+    () => new Map(flatten(selectionOptions).map((r) => [r.id, r])),
+    [selectionOptions],
+  );
   const order = useMemo(
     () => rows.filter((r) => !r.node.children).map((r) => r.id),
     [rows],
@@ -153,12 +183,28 @@ export function Combobox({
   const picked = useMemo(() => new Set(value), [value]);
   const chips = useMemo(
     () =>
-      compressPicked(options, picked)
+      (remote ? value : compressPicked(selectionOptions, picked))
         .map((chip) => byId.get(chip))
         .filter((row): row is Row => row !== undefined),
-    [options, picked, byId],
+    [selectionOptions, picked, byId, remote, value],
   );
-  const shown = useMemo(() => filterRows(rows, query), [rows, query]);
+  const searching = Boolean(
+    remote && (remote.loading || cleanSearch(query) !== remote.query),
+  );
+  const shown = useMemo(
+    () => (remote ? (searching ? [] : rows) : filterRows(rows, query)),
+    [rows, query, remote, searching],
+  );
+  const onSearch = remote?.onSearch;
+  useEffect(() => {
+    if (!onSearch) return;
+    const timer = setTimeout(() => onSearch(cleanSearch(query)), 300);
+    return () => clearTimeout(timer);
+  }, [query, onSearch]);
+  const apiQuery = remote?.query;
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [apiQuery]);
   // Choosing a row toggles its leaves: all picked → none, else all.
   const toggle = (row: Row) => {
     const next = new Set(picked);
@@ -167,7 +213,11 @@ export function Combobox({
       if (all) next.delete(leaf);
       else next.add(leaf);
     }
-    onChange(order.filter((leaf) => next.has(leaf)));
+    onChange(
+      [...new Set(remote ? [...value, ...order] : [...order, ...value])].filter(
+        (leaf) => next.has(leaf),
+      ),
+    );
   };
   // Base UI holds the chips and reports each choice as one added or removed
   // row; what that row stands for is ours to toggle.
@@ -241,6 +291,7 @@ export function Combobox({
                 <div className="relative flex min-w-16 flex-1 px-1">
                   <BaseCombobox.Input
                     ref={input}
+                    maxLength={remote ? 100 : undefined}
                     id={field?.id}
                     placeholder={chips.length === 0 ? placeholder : undefined}
                     aria-label={ariaLabel}
@@ -268,9 +319,36 @@ export function Combobox({
               className="z-[60] outline-hidden"
             >
               <BaseCombobox.Popup className={listboxPanelClasses}>
-                <BaseCombobox.List className={listboxListClasses}>
-                  {(row: Row) => <ComboboxOption key={row.id} row={row} />}
-                </BaseCombobox.List>
+                <div ref={scroller} className={listboxListClasses}>
+                  <BaseCombobox.List
+                    aria-busy={searching || remote?.loadingMore || undefined}
+                  >
+                    {(row: Row) => <ComboboxOption key={row.id} row={row} />}
+                  </BaseCombobox.List>
+                  {remote && (
+                    <>
+                      <BaseCombobox.Empty className="px-2 py-1 text-sm/6 text-zinc-500 empty:hidden dark:text-zinc-400">
+                        {searching
+                          ? "Loading options…"
+                          : remote.error
+                            ? null
+                            : "No matching options"}
+                      </BaseCombobox.Empty>
+                      {!searching && remote.error && (
+                        <Notice variant="error" onRetry={remote.retry}>
+                          {remote.error}
+                        </Notice>
+                      )}
+                      {!searching && !remote.error && remote.hasMore && (
+                        <ComboboxMore
+                          root={scroller}
+                          loading={remote.loadingMore}
+                          loadMore={remote.loadMore}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
               </BaseCombobox.Popup>
             </BaseCombobox.Positioner>
           </BaseCombobox.Portal>
@@ -279,6 +357,39 @@ export function Combobox({
     </LayoutGroup>
   );
 }
+// Mount inside the portal: the root's effect can run before portal refs exist.
+function ComboboxMore({
+  root,
+  loading,
+  loadMore,
+}: {
+  root: RefObject<HTMLDivElement | null>;
+  loading: boolean;
+  loadMore: () => void;
+}) {
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const target = end.current;
+    if (!target || loading || typeof IntersectionObserver === "undefined")
+      return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { root: root.current, rootMargin: "80px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [root, loading, loadMore]);
+  return (
+    <div ref={end} className="px-2 py-1">
+      <Button plain loading={loading} onClick={loadMore}>
+        Show more
+      </Button>
+    </div>
+  );
+}
+
 const comboboxValueClasses = [
   "relative flex min-h-11 w-full flex-wrap items-center gap-1 rounded-lg py-[calc(--spacing(2)-1px)] sm:min-h-9 sm:py-[calc(--spacing(1)-1px)]",
   "pr-[calc(--spacing(7)-1px)] pl-[calc(--spacing(2.5)-1px)] sm:pl-[calc(--spacing(2)-1px)]",
