@@ -6,6 +6,7 @@ import type { ApiPath } from "./paths";
 import { auth, authRoutes, sessionRoutes, sessions } from "./auth";
 import { clientErrorRoutes, clientErrors } from "./client-errors";
 import { emailBlockRoutes, emailBlocks } from "./email-blocks";
+import { apiKeyEventRoutes, eventRoutes, events } from "./events";
 import { invitationRoutes, invitations } from "./invitations";
 import { memberRoutes, members } from "./members";
 import { policies, policyRoutes } from "./policies";
@@ -16,6 +17,7 @@ export { ApiError, errorMessage, requestIdOf } from "./http";
 export type { ApiPath } from "./paths";
 export type { ClientErrorReport } from "./client-errors";
 export type { InvitationIndexQuery } from "./invitations";
+export type { ApiKeyEventIndexQuery, EventIndexQuery } from "./events";
 export type { MemberIndexQuery } from "./members";
 export type { ProjectIndexQuery } from "./projects";
 export type { WorkspaceDeletion, WorkspaceIndexQuery } from "./workspaces";
@@ -50,6 +52,8 @@ export const paths = {
   apiKeys: apiKeyRoutes,
   workspaces: workspaceRoutes,
   projects: projectRoutes,
+  apiKeyEvents: apiKeyEventRoutes,
+  events: eventRoutes,
   members: memberRoutes,
   invitations: invitationRoutes,
   auth: authRoutes,
@@ -85,6 +89,8 @@ export function client(http: Http) {
     workspaces: () => workspaces(http),
     // Projects belong to a workspace, so their client takes its ID.
     projects: (workspace: string) => projects(http, workspace),
+    // A workspace's log of changes (owners and admins).
+    events: (workspace: string) => events(http, workspace),
     members: (workspace: string) => members(http, workspace),
     // A workspace's invitations, or with no workspace, the link's check and accept.
     invitations: invitations(http),

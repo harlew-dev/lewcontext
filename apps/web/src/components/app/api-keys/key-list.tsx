@@ -1,10 +1,9 @@
-import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
-import { KeyDialog } from "./key-dialog";
+import { MemberLink } from "@/components/app/members/member-link";
+import { KeyAccess, KeyStatus } from "./key-display";
+import { useKeyActions } from "./key-actions";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   Dropdown,
   DropdownButton,
@@ -16,28 +15,30 @@ import { Subheading } from "@/components/ui/heading";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import { TableRow, TableHeader, TableCell } from "@/components/ui/table";
-import { Text } from "@/components/ui/text";
-import { toast } from "@/components/ui/toast";
-import { paths, useApi } from "@/lib/api";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { TextLink } from "@/components/ui/text";
+import { paths } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
+import { routes } from "@/lib/routes";
 import { page, cleanSearch, url } from "@/lib/pagination";
 import { useResource } from "@/lib/use-resource";
 import { apiKeyActive, type ApiKey } from "@/types/api-keys";
-import type { Workspace } from "@/types/workspaces";
+import { can, type Workspace } from "@/types/workspaces";
 
 // Shared metadata presentation; each page supplies its own title/explanation.
 export function KeyList({
   workspace,
   kind,
+  owner,
   title,
   allowCreate = true,
 }: {
   workspace?: Workspace;
   kind?: ApiKey["kind"];
+  // Only this member's personal keys (a member's page), by their usr_ ID.
+  owner?: string;
   title: string;
   allowCreate?: boolean;
 }) {
-  const api = useApi();
   const { pathname } = useLocation();
   const [search, setSearch] = useSearchParams();
   const prefix = kind === "personal" && workspace ? "personal" : "";
@@ -46,13 +47,12 @@ export function KeyList({
     new URLSearchParams({ page: search.get(`${prefix}page`) ?? "1" }),
   );
   const list = useResource(
-    paths.apiKeys(workspace?.id).index({ page: current, q, kind }),
+    paths.apiKeys(workspace?.id).index({ page: current, q, kind, owner }),
   );
-  const [dialog, setDialog] = useState<{ editing?: ApiKey } | null>(null);
-  const [revoking, setRevoking] = useState<ApiKey | null>(null);
-  const reload = () => {
-    void list.refresh();
-  };
+  const canOpenMembers = workspace
+    ? can(workspace, "workspace.member.show")
+    : false;
+  const actions = useKeyActions(workspace, () => void list.refresh());
   const pageHref = (n: number) => {
     const params = Object.fromEntries(search);
     params[`${prefix}page`] = String(n);
@@ -63,9 +63,7 @@ export function KeyList({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Subheading>{title}</Subheading>
         <div className="flex flex-wrap items-center gap-3">
-          {allowCreate && (
-            <Button onClick={() => setDialog({})}>Add API Key</Button>
-          )}
+          {allowCreate && <Button onClick={actions.create}>Add API Key</Button>}
           <SearchField
             label={`Search ${title.toLowerCase()}`}
             value={q}
@@ -92,13 +90,13 @@ export function KeyList({
         rowKey={(key) => key.id}
         head={
           <TableRow>
-            <TableHeader>Name / identifier</TableHeader>
-            <TableHeader>Access / permissions</TableHeader>
-            <TableHeader>
-              {workspace ? "Owner / creator" : "Workspace"}
+            <TableHeader>Name</TableHeader>
+            <TableHeader>Status</TableHeader>
+            <TableHeader className="max-md:hidden">Access</TableHeader>
+            <TableHeader className="max-lg:hidden">
+              {workspace ? "Owner" : "Workspace"}
             </TableHeader>
-            <TableHeader>Created / expiry</TableHeader>
-            <TableHeader>Last used</TableHeader>
+            <TableHeader className="max-xl:hidden">Last used</TableHeader>
             <TableHeader>
               <span className="sr-only">Actions</span>
             </TableHeader>
@@ -108,8 +106,9 @@ export function KeyList({
           <KeyRow
             apiKey={key}
             workspace={workspace}
-            onEdit={() => setDialog({ editing: key })}
-            onRevoke={() => setRevoking(key)}
+            canOpenMembers={canOpenMembers}
+            onEdit={() => actions.edit(key)}
+            onRevoke={() => actions.revoke(key)}
           />
         )}
         empty={
@@ -123,30 +122,7 @@ export function KeyList({
           />
         }
       />
-      {dialog && (
-        <KeyDialog
-          workspace={workspace}
-          editing={dialog.editing}
-          onClose={() => setDialog(null)}
-          onSaved={reload}
-        />
-      )}
-      {revoking && (
-        <ConfirmationDialog
-          open
-          onClose={() => setRevoking(null)}
-          title={`Revoke ${revoking.name}?`}
-          description="Integrations using this key will stop working immediately."
-          confirm="Revoke API key"
-          variant="danger"
-          onConfirm={() => api.apiKeys(workspace?.id).destroy(revoking.id)}
-          onConfirmed={() => {
-            setRevoking(null);
-            reload();
-            toast.success("API key revoked.");
-          }}
-        />
-      )}
+      {actions.dialogs}
     </section>
   );
 }
@@ -154,74 +130,66 @@ export function KeyList({
 function KeyRow({
   apiKey: key,
   workspace,
+  canOpenMembers,
   onEdit,
   onRevoke,
 }: {
   apiKey: ApiKey;
   workspace?: Workspace;
+  canOpenMembers: boolean;
   onEdit: () => void;
   onRevoke: () => void;
 }) {
   const active = apiKeyActive(key);
+  const page = workspace
+    ? routes.workspaceApiKeys.show(workspace.id, key.id)
+    : routes.userApiKeys.show(key.id);
+  const person = key.owner ?? key.createdBy;
   return (
     <TableRow>
-      <TableCell>
-        <div className="font-medium">{key.name}</div>
-        <code className="text-xs">
-          {key.kind} · {key.id}
-        </code>
-        <div>
-          <Badge>
-            {key.revokedAt ? "Revoked" : active ? "Active" : "Expired"}
-          </Badge>
-        </div>
+      <TableCell className="max-w-0 min-w-32">
+        <TextLink href={page} className="block truncate font-medium">
+          {key.name}
+        </TextLink>
       </TableCell>
       <TableCell>
-        <div>
-          {key.projectAccess === "all"
-            ? "All projects"
-            : key.projects.length
-              ? `${key.projects.length} selected projects`
-              : "No selected projects remain"}
-        </div>
-        <Text>{key.scopes.join(", ")}</Text>
-        {key.kind === "personal" &&
-          key.scopes.some((scope) => !key.effectiveScopes.includes(scope)) && (
-            <Text>
-              Some actions are unavailable under the owner’s current role.
-            </Text>
+        <KeyStatus apiKey={key} />
+      </TableCell>
+      <TableCell className="max-w-0 min-w-32 max-md:hidden">
+        <KeyAccess apiKey={key} />
+      </TableCell>
+      <TableCell className="max-w-0 min-w-24 max-lg:hidden">
+        <span className="block truncate">
+          {workspace ? (
+            <MemberLink
+              workspace={canOpenMembers ? workspace.id : null}
+              member={person}
+            />
+          ) : (
+            key.workspace.name
           )}
+        </span>
       </TableCell>
-      <TableCell>
-        {workspace
-          ? ((key.owner ?? key.createdBy)?.name ?? "Deleted account")
-          : key.workspace.name}
-      </TableCell>
-      <TableCell>
-        <div>{formatDate(key.createdAt)}</div>
-        <Text>
-          Expires: {key.expiresAt ? formatDateTime(key.expiresAt) : "Never"}
-        </Text>
-      </TableCell>
-      <TableCell>
+      <TableCell className="whitespace-nowrap text-zinc-500 max-xl:hidden dark:text-zinc-400">
         {key.lastUsedAt ? formatDateTime(key.lastUsedAt) : "Never"}
       </TableCell>
       <TableCell className="w-0 text-right">
-        {active && (
-          <Dropdown>
-            <DropdownButton plain aria-label={`Actions for ${key.name}`}>
-              <EllipsisHorizontalIcon data-slot="icon" />
-            </DropdownButton>
-            <DropdownMenu>
-              {(!workspace || key.kind === "workspace") && (
-                <DropdownItem onClick={onEdit}>Edit</DropdownItem>
-              )}
+        <Dropdown>
+          <DropdownButton plain aria-label={`Actions for ${key.name}`}>
+            <EllipsisHorizontalIcon data-slot="icon" />
+          </DropdownButton>
+          <DropdownMenu anchor="bottom end">
+            <DropdownItem href={page}>View</DropdownItem>
+            {active && (!workspace || key.kind === "workspace") && (
+              <DropdownItem onClick={onEdit}>Edit</DropdownItem>
+            )}
+            {active && (
               <DropdownItem variant="danger" onClick={onRevoke}>
                 Revoke
               </DropdownItem>
-            </DropdownMenu>
-          </Dropdown>
-        )}
+            )}
+          </DropdownMenu>
+        </Dropdown>
       </TableCell>
     </TableRow>
   );

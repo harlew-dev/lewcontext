@@ -6,7 +6,7 @@ import {
   DeliveryStatusBadge,
   DeliveryTime,
 } from "@/components/app/admin/admin-list";
-import { CursorNav } from "@/components/app/admin/cursor-nav";
+import { CursorNav } from "@/components/ui/cursor-nav";
 import { Button } from "@/components/ui/button";
 import {
   BarChart,

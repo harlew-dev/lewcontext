@@ -12,7 +12,7 @@ import { Description, Field, Label } from "@/components/ui/fieldset";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useOpenCount } from "@/lib/use-open-count";
-import { localDay, rangeLabel, utcAt, utcDay } from "./event-filters";
+import { localDay, rangeLabel, utcAt, utcDay } from "@/lib/date-range";
 // The custom range: whole UTC days, picked on a calendar, from a year ago
 // to today.
 export function RangeDialog({

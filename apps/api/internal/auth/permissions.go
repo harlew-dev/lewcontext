@@ -26,12 +26,16 @@ const (
 	WorkspaceInvitationStore   Permission = "workspace.invitation.store"   // send
 	WorkspaceInvitationDestroy Permission = "workspace.invitation.destroy" // revoke
 	WorkspaceMemberIndex       Permission = "workspace.member.index"       // see who is in the workspace
+	WorkspaceMemberShow        Permission = "workspace.member.show"        // open one member's page
 	WorkspaceMemberUpdate      Permission = "workspace.member.update"      // change a role
 	WorkspaceMemberDestroy     Permission = "workspace.member.destroy"     // remove from the workspace; the account stays
 	WorkspaceApiKeyIndex       Permission = "workspace.api_key.index"
+	WorkspaceApiKeyShow        Permission = "workspace.api_key.show"
 	WorkspaceApiKeyStore       Permission = "workspace.api_key.store"
 	WorkspaceApiKeyUpdate      Permission = "workspace.api_key.update"
 	WorkspaceApiKeyDestroy     Permission = "workspace.api_key.destroy"
+	WorkspaceEventIndex        Permission = "workspace.event.index" // read the workspace's log of changes
+	WorkspaceEventShow         Permission = "workspace.event.show"  // open one change
 	ProjectStore               Permission = "project.store"
 	ProjectUpdate              Permission = "project.update"
 	ProjectDestroy             Permission = "project.destroy"
@@ -48,15 +52,17 @@ var grants = map[Role][]Permission{
 	RoleOwner: {
 		WorkspaceUpdate, WorkspaceDestroy,
 		WorkspaceInvitationIndex, WorkspaceInvitationStore, WorkspaceInvitationDestroy,
-		WorkspaceMemberIndex, WorkspaceMemberUpdate, WorkspaceMemberDestroy,
-		WorkspaceApiKeyIndex, WorkspaceApiKeyStore, WorkspaceApiKeyUpdate, WorkspaceApiKeyDestroy,
+		WorkspaceMemberIndex, WorkspaceMemberShow, WorkspaceMemberUpdate, WorkspaceMemberDestroy,
+		WorkspaceApiKeyIndex, WorkspaceApiKeyShow, WorkspaceApiKeyStore, WorkspaceApiKeyUpdate, WorkspaceApiKeyDestroy,
+		WorkspaceEventIndex, WorkspaceEventShow,
 		ProjectStore, ProjectUpdate, ProjectDestroy,
 	},
 	RoleAdmin: {
 		WorkspaceUpdate,
 		WorkspaceInvitationIndex, WorkspaceInvitationStore, WorkspaceInvitationDestroy,
-		WorkspaceMemberIndex, WorkspaceMemberUpdate, WorkspaceMemberDestroy,
-		WorkspaceApiKeyIndex, WorkspaceApiKeyStore, WorkspaceApiKeyUpdate, WorkspaceApiKeyDestroy,
+		WorkspaceMemberIndex, WorkspaceMemberShow, WorkspaceMemberUpdate, WorkspaceMemberDestroy,
+		WorkspaceApiKeyIndex, WorkspaceApiKeyShow, WorkspaceApiKeyStore, WorkspaceApiKeyUpdate, WorkspaceApiKeyDestroy,
+		WorkspaceEventIndex, WorkspaceEventShow,
 		ProjectStore, ProjectUpdate, ProjectDestroy,
 	},
 	RoleMember: {ProjectStore, ProjectUpdate},

@@ -69,9 +69,12 @@ func apiRoutes(s *httpapi.Server) *http.ServeMux {
 	sessions := account.Sessions{Server: s}
 	me := account.Me{Server: s}
 	userApiKeys := account.ApiKeys{Server: s}
+	userApiKeyEvents := account.ApiKeyEvents{Server: s}
 	// Recovery reads/revocation have dedicated session-specific allowances,
 	// independent of the ordinary browser and machine budgets.
 	mux.Handle("GET /api/auth/api-keys", s.RequireSessionUnmetered(s.LimitSession(httpapi.ApiKeyManagementReadPerUser, userApiKeys.Index)))
+	mux.Handle("GET /api/auth/api-keys/{key}", s.RequireSessionUnmetered(s.LimitSession(httpapi.ApiKeyManagementReadPerUser, userApiKeys.Show)))
+	mux.Handle("GET /api/auth/api-keys/{key}/events", s.RequireSessionUnmetered(s.LimitSession(httpapi.ApiKeyManagementReadPerUser, userApiKeyEvents.Index)))
 	mux.Handle("POST /api/auth/api-keys", s.RequireSession(s.Limit(httpapi.ApiKeyCreatePerUser, userApiKeys.Store)))
 	mux.Handle("PATCH /api/auth/api-keys/{key}", s.RequireSession(http.HandlerFunc(userApiKeys.Update)))
 	mux.Handle("DELETE /api/auth/api-keys/{key}", s.RequireSessionUnmetered(s.LimitSession(httpapi.ApiKeyRevokePerUser, userApiKeys.Destroy)))
@@ -164,6 +167,7 @@ func workspaceKeyRecoveryRoutes(s *httpapi.Server, recovery routeGroup) {
 	keys := workspace.ApiKeys{Server: s}
 	recovery.requirePermissions = true
 	recovery.Can("GET", "/api-keys", auth.WorkspaceApiKeyIndex, s.LimitSession(httpapi.ApiKeyManagementReadPerUser, keys.Index))
+	recovery.Can("GET", "/api-keys/{key}", auth.WorkspaceApiKeyShow, s.LimitSession(httpapi.ApiKeyManagementReadPerUser, keys.Show))
 	recovery.Can("DELETE", "/api-keys/{key}", auth.WorkspaceApiKeyDestroy, s.LimitSession(httpapi.ApiKeyRevokePerUser, keys.Destroy))
 }
 
@@ -388,6 +392,7 @@ func workspaceRoutes(s *httpapi.Server, ws routeGroup) {
 	membership := workspace.Membership{Server: s}
 	invitations := workspace.Invitations{Server: s}
 	apiKeys := workspace.ApiKeys{Server: s}
+	logs := workspace.Events{Server: s}
 	ws.Can("POST", "/api-keys", auth.WorkspaceApiKeyStore, s.Limit(httpapi.ApiKeyCreatePerUser, apiKeys.Store))
 	ws.Can("PATCH", "/api-keys/{key}", auth.WorkspaceApiKeyUpdate, apiKeys.Update)
 	ws.HandleFunc("GET", "", workspaces.Show)
@@ -399,7 +404,12 @@ func workspaceRoutes(s *httpapi.Server, ws routeGroup) {
 	ws.HandleFunc("GET", "/projects/{project}", projects.Show)
 	ws.Can("PATCH", "/projects/{project}", auth.ProjectUpdate, projects.Update)
 	ws.Can("DELETE", "/projects/{project}", auth.ProjectDestroy, projects.Destroy)
+	// The workspace's log of changes, for owners and admins.
+	ws.Can("GET", "/events", auth.WorkspaceEventIndex, logs.Index)
+	ws.Can("GET", "/events/{event}", auth.WorkspaceEventShow, logs.Show)
+
 	ws.Can("GET", "/members", auth.WorkspaceMemberIndex, members.Index)
+	ws.Can("GET", "/members/{member}", auth.WorkspaceMemberShow, members.Show)
 	ws.Can("PATCH", "/members/{member}", auth.WorkspaceMemberUpdate, members.Update)
 	ws.Can("DELETE", "/members/{member}", auth.WorkspaceMemberDestroy, members.Destroy)
 	// Invitations email an address the inviter chooses, so sending has its

@@ -26,12 +26,23 @@ export const routes = {
   },
   members: {
     index: (workspace: string) => `/app/${workspace}/settings/members`,
+    show: (workspace: string, member: string) =>
+      `/app/${workspace}/settings/members/${member}`,
+  },
+  // The workspace's log of changes (the Logs tab of its settings).
+  events: {
+    index: (workspace: string) => `/app/${workspace}/settings/events`,
+    show: (workspace: string, event: string) =>
+      `/app/${workspace}/settings/events/${event}`,
   },
   workspaceApiKeys: {
     index: (workspace: string) => `/app/${workspace}/settings/api-keys`,
+    show: (workspace: string, key: string) =>
+      `/app/${workspace}/settings/api-keys/${key}`,
   },
   userApiKeys: {
     index: () => "/app/settings/api-keys",
+    show: (key: string) => `/app/settings/api-keys/${key}`,
   },
   // The terms of service and privacy policy, prerendered; Go serves them
   // only with POLICIES=on.
@@ -70,6 +81,9 @@ export function navigation(workspace: string) {
 }
 const wsp = publicIdPattern("wsp");
 const prj = publicIdPattern("prj");
+const usr = publicIdPattern("usr");
+const evt = publicIdPattern("evt");
+const apk = publicIdPattern("apk");
 // The shape of auth.Token in Go: 43 base64url characters.
 export const linkToken = /^[A-Za-z0-9_-]{43}$/;
 const invitationLink = /^\/auth\/invitations\/([A-Za-z0-9_-]{43})$/;
@@ -88,6 +102,11 @@ const returnRoutes = [
   new RegExp(`^/app/${wsp}/settings$`),
   new RegExp(`^/app/${wsp}/settings/members$`),
   new RegExp(`^/app/${wsp}/settings/api-keys$`),
+  new RegExp(`^/app/${wsp}/settings/events$`),
+  new RegExp(`^/app/${wsp}/settings/events/${evt}$`),
+  new RegExp(`^/app/${wsp}/settings/members/${usr}$`),
+  new RegExp(`^/app/${wsp}/settings/api-keys/${apk}$`),
+  new RegExp(`^/app/settings/api-keys/${apk}$`),
 ];
 const origin = "http://lewcontext.invalid";
 // A same-site path and query from ?next=, or null. It must start with "/";

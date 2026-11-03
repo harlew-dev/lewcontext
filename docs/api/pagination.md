@@ -56,7 +56,8 @@ The admin dashboard's Events and deliveries ([admin.md](admin.md#events)) page b
 - **No totals:** nothing is counted. The store asks for `perPage + 1` rows to know whether there's a next page.
 - **A summary on the first page:** the Events list adds `summary` (its charts' counts, bounded to 7 days, a deadline and two at a time) when asked with `summary=include`, and only without `before` (400 with it), in the same request and the same recorded read ([admin.md](admin.md#the-summary)). It also echoes the `window` it resolved and `refs` naming its filters. Pages after the first carry neither summary nor count.
 - A cursor naming a row that's gone (pruned) is 400 "That page is no longer available."; a malformed one is 400 like any bad parameter.
-- Only for log tables. Everything a user pages through in the app stays numbered.
+- The workspace's Logs tab ([events.md](events.md#the-workspace-log)) pages the same way (`GET /api/workspaces/{workspace}/events`, no summary or window echo; `refs` names the person and project filters).
+- Only for log tables. Everything else a user pages through in the app stays numbered.
 
 ## Paginating a new resource
 

@@ -183,11 +183,15 @@ Data belongs to workspaces; users reach a workspace through a `workspace_user` r
 | _(membership)_                                       | ✓     | ✓     | ✓      | ✓      | `GET` the workspace and its projects                                                    |
 | `workspace.update`                                   | ✓     | ✓     |        |        | `PATCH /workspaces/{ws}`                                                                |
 | `workspace.destroy`                                  | ✓     |       |        |        | `DELETE /workspaces/{ws}`                                                               |
+| `workspace.api_key.show`                             | ✓     | ✓     |        |        | `GET …/api-keys/{key}`: one key's page, either kind in this workspace ([api-keys.md](api-keys.md)) |
 | `workspace.invitation.index` / `.store` / `.destroy` | ✓     | ✓     |        |        | `GET`, `POST …/invitations`, `DELETE …/invitations/{inv}` ([Invitations](#invitations)) |
 | `workspace.member.index`                             | ✓     | ✓     |        |        | `GET …/members`                                                                         |
+| `workspace.member.show`                              | ✓     | ✓     |        |        | `GET …/members/{usr}`: one member's page                                                |
 | `workspace.member.update`                            | ✓     | ✓     |        |        | `PATCH …/members/{usr}`                                                                 |
 | `workspace.member.destroy`                           | ✓     | ✓     |        |        | `DELETE …/members/{usr}`                                                                |
 | `auth.AnyMember`                                     | ✓     | ✓     | ✓      | ✓      | `DELETE …/membership` (leave)                                                           |
+| `workspace.event.show`                               | ✓     | ✓     |        |        | `GET …/events/{event}`: one change and its request                                      |
+| `workspace.event.index`                              | ✓     | ✓     |        |        | `GET …/events`: the workspace's log of changes ([events.md](events.md#the-workspace-log)) |
 | `project.store`                                      | ✓     | ✓     | ✓      |        | `POST …/projects`                                                                       |
 | `project.update`                                     | ✓     | ✓     | ✓      |        | `PATCH …/projects/{prj}`                                                                |
 | `project.destroy`                                    | ✓     | ✓     |        |        | `DELETE …/projects/{prj}`                                                               |

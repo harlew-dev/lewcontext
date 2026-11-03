@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -223,4 +224,55 @@ func deleteMembership(ctx context.Context, tx bun.Tx, workspaceID, userID int64)
 		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
 		Exec(ctx)
 	return err
+}
+
+// MemberDetail is one member's page: a current member as the list shows
+// them, with how many live personal keys they hold here and how many changes
+// they made (the workspace log's events). Current is false for someone who
+// has left or been removed but still appears in the workspace's log: only
+// their ID and name are known, no email, role or date.
+type MemberDetail struct {
+	PublicID string     `json:"id"`
+	Name     string     `json:"name"`
+	Email    string     `json:"email,omitempty"`
+	Role     auth.Role  `json:"role"`
+	AddedAt  *time.Time `json:"addedAt"`
+	Current  bool       `json:"current"`
+	Keys     int        `json:"keys"`
+	Changes  int        `json:"changes"`
+}
+
+// FindMember returns the person with the user public ID publicID: a member
+// of the workspace, or a former member who appears in its log. sql.ErrNoRows
+// for anyone else, so an account elsewhere can't be told apart from none.
+func (s *Store) FindMember(ctx context.Context, workspaceID int64, publicID string) (MemberDetail, error) {
+	var userID int64
+	d := MemberDetail{PublicID: publicID}
+	var m Member
+	err := membersOf(s.DB, workspaceID).Where("u.public_id = ?", publicID).Scan(ctx, &m)
+	switch {
+	case err == nil:
+		userID = m.UserID
+		d.Name, d.Email, d.Role, d.AddedAt, d.Current = m.Name, m.Email, m.Role, &m.AddedAt, true
+	case errors.Is(err, sql.ErrNoRows):
+		err = s.DB.NewSelect().Model((*User)(nil)).Column("u.id", "u.name").Where("u.public_id = ?", publicID).
+			Where("EXISTS (?)", s.DB.NewSelect().Model((*eventRecord)(nil)).ColumnExpr("1").
+				Where("e.workspace_id = ? AND (e.actor_id = u.id OR e.user_id = u.id)", workspaceID).
+				Where("e.name IN (?)", bun.In(events.WorkspaceLogNames()))).
+			Scan(ctx, &userID, &d.Name)
+		if err != nil {
+			return MemberDetail{}, err
+		}
+	default:
+		return MemberDetail{}, err
+	}
+	keys, err := liveApiKeys(s.DB.NewSelect().Model((*apiKeyRecord)(nil)).
+		Where("ak.workspace_id = ? AND ak.owner_user_id = ? AND ak.kind = ?", workspaceID, userID, auth.ApiKeyPersonal)).Count(ctx)
+	if err != nil {
+		return MemberDetail{}, err
+	}
+	changes, err := s.DB.NewSelect().Model((*eventRecord)(nil)).
+		Where("e.workspace_id = ? AND e.actor_id = ? AND e.name IN (?)", workspaceID, userID, bun.In(events.WorkspaceLogNames())).Count(ctx)
+	d.Keys, d.Changes = int(keys), int(changes)
+	return d, err
 }

@@ -2,6 +2,12 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useSWRConfig } from "swr";
 import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  RemoveDialog,
+  RoleDialog,
+  manageable,
+} from "@/components/app/members/member-dialogs";
+import { MemberLink } from "@/components/app/members/member-link";
 import { RoleBadge, roleLabels } from "@/components/app/workspaces/role-badge";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +59,7 @@ import {
   type InvitedRole,
 } from "@/types/invitations";
 import type { Member, MemberQuery } from "@/types/members";
-import { can, type Role } from "@/types/workspaces";
+import { can } from "@/types/workspaces";
 // Workspace settings → Members. Only owners and admins may list members; for
 // anyone else the page explains that without asking the API.
 export default function MemberIndex() {
@@ -217,9 +223,7 @@ function MemberRow({
   const workspace = useWorkspace();
   const you = member.id === useSession().user.id;
   // Never yourself (that's Leave workspace), and only roles you may manage.
-  const manageable = !you && workspace.assignableRoles.includes(member.role);
-  const canChange = manageable && can(workspace, "workspace.member.update");
-  const canRemove = manageable && can(workspace, "workspace.member.destroy");
+  const { canChange, canRemove } = manageable(workspace, member, you);
   return (
     <TableRow>
       <TableCell>
@@ -230,7 +234,13 @@ function MemberRow({
           />
           <span className="min-w-0">
             <span className="flex items-center gap-2">
-              <span className="truncate font-medium">{member.name}</span>
+              <MemberLink
+                workspace={
+                  can(workspace, "workspace.member.show") ? workspace.id : null
+                }
+                member={member}
+                className="truncate font-medium"
+              />
               {you && <Badge>You</Badge>}
             </span>
             <span className="block truncate text-zinc-500 dark:text-zinc-400">
@@ -272,86 +282,6 @@ function MemberRow({
         )}
       </TableCell>
     </TableRow>
-  );
-}
-type MemberDialogProps = {
-  open: boolean;
-  member: Member;
-  onClose: () => void;
-  onDone: (message: string) => void;
-};
-// Offers only the roles you may give (the workspace's assignableRoles).
-function RoleDialog({ open, member, onClose, onDone }: MemberDialogProps) {
-  const api = useApi();
-  const workspace = useWorkspace();
-  const [role, setRole] = useState<Role>(member.role);
-  const save = useAction((role: Role) =>
-    api.members(workspace.id).update(member.id, { role }),
-  );
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if ((await save.run(role)).ok)
-      onDone(
-        `${member.name} is now ${article(role)} ${roleLabels[role].toLowerCase()}.`,
-      );
-  }
-  const close = () => !save.busy && onClose();
-  return (
-    <Dialog open={open} onClose={close} size="md">
-      <form onSubmit={submit}>
-        <DialogTitle>Change {member.name}’s role</DialogTitle>
-        <DialogDescription>
-          Their access changes as soon as you save.
-        </DialogDescription>
-        <DialogBody>
-          <ErrorNotice error={save.error} className="mb-6" />
-          <Field disabled={save.loading}>
-            <Label>Role</Label>
-            <Listbox value={role} onChange={setRole}>
-              {workspace.assignableRoles.map((option) => (
-                <ListboxOption key={option} value={option}>
-                  <ListboxLabel>{roleLabels[option]}</ListboxLabel>
-                </ListboxOption>
-              ))}
-            </Listbox>
-          </Field>
-        </DialogBody>
-        <DialogActions>
-          <Button plain onClick={close} disabled={save.loading}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            loading={save.loading}
-            disabled={role === member.role}
-            disabledReason="No changes made"
-          >
-            Save role
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  );
-}
-function article(role: Role) {
-  return role === "owner" || role === "admin" ? "an" : "a";
-}
-function RemoveDialog({ open, member, onClose, onDone }: MemberDialogProps) {
-  const api = useApi();
-  const workspace = useWorkspace();
-  return (
-    <ConfirmationDialog
-      open={open}
-      onClose={onClose}
-      title={`Remove ${member.name} from ${workspace.name}?`}
-      description="They lose access at once. Their projects stay."
-      confirm="Remove"
-      variant="danger"
-      onConfirm={() => api.members(workspace.id).destroy(member.id)}
-      onConfirmed={() =>
-        onDone(`${member.name} was removed from ${workspace.name}.`)
-      }
-    />
   );
 }
 // Invitations not yet accepted, above the members, while there are any. A
@@ -452,7 +382,13 @@ function InvitationRow({
         <RoleBadge role={invitation.role} />
       </TableCell>
       <TableCell className="text-zinc-500 max-sm:hidden">
-        {invitation.invitedBy?.name ?? "A former member"}
+        <MemberLink
+          workspace={
+            can(workspace, "workspace.member.show") ? workspace.id : null
+          }
+          member={invitation.invitedBy}
+          fallback="A former member"
+        />
       </TableCell>
       <TableCell className="text-zinc-500">
         {expired(invitation) ? (

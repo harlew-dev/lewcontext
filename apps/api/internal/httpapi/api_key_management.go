@@ -34,7 +34,7 @@ func (s *Server) apiKeyManager(r *http.Request, workspace bool) store.ApiKeyMana
 
 // IndexManagedApiKeys is shared transport for the account and workspace resources.
 func (s *Server) IndexManagedApiKeys(w http.ResponseWriter, r *http.Request, workspace bool) {
-	params, ok := input.Query(r, "page", "perPage", "q", "kind")
+	params, ok := input.Query(r, "page", "perPage", "q", "kind", "owner")
 	if !ok {
 		Fail(w, 400, "Invalid query parameters.")
 		return
@@ -53,7 +53,11 @@ func (s *Server) IndexManagedApiKeys(w http.ResponseWriter, r *http.Request, wor
 		Fail(w, 400, "Invalid key kind.")
 		return
 	}
-	f := store.ApiKeyFilter{OwnerID: Session(r).User.ID, Search: search, Kind: params["kind"]}
+	if params["owner"] != "" && (!workspace || !input.PublicID("usr", params["owner"])) {
+		Fail(w, 400, "Invalid owner.")
+		return
+	}
+	f := store.ApiKeyFilter{OwnerID: Session(r).User.ID, Search: search, Kind: params["kind"], Owner: params["owner"]}
 	if workspace {
 		f.WorkspaceID = Workspace(r).ID
 	}
@@ -181,6 +185,35 @@ func (s *Server) RevokeManagedApiKey(w http.ResponseWriter, r *http.Request, wor
 		return
 	}
 	w.WriteHeader(204)
+}
+
+// ShowManagedApiKey answers one key's metadata for the account or workspace
+// resource.
+func (s *Server) ShowManagedApiKey(w http.ResponseWriter, r *http.Request, workspace bool) {
+	if !input.PublicID("apk", r.PathValue("key")) {
+		NotFound(w, r)
+		return
+	}
+	key, err := s.Repo.FindApiKey(r.Context(), s.apiKeyManager(r, workspace), r.PathValue("key"))
+	if s.AnswerApiKeyError(w, r, err) {
+		return
+	}
+	JSON(w, 200, key)
+}
+
+// IndexOwnApiKeyLog answers a personal key's own log to its owner: only that
+// key's events, in a workspace they still belong to.
+func (s *Server) IndexOwnApiKeyLog(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("key")
+	if !input.PublicID("apk", id) {
+		NotFound(w, r)
+		return
+	}
+	workspaceID, err := s.Repo.FindOwnApiKeyWorkspace(r.Context(), Session(r).User.ID, id)
+	if s.AnswerApiKeyError(w, r, err) {
+		return
+	}
+	s.IndexWorkspaceLog(w, r, workspaceID, id)
 }
 
 // AnswerApiKeyError shares transport errors without treating a bad factor as expiry.

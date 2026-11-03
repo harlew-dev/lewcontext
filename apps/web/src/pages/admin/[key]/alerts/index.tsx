@@ -13,7 +13,7 @@ import {
   windowLabels,
   type CatalogQuery,
 } from "@/components/app/admin/alert-filters";
-import { RangeDialog } from "@/components/app/admin/range-dialog";
+import { RangeDialog } from "@/components/ui/range-dialog";
 import { AppOrRecoveryCode } from "@/components/app/mfa/mfa-setup";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,7 +64,7 @@ import {
   alertValue,
   openFor,
 } from "@/components/app/admin/alerts";
-import { CursorNav } from "@/components/app/admin/cursor-nav";
+import { CursorNav } from "@/components/ui/cursor-nav";
 import {
   ErrorNotice,
   EmptyState,

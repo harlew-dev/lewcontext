@@ -1,14 +1,13 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { ArrowDownTrayIcon, FunnelIcon } from "@heroicons/react/16/solid";
-import { CursorNav } from "@/components/app/admin/cursor-nav";
+import { ArrowDownTrayIcon } from "@heroicons/react/16/solid";
+import { CursorNav } from "@/components/ui/cursor-nav";
+import {
+  FilterBadges,
+  FiltersButton,
+  useFocusAfterRemove,
+} from "@/components/ui/filter-bar";
+import { TimeRange } from "@/components/ui/time-range";
 import {
   canonicalTokens,
   compressNames,
@@ -28,8 +27,7 @@ import {
   type NameIndex,
 } from "@/components/app/admin/event-filters";
 import { EventTable } from "@/components/app/admin/events";
-import { RangeDialog } from "@/components/app/admin/range-dialog";
-import { Badge } from "@/components/ui/badge";
+import { RangeDialog } from "@/components/ui/range-dialog";
 import { Button } from "@/components/ui/button";
 import { BarChart, BarList, type ChartRow } from "@/components/ui/chart";
 import { Combobox, type ComboboxNode } from "@/components/ui/combobox";
@@ -53,7 +51,6 @@ import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Stat } from "@/components/ui/stat";
 import { Text, TextButton } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
-import { Tooltip } from "@/components/ui/tooltip";
 import { errorMessage } from "@/lib/api";
 import { adminPaths, useAdminApi } from "@/lib/api/admin";
 import { useAdminKey } from "@/lib/admin";
@@ -98,27 +95,14 @@ export default function AdminEventIndex() {
   const charts = useCharts(filters, list);
   const [dialog, setDialog] = useState<"filters" | "range" | null>(null);
   const filtersButton = useId();
-  // After a badge is removed: the badge to focus next, or the Filters
-  // button ("filters"), once the URL's filters have changed.
-  const focusNext = useRef<string | null>(null);
-  useEffect(() => {
-    const next = focusNext.current;
-    if (!next) return;
-    focusNext.current = null;
-    const target =
-      next === "filters"
-        ? document.getElementById(filtersButton)?.querySelector("button")
-        : document.querySelector<HTMLElement>(
-            `[data-badge="${next}"] button[aria-label^="Remove filter"]`,
-          );
-    target?.focus();
-  }, [search, filtersButton]);
+  const focusAfter = useFocusAfterRemove(search, filtersButton);
   const apply = (next: EventFilters) =>
     void navigate(
       adminRoutes.events.index(key, { ...next, before: undefined }),
       { preventScrollReset: true },
     );
   const time = { window: filters.window, from: filters.from, to: filters.to };
+  const badges = filterBadges(filters, list.data?.refs);
   const sameWindow = (window: EventWindow) =>
     window === (filters.window ?? "24h") && !filters.from && !filters.to;
   return (
@@ -133,9 +117,18 @@ export default function AdminEventIndex() {
           </Text>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <RangeListbox
-            filters={filters}
-            onWindow={(window) =>
+          <TimeRange
+            value={filters.window ?? "24h"}
+            presets={eventWindows.map((id) => ({
+              id,
+              label: windowLabels[id],
+            }))}
+            custom={
+              filters.from || filters.to
+                ? rangeLabel(filters.from, filters.to)
+                : null
+            }
+            onPreset={(window) =>
               sameWindow(window)
                 ? list.refresh()
                 : apply({ ...narrowingFilters(filters), window })
@@ -144,19 +137,21 @@ export default function AdminEventIndex() {
           />
           <FiltersButton
             id={filtersButton}
-            count={filterBadges(filters, undefined).length}
+            count={badges.length}
             onClick={() => setDialog("filters")}
           />
           <ExportButton filters={filters} disabled={waiting} />
         </div>
       </div>
       <FilterBadges
-        filters={filters}
-        refs={list.data?.refs}
-        time={time}
-        onRemove={(next, focus) => {
-          focusNext.current = focus;
-          apply(next);
+        badges={badges}
+        onRemove={(id, focus) => {
+          focusAfter(focus);
+          apply(badges.find((b) => b.id === id)?.without ?? filters);
+        }}
+        onClearAll={() => {
+          focusAfter("filters");
+          apply(time);
         }}
         onOpen={() => setDialog("filters")}
       />
@@ -251,39 +246,6 @@ function useCharts(filters: EventFilters, list: EventListResource): ChartState {
     ? { kind: "summary", summary: kept.summary, dim: false }
     : { kind: "older" };
 }
-// The time range: a window, or a custom range (shown as its value, and
-// chosen again to change it).
-function RangeListbox({
-  filters,
-  onWindow,
-  onCustom,
-}: {
-  filters: EventFilters;
-  onWindow: (window: EventWindow) => void;
-  onCustom: () => void;
-}) {
-  const custom = Boolean(filters.from || filters.to);
-  const value = custom ? "custom" : (filters.window ?? "24h");
-  return (
-    <Listbox
-      aria-label="Time range"
-      value={value}
-      onChange={(v) => (v === "custom" ? onCustom() : onWindow(v))}
-      className="sm:w-60"
-    >
-      {eventWindows.map((window) => (
-        <ListboxOption key={window} value={window}>
-          <ListboxLabel>{windowLabels[window]}</ListboxLabel>
-        </ListboxOption>
-      ))}
-      <ListboxOption value="custom">
-        <ListboxLabel>
-          {custom ? rangeLabel(filters.from, filters.to) : "Custom range…"}
-        </ListboxLabel>
-      </ListboxOption>
-    </Listbox>
-  );
-}
 // Download CSV: the current filters' events, newest first, as the API
 // writes them (at most 10,000, each cell safe for a spreadsheet), saved
 // as a file. The API records the export with its filters, and says when
@@ -331,30 +293,6 @@ function ExportButton({
       <ArrowDownTrayIcon />
       Download CSV
     </Button>
-  );
-}
-function FiltersButton({
-  id,
-  count,
-  onClick,
-}: {
-  id: string;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <span id={id} className="contents">
-      <Button outline onClick={onClick}>
-        <FunnelIcon />
-        Filters
-        {count > 0 && (
-          <Badge>
-            {count}
-            <span className="sr-only"> applied</span>
-          </Badge>
-        )}
-      </Button>
-    </span>
   );
 }
 // One badge per applied filter, in the dialog's order: its text, a
@@ -419,78 +357,6 @@ function filterBadges(
     });
   return badges;
 }
-function FilterBadges({
-  filters,
-  refs,
-  time,
-  onRemove,
-  onOpen,
-}: {
-  filters: EventFilters;
-  refs: AdminEventPage["refs"] | undefined;
-  time: EventFilters;
-  // The filters without one, and what to focus once applied: the next
-  // badge's ID, or "filters" for the Filters button.
-  onRemove: (filters: EventFilters, focus: string) => void;
-  onOpen: () => void;
-}) {
-  const badges = filterBadges(filters, refs);
-  const nextOf = (i: number) =>
-    badges[i + 1]?.id ?? badges[i - 1]?.id ?? "filters";
-  if (badges.length === 0) return null;
-  return (
-    <ul
-      aria-label="Applied filters"
-      className="mt-4 flex flex-wrap items-center gap-2"
-    >
-      {badges.map((badge, i) => (
-        <li key={badge.id} data-badge={badge.id}>
-          <Badge
-            onRemove={() => onRemove(badge.without, nextOf(i))}
-            removeLabel={`Remove filter: ${badge.text}`}
-          >
-            <BadgeText badge={badge} onClick={onOpen} />
-          </Badge>
-        </li>
-      ))}
-      {badges.length >= 2 && (
-        <li>
-          <TextButton
-            className="text-sm/6"
-            onClick={() => onRemove(time, "filters")}
-          >
-            Clear all
-          </TextButton>
-        </li>
-      )}
-    </ul>
-  );
-}
-// A badge's text opens the dialog; the Events badge's tooltip lists every
-// name when some are hidden.
-function BadgeText({
-  badge,
-  onClick,
-}: {
-  badge: FilterBadge;
-  onClick: () => void;
-}) {
-  const button = (
-    <button
-      type="button"
-      onClick={onClick}
-      className="max-w-72 truncate text-left focus-visible:outline-2 focus-visible:outline-blue-500"
-    >
-      {badge.text}
-    </button>
-  );
-  return badge.tooltip ? (
-    <Tooltip content={badge.tooltip}>{button}</Tooltip>
-  ) : (
-    button
-  );
-}
-// The tiles and charts, or why they aren't shown.
 function Charts({
   state,
   filters,

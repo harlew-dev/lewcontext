@@ -50,7 +50,7 @@ func seedDemo(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (str
 		return "", err
 	}
 	now := time.Now()
-	_, err = factory.ProjectsIn(workspace.ID).Sequence(func(i int, p *factory.Project) {
+	projects, err := factory.ProjectsIn(workspace.ID).Sequence(func(i int, p *factory.Project) {
 		demo := demoProjects[i]
 		p.Name, p.Description, p.Status, p.Color = demo.Name, demo.Description, demo.Status, demo.Color
 		p.CreatedAt = now.AddDate(0, 0, -(14 + i))
@@ -59,7 +59,11 @@ func seedDemo(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (str
 	if err != nil {
 		return "", err
 	}
-	if err := addDemoMembers(ctx, tx, f, workspace.ID); err != nil {
+	members, err := addDemoMembers(ctx, tx, f, workspace.ID)
+	if err != nil {
+		return "", err
+	}
+	if err := addDemoLog(ctx, tx, f, workspace, user, projects, members); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("Created demo account %s with workspace %s, %d projects and %d more members", DemoEmail, DemoWorkspace, len(demoProjects), len(demoMembers)), nil
@@ -68,12 +72,12 @@ func seedDemo(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, o Options) (str
 // addDemoMembers adds fake @example.test users to the workspace, joined over
 // the past weeks. Their password hash is random text, not a hash, so no
 // password signs them in.
-func addDemoMembers(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, workspaceID int64) error {
+func addDemoMembers(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, workspaceID int64) ([]factory.User, error) {
 	users, err := factory.Users.State(func(u *factory.User) {
 		u.PasswordHash = "unusable:" + f.LetterN(32)
 	}).Create(ctx, tx, f, len(demoMembers))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	now := time.Now()
 	for i, user := range users {
@@ -82,6 +86,50 @@ func addDemoMembers(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, workspace
 			m.CreatedAt = now.AddDate(0, 0, -(10 - 2*i))
 		}).CreateOne(ctx, tx, f)
 		if err != nil {
+			return nil, err
+		}
+	}
+	return users, nil
+}
+
+// addDemoLog gives Acme a short history for its Logs tab: the projects
+// created by the owner, a few edits by the members, a role change and an
+// invitation. Written with the factory like the rest of the seed, so the
+// events name only records that exist.
+func addDemoLog(ctx context.Context, tx bun.Tx, f *gofakeit.Faker, w factory.Workspace, owner factory.User, projects []factory.Project, members []factory.User) error {
+	now := time.Now()
+	add := func(name string, ago time.Duration, actor, subject int64, payload map[string]any) error {
+		payload["workspace"] = w.PublicID
+		_, err := factory.Events.State(factory.EventOf(name, payload)).State(func(e *factory.Event) {
+			e.WorkspaceID, e.ActorID, e.UserID, e.CreatedAt = w.ID, actor, subject, now.Add(-ago)
+		}).CreateOne(ctx, tx, f)
+		return err
+	}
+	change := func(field, from, to string) map[string]any {
+		return map[string]any{field: map[string]any{"from": from, "to": to}}
+	}
+	for i, p := range projects {
+		err := add("project.created", time.Duration(14+i)*24*time.Hour, owner.ID, 0, map[string]any{
+			"project": p.PublicID, "name": p.Name, "description": p.Description, "status": p.Status, "color": p.Color,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	steps := []struct {
+		name    string
+		ago     time.Duration
+		actor   int64
+		subject int64
+		payload map[string]any
+	}{
+		{"project.updated", 30 * time.Hour, members[0].ID, 0, map[string]any{"project": projects[0].PublicID, "changes": change("status", "Planned", "In progress")}},
+		{"project.updated", 5 * time.Hour, members[1].ID, 0, map[string]any{"project": projects[2].PublicID, "changes": change("name", "Brand guide", projects[2].Name)}},
+		{"workspace.member.updated", 3 * 24 * time.Hour, owner.ID, members[3].ID, map[string]any{"user": members[3].PublicID, "changes": change("role", "member", "viewer")}},
+		{"workspace.invitation.created", 2 * 24 * time.Hour, owner.ID, 0, map[string]any{"invitation": "inv_" + f.LetterN(14), "email": "new.hire@example.test", "role": "member"}},
+	}
+	for _, s := range steps {
+		if err := add(s.name, s.ago, s.actor, s.subject, s.payload); err != nil {
 			return err
 		}
 	}

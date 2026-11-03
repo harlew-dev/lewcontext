@@ -67,6 +67,22 @@ func (h Members) Index(w http.ResponseWriter, r *http.Request) {
 	}
 	httpapi.JSON(w, 200, page)
 }
+
+// Show is one member's page: a current member, or a former one who still
+// appears in the workspace's log.
+func (h Members) Show(w http.ResponseWriter, r *http.Request) {
+	id, ok := memberID(r)
+	if !ok {
+		httpapi.Fail(w, 404, "Member not found.")
+		return
+	}
+	member, err := h.Repo.FindMember(r.Context(), httpapi.Workspace(r).ID, id)
+	if err != nil {
+		failMembership(w, r, err)
+		return
+	}
+	httpapi.JSON(w, 200, member)
+}
 func (h Members) Update(w http.ResponseWriter, r *http.Request) {
 	id, ok := memberID(r)
 	if !ok {

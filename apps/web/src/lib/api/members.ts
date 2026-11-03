@@ -1,5 +1,5 @@
 import { url, type Page } from "@/lib/pagination";
-import type { Member } from "@/types/members";
+import type { Member, MemberDetail } from "@/types/members";
 import type { Role } from "@/types/workspaces";
 import type { Http } from "./http";
 import { path } from "./paths";
@@ -12,6 +12,7 @@ export function memberRoutes(workspace: string) {
   return {
     index: ({ page, perPage, q }: MemberIndexQuery = {}) =>
       path<Page<Member>>(url(base, { page, perPage, q })),
+    show: (id: string) => path<MemberDetail>(`${base}/${id}`),
     update: (id: string) => `${base}/${id}`,
     destroy: (id: string) => `${base}/${id}`,
     // Whether an API path (e.g. an SWR key) is one of this workspace's member lists.
@@ -23,6 +24,7 @@ export function members(http: Http, workspace: string) {
   const routes = memberRoutes(workspace);
   return {
     index: (query: MemberIndexQuery = {}) => http.get(routes.index(query)),
+    show: (id: string) => http.get(routes.show(id)),
     update: (id: string, { role }: { role: Role }) =>
       http.send<Member>("PATCH", routes.update(id), { role }),
     // Removes them from the workspace; their account stays.

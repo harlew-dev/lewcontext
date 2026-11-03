@@ -85,6 +85,26 @@ func TestDemoRunsOnce(t *testing.T) {
 		}
 	}
 }
+
+// The demo workspace has a history for its Logs tab, naming records that exist.
+func TestDemoHasALog(t *testing.T) {
+	db := migrated(t)
+	run(t, db, "demo", Options{})
+	var names []string
+	err := db.NewSelect().Model((*factory.Event)(nil)).Column("e.name").
+		Join("JOIN workspaces AS w ON w.id = e.workspace_id").
+		Where("w.name = ?", DemoWorkspace).
+		Where("e.name LIKE 'project.%' AND (e.payload->>'project' IS NULL OR e.payload->>'project' NOT LIKE 'prj\\_%')").
+		Scan(context.Background(), &names)
+	if err != nil || len(names) != 0 {
+		t.Fatalf("project events without a project: %v (%v)", names, err)
+	}
+	count, err := db.NewSelect().Model((*factory.Event)(nil)).Join("JOIN workspaces AS w ON w.id = e.workspace_id").
+		Where("w.name = ?", DemoWorkspace).Count(context.Background())
+	if err != nil || int(count) != len(demoProjects)+4 {
+		t.Fatalf("log events: %d (%v)", count, err)
+	}
+}
 func TestVolumeAddsToOneAccount(t *testing.T) {
 	db := migrated(t)
 	ctx := context.Background()

@@ -4,7 +4,7 @@ import {
   ArrowLongRightIcon,
 } from "@heroicons/react/16/solid";
 import { Button } from "@/components/ui/button";
-// Older / Newer for the admin dashboard's cursor lists (Events, the Mail
+// Older / Newer for cursor lists (the admin dashboard's Events, the Mail
 // page's deliveries), which have no page numbers or totals. The URL holds
 // only `before`, the cursor of the page shown, so a link to it stays
 // shareable; the way back to newer pages travels in navigation state. Opened

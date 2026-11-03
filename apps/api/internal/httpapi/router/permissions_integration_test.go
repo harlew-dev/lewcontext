@@ -63,6 +63,10 @@ func workspaceRoutesMatrix(projectID string) []workspaceRoute {
 		{pattern: "PATCH /api/workspaces/{workspace}/projects/{project}", path: "/projects/" + projectID, body: project, ok: 200, allowed: editors},
 		{pattern: "DELETE /api/workspaces/{workspace}/projects/{project}", path: "/projects", ok: 204, allowed: owners, target: "project"},
 		{pattern: "GET /api/workspaces/{workspace}/members", path: "/members", ok: 200, allowed: owners},
+		{pattern: "GET /api/workspaces/{workspace}/events", path: "/events", ok: 200, allowed: owners},
+		{pattern: "GET /api/workspaces/{workspace}/events/{event}", path: "/events", ok: 200, allowed: owners, target: "event"},
+		{pattern: "GET /api/workspaces/{workspace}/members/{member}", path: "/members", ok: 200, allowed: owners, target: "member"},
+		{pattern: "GET /api/workspaces/{workspace}/api-keys/{key}", path: "/api-keys", ok: 200, allowed: owners, target: "api-key"},
 		{pattern: "GET /api/workspaces/{workspace}/api-keys", path: "/api-keys", ok: 200, allowed: owners},
 		{pattern: "POST /api/workspaces/{workspace}/api-keys", path: "/api-keys", body: key, ok: 201, allowed: owners},
 		{pattern: "PATCH /api/workspaces/{workspace}/api-keys/{key}", path: "/api-keys", body: key, ok: 200, allowed: owners, target: "api-key"},
@@ -122,6 +126,11 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 		}).CreateOne(ctx, db, f))(t)
 		return key.PublicID
 	}
+	newEvent := func() string {
+		return apitest.Must(factory.Events.State(factory.EventOf("project.deleted", map[string]any{"project": project.PublicID, "name": "x"})).State(func(e *factory.Event) {
+			e.WorkspaceID = workspace.ID
+		}).CreateOne(ctx, db, f))(t).PublicID
+	}
 	newInvitation := func() string {
 		return apitest.Must(factory.InvitationsTo(workspace.ID).State(factory.InvitedAs(fmt.Sprintf("revoke-%d@example.test", invitees.Add(1)), auth.RoleViewer)).CreateOne(ctx, db, f))(t).PublicID
 	}
@@ -163,6 +172,8 @@ func TestWorkspacePermissionMatrix(t *testing.T) {
 				return apitest.WorkspacePath(id, route.path+"/"+newInvitation())
 			case "api-key":
 				return apitest.WorkspacePath(id, route.path+"/"+newApiKey())
+			case "event":
+				return apitest.WorkspacePath(id, route.path+"/"+newEvent())
 			}
 			return apitest.WorkspacePath(id, route.path)
 		}

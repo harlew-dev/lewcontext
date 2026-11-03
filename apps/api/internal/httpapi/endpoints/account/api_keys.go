@@ -8,6 +8,7 @@ import (
 type ApiKeys struct{ *httpapi.Server }
 
 func (h ApiKeys) Index(w http.ResponseWriter, r *http.Request) { h.IndexManagedApiKeys(w, r, false) }
+func (h ApiKeys) Show(w http.ResponseWriter, r *http.Request)  { h.ShowManagedApiKey(w, r, false) }
 func (h ApiKeys) Store(w http.ResponseWriter, r *http.Request) {
 	h.SaveManagedApiKey(w, r, false, true)
 }

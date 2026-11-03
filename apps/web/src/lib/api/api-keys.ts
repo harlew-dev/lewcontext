@@ -8,6 +8,8 @@ export type ApiKeyIndexQuery = {
   perPage?: number;
   q?: string;
   kind?: ApiKey["kind"];
+  // A member's personal keys in a workspace's list (usr_…).
+  owner?: string;
 };
 export function apiKeyRoutes(workspace?: string) {
   const base = workspace
@@ -16,6 +18,7 @@ export function apiKeyRoutes(workspace?: string) {
   return {
     index: (query: ApiKeyIndexQuery = {}) =>
       path<Page<ApiKey>>(url(base, query)),
+    show: (id: string) => path<ApiKey>(`${base}/${id}`),
     store: () => base,
     update: (id: string) => `${base}/${id}`,
     destroy: (id: string) => `${base}/${id}`,
@@ -27,6 +30,7 @@ export function apiKeys(http: Http, workspace?: string) {
   const routes = apiKeyRoutes(workspace);
   return {
     index: (query: ApiKeyIndexQuery = {}) => http.get(routes.index(query)),
+    show: (id: string) => http.get(routes.show(id)),
     store: (input: ApiKeyInput & { workspace?: string }) =>
       http.send<ApiKeyCreated>("POST", routes.store(), input),
     update: (id: string, input: ApiKeyInput) =>

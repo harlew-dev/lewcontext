@@ -99,6 +99,8 @@ type ApiKeyProof struct {
 type ApiKeyFilter struct {
 	WorkspaceID, OwnerID int64
 	Kind, Search         string
+	// Owner (usr_…) narrows a workspace's list to that member's personal keys.
+	Owner string
 }
 
 func liveApiKeys(q *bun.SelectQuery) *bun.SelectQuery {
@@ -165,6 +167,9 @@ func (s *Store) IndexApiKeys(ctx context.Context, f ApiKeyFilter, req PageReques
 	}
 	if f.Search != "" {
 		q = q.Where(`ak.name ILIKE ? ESCAPE '\'`, containsPattern(f.Search))
+	}
+	if f.Owner != "" {
+		q = q.Where("ak.owner_user_id IN (?)", s.DB.NewSelect().Model((*User)(nil)).Column("u.id").Where("u.public_id = ?", f.Owner))
 	}
 	rows, err := Paginate[apiKeyRecord](ctx, q, req)
 	page := Page[ApiKey]{Data: []ApiKey{}, Pages: rows.Pages}
@@ -507,4 +512,28 @@ func (s *Store) RevokeApiKey(ctx context.Context, manager ApiKeyManager, id stri
 		}
 		return s.revokeApiKey(ctx, tx, row, workspace, "manual")
 	})
+}
+
+// FindApiKey returns one key's metadata within the manager's scope: either
+// kind in the workspace for an owner or admin (workspace.api_key.show), or
+// the signed-in account's own personal key. sql.ErrNoRows for any other.
+func (s *Store) FindApiKey(ctx context.Context, manager ApiKeyManager, id string) (ApiKey, error) {
+	row, err := findManagedApiKey(ctx, s.DB, manager, id)
+	if err != nil {
+		return ApiKey{}, err
+	}
+	return apiKeyMetadata(ctx, s.DB, row)
+}
+
+// FindOwnApiKeyWorkspace returns the internal ID of the workspace of the
+// personal key id when userID owns it and is still a member of it, for the
+// key's own log; sql.ErrNoRows otherwise (a key of someone else's, or one
+// whose owner has left, are alike).
+func (s *Store) FindOwnApiKeyWorkspace(ctx context.Context, userID int64, id string) (int64, error) {
+	var workspaceID int64
+	err := s.DB.NewSelect().Model((*apiKeyRecord)(nil)).Column("ak.workspace_id").
+		Where("ak.public_id = ? AND ak.kind = ? AND ak.owner_user_id = ?", id, auth.ApiKeyPersonal, userID).
+		Where("EXISTS (?)", s.DB.NewSelect().Model((*membership)(nil)).ColumnExpr("1").Where("m.user_id = ak.owner_user_id AND m.workspace_id = ak.workspace_id")).
+		Scan(ctx, &workspaceID)
+	return workspaceID, err
 }

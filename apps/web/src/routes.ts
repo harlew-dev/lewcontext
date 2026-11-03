@@ -57,7 +57,26 @@ const appRoutes = [
         index("pages/app/[workspace]/settings/index.tsx"),
         route("members", "pages/app/[workspace]/settings/members/index.tsx"),
         route("api-keys", "pages/app/[workspace]/settings/api-keys/index.tsx"),
+        route("events", "pages/app/[workspace]/settings/events/index.tsx"),
       ],
+    ),
+    // A change, a member and an API key have pages of their own, outside the
+    // settings tabs.
+    route(
+      "app/:workspace/settings/events/:event",
+      "pages/app/[workspace]/settings/events/[event].tsx",
+    ),
+    route(
+      "app/:workspace/settings/members/:member",
+      "pages/app/[workspace]/settings/members/[member].tsx",
+    ),
+    route(
+      "app/:workspace/settings/api-keys/:key",
+      "pages/app/[workspace]/settings/api-keys/[key].tsx",
+    ),
+    route(
+      "app/settings/api-keys/:key",
+      "pages/app/settings/api-keys/[key].tsx",
     ),
   ]),
 ] satisfies RouteConfig;

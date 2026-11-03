@@ -66,7 +66,7 @@ Within **24 hours**, the same credential/workspace/operation/value with the same
 
 ## Browser management routes
 
-Both collections have Index/Store, and PATCH/DELETE on `/{key}`. No per-record GET or secret-recovery read exists.
+Both collections have Index/Store, Show, and PATCH/DELETE on `/{key}`. There is no secret-recovery read: the plaintext exists only in the creation response. **Show** (`GET …/api-keys/{key}`, `workspace.api_key.show`; `GET /api/auth/api-keys/{key}`, your own) returns the same metadata as a list row, on the same management read budget; another workspace's key, someone else's personal key and an unknown ID are the same 404. A workspace list also takes `owner` (`usr_…`) to show one member's personal keys, and the web app's key pages read **Logs** from [the workspace log](events.md#the-workspace-log): `GET …/events?key=apk_…` for owners and admins, `GET /api/auth/api-keys/{key}/events` for a personal key's owner. What a key only reads isn't recorded (its `lastUsedAt` is the sign), only its lifecycle and the changes it wrote.
 
 | Collection                             | Reads / writes                                                                                                                           |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
