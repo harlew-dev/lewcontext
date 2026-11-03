@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import UserApiKeyIndex from "@/pages/app/settings/api-keys/index";
 import WorkspaceApiKeyIndex from "@/pages/app/[workspace]/settings/api-keys/index";
 import { stubApi } from "@/test/api";
+import { hover } from "@/test/hover";
 import { renderWorkspacePage } from "@/test/workspace-page";
 import type { ApiKey } from "@/types/api-keys";
 import { accessText } from "./key-display";
@@ -96,6 +97,22 @@ describe("the API keys table", () => {
     expect(
       within(pick("Ada script")).getByRole("link", { name: "Ada Lovelace" }),
     ).toHaveAttribute("href", `/app/${ws}/settings/members/usr_00000000000003`);
+  });
+  it("explains a shortened access badge in a tooltip on hover and focus", async () => {
+    stubApi({
+      [`GET /api/workspaces/${ws}/api-keys?kind=workspace`]: page([base]),
+      [`GET /api/workspaces/${ws}/api-keys?kind=personal`]: page([]),
+    });
+    renderWorkspacePage({
+      path: `/app/${ws}/settings/api-keys`,
+      route: "/app/:workspace/settings/api-keys",
+      element: <WorkspaceApiKeyIndex />,
+    });
+    const text = "All projects: List, View, Create, Delete";
+    const badge = (await screen.findByText(text)).parentElement as HTMLElement;
+    expect(badge).not.toHaveAttribute("title");
+    hover(badge);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(text);
   });
   it("keeps long text from widening a row, and hides secondary columns on small screens", async () => {
     const long = "a very long key name ".repeat(12);

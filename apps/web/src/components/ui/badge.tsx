@@ -1,4 +1,8 @@
-import type { ComponentPropsWithoutRef, MouseEvent } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type MouseEvent,
+} from "react";
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
@@ -25,24 +29,31 @@ export type BadgeColor = keyof typeof colors;
 // applied that can be taken away: a filter, a chip in a Combobox. The ×
 // keeps its click to itself, so a badge inside something clickable doesn't
 // click that too.
-export function Badge({
-  color = "zinc",
-  className,
-  onRemove,
-  removeLabel = "Remove",
-  children,
-  ...props
-}: {
-  color?: BadgeColor;
-  onRemove?: () => void;
-  removeLabel?: string;
-} & ComponentPropsWithoutRef<"span">) {
+export const Badge = forwardRef<
+  HTMLSpanElement,
+  {
+    color?: BadgeColor;
+    onRemove?: () => void;
+    removeLabel?: string;
+  } & ComponentPropsWithoutRef<"span">
+>(function Badge(
+  {
+    color = "zinc",
+    className,
+    onRemove,
+    removeLabel = "Remove",
+    children,
+    ...props
+  },
+  ref,
+) {
   const remove = (e: MouseEvent) => {
     e.stopPropagation();
     onRemove?.();
   };
   return (
     <span
+      ref={ref}
       {...props}
       className={cx(
         className,
@@ -71,7 +82,7 @@ export function Badge({
       )}
     </span>
   );
-}
+});
 // How something stands, for monitoring: OK, Warning or Critical. A level
 // always carries its word and an icon, never colour alone; green, amber and
 // red are kept for levels (chart series never use them).

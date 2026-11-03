@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   apiKeyStatus,
   scopeNames,
@@ -39,10 +40,13 @@ export function accessText(key: ApiKey): string {
 export function KeyAccess({ apiKey }: { apiKey: ApiKey }) {
   const text = accessText(apiKey);
   return (
-    <span title={text} className="block max-w-full">
-      <Badge className="max-w-full">
+    <Tooltip content={text}>
+      <Badge
+        tabIndex={0}
+        className="max-w-full focus-visible:outline-2 focus-visible:outline-blue-500"
+      >
         <span className="truncate">{text}</span>
       </Badge>
-    </span>
+    </Tooltip>
   );
 }
