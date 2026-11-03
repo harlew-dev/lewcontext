@@ -52,6 +52,8 @@ Popups position themselves with CSS variables: `--anchor-width` (a listbox's min
 
 Overlays portal into `document.body`, so one opened from another (a `Listbox` in a `Dialog`) sits above it by z-index: dialogs and their backdrops `z-50`, menu, listbox and combobox positioners `z-[60]`, tooltips `z-[70]`, toasts `z-[80]`.
 
+A dialog opened over another is Base UI's nested dialog: native stacking, Escape closes only the top one, and the top panel gets `data-nested` while the parent's gets `data-nested-dialog-open` (both keep a `--nested-dialogs` count, too). Base UI would leave a nested dialog's own backdrop out, so `Dialog` sets `forceRender` on it (`components/ui/dialog.tsx`): each layer dims the one beneath it again. The panel classes take `data-nested:shadow-xl` with a harder ring and `data-nested-dialog-open:scale-[0.98]`, so the parent visibly recedes.
+
 While a modal overlay is open (dialog, menu, select) Base UI hides the rest of the page from assistive technology and locks scrolling, hiding the page scrollbar without shifting the layout.
 
 Focus returns to the element that opened a menu or select. For a `Dialog` it is ours (`lib/return-focus.tsx`, `finalFocus={false}`): a dialog opened from a menu item has no opener of its own, so `Dialog` remembers the element focused as it opened and refocuses it when the dialog is removed. A `DropdownItem` closes its menu first and runs its `onClick` once focus is back on the menu's button.

@@ -17,6 +17,8 @@ const sizes = {
 // The backdrop dims the page and fades with the dialog. `starting:` (CSS
 // @starting-style) animates one that mounts already open (a dialog keyed per
 // opening, useOpenCount), which Base UI doesn't give data-starting-style.
+// Base UI skips a nested dialog's own backdrop unless forceRender, so a dialog
+// opened over another dims its parent too (the layers compound).
 const backdropClasses =
   "fixed inset-0 z-50 bg-zinc-950/25 transition duration-150 ease-out starting:opacity-0 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-in motion-reduce:transition-none dark:bg-zinc-950/50";
 // The viewport scrolls a tall dialog; the grid centres the panel (a sheet at
@@ -28,6 +30,8 @@ const gridClasses =
 const panelClasses = [
   "row-start-2 w-full min-w-0 rounded-t-3xl bg-white p-(--gutter) shadow-lg ring-1 ring-zinc-950/10 [--gutter:--spacing(8)] sm:mb-auto sm:rounded-2xl dark:bg-zinc-900 dark:ring-white/10 forced-colors:outline",
   "transition duration-150 ease-out will-change-transform starting:translate-y-12 starting:opacity-0 data-starting-style:translate-y-12 data-starting-style:opacity-0 data-ending-style:translate-y-12 data-ending-style:opacity-0 data-ending-style:ease-in motion-reduce:transition-none sm:starting:translate-y-0 sm:starting:scale-95 sm:data-starting-style:translate-y-0 sm:data-starting-style:scale-95 sm:data-ending-style:translate-y-0 sm:data-ending-style:scale-95",
+  "data-nested:shadow-xl data-nested:ring-zinc-950/20 dark:data-nested:ring-white/20",
+  "data-nested-dialog-open:scale-[0.98]",
   "focus:outline-hidden",
 ].join(" ");
 type DialogProps = {
@@ -70,7 +74,7 @@ export function Dialog({
       }}
     >
       <BaseDialog.Portal>
-        <BaseDialog.Backdrop className={backdropClasses} />
+        <BaseDialog.Backdrop forceRender className={backdropClasses} />
         <BaseDialog.Viewport className={viewportClasses}>
           <div className={gridClasses}>
             <BaseDialog.Popup
