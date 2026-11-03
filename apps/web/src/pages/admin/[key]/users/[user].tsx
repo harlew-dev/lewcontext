@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useParams } from "react-router";
-import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   AdminBadge,
@@ -18,7 +17,6 @@ import {
 } from "@/components/ui/description-list";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
-import { Link } from "@/components/ui/link";
 import {
   DangerAction,
   SettingsSection,
@@ -51,18 +49,10 @@ export default function Show() {
   return <UserContent key={id} id={id} />;
 }
 function UserContent({ id }: { id: string }) {
-  const key = useAdminKey();
   const user = useAdminResource(adminPaths.users.show(id));
   if (user.missing) return <UserNotFound />;
   return (
     <>
-      <Link
-        href={adminRoutes.users.index(key)}
-        className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
-      >
-        <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
-        Users
-      </Link>
       {user.error && (
         <Notice variant="error" className="mt-6" onRetry={user.refresh}>
           {user.error}
@@ -184,14 +174,10 @@ function Memberships({ user }: { user: AdminUserDetail }) {
   );
 }
 function UserNotFound() {
-  const key = useAdminKey();
   return (
     <EmptyState
       title="This user has wandered off."
       description="The account was deleted, or the link is mistyped."
-      action={
-        <Button href={adminRoutes.users.index(key)}>Back to users</Button>
-      }
     />
   );
 }

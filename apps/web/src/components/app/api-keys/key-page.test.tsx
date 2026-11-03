@@ -64,10 +64,6 @@ describe("an API key's page", () => {
     expect(
       within(list).getByRole("link", { name: "Ada Lovelace" }),
     ).toHaveAttribute("href", `/app/${ws}/settings/members/usr_00000000000003`);
-    expect(screen.getByRole("link", { name: "API Keys" })).toHaveAttribute(
-      "href",
-      `/app/${ws}/settings/api-keys`,
-    );
   });
   it("loads a workspace key's logs filtered to the key, in its own tab", async () => {
     const api = stubApi({

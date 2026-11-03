@@ -45,10 +45,6 @@ describe("a change's page", () => {
         name: "Olive Owner removed Bob Member (member) from the workspace",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Logs" })).toHaveAttribute(
-      "href",
-      `/app/${ws}/settings/events`,
-    );
     // Who did it and whom it was about open their pages.
     const details = screen.getByText("Done by").closest("dl") as HTMLElement;
     expect(

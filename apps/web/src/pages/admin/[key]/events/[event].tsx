@@ -1,5 +1,4 @@
 import { useParams } from "react-router";
-import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import {
   DeliveryStatusBadge,
   DeliveryTime,
@@ -11,7 +10,6 @@ import {
   IpLink,
   WorkspaceLink,
 } from "@/components/app/admin/events";
-import { Button } from "@/components/ui/button";
 import {
   DescriptionDetails,
   DescriptionList,
@@ -19,7 +17,6 @@ import {
 } from "@/components/ui/description-list";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
-import { Link } from "@/components/ui/link";
 import {
   Table,
   TableBody,
@@ -49,18 +46,10 @@ export default function Show() {
   return <EventContent key={id} id={id} />;
 }
 function EventContent({ id }: { id: string }) {
-  const key = useAdminKey();
   const event = useAdminResource(adminPaths.events.show(id));
   if (event.missing) return <EventNotFound />;
   return (
     <>
-      <Link
-        href={adminRoutes.events.index(key)}
-        className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
-      >
-        <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
-        Events
-      </Link>
       {event.error && (
         <Notice variant="error" className="mt-6" onRetry={event.refresh}>
           {event.error}
@@ -219,14 +208,10 @@ function Deliveries({ deliveries }: { deliveries: AdminDelivery[] }) {
   );
 }
 function EventNotFound() {
-  const key = useAdminKey();
   return (
     <EmptyState
       title="This event has wandered off."
       description="It was pruned after 90 days, or the link is mistyped."
-      action={
-        <Button href={adminRoutes.events.index(key)}>Back to events</Button>
-      }
     />
   );
 }

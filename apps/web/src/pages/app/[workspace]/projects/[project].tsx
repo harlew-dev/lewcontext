@@ -1,5 +1,4 @@
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import { ProjectActions } from "@/components/app/projects/project-actions";
 import {
   ProjectAvatar,
@@ -8,7 +7,6 @@ import {
 import { ProjectDialog } from "@/components/app/projects/project-dialog";
 import { ProjectNotices } from "@/components/app/projects/project-notices";
 import { useProjectEditor } from "@/components/app/projects/use-project-editor";
-import { Button } from "@/components/ui/button";
 import {
   DescriptionDetails,
   DescriptionList,
@@ -16,7 +14,6 @@ import {
 } from "@/components/ui/description-list";
 import { EmptyState, ListSkeleton } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
-import { Link } from "@/components/ui/link";
 import { Text } from "@/components/ui/text";
 import { parsePublicId } from "@/lib/ids";
 import { paths } from "@/lib/api";
@@ -41,13 +38,6 @@ function ProjectContent({ id }: { id: string }) {
   if (project.missing) return <ProjectNotFound />;
   return (
     <>
-      <Link
-        href={routes.projects.index(workspace.id)}
-        className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
-      >
-        <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
-        Projects
-      </Link>
       <ProjectNotices error={project.error} onRetry={project.refresh} />
       {project.data ? (
         <ProjectDetails
@@ -123,16 +113,10 @@ function ProjectDetails({
   );
 }
 function ProjectNotFound() {
-  const workspace = useWorkspace();
   return (
     <EmptyState
       title="This project has wandered off."
       description="It isn’t in this workspace, or the link is mistyped."
-      action={
-        <Button href={routes.projects.index(workspace.id)}>
-          Back to projects
-        </Button>
-      }
     />
   );
 }

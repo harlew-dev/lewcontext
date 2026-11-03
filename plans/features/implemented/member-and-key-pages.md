@@ -40,7 +40,7 @@ The list gets a ⋯ `Dropdown` in the last column (`TableCell className="w-0 tex
 
 ## Part 2: Member page
 
-`GET /api/workspaces/{workspace}/members/{member}` (new permission `workspace.member.show`, owners and admins, as `workspace.member.index`) → the member as the list gives it. Page `MemberShow` at `/app/:workspace/settings/members/:member`, a page of its own (not a tab of the settings layout), with a back link to Members:
+`GET /api/workspaces/{workspace}/members/{member}` (new permission `workspace.member.show`, owners and admins, as `workspace.member.index`) → the member as the list gives it. Page `MemberShow` at `/app/:workspace/settings/members/:member`, a page of its own (not a tab of the settings layout):
 
 - **Header:** the member's name, a `RoleBadge`, and a ⋯ `Dropdown` at the right: **Change role**, **Remove from workspace** (danger), opening the existing dialogs and shown only when the role may be managed (as today, never on yourself). The dialogs move from the members page into `components/app/members/` so both pages use them; Remove returns to the Members list, Change role refreshes the page.
 - **Tabs** (`Navbar`, like the settings tabs): **Overview** (name, email, role, joined, counts of live personal keys and changes they made), **API Keys** (their personal keys in this workspace: the key list below with `owner=usr_…`), **Logs** (the log filtered to them: what they did or what was done to them).
@@ -108,7 +108,7 @@ Go integration: each new route for every role and an outsider; event show (same 
 - **Filters dialog:** Type is the multi-select `Combobox` of groups and events (a fully picked group is one chip and one URL token); Person and Project are `Listbox`es of the first 100 members and the first 100 projects by name (plus the applied one), not a searching `Combobox`; a larger workspace reaches a project from its change's page. The Logs search is applied as typed, outside the dialog.
 - **Search** was reworked in the same change (the user's report: "api key" found nothing): every word must match an event's label or name, a field a row shows, or the name of who did it or whom it is about.
 - **Key form:** its permission picker still says "Read" (list and view together), as a form's choice; the table and key page spell the API's scopes as List, View, Create, Update and Delete.
-- **Shared pieces:** `lib/date-range.ts`, `components/ui/range-dialog.tsx`, `time-range.tsx`, `filter-bar.tsx`, `page-tabs.tsx`, `back-link.tsx`, `cursor-nav.tsx`; the admin Events page uses `TimeRange`, `FiltersButton` and `FilterBadges`, and the admin Alerts page the moved `RangeDialog`.
+- **Shared pieces:** `lib/date-range.ts`, `components/ui/range-dialog.tsx`, `time-range.tsx`, `filter-bar.tsx`, `page-tabs.tsx`, `cursor-nav.tsx`; the admin Events page uses `TimeRange`, `FiltersButton` and `FilterBadges`, and the admin Alerts page the moved `RangeDialog`.
 - **Member Overview** counts live personal keys and changes made; a former member's page has their name only. Their API Keys tab lists their personal keys here with `owner=`; their Logs tab uses `account=` and hides the Person filter.
 - **Request ID** is in the list's rows as well as the change's page (`requestId`); the page's "Other changes in this request" are the allowed events of this workspace with the same `request_id`.
 - **Route registries** also gained the four new pages (`returnRoutes`, `clientRoutePatterns` in the web and in `client_errors.go`).

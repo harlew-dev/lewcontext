@@ -1,7 +1,6 @@
 import { useParams } from "react-router";
 import { EventDetails, RequestId } from "@/components/app/events/event-details";
 import { EventSentence, EventWho } from "@/components/app/events/event-text";
-import { BackLink } from "@/components/ui/back-link";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Text, TextLink } from "@/components/ui/text";
@@ -43,7 +42,6 @@ function Content({ id }: { id: string }) {
   const data = event.data;
   return (
     <div className="mx-auto max-w-4xl">
-      <BackLink href={routes.events.index(workspace.id)}>Logs</BackLink>
       {event.error && (
         <Notice variant="error" className="mt-4" onRetry={event.refresh}>
           {event.error}
@@ -99,10 +97,8 @@ function Content({ id }: { id: string }) {
   );
 }
 function NotFound() {
-  const workspace = useWorkspace();
   return (
     <div className="mx-auto max-w-4xl">
-      <BackLink href={routes.events.index(workspace.id)}>Logs</BackLink>
       <EmptyState
         title="Change not found"
         description="It may be older than the 90 days changes are kept, or not part of this workspace."

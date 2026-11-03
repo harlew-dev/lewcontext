@@ -49,10 +49,6 @@ describe("a member's page", () => {
     expect(
       await screen.findByRole("heading", { name: "Bob Member" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Members" })).toHaveAttribute(
-      "href",
-      `/app/${ws}/settings/members`,
-    );
     const overview = screen
       .getByText("Changes made")
       .closest("dl") as HTMLElement;

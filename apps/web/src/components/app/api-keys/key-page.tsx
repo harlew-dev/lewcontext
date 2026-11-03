@@ -7,7 +7,6 @@ import {
 import { EventLog } from "@/components/app/events/event-log";
 import { RequestId } from "@/components/app/events/event-details";
 import { MemberLink } from "@/components/app/members/member-link";
-import { BackLink } from "@/components/ui/back-link";
 import {
   DescriptionDetails,
   DescriptionList,
@@ -25,7 +24,6 @@ import { PageTabs, useTab } from "@/components/ui/page-tabs";
 import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useResource } from "@/lib/use-resource";
 import { apiKeyActive, scopeNames, type ApiKey } from "@/types/api-keys";
@@ -50,13 +48,9 @@ export function KeyPage({
   const key = useResource(paths.apiKeys(workspace?.id).show(id));
   const tab = useTab(tabs);
   const actions = useKeyActions(workspace, () => void key.refresh());
-  const back = workspace
-    ? routes.workspaceApiKeys.index(workspace.id)
-    : routes.userApiKeys.index();
   if (key.missing)
     return (
       <div className="mx-auto max-w-4xl">
-        <BackLink href={back}>API Keys</BackLink>
         <EmptyState
           title="API key not found"
           description="It may belong to someone else, or be older than the 90 days ended keys are kept."
@@ -70,7 +64,6 @@ export function KeyPage({
     data && apiKeyActive(data) && (!workspace || data.kind === "workspace");
   return (
     <div className="mx-auto max-w-4xl">
-      <BackLink href={back}>API Keys</BackLink>
       {key.error && (
         <Notice variant="error" className="mt-4" onRetry={key.refresh}>
           {key.error}

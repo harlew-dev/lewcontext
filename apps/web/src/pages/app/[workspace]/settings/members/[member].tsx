@@ -15,7 +15,6 @@ import {
 } from "@/components/app/members/member-dialogs";
 import { RoleBadge } from "@/components/app/workspaces/role-badge";
 import { Badge } from "@/components/ui/badge";
-import { BackLink } from "@/components/ui/back-link";
 import {
   DescriptionDetails,
   DescriptionList,
@@ -78,7 +77,6 @@ function Member({ id }: { id: string }) {
   if (member.missing)
     return (
       <div className="mx-auto max-w-4xl">
-        <BackLink href={back}>Members</BackLink>
         <EmptyState
           title="Member not found"
           description="They aren’t in this workspace, and haven’t appeared in its log."
@@ -100,7 +98,6 @@ function Member({ id }: { id: string }) {
     );
   return (
     <div className="mx-auto max-w-4xl">
-      <BackLink href={back}>Members</BackLink>
       {member.error && (
         <Notice variant="error" className="mt-4" onRetry={member.refresh}>
           {member.error}

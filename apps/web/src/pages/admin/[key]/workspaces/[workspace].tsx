@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   AdminTableHead,
@@ -22,7 +21,6 @@ import {
 } from "@/components/ui/description-list";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
-import { Link } from "@/components/ui/link";
 import { PaginatedTable } from "@/components/ui/paginated-table";
 import { SearchField } from "@/components/ui/search-field";
 import {
@@ -58,18 +56,10 @@ export default function Show() {
   return <WorkspaceContent key={id} id={id} />;
 }
 function WorkspaceContent({ id }: { id: string }) {
-  const key = useAdminKey();
   const workspace = useAdminResource(adminPaths.workspaces.show(id));
   if (workspace.missing) return <WorkspaceNotFound />;
   return (
     <>
-      <Link
-        href={adminRoutes.workspaces.index(key)}
-        className="inline-flex items-center gap-2 text-sm/6 text-zinc-500 dark:text-zinc-400"
-      >
-        <ChevronLeftIcon className="size-4 fill-zinc-400 dark:fill-zinc-500" />
-        Workspaces
-      </Link>
       {workspace.error && (
         <Notice variant="error" className="mt-6" onRetry={workspace.refresh}>
           {workspace.error}
@@ -273,16 +263,10 @@ function ProjectRow({ project }: { project: Project }) {
   );
 }
 function WorkspaceNotFound() {
-  const key = useAdminKey();
   return (
     <EmptyState
       title="This workspace has wandered off."
       description="It was deleted, or the link is mistyped."
-      action={
-        <Button href={adminRoutes.workspaces.index(key)}>
-          Back to workspaces
-        </Button>
-      }
     />
   );
 }
