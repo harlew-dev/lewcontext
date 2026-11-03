@@ -25,7 +25,7 @@ import type {
 // tile per area, each with its signals' levels in words, a sparkline over
 // the window, and a link to the page behind it. With metric storage off
 // the request tiles say so. One request, one recorded read.
-export default function AdminMonitoringOverview() {
+export default function Index() {
   const page = useMonitoringPage<OverviewSections>(
     "overview",
     adminRoutes.monitoring.index,

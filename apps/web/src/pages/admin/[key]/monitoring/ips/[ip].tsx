@@ -35,7 +35,7 @@ import type { AddressView, MonitoringWindow } from "@/types/admin";
 // Operators can block it from here (the IP blocks page's dialog, offering
 // an IPv6 address's /64, where one person usually is); the page reloads
 // afterwards to show the block, one more recorded read.
-export default function AdminMonitoringAddress() {
+export default function Show() {
   const key = useAdminKey();
   const ip = useParams().ip ?? "";
   const navigate = useNavigate();

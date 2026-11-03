@@ -58,7 +58,7 @@ const columns: AdminColumn<(typeof adminEmailBlockSortable)[number]>[] = [
 // sorts in the URL. Each page loaded is recorded in the audit trail. A row's
 // ⋯ menu opens its activity in Events, and for operators unblocks it,
 // behind a reason and a fresh code. Blocking is only ever the owner's.
-export default function AdminEmailBlockIndex() {
+export default function Index() {
   const key = useAdminKey();
   const [search] = useSearchParams();
   const goTo = useNavigate();

@@ -34,7 +34,7 @@ import type { IpsSections, MonitoringView } from "@/types/admin";
 // recorded read; sorting and the IPv6 switch only rearrange what came.
 // How many IP blocks are live, linking to the IP blocks page; an operator
 // blocks an address from its own page (ips/[ip].tsx).
-export default function AdminMonitoringIPs() {
+export default function Index() {
   const page = useMonitoringPage<IpsSections>(
     "ips",
     adminRoutes.monitoring.ips,

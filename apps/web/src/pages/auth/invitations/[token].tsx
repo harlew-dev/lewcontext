@@ -37,7 +37,7 @@ export async function clientLoader(): Promise<{ session: Session | null }> {
     .catch(() => null);
   return { session };
 }
-export default function InvitationShow({ loaderData }: Route.ComponentProps) {
+export default function Show({ loaderData }: Route.ComponentProps) {
   return (
     <SessionProvider session={loaderData.session}>
       <AuthLayout>

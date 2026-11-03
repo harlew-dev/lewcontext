@@ -45,7 +45,7 @@ import type { AdminUserDetail } from "@/types/admin";
 // account-and-access actions (plans/features/admin/actions.md), each
 // behind a fresh code and a reason. Opening it is recorded in the audit
 // trail (admin.user.viewed); so is each reload after an action.
-export default function AdminUserShow() {
+export default function Show() {
   const id = parsePublicId("usr", useParams().user);
   if (id === null) return <UserNotFound />;
   return <UserContent key={id} id={id} />;

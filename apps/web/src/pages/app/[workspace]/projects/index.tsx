@@ -25,7 +25,7 @@ import { can } from "@/types/workspaces";
 import type { ProjectQuery } from "@/types/projects";
 // The page state lives in the URL (?q=&status=&sort=&page=), so it survives
 // reloads and back/forward; every change fetches through SWR.
-export default function ProjectIndex() {
+export default function Index() {
   const [search] = useSearchParams();
   const goTo = useNavigate();
   const workspace = useWorkspace();

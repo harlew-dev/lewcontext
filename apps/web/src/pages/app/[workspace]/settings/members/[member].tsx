@@ -52,7 +52,7 @@ const tabs = [
   { id: "api-keys", label: "API Keys" },
   { id: "logs", label: "Logs" },
 ] as const;
-export default function MemberShow() {
+export default function Show() {
   const workspace = useWorkspace();
   const id = parsePublicId("usr", useParams().member);
   if (!can(workspace, "workspace.member.show"))

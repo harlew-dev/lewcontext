@@ -27,7 +27,7 @@ import type {
 // of them named by ID; then the duplicates and retries over the window
 // (an Idempotency-Key for creates is the fix if those aren't zero). One
 // request, one recorded read.
-export default function AdminMonitoringIntegrity() {
+export default function Index() {
   const page = useMonitoringPage<IntegritySections>(
     "integrity",
     adminRoutes.monitoring.integrity,

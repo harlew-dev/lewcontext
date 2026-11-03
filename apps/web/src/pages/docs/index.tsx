@@ -14,7 +14,7 @@ export const meta: Route.MetaFunction = () => [
     content: `API documentation for ${appName}.`,
   },
 ];
-export default function Documentation() {
+export default function Index() {
   return (
     <AuthLayout>
       <div className="grid w-full max-w-sm grid-cols-1 gap-8">

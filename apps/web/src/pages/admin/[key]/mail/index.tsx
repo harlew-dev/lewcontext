@@ -71,7 +71,7 @@ import {
 // does, and so does a retry. Operators can retry a failed delivery from its
 // row's ⋯ menu, or a listener's failures since a time from the header, each
 // behind a fresh code and a reason.
-export default function AdminDeliveryIndex() {
+export default function Index() {
   const key = useAdminKey();
   const navigate = useNavigate();
   const [search] = useSearchParams();

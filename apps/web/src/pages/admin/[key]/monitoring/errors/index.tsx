@@ -27,7 +27,7 @@ import type { ErrorsSections, MonitoringView } from "@/types/admin";
 // as user-reported and always shown as text, never a link. One request,
 // one recorded read; each group's page is a read of its own.
 // Resolving a group is an operator's housekeeping, on the group's page.
-export default function AdminMonitoringErrors() {
+export default function Index() {
   const page = useMonitoringPage<ErrorsSections>(
     "errors",
     adminRoutes.monitoring.errors,

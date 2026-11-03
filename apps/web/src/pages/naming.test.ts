@@ -1,94 +1,72 @@
+import { basename } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { RouteConfigEntry } from "@react-router/dev/routes";
-import { routes } from "@/lib/routes";
-import registry from "../routes";
-// A resource page's default export is <Resource><Action>
-// (docs/naming.md#web-app): routes.projects.show's page is ProjectShow.
-// Each resource group's URLs are built with sample IDs, matched to their
-// page in src/routes.ts, and the page imported.
+// A page's default export is named from its file (docs/naming.md#web-app):
+// index.tsx is Index, [<param>].tsx is Show and layout.tsx is Layout.
+// Every page and layout route under src/pages is checked, including the admin
+// build's, by walking the filesystem rather than a list of resource groups, so
+// a new page is enforced automatically.
 
-// The app's page modules (the admin dashboard's are its own build).
-const pages = import.meta.glob([
-  "./**/*.tsx",
-  "!./admin/**",
-  "!./**/*.test.tsx",
-]);
-// Plurals that aren't the singular and an "s".
-const irregular: Record<string, string> = {};
-// A resource group's key as its page's resource: projects → Project.
-export function resourceName(group: string): string {
-  const singular = irregular[group] ?? group.replace(/s$/, "");
-  return singular[0].toUpperCase() + singular.slice(1);
+// Every page module: the admin dashboard's pages are imported here at test
+// time only (the app build still excludes them).
+const pages = import.meta.glob(["./**/*.tsx", "!./**/*.test.tsx"]);
+
+// The default export a page file's name requires.
+export function pageExportName(file: string): string | null {
+  const base = basename(file).replace(/\.tsx$/, "");
+  if (base === "index") return "Index";
+  if (base === "layout") return "Layout";
+  if (/^\[[^/]+\]$/.test(base)) return "Show";
+  return null;
 }
-function capitalize(word: string): string {
-  return word[0].toUpperCase() + word.slice(1);
-}
+
 // What's wrong with a page's export name, or null.
 export function badPageExport(
-  group: string,
-  action: string,
-  exported: string,
+  file: string,
+  exported: string | undefined,
 ): string | null {
-  const want = `${resourceName(group)}${capitalize(action)}`;
-  return exported === want
-    ? null
-    : `routes.${group}.${action}'s page exports ${exported}: resource pages export <Resource><Action>, ${want}; see docs/naming.md#web-app`;
+  const want = pageExportName(file);
+  if (!want) {
+    return `${file}: not a page file — pages are index.tsx, [<param>].tsx or layout.tsx; see docs/naming.md#web-app`;
+  }
+  if (exported === want) return null;
+  return `${file}: its default export is ${exported ?? "missing"}: name it ${want} after its file, export default function ${want}; see docs/naming.md#web-app`;
 }
-// Every page in the registry: its full path pattern and file. A route with
-// an index child is that child's page.
-function flatten(
-  entries: RouteConfigEntry[],
-  prefix = "",
-): { path: string; file: string }[] {
-  return entries.flatMap((entry) => {
-    const path = [prefix, entry.path ?? ""].filter(Boolean).join("/");
-    if (entry.children) return flatten(entry.children, path);
-    return [{ path, file: entry.file }];
-  });
-}
-function matches(pattern: string, url: string): boolean {
-  const source = pattern
-    .split("/")
-    .map((part) => (part.startsWith(":") ? "[^/]+" : part))
-    .join("/");
-  return new RegExp(`^/${source}$`).test(url);
-}
-// Sample arguments: a workspace ID, then a record's.
-const samples = ["wsp_2yEHYLwiwPVhLW", "prj_j292s2S2j7Qx4B"];
+
 describe("page export names", () => {
-  it("are <Resource><Action> for every resource page", async () => {
-    const registered = flatten(registry);
+  it("are Index, Show or Layout for every page and layout file", async () => {
     const problems: string[] = [];
     let checked = 0;
-    for (const [group, value] of Object.entries(routes)) {
-      if (typeof value !== "object") continue;
-      for (const [action, build] of Object.entries(value)) {
-        const fn = build as (...ids: string[]) => string;
-        // Any sample fits a path parameter: only the URL's shape matters.
-        const url = fn(...samples.slice(0, fn.length));
-        const page = registered.find((r) => matches(r.path, url));
-        const load = page && pages[`./${page.file.replace(/^pages\//, "")}`];
-        if (!load) {
-          problems.push(`routes.${group}.${action} (${url}) has no page`);
-          continue;
-        }
-        const module = (await load()) as { default: { name: string } };
-        const problem = badPageExport(group, action, module.default.name);
-        if (problem) problems.push(problem);
-        checked++;
-      }
+    for (const [key, load] of Object.entries(pages)) {
+      const file = `pages/${key.replace(/^\.\//, "")}`;
+      const module = (await load()) as { default?: unknown };
+      const exported =
+        typeof module.default === "function"
+          ? (module.default as { name: string }).name
+          : undefined;
+      const problem = badPageExport(file, exported);
+      if (problem) problems.push(problem);
+      checked++;
     }
     expect(problems).toEqual([]);
-    expect(checked).toBeGreaterThanOrEqual(6);
+    // A moved or emptied tree can't make the check pass quietly.
+    expect(checked).toBeGreaterThanOrEqual(60);
   });
+
   it("refuses other names", () => {
-    expect(badPageExport("projects", "index", "ProjectIndex")).toBeNull();
-    expect(badPageExport("emailBlocks", "show", "EmailBlockShow")).toBeNull();
-    expect(badPageExport("projects", "index", "Projects")).toBe(
-      "routes.projects.index's page exports Projects: resource pages export <Resource><Action>, ProjectIndex; see docs/naming.md#web-app",
+    expect(badPageExport("index.tsx", "Index")).toBeNull();
+    expect(badPageExport("[project].tsx", "Show")).toBeNull();
+    expect(badPageExport("layout.tsx", "Layout")).toBeNull();
+    expect(badPageExport("index.tsx", "Home")).toBe(
+      "index.tsx: its default export is Home: name it Index after its file, export default function Index; see docs/naming.md#web-app",
     );
-    expect(badPageExport("workspaces", "edit", "WorkspaceSettings")).not.toBe(
-      null,
+    expect(badPageExport("[project].tsx", "ProjectShow")).toBe(
+      "[project].tsx: its default export is ProjectShow: name it Show after its file, export default function Show; see docs/naming.md#web-app",
+    );
+    expect(badPageExport("layout.tsx", "AppLayout")).toBe(
+      "layout.tsx: its default export is AppLayout: name it Layout after its file, export default function Layout; see docs/naming.md#web-app",
+    );
+    expect(badPageExport("index.tsx", undefined)).toBe(
+      "index.tsx: its default export is missing: name it Index after its file, export default function Index; see docs/naming.md#web-app",
     );
   });
 });

@@ -34,10 +34,7 @@ export const meta: Route.MetaFunction = () => [
   { title: `Admin sign-in · ${appName}` },
   { name: "robots", content: "noindex, nofollow" },
 ];
-export default function AdminLogin({
-  loaderData,
-  params,
-}: Route.ComponentProps) {
+export default function Index({ loaderData, params }: Route.ComponentProps) {
   if ("unavailable" in loaderData)
     return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (

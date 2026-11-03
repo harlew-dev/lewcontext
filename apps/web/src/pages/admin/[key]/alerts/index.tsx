@@ -101,7 +101,7 @@ import { useAdminResource } from "@/lib/use-admin-resource";
 // and the shared webhooks). Only the Alerts tab has the table. Opening a tab
 // is one recorded read. Acknowledging and silencing are on an alert's own
 // page.
-export default function AdminAlertIndex() {
+export default function Index() {
   const key = useAdminKey();
   const [search] = useSearchParams();
   const view = search.get("view");

@@ -31,7 +31,7 @@ import type {
 // The account actions (sign out everywhere, reset MFA, suspend) are on the
 // account's own page, users/[user].tsx, which each account's name links
 // to; not in this list, so each is taken with the account's page in view.
-export default function AdminMonitoringAccounts() {
+export default function Index() {
   const page = useMonitoringPage<AccountsSections>(
     "accounts",
     adminRoutes.monitoring.accounts,

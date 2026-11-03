@@ -40,7 +40,7 @@ import type { AdminIPBlock } from "@/types/admin";
 // the admin dashboard itself, so a mistaken block can be undone here.
 // Opening the page is recorded (admin.ip_block.listed); blocking and
 // unblocking are operators' actions, behind a fresh code and a reason.
-export default function AdminIPBlockIndex() {
+export default function Index() {
   const list = useAdminResource(adminPaths.ipBlocks.index());
   const operator = adminCan(useAdminSession().role, "operator");
   const [blocking, setBlocking] = useState(false);

@@ -25,7 +25,7 @@ import type { Route } from "./+types/index";
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return registerVerifyLoader(request);
 }
-export default function RegisterVerify({ loaderData }: Route.ComponentProps) {
+export default function Index({ loaderData }: Route.ComponentProps) {
   const [ended, setEnded] = useState("");
   if ("unavailable" in loaderData)
     return <ServiceUnavailable requestId={loaderData.requestId} />;

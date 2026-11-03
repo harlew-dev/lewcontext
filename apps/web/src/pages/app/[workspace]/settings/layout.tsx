@@ -17,7 +17,7 @@ import { useWorkspace } from "@/lib/workspace";
 // layout doesn't fade the page in again (a tab group), and the content below
 // slides in from the side of the tab chosen instead.
 export const handle: TransitionHandle = { tabGroup: true };
-export default function WorkspaceSettingsLayout() {
+export default function Layout() {
   const workspace = useWorkspace();
   const { pathname } = useLocation();
   const index = settingsTabs(workspace.id).findIndex(

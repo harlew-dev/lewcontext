@@ -30,7 +30,7 @@ function recentPath(workspace: string) {
 function countPath(workspace: string, status: Status) {
   return paths.projects(workspace).index({ status, perPage: 1 });
 }
-export default function Dashboard() {
+export default function Index() {
   const session = useSession();
   const workspace = useWorkspace();
   const list = useResource(recentPath(workspace.id));

@@ -32,7 +32,7 @@ function deadLink(error: unknown): boolean {
     error instanceof ApiError && error.status === 422 && error.field === "token"
   );
 }
-export default function EmailBlockShow() {
+export default function Show() {
   const token = useParams().token ?? "";
   const { state, retry, update, markDead } = useLinkCheck(token);
   const checking = useDelayedLoading(state.kind === "checking");

@@ -17,7 +17,7 @@ import { can } from "@/types/workspaces";
 // quote, and the other changes recorded in the same request. Owners and
 // admins only (workspace.event.show). The page's ID is the change's own
 // public ID: a request can record several changes, so its ID can't name one.
-export default function EventShow() {
+export default function Show() {
   const workspace = useWorkspace();
   const id = parsePublicId("evt", useParams().event);
   if (!can(workspace, "workspace.event.show"))

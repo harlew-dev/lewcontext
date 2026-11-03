@@ -28,7 +28,7 @@ import type {
 // (listed, never deleted automatically: deleting them is a business
 // policy). Counts throughout; accounts by ID and name only. One request,
 // one recorded read.
-export default function AdminMonitoringUsage() {
+export default function Index() {
   const page = useMonitoringPage<UsageSections>(
     "usage",
     adminRoutes.monitoring.usage,

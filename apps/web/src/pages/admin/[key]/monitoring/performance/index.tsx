@@ -42,7 +42,7 @@ import type {
 // sums over 7 days), with each server's own numbers last. With metric
 // storage off it says so: everything from the metrics reads zero. One
 // request, one recorded read.
-export default function AdminMonitoringPerformance() {
+export default function Index() {
   const page = useMonitoringPage<PerformanceSections>(
     "performance",
     adminRoutes.monitoring.performance,

@@ -43,7 +43,7 @@ import type {
 // One event: who, what and from where, its payload as stored, its
 // deliveries to listeners, and the events it's linked with. Opening it is
 // recorded (admin.event.viewed).
-export default function AdminEventShow() {
+export default function Show() {
   const id = parsePublicId("evt", useParams().event);
   if (id === null) return <EventNotFound />;
   return <EventContent key={id} id={id} />;

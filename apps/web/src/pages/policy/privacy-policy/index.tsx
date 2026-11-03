@@ -16,7 +16,7 @@ export const meta: Route.MetaFunction = ({ loaderData }) =>
         { name: "description", content: loaderData.description },
       ]
     : [{ title: appName }];
-export default function PrivacyPolicy({ loaderData }: Route.ComponentProps) {
+export default function Index({ loaderData }: Route.ComponentProps) {
   return <PolicyPage name="privacy-policy" policy={loaderData} />;
 }
 // With POLICIES off Go answers this page's data file as an unknown URL, so

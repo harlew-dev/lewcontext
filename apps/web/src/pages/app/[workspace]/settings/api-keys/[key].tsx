@@ -5,7 +5,7 @@ import { parsePublicId } from "@/lib/ids";
 import { useWorkspace } from "@/lib/workspace";
 import { can } from "@/types/workspaces";
 // A workspace API key's page: owners and admins only (workspace.api_key.show).
-export default function WorkspaceApiKeyShow() {
+export default function Show() {
   const workspace = useWorkspace();
   const id = parsePublicId("apk", useParams().key);
   if (!can(workspace, "workspace.api_key.show"))

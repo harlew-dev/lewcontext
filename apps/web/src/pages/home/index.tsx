@@ -9,7 +9,7 @@ import { usePolicies } from "@/lib/use-policies";
 // its title, description and content are in the HTML. It is built without a
 // session, so it starts with "Log in" and offers the dashboard once the
 // browser finds the visitor signed in.
-export default function Home() {
+export default function Index() {
   const signedIn = useSignedIn();
   // Linked once the browser knows they're published: the prerendered page
   // is built without asking.

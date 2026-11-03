@@ -30,7 +30,7 @@ import type { LimitsSections, MonitoringView } from "@/types/admin";
 // per window, however many requests it refused); every refusal from the
 // metrics; who's at a limit right now from the counters, which hold
 // digests, so how many and never who.
-export default function AdminMonitoringLimits() {
+export default function Index() {
   const page = useMonitoringPage<LimitsSections>(
     "limits",
     adminRoutes.monitoring.limits,

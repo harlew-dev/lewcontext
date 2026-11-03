@@ -30,7 +30,7 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
 export function shouldRevalidate() {
   return false;
 }
-export default function AppLayout({ loaderData }: Route.ComponentProps) {
+export default function Layout({ loaderData }: Route.ComponentProps) {
   const pageKey = usePageKey();
   if ("unavailable" in loaderData)
     return <ServiceUnavailable requestId={loaderData.requestId} />;

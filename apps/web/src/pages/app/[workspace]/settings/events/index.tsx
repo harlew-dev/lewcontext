@@ -10,7 +10,7 @@ import { can } from "@/types/workspaces";
 // Workspace settings → Logs: the changes made in this workspace, newest
 // first, for owners and admins (workspace.event.index). Its filters and
 // cursor are in the URL; see EventLog. Nothing here is recorded.
-export default function EventIndex() {
+export default function Index() {
   const workspace = useWorkspace();
   return can(workspace, "workspace.event.index") ? (
     <Logs key={workspace.id} />

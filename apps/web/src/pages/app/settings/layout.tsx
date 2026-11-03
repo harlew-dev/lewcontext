@@ -9,7 +9,7 @@ import {
 import { routes } from "@/lib/routes";
 
 export const handle: TransitionHandle = { tabGroup: true };
-export default function AccountSettingsLayout() {
+export default function Layout() {
   const { pathname } = useLocation();
   const keys = pathname === routes.userApiKeys.index();
   return (

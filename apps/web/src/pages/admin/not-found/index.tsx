@@ -13,6 +13,6 @@ export function clientLoader({ request }: ClientLoaderFunctionArgs) {
     throw redirectDocument(url.pathname + url.search + url.hash);
   return null;
 }
-export default function AdminNotFound() {
+export default function Index() {
   return <NotFound />;
 }

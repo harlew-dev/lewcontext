@@ -23,7 +23,7 @@ import type { Route } from "./+types/index";
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return guestLoader(request);
 }
-export default function Login() {
+export default function Index() {
   // After a password reset, the reset page passes the account's email; after
   // deleting an account, settings says so.
   const arrived = authPageState(useLocation().state);

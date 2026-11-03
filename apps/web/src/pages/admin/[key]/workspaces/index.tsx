@@ -36,7 +36,7 @@ const columns: AdminColumn<(typeof adminWorkspaceSortable)[number]>[] = [
 ];
 // Every workspace, newest first, with its counts and first owners: search by
 // name, sort by a column. Project names and contents aren't shown.
-export default function AdminWorkspaceIndex() {
+export default function Index() {
   const key = useAdminKey();
   const [search] = useSearchParams();
   const goTo = useNavigate();

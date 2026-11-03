@@ -23,7 +23,7 @@ import type { MonitoringView, WorkspacesSections } from "@/types/admin";
 // whole tables): their quotas, their rows across every workspace table,
 // what they made; invitations over 7 days; workspaces made and thrown
 // away within a day. One request, one recorded read.
-export default function AdminMonitoringWorkspaces() {
+export default function Index() {
   const page = useMonitoringPage<WorkspacesSections>(
     "workspaces",
     adminRoutes.monitoring.workspaces,

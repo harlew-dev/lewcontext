@@ -52,7 +52,7 @@ import type { Project, ProjectQuery, ProjectSortField } from "@/types/projects";
 // operators Revoke pending invitations. Opening it is recorded in the audit
 // trail (admin.workspace.viewed, and admin.project.listed for the
 // projects).
-export default function AdminWorkspaceShow() {
+export default function Show() {
   const id = parsePublicId("wsp", useParams().workspace);
   if (id === null) return <WorkspaceNotFound />;
   return <WorkspaceContent key={id} id={id} />;

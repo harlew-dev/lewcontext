@@ -23,7 +23,7 @@ import type { Route } from "./+types/index";
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return verifyEmailLoader(request);
 }
-export default function VerifyEmail({ loaderData }: Route.ComponentProps) {
+export default function Index({ loaderData }: Route.ComponentProps) {
   if ("unavailable" in loaderData)
     return <ServiceUnavailable requestId={loaderData.requestId} />;
   return (

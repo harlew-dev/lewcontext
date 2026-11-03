@@ -67,7 +67,7 @@ import type { Member, MemberQuery } from "@/types/members";
 import { can } from "@/types/workspaces";
 // Workspace settings → Members. Only owners and admins may list members; for
 // anyone else the page explains that without asking the API.
-export default function MemberIndex() {
+export default function Index() {
   const workspace = useWorkspace();
   return can(workspace, "workspace.member.index") ? (
     <MemberList key={workspace.id} />

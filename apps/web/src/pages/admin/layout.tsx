@@ -21,10 +21,7 @@ export const meta: Route.MetaFunction = () => [
   { title: `Admin · ${appName}` },
   { name: "robots", content: "noindex, nofollow" },
 ];
-export default function AdminLayoutRoute({
-  loaderData,
-  params,
-}: Route.ComponentProps) {
+export default function Layout({ loaderData, params }: Route.ComponentProps) {
   const { pathname } = useLocation();
   if ("unavailable" in loaderData)
     return <ServiceUnavailable requestId={loaderData.requestId} />;

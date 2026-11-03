@@ -4,7 +4,7 @@ import { Text } from "@/components/ui/text";
 import { useWorkspace } from "@/lib/workspace";
 import { can } from "@/types/workspaces";
 
-export default function WorkspaceApiKeyIndex() {
+export default function Index() {
   const workspace = useWorkspace();
   if (!can(workspace, "workspace.api_key.index"))
     return (

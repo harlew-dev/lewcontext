@@ -33,7 +33,7 @@ import type { ErrorView, MonitoringWindow } from "@/types/admin";
 //
 // Operators can Resolve a group (housekeeping, docs/api/admin.md: no code,
 // no reason); a new occurrence opens it again.
-export default function AdminMonitoringError() {
+export default function Show() {
   const key = useAdminKey();
   const error = useParams().error ?? "";
   const navigate = useNavigate();

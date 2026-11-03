@@ -2,7 +2,7 @@ import { KeyList } from "@/components/app/api-keys/key-list";
 import { Text } from "@/components/ui/text";
 import { useWorkspace } from "@/lib/workspace";
 
-export default function UserApiKeyIndex() {
+export default function Index() {
   const workspace = useWorkspace();
   return (
     <div key={workspace.id} className="space-y-6">

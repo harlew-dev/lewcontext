@@ -20,7 +20,7 @@ import type { ConfigurationSections, MonitoringView } from "@/types/admin";
 // that are set and their values, never a secret's value or digest. The
 // live servers' settings side by side, differences marked, then warnings
 // with what to do. One request, one recorded read.
-export default function AdminMonitoringConfiguration() {
+export default function Index() {
   const page = useMonitoringPage<ConfigurationSections>(
     "configuration",
     adminRoutes.monitoring.configuration,

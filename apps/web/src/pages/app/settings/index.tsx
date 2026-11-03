@@ -64,7 +64,7 @@ import { useRenewSession, useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
 import { useOpenCount } from "@/lib/use-open-count";
 import { useResource } from "@/lib/use-resource";
-export default function AccountSettings() {
+export default function Index() {
   const session = useSession();
   return (
     <div>

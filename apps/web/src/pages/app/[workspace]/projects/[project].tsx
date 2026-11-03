@@ -28,7 +28,7 @@ import type { Project } from "@/types/projects";
 import { can } from "@/types/workspaces";
 // Only well-formed project IDs reach the API; anything else, and a project
 // that doesn't exist in this workspace, shows "not found" inside the layout.
-export default function ProjectShow() {
+export default function Show() {
   const id = parsePublicId("prj", useParams().project);
   if (id === null) return <ProjectNotFound />;
   return <ProjectContent key={id} id={id} />;

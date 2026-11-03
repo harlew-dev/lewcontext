@@ -46,7 +46,7 @@ import {
 // admin sessions out; an operator may sign another admin out (a lost
 // laptop, a session that moved), behind a fresh code and a reason: the one
 // action on another admin.
-export default function AdminAdminIndex() {
+export default function Index() {
   const list = useAdminResource(adminPaths.admins.index());
   const admins = list.data?.data;
   return (

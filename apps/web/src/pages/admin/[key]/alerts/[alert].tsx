@@ -40,7 +40,7 @@ import {
 // one recorded read (admin.alert.viewed). Operators acknowledge it (stops
 // its reminder emails: housekeeping) and silence its signal (an action:
 // a fresh code and a reason).
-export default function AdminAlertShow() {
+export default function Show() {
   const alert = useParams().alert ?? "";
   const resource = useAdminResource(adminPaths.alerts.show(alert));
   return (

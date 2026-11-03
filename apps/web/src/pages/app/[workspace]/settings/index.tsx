@@ -31,7 +31,7 @@ import {
   useWorkspaceList,
 } from "@/lib/workspace";
 import { can, workspaceName } from "@/types/workspaces";
-export default function WorkspaceEdit() {
+export default function Index() {
   const workspace = useWorkspace();
   const canRename = can(workspace, "workspace.update");
   return (

@@ -33,7 +33,7 @@ import type {
 // upkeep, growth from the daily sizes, what fills the events table, and
 // each prune target's oldest row against its retention with its last
 // run. One request, one recorded read.
-export default function AdminMonitoringData() {
+export default function Index() {
   const page = useMonitoringPage<DataSections>(
     "data",
     adminRoutes.monitoring.data,

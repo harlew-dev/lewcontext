@@ -47,7 +47,7 @@ const columns: AdminColumn<(typeof adminUserSortable)[number]>[] = [
 // Every account, newest first: search by name or email, sort by a column,
 // all or only the suspended ones. The state lives in the URL; each page
 // loaded is recorded in the audit trail.
-export default function AdminUserIndex() {
+export default function Index() {
   const key = useAdminKey();
   const [search] = useSearchParams();
   const goTo = useNavigate();

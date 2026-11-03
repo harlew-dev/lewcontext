@@ -20,7 +20,7 @@ export function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 // Asks for a reset link. The API answers the same whether or not an account
 // uses the email, so this page does too: it never says whether one exists.
-export default function ForgotPassword() {
+export default function Index() {
   // The login page passes the email typed there.
   const arrived = authPageState(useLocation().state);
   const [email, setEmail] = useState(arrived.email ?? "");

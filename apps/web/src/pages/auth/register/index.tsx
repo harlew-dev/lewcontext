@@ -28,7 +28,7 @@ import type { Route } from "./+types/index";
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   return registerLoader(request);
 }
-export default function Register({ loaderData }: Route.ComponentProps) {
+export default function Index({ loaderData }: Route.ComponentProps) {
   const arrived = authPageState(useLocation().state);
   const [name, setName] = useState("");
   const [email, setEmail] = useState(arrived.email ?? "");

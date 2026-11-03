@@ -74,7 +74,7 @@ import {
 // URL, so a link opens the same view. Every load is one recorded read
 // (admin.event.listed: its filters and the charts together), so nothing
 // reloads on its own and nothing applies as you type.
-export default function AdminEventIndex() {
+export default function Index() {
   const key = useAdminKey();
   const navigate = useNavigate();
   const [search] = useSearchParams();

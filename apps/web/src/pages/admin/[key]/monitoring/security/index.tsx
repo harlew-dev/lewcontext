@@ -41,7 +41,7 @@ import type {
 // addresses and emails appear here, admin-only and recorded (the page's one
 // read, admin.monitoring.viewed), and every row links to the Events behind
 // it.
-export default function AdminMonitoringSecurity() {
+export default function Index() {
   const page = useMonitoringPage<SecuritySections>(
     "security",
     adminRoutes.monitoring.security,
