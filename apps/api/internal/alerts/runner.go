@@ -68,13 +68,19 @@ func (r *Runner) Tick(ctx context.Context) (evaluated bool, err error) {
 	if !r.lead(ctx) {
 		return false, nil
 	}
-	now := time.Now
-	if r.Now != nil {
-		now = r.Now
-	}
 	turn, cancel := context.WithTimeout(ctx, Interval/2)
 	defer cancel()
-	result, err := r.Evaluator.Evaluate(turn, now())
+	// Evidence and schedules run on the database's clock, never a server's.
+	at := time.Now()
+	if r.Now != nil {
+		at = r.Now()
+	} else if dbNow, err := r.Evaluator.Store.FindAlertEvaluationTime(turn); err != nil {
+		slog.ErrorContext(ctx, "reading the database clock failed", observe.ErrorAttr(err))
+		return true, err
+	} else {
+		at = dbNow
+	}
+	result, err := r.Evaluator.Evaluate(turn, at)
 	if err != nil {
 		if ctx.Err() == nil {
 			slog.ErrorContext(ctx, "evaluating alerts failed", observe.ErrorAttr(err))
@@ -82,8 +88,8 @@ func (r *Runner) Tick(ctx context.Context) (evaluated bool, err error) {
 		}
 		return true, err
 	}
-	if result.Opened+result.Escalated+result.Resolved+result.Reminded+result.Digested > 0 || result.Unavailable > 0 {
-		slog.InfoContext(ctx, "alerts evaluated", "opened", result.Opened, "escalated", result.Escalated, "resolved", result.Resolved,
+	if result.Opened+result.Escalated+result.Recovered+result.Resolved+result.Reminded+result.Digested > 0 || result.Unavailable > 0 {
+		slog.InfoContext(ctx, "alerts evaluated", "opened", result.Opened, "escalated", result.Escalated, "recovered", result.Recovered, "resolved", result.Resolved,
 			"reminded", result.Reminded, "digested", result.Digested, "unavailable", result.Unavailable)
 	}
 	if r.Heartbeat != nil {

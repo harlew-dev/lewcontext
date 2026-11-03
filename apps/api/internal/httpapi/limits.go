@@ -164,6 +164,11 @@ var (
 	// step-up counts, refused or not (an address that isn't blocked too), so a
 	// stolen admin session can't act faster than this.
 	AdminActionPerUser = ratelimit.Limit{Name: "admin-action:per-user", Block: ratelimit.Above(60), Window: time.Hour}
+
+	// IncidentCommentPerUser: comments by one admin across alerts and errors.
+	IncidentCommentPerUser = ratelimit.Limit{Name: "incident-comment:per-user", Block: ratelimit.Above(60), Window: time.Hour}
+	// AlertSubscriptionPerUser: personal global and per-signal preference patches.
+	AlertSubscriptionPerUser = ratelimit.Limit{Name: "alert-subscription:per-user", Block: ratelimit.Above(60), Window: time.Hour}
 )
 
 // RateLimits lists every limit, for TestRateLimitNames.
@@ -180,6 +185,8 @@ var RateLimits = []ratelimit.Limit{
 	ClientErrorPerUser, ClientErrorGlobal,
 	ExportPerUser,
 	AdminActionPerUser,
+	IncidentCommentPerUser,
+	AlertSubscriptionPerUser,
 }
 
 // Allow counts a request against l under key. Above the block level it

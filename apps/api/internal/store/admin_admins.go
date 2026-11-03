@@ -20,13 +20,11 @@ const maxAdminAccounts = 500
 // their newest admin.logged_in, kept as long as events are (90 days by
 // default); Sessions are their live admin sessions.
 type AdminAccount struct {
-	ID            int64          `bun:"id" json:"-"`
-	User          AdminPerson    `bun:"-" json:"user"`
-	Role          auth.AdminRole `bun:"role" json:"role"`
-	MFAEnabled    bool           `bun:"mfa_enabled" json:"mfaEnabled"`
-	MFASetupUntil *time.Time     `bun:"mfa_setup_until" json:"mfaSetupUntil"`
-	// AlertEmail is which alerts they're emailed: all, critical or none.
-	AlertEmail     string                `bun:"alert_email" json:"alertEmail"`
+	ID             int64                 `bun:"id" json:"-"`
+	User           AdminPerson           `bun:"-" json:"user"`
+	Role           auth.AdminRole        `bun:"role" json:"role"`
+	MFAEnabled     bool                  `bun:"mfa_enabled" json:"mfaEnabled"`
+	MFASetupUntil  *time.Time            `bun:"mfa_setup_until" json:"mfaSetupUntil"`
 	GrantedAt      time.Time             `bun:"granted_at" json:"grantedAt"`
 	LastSignedInAt *time.Time            `bun:"last_signed_in_at" json:"lastSignedInAt"`
 	Sessions       []AdminAccountSession `bun:"-" json:"sessions"`
@@ -71,7 +69,7 @@ func (s *Store) IndexAdminAdmins(ctx context.Context, current string, keys Admin
 		Join("JOIN users AS u ON u.id = adm.user_id").
 		ColumnExpr("u.id, u.public_id, u.name, u.email").
 		ColumnExpr("(?) IS NOT NULL AS mfa_enabled", mfaEnabledAt(s.DB)).
-		ColumnExpr("adm.role, adm.mfa_setup_until, adm.alert_email, adm.created_at AS granted_at").
+		ColumnExpr("adm.role, adm.mfa_setup_until, adm.created_at AS granted_at").
 		ColumnExpr("(?) AS last_signed_in_at", lastSignIn).
 		OrderExpr("adm.created_at, adm.user_id").
 		Limit(maxAdminAccounts).
@@ -84,7 +82,7 @@ func (s *Store) IndexAdminAdmins(ctx context.Context, current string, keys Admin
 	byID := map[int64]int{}
 	for rows.Next() {
 		var a AdminAccount
-		if err := rows.Scan(&a.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.MFAEnabled, &a.Role, &a.MFASetupUntil, &a.AlertEmail, &a.GrantedAt, &a.LastSignedInAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.User.PublicID, &a.User.Name, &a.User.Email, &a.MFAEnabled, &a.Role, &a.MFASetupUntil, &a.GrantedAt, &a.LastSignedInAt); err != nil {
 			return nil, err
 		}
 		a.Sessions = []AdminAccountSession{}

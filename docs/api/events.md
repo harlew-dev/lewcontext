@@ -117,13 +117,19 @@ The API records what happens (sign-ins, password changes, workspaces and project
 | `email.unblocked` | `email`, `by`: `link` (its block link, with the request's `ip`) / `cli` (`admin unblock`, no `ip`) / `admin` (the dashboard's Unblock: the admin as actor, the request's `ip`, beside `admin.email.unblocked`) | `UnblockEmail`, `UnblockEmailAddress`, only when the address was blocked |
 | `rate_limit.reached` | `limit`: the limit's name and the level reached, e.g. `auth:per-ip:challenge`, `auth:per-ip:block`, `project:per-user:block` ([rate-limits.md](rate-limits.md#levels)); `user` and `workspace` when known; `window` (seconds); `resetsAt`. `user_id` and `workspace_id` are set with them. Never the CAPTCHA token | `Allow`, only for the request that first crosses each level in a window (challenge levels with no provider too) |
 | `server.started` | `server` (its `server_instances` ID, `srv_…`), `version` (`observe.Version()`); no user, workspace, actor or `ip` | `RecordServerStart`, as a server starts, with its row ([observability.md](observability.md#servers-and-versions)) |
-| `alert.opened` | `alert` (`alt_…`), `signal`, `level`, `value`, `mail` and `webhook` (whether to email and post: decided when it opened); no scope or actor | `OpenAlert` (the evaluator, [monitoring.md](monitoring.md#alerts)) |
+| `alert.opened` | `alert` (`alt_…`), `signal`, `level`, `value`, `mail` and `webhook` (whether to email and post: decided when it opened; which webhooks get it is decided when it is recorded, one delivery per webhook that chose its signal and kind), `snapshot` (immutable cycle, sequence, time, title, unit, meaning and the rendered bodies); no scope or actor | `OpenAlert` (the evaluator, [monitoring.md](monitoring.md#alerts)) |
 | `alert.escalated` | `alert`, `signal`, `from`, `to`, `value`, `mail`, `webhook` | `EscalateAlert` |
-| `alert.resolved` | `alert`, `signal`, `level`, `openFor` (seconds), `mail`, `webhook` | `ResolveAlert` |
+| `alert.recovered` | as `alert.opened`, plus `snapshot`: a new confirmed healthy run, awaiting an operator | `UpdateAlertHealth` |
+| `alert.reopened` | as `alert.opened`, plus `cause`: `relapse` (an unresolved recovered cycle bad again) or `recurrence` (a new cycle after a resolution) | `UpdateAlertHealth`, `OpenAlert` |
+| `alert.resolved` | `alert`, `signal`, `level`, `source` (`admin`; absent on an old queued payload, which meant the evaluator), `openFor`, `mail`, `webhook`, `snapshot` | `ResolveRecoveredAlert` |
 | `alert.reminded` | `alert`, `signal`, `level`, `value`: a critical alert still open, unacknowledged and not silenced, 4 hours after its last email | `RemindAlerts` |
 | `alert.digested` | `alerts` (`alert`, `signal`, `level`, `value` each): openings past the burst limit gathered into one email | `DigestAlerts` |
-| `admin.alert.listed` | `admin`, `state`, `before`; actor only | the Alerts list |
+| `admin.alert.listed` | `admin`, `state`, `before`, `filters` (those used: `q`, `level`, `health`, `signals`, `acknowledged`, `silenced`, `from`, `to`); actor only | the Alerts list |
 | `admin.alert.viewed` | `admin`, `alert`; actor only | one alert's page |
+| `admin.alert_rule.listed` | `admin`; actor only | the alert catalogue with your own subscriptions |
+| `admin.alert_webhook.listed` | `admin`; actor only | the webhooks and heartbeats |
+| `admin.alert_webhook.created`, `.updated`, `.deleted` | `admin`, `webhook` (`whk_…`), and `kind` and `name` (created, `kind` on deleted), or `operation` (`update`, `rotate_key`), `fields` (their names) and `revision`; `reason`; actor only. Never a URL, host or key | `CreateAlertWebhook`, `UpdateAlertWebhook`, `UpdateAlertWebhookKey`, `DeleteAlertWebhook` (actions) |
+| `admin.alert_webhook.viewed` | `admin`, `webhook`, `section` (`signing_key`); actor only. Never the key | `GET …/{webhook}/signing-key`, inside a step-up window |
 | `admin.alert.acknowledged` | `admin`, `alert`, `signal`; actor only | `AcknowledgeAlert` (housekeeping) |
 | `admin.alert.silenced` | `admin`, `alert`, `signal`, `until`, `reason`; actor only | `SilenceAlert` (an action) |
 | `admin.error.resolved` | `admin`, `error`; actor only | `ResolveErrorGroup` (housekeeping) |

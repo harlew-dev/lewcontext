@@ -62,10 +62,23 @@ func TestRecordErrorsUpsertsOneRowPerGroup(t *testing.T) {
 	}
 
 	// Resolved by an admin, then it happens again: counted and open.
-	if _, err := s.DB.NewUpdate().Model((*appErrorRecord)(nil)).Set("resolved_at = now()").Where("id = ?", first.ID).Exec(ctx); err != nil {
+	admin, _, _ := incidentErrorFixture(t, s)
+	target := IncidentTarget{Kind: "error", PublicID: first.PublicID}
+	thread, err := s.FindIncidentThread(ctx, target)
+	if err != nil {
 		t.Fatal(err)
 	}
-	now = now.Add(time.Minute)
+	message, err := s.CreateIncidentMessage(ctx, target, thread.CurrentCycle.PublicID, "Investigated and handled", admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ResolveErrorGroup(ctx, first.PublicID, thread.CurrentCycle.PublicID, message.PublicID, first.LastSeenAt, admin); err != nil {
+		t.Fatal(err)
+	}
+	// The next occurrence is genuinely after the resolution, not just an
+	// old buffered batch arriving after it.
+	resolved := errorRows(t, s)[first.Fingerprint].ResolvedAt
+	now = resolved.Add(time.Minute)
 	for range 3 {
 		report("")
 	}
@@ -73,8 +86,8 @@ func TestRecordErrorsUpsertsOneRowPerGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	again := errorRows(t, s)[first.Fingerprint]
-	if len(errorRows(t, s)) != 1 || again.Count != 5 || !again.ResolvedAt.IsZero() || again.LastRequestID != "" ||
-		!again.FirstSeenAt.Equal(start) || !again.LastSeenAt.Equal(start.Add(2*time.Minute)) {
+	if again.Count != 5 || !again.ResolvedAt.IsZero() || again.LastRequestID != "" ||
+		!again.FirstSeenAt.Equal(start) || !again.LastSeenAt.Equal(now) {
 		t.Fatalf("second flush: %+v", again)
 	}
 
@@ -84,7 +97,7 @@ func TestRecordErrorsUpsertsOneRowPerGroup(t *testing.T) {
 		Count: 4, FirstSeen: start.Add(-time.Hour), LastSeen: start, LastRequestID: "req_0000000000000A", LastVersion: "old"}
 	stored([]observe.ErrorGroup{older})
 	late := errorRows(t, s)[first.Fingerprint]
-	if late.Count != 9 || !late.FirstSeenAt.Equal(start.Add(-time.Hour)) || !late.LastSeenAt.Equal(start.Add(2*time.Minute)) ||
+	if late.Count != 9 || !late.FirstSeenAt.Equal(start.Add(-time.Hour)) || !late.LastSeenAt.Equal(now) ||
 		late.LastRequestID != "" || late.LastVersion != "abc123def456" || late.Stack != "" {
 		t.Fatalf("a late flush: %+v", late)
 	}

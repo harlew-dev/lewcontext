@@ -13,6 +13,10 @@ import (
 type Prunable struct {
 	Model any    // the table's model, e.g. (*eventRecord)(nil)
 	Age   string // the column whose age counts, e.g. "created_at"
+	// AgeExpression is fixed SQL for activity-based retention, when a parent
+	// has discussion. Recheck serialises deletion with new parent activity.
+	AgeQuery func(bun.IDB) *bun.SelectQuery
+	Recheck  bool
 	// Scope narrows the table to the rows this target looks after
 	// (optional): the events target the events that aren't audit events,
 	// audit_events the others.
@@ -27,7 +31,16 @@ type Prunable struct {
 
 // old selects the target's rows older than before.
 func (s *Store) old(p Prunable, before time.Time) *bun.SelectQuery {
-	q := s.DB.NewSelect().Model(p.Model).Where("?TableAlias.? < ?", bun.Ident(p.Age), before)
+	return oldPrunable(s.DB, p, before)
+}
+
+func oldPrunable(db bun.IDB, p Prunable, before time.Time) *bun.SelectQuery {
+	q := db.NewSelect().Model(p.Model)
+	if p.AgeQuery != nil {
+		q = q.Where("(?) < ?", p.AgeQuery(db), before)
+	} else {
+		q = q.Where("?TableAlias.? < ?", bun.Ident(p.Age), before)
+	}
 	if p.Scope != nil {
 		q = q.WhereGroup(" AND ", p.Scope)
 	}
@@ -57,6 +70,9 @@ func (s *Store) CountPrunable(ctx context.Context, p Prunable, before time.Time)
 // many it deleted. SKIP LOCKED leaves rows another run holds rather than
 // waiting for them.
 func (s *Store) Prune(ctx context.Context, p Prunable, before time.Time, limit int) (int, error) {
+	if p.Recheck {
+		return s.pruneIncidentParents(ctx, p, before, limit)
+	}
 	batch := s.prunable(p, before).
 		ColumnExpr("?TableAlias.id").
 		OrderExpr("?TableAlias.id").
@@ -70,6 +86,37 @@ func (s *Store) Prune(ctx context.Context, p Prunable, before time.Time, limit i
 	return int(n), err
 }
 
+// A candidate query's snapshot can predate a comment's commit while waiting
+// for its lock. Re-evaluate in a fresh statement after locking the parent.
+func (s *Store) pruneIncidentParents(ctx context.Context, p Prunable, before time.Time, limit int) (int, error) {
+	deleted := 0
+	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		q := oldPrunable(tx, p, before)
+		if p.Keep != nil {
+			q = q.WhereGroup(" AND NOT ", p.Keep)
+		}
+		var ids []int64
+		if err := q.ColumnExpr("?TableAlias.id").OrderExpr("?TableAlias.id").Limit(int64(limit)).For("UPDATE SKIP LOCKED").Scan(ctx, &ids); err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		recheck := oldPrunable(tx, p, before).ColumnExpr("?TableAlias.id").Where("?TableAlias.id IN (?)", bun.In(ids))
+		if p.Keep != nil {
+			recheck = recheck.WhereGroup(" AND NOT ", p.Keep)
+		}
+		result, err := tx.NewDelete().Model(p.Model).Where("?TableAlias.id IN (?)", recheck).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		deleted = int(n)
+		return err
+	})
+	return deleted, err
+}
+
 // FindOldestPrunable is when the oldest row p would prune was made (by its
 // Age column), or nil when it has none: how far behind its retention it
 // is.
@@ -78,7 +125,15 @@ func (s *Store) FindOldestPrunable(ctx context.Context, p Prunable) (*time.Time,
 		return p.Oldest(ctx, s)
 	}
 	var oldest sql.NullTime
-	q := s.DB.NewSelect().Model(p.Model).ColumnExpr("min(?TableAlias.?)", bun.Ident(p.Age))
+	q := s.DB.NewSelect().Model(p.Model)
+	if p.AgeQuery != nil {
+		q = q.ColumnExpr("min((?))", p.AgeQuery(s.DB))
+	} else {
+		q = q.ColumnExpr("min(?TableAlias.?)", bun.Ident(p.Age))
+	}
+	// Bun drops a group's "AND NOT" when it is the query's first condition,
+	// which would turn Keep (what to keep) into what to look at.
+	q = q.Where("TRUE")
 	if p.Scope != nil {
 		q = q.WhereGroup(" AND ", p.Scope)
 	}

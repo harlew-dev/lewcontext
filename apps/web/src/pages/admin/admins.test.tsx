@@ -24,7 +24,6 @@ const me: AdminSession = {
   role: "operator",
   csrfToken: "admin-csrf",
   expiresAt: "",
-  alertEmail: "critical",
   openAlerts: 0,
 };
 const emptyPage = {
@@ -41,7 +40,6 @@ function account(overrides: Partial<AdminAccount>): AdminAccount {
     role: "viewer",
     mfaEnabled: true,
     mfaSetupUntil: null,
-    alertEmail: "critical",
     grantedAt: ago(200),
     lastSignedInAt: ago(2),
     sessions: [],

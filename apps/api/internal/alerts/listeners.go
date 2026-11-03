@@ -11,23 +11,24 @@ import (
 	"lewcontext/api/internal/store"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // The listeners on the alert events (registered in cmd/server): mail.alert
-// emails admins, alert.webhook posts to ALERT_WEBHOOK_URL. Each event says
-// whether to (decided when it was recorded: Mail, Webhook); a listener
-// also sends nothing for an alert silenced since, or pruned, and nothing
-// but the resolution for one resolved since. Alerts reach admins as
-// operational mail they took on with the role, not a workspace
-// notification: each admin's alert_email (all, critical by default, none)
-// is the opt-in.
+// emails the admins subscribed to the signal, alert.webhook posts to the
+// webhooks that chose it (one delivery each). Each event says whether to
+// (decided when it was recorded: Mail, Webhook); a listener also sends
+// nothing for an alert silenced since, or pruned, and nothing but the
+// resolution for one resolved since. Alerts reach admins as operational
+// mail they opted into with a subscription, never by default.
 
 // change is an alert event as the listeners need it.
 type change struct {
 	event, alert, signal, level string
 	value                       float64
 	mail, webhook               bool
+	snapshot                    *events.AlertSnapshot
 }
 
 // Listen registers the listeners: email through mailer when it's set
@@ -35,16 +36,22 @@ type change struct {
 func Listen(bus *events.Bus, s *store.Store, mailer *mail.Mailer, webhook *Webhook) {
 	if mailer != nil {
 		events.Listen(bus, "mail.alert", func(ctx context.Context, e events.AlertOpened, d events.Delivered) error {
-			return emailChange(ctx, s, mailer, change{"alert.opened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook})
+			return emailChange(ctx, s, mailer, change{"alert.opened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "mail.alert_escalated", func(ctx context.Context, e events.AlertEscalated, d events.Delivered) error {
-			return emailChange(ctx, s, mailer, change{"alert.escalated", e.Alert, e.Signal, e.To, e.Value, e.Mail, e.Webhook})
+			return emailChange(ctx, s, mailer, change{"alert.escalated", e.Alert, e.Signal, e.To, e.Value, e.Mail, e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "mail.alert_reminded", func(ctx context.Context, e events.AlertReminded, d events.Delivered) error {
-			return emailChange(ctx, s, mailer, change{"alert.reminded", e.Alert, e.Signal, e.Level, e.Value, true, true})
+			return emailChange(ctx, s, mailer, change{"alert.reminded", e.Alert, e.Signal, e.Level, e.Value, e.Snapshot == nil || e.Mail, e.Snapshot == nil || e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "mail.alert_resolved", func(ctx context.Context, e events.AlertResolved, d events.Delivered) error {
-			return emailChange(ctx, s, mailer, change{"alert.resolved", e.Alert, e.Signal, e.Level, 0, e.Mail, e.Webhook})
+			return emailChange(ctx, s, mailer, change{"alert.resolved", e.Alert, e.Signal, e.Level, 0, e.Mail, e.Webhook, e.Snapshot})
+		})
+		events.Listen(bus, "mail.alert_recovered", func(ctx context.Context, e events.AlertRecovered, d events.Delivered) error {
+			return emailChange(ctx, s, mailer, change{"alert.recovered", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook, e.Snapshot})
+		})
+		events.Listen(bus, "mail.alert_reopened", func(ctx context.Context, e events.AlertReopened, d events.Delivered) error {
+			return emailChange(ctx, s, mailer, change{"alert.reopened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "mail.alert_digest", func(ctx context.Context, e events.AlertDigested, d events.Delivered) error {
 			return emailDigest(ctx, s, mailer, e)
@@ -52,16 +59,22 @@ func Listen(bus *events.Bus, s *store.Store, mailer *mail.Mailer, webhook *Webho
 	}
 	if webhook != nil {
 		events.Listen(bus, "alert.webhook", func(ctx context.Context, e events.AlertOpened, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.opened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook}, d.EventID)
+			return postChange(ctx, s, webhook, d, change{"alert.opened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "alert.webhook_escalated", func(ctx context.Context, e events.AlertEscalated, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.escalated", e.Alert, e.Signal, e.To, e.Value, e.Mail, e.Webhook}, d.EventID)
+			return postChange(ctx, s, webhook, d, change{"alert.escalated", e.Alert, e.Signal, e.To, e.Value, e.Mail, e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "alert.webhook_reminded", func(ctx context.Context, e events.AlertReminded, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.reminded", e.Alert, e.Signal, e.Level, e.Value, true, true}, d.EventID)
+			return postChange(ctx, s, webhook, d, change{"alert.reminded", e.Alert, e.Signal, e.Level, e.Value, e.Snapshot == nil || e.Mail, e.Snapshot == nil || e.Webhook, e.Snapshot})
 		})
 		events.Listen(bus, "alert.webhook_resolved", func(ctx context.Context, e events.AlertResolved, d events.Delivered) error {
-			return postChange(ctx, s, webhook, change{"alert.resolved", e.Alert, e.Signal, e.Level, 0, e.Mail, e.Webhook}, d.EventID)
+			return postChange(ctx, s, webhook, d, change{"alert.resolved", e.Alert, e.Signal, e.Level, 0, e.Mail, e.Webhook, e.Snapshot})
+		})
+		events.Listen(bus, "alert.webhook_recovered", func(ctx context.Context, e events.AlertRecovered, d events.Delivered) error {
+			return postChange(ctx, s, webhook, d, change{"alert.recovered", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook, e.Snapshot})
+		})
+		events.Listen(bus, "alert.webhook_reopened", func(ctx context.Context, e events.AlertReopened, d events.Delivered) error {
+			return postChange(ctx, s, webhook, d, change{"alert.reopened", e.Alert, e.Signal, e.Level, e.Value, e.Mail, e.Webhook, e.Snapshot})
 		})
 	}
 }
@@ -78,6 +91,9 @@ func current(ctx context.Context, s *store.Store, c change) (store.Alert, bool, 
 		return alert, false, err
 	}
 	if alert.Silenced(time.Now()) {
+		return alert, false, nil
+	}
+	if c.snapshot != nil && alert.TransitionSequence != c.snapshot.Sequence {
 		return alert, false, nil
 	}
 	if alert.ResolvedAt != nil && c.event != "alert.resolved" {
@@ -110,19 +126,22 @@ func emailChange(ctx context.Context, s *store.Store, mailer *mail.Mailer, c cha
 	if alert.ResolvedAt != nil {
 		data.OpenFor = FormatDuration(alert.ResolvedAt.Sub(alert.OpenedAt))
 	}
-	return emailAdmins(ctx, s, mailer, mail.Alert, data, func(setting string) bool { return covers(setting, c.level) })
+	if snap := c.snapshot; snap != nil {
+		data.Title, data.Meaning = snap.Title, snap.Meaning
+		data.Value, data.Opened = FormatValue(c.value, snap.Unit), FormatTime(snap.OpenedAt)
+		data.Occurred = FormatTime(snap.OccurredAt)
+		data.OpenFor = FormatDuration(snap.OccurredAt.Sub(snap.OpenedAt))
+	}
+	return emailAdmins(ctx, s, mailer, mail.Alert, data, func(recipient store.AlertRecipient) bool {
+		return recipient.Covers(c.signal, c.level, strings.TrimPrefix(c.event, "alert."))
+	})
 }
 
 // kind is the email's kind for an event name: "opened", "escalated", …
 func kind(event string) string {
 	return map[string]string{
-		"alert.opened": "opened", "alert.escalated": "escalated", "alert.reminded": "reminded", "alert.resolved": "resolved",
+		"alert.opened": "opened", "alert.escalated": "escalated", "alert.reminded": "reminded", "alert.resolved": "resolved", "alert.recovered": "recovered", "alert.reopened": "reopened",
 	}[event]
-}
-
-// covers reports whether an admin's setting takes alerts at level.
-func covers(setting, level string) bool {
-	return setting == store.AlertEmailAll || (setting == store.AlertEmailCritical && level == events.AlertCritical)
 }
 
 // emailDigest emails each admin the digest's alerts their setting covers;
@@ -137,17 +156,21 @@ func emailDigest(ctx context.Context, s *store.Store, mailer *mail.Mailer, e eve
 	for _, r := range recipients {
 		data := mail.AlertDigestData{}
 		for _, a := range e.Alerts {
-			if !covers(r.AlertEmail, a.Level) {
+			if !r.Covers(a.Signal, a.Level, "opened") {
 				continue
 			}
-			alert, err := s.FindAlert(ctx, a.Alert)
-			if errors.Is(err, sql.ErrNoRows) || (err == nil && alert.Silenced(time.Now())) {
+			alert, tell, err := current(ctx, s, change{event: "alert.opened", alert: a.Alert, snapshot: a.Snapshot})
+			if errors.Is(err, sql.ErrNoRows) || !tell {
 				continue
 			}
 			if err != nil {
 				return err
 			}
 			about := AboutSignal(a.Signal)
+			if a.Snapshot != nil {
+				about = About{Title: a.Snapshot.Title, Unit: a.Snapshot.Unit, Meaning: a.Snapshot.Meaning}
+				alert.OpenedAt = a.Snapshot.OpenedAt
+			}
 			data.Alerts = append(data.Alerts, mail.AlertDigestItem{Level: LevelWord(a.Level), Title: about.Title,
 				Value: FormatValue(a.Value, about.Unit), Opened: FormatTime(alert.OpenedAt)})
 		}
@@ -165,7 +188,7 @@ func emailDigest(ctx context.Context, s *store.Store, mailer *mail.Mailer, e eve
 }
 
 // emailAdmins sends t with data to every admin whose setting wants it.
-func emailAdmins(ctx context.Context, s *store.Store, mailer *mail.Mailer, t mail.Template, data any, wants func(setting string) bool) error {
+func emailAdmins(ctx context.Context, s *store.Store, mailer *mail.Mailer, t mail.Template, data any, wants func(recipient store.AlertRecipient) bool) error {
 	recipients, err := s.IndexAlertRecipients(ctx)
 	if err != nil {
 		return err
@@ -173,7 +196,7 @@ func emailAdmins(ctx context.Context, s *store.Store, mailer *mail.Mailer, t mai
 	var failed []error
 	sent := 0
 	for _, r := range recipients {
-		if !wants(r.AlertEmail) {
+		if !wants(r) {
 			continue
 		}
 		if err := mailer.Send(ctx, r.Email, t, data); err != nil && !errors.Is(err, mail.ErrBlocked) {
@@ -205,7 +228,7 @@ func partly(ctx context.Context, listener string, sent int, failed []error) erro
 }
 
 // postChange posts the change to the webhook.
-func postChange(ctx context.Context, s *store.Store, w *Webhook, c change, delivery string) error {
+func postChange(ctx context.Context, s *store.Store, w *Webhook, d events.Delivered, c change) error {
 	if !c.webhook {
 		return nil
 	}
@@ -215,7 +238,8 @@ func postChange(ctx context.Context, s *store.Store, w *Webhook, c change, deliv
 	}
 	about := AboutSignal(c.signal)
 	n := Notice{
-		Alert: alert.PublicID, Event: c.event, State: "open", Signal: c.signal, Title: about.Title,
+		Snapshot: c.snapshot,
+		Alert:    alert.PublicID, Event: c.event, State: "open", Signal: c.signal, Title: about.Title,
 		Level: c.level, Value: alert.LastValue, Unit: about.Unit, OpenedAt: alert.OpenedAt, ResolvedAt: alert.ResolvedAt,
 		Meaning: about.Meaning,
 	}
@@ -225,5 +249,5 @@ func postChange(ctx context.Context, s *store.Store, w *Webhook, c change, deliv
 	if alert.ResolvedAt != nil {
 		n.State = "resolved"
 	}
-	return w.Post(ctx, n, delivery)
+	return w.Post(ctx, n, d)
 }

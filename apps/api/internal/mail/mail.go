@@ -169,18 +169,23 @@ type AccountExistsData struct {
 // its key, which no email carries.
 type AlertData struct {
 	// Kind is "opened", "escalated", "reminded" or "resolved".
-	Kind    string
-	Level   string // "Critical" or "Warning"
-	Title   string // the signal's label
-	Value   string // "1,204", "5.2%", "1,450 ms"
-	Opened  string // "1 Nov 2026, 14:30 UTC"
-	OpenFor string // a resolved alert's: "2 hours 5 minutes"
-	Meaning string // what it usually means
+	Kind     string
+	Level    string // "Critical" or "Warning"
+	Title    string // the signal's label
+	Value    string // "1,204", "5.2%", "1,450 ms"
+	Opened   string // "1 Nov 2026, 14:30 UTC"
+	OpenFor  string // a resolved alert's: "2 hours 5 minutes"
+	Meaning  string // what it usually means
+	Occurred string // immutable event time, not delivery time
 }
 
 // Subject is the alert email's subject: what happened, and the signal.
 func (d AlertData) Subject() string {
 	switch d.Kind {
+	case "recovered":
+		return "Recovery confirmed: " + d.Title
+	case "reopened":
+		return "Reopened: " + d.Title
 	case "resolved":
 		return "Resolved: " + d.Title
 	case "reminded":

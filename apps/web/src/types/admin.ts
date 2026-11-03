@@ -19,13 +19,9 @@ export type AdminSession = {
   role: AdminRole;
   csrfToken: string;
   expiresAt: string;
-  // Which alerts the admin is emailed, and how many alerts were open when
-  // the page loaded (the sidebar's badge).
-  alertEmail: AlertEmail;
+  // How many alerts were open when the page loaded (the sidebar's badge).
   openAlerts: number;
 };
-export const alertEmails = ["all", "critical", "none"] as const;
-export type AlertEmail = (typeof alertEmails)[number];
 // An admin as the Admins page lists them: their live admin sessions,
 // and lastSignedInAt, their newest admin sign-in still in the audit trail
 // (events are kept 90 days by default).
@@ -45,7 +41,6 @@ export type AdminAccount = {
   mfaEnabled: boolean;
   // While set and ahead, they may still set MFA up at the door.
   mfaSetupUntil: string | null;
-  alertEmail: AlertEmail;
   grantedAt: string;
   lastSignedInAt: string | null;
   sessions: AdminAccountSession[];
@@ -756,6 +751,32 @@ export type ErrorView = {
   group: ErrorGroup & { stack: string };
   release: Release | null;
   occurrences: MonitorSeries;
+} & IncidentThreadData;
+
+// Shared alert/error discussion. Text exists only in message pages, never
+// parent lists or audit payloads; nullable attribution means Deleted account.
+export type IncidentPerson = { id: string; name: string };
+export type IncidentCycle = {
+  id: string;
+  number: number;
+  openedAt: string;
+  resolvedAt: string | null;
+  resolutionSource: "admin" | "automatic_legacy" | "unknown_legacy" | null;
+  resolver: IncidentPerson | null;
+  resolutionMessage: string | null;
+};
+export type IncidentMessage = {
+  id: string;
+  body: string | null;
+  createdAt: string;
+  author: IncidentPerson | null;
+  redactedAt: string | null;
+  redactor: IncidentPerson | null;
+};
+export type IncidentThreadData = {
+  currentCycle: IncidentCycle;
+  cycles: IncidentCycle[];
+  nextCycle: string | null;
 };
 // The Configuration page: servers, their settings side by side (the
 // compared servers' values in their order), and warnings by ID.
@@ -851,6 +872,17 @@ export type RetentionTarget = {
 // (the dashboard only: emails and the webhook carry neither).
 export type AdminAlertPerson = { id: string; name: string; email: string };
 export type AdminAlert = {
+  state: "active" | "confirming" | "recovered" | "unknown" | "resolved";
+  currentLevel: "ok" | "warn" | "critical" | "unknown";
+  rawLevel: "ok" | "warn" | "critical" | "unknown";
+  healthySince: string | null;
+  healthyChecks: number;
+  recoveredAt: string | null;
+  lastCheckedAt: string | null;
+  lastSuccessfulAt: string | null;
+  healthInterrupted: boolean;
+  revision: number;
+  sequence: number;
   id: string;
   signal: string;
   title: string;
@@ -873,9 +905,35 @@ export type AdminAlert = {
   acknowledgedBy: AdminAlertPerson | null;
   silencedUntil: string | null;
   silencedBy: AdminAlertPerson | null;
-};
+} & Partial<IncidentThreadData>;
 export const alertStates = ["open", "resolved", "all"] as const;
 export type AlertState = (typeof alertStates)[number];
+// The Alerts list's filters, as the page's URL and the API take them: the
+// state, a search, the alert's level and recovery state, its signals,
+// acknowledged and silenced, and when it opened (a window back from now, or
+// an RFC 3339 range, never both), with the cursor.
+export const alertHealths = [
+  "active",
+  "confirming",
+  "recovered",
+  "unknown",
+] as const;
+export type AlertHealth = (typeof alertHealths)[number];
+export const alertWindows = ["24h", "7d", "30d"] as const;
+export type AlertWindow = (typeof alertWindows)[number];
+export type AlertListQuery = {
+  state?: AlertState;
+  q?: string;
+  level?: "warn" | "critical";
+  health?: AlertHealth;
+  signals?: string[];
+  acknowledged?: "yes" | "no";
+  silenced?: "yes" | "no";
+  window?: AlertWindow;
+  from?: string;
+  to?: string;
+  before?: string;
+};
 export type AdminAlertPage = { data: AdminAlert[]; next: string | null };
 export const alertSilences = [
   { value: "1h", label: "1 hour" },
@@ -883,3 +941,85 @@ export const alertSilences = [
   { value: "24h", label: "24 hours" },
 ] as const;
 export type AlertSilence = (typeof alertSilences)[number]["value"];
+// Personal catalog preferences and safe runtime delivery projections.
+// Alert email is opt-in: a signal you subscribed to at warn, or critical; off
+// (the default) is no subscription.
+export type AlertPreference = "off" | "warn" | "critical";
+export type AlertSubscription = {
+  signal: string;
+  minLevel: AlertPreference;
+  // The kinds of event emailed about it; left out, every kind.
+  events?: AlertWebhookEvent[];
+};
+export type AlertRule = {
+  signal: string;
+  title: string;
+  meaning: string;
+  page: string;
+  unit: string;
+  warn: number;
+  critical: number;
+  minSample: number;
+  windowSeconds: number;
+  from: string;
+  cap: string;
+  levels: string[];
+  effectiveLevels: string[];
+  forSeconds: number;
+  cadenceSeconds: number;
+  recoverySeconds: number;
+  recoveryChecks: number;
+  preference: AlertPreference;
+  // The kinds of event you are emailed about this signal.
+  events: AlertWebhookEvent[];
+  ineffective: boolean;
+};
+export type AlertCatalog = {
+  data: AlertRule[];
+  retired: AlertSubscription[];
+};
+// The alert events a webhook can choose, in the order the dashboard lists them.
+export const alertWebhookEvents = [
+  "opened",
+  "escalated",
+  "recovered",
+  "reopened",
+  "resolved",
+  "reminded",
+] as const;
+export type AlertWebhookEvent = (typeof alertWebhookEvents)[number];
+export type AlertWebhookKind = "webhook" | "heartbeat";
+export type AlertWebhookFormat = "json" | "slack";
+// A webhook or heartbeat as the dashboard reads it: never its URL, host or key.
+export type AlertWebhook = {
+  id: string;
+  kind: AlertWebhookKind;
+  name: string;
+  format: AlertWebhookFormat | "";
+  signals: string[];
+  events: AlertWebhookEvent[];
+  enabled: boolean;
+  revision: number;
+  // The public label of the webhook's current key (key_…); empty for a heartbeat.
+  keyId: string;
+  // While a rotated key's previous one still signs too.
+  overlapUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastDelivery: {
+    status: "delivered" | "failed" | "pending";
+    at: string | null;
+  } | null;
+};
+// Create or change one; on a change only the fields given are changed.
+export type AlertWebhookInput = {
+  reason: string;
+  name?: string;
+  url?: string;
+  format?: AlertWebhookFormat;
+  signals?: string[];
+  events?: AlertWebhookEvent[];
+  enabled?: boolean;
+  revokeOverlap?: boolean;
+};
+export type AlertWebhookSigningKey = { key: string; keyId: string };

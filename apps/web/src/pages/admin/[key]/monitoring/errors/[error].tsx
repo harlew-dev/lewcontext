@@ -1,8 +1,5 @@
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/toast";
-import { errorMessage } from "@/lib/api";
-import { useAction } from "@/lib/use-action";
+import { IncidentThread } from "@/components/app/admin/incident-thread";
 import {
   GroupBadges,
   releaseText,
@@ -22,7 +19,7 @@ import {
   DescriptionTerm,
 } from "@/components/ui/description-list";
 import { Code, Text } from "@/components/ui/text";
-import { adminCan, useAdminKey, useAdminSession } from "@/lib/admin";
+import { useAdminKey } from "@/lib/admin";
 import { adminRoutes } from "@/lib/admin-routes";
 import { adminPaths, useAdminApi } from "@/lib/api/admin";
 import { useAdminResource } from "@/lib/use-admin-resource";
@@ -44,19 +41,6 @@ export default function AdminMonitoringError() {
   const window = monitoringWindow(search);
   const resource = useAdminResource(adminPaths.errors.show(error, window));
   const api = useAdminApi();
-  const operator = adminCan(useAdminSession().role, "operator");
-  const resolve = useAction(() => api.errorGroup(error).update(), {
-    onError: (e) => {
-      toast.error(errorMessage(e));
-      return true;
-    },
-  });
-  async function resolveGroup() {
-    if (!(await resolve.run()).ok) return;
-    toast.success("Marked resolved. A new occurrence opens it again.");
-    resource.refresh();
-  }
-  const resolved = resource.data?.group.resolvedAt != null;
   const setWindow = (w: MonitoringWindow) =>
     void navigate(adminRoutes.monitoring.error(key, error, w), {
       preventScrollReset: true,
@@ -69,18 +53,29 @@ export default function AdminMonitoringError() {
         onWindow={setWindow}
         view={resource.data}
         signals={false}
-        actions={
-          operator &&
-          resource.data &&
-          !resolved && (
-            <Button outline loading={resolve.loading} onClick={resolveGroup}>
-              Resolve
-            </Button>
-          )
-        }
       />
       <MonitoringBody resource={resource} label="Loading the error group">
-        {(view) => <Group view={view} />}
+        {(view) => (
+          <>
+            <Group view={view} />
+            <Text className="mt-8">
+              Resolution means reviewed or handled. A genuinely newer occurrence
+              opens another cycle; it does not resolve any aggregate alert.
+            </Text>
+            <IncidentThread
+              kind="error"
+              parent={error}
+              thread={view}
+              canResolve={view.group.resolvedAt === null}
+              onResolve={(cycle, message) =>
+                api
+                  .errorGroup(error)
+                  .update({ cycle, message, lastSeenAt: view.group.lastSeenAt })
+              }
+              onChanged={resource.refresh}
+            />
+          </>
+        )}
       </MonitoringBody>
     </>
   );

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"lewcontext/api/internal/alerts"
+	"lewcontext/api/internal/auth"
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/httpapi"
@@ -20,31 +21,33 @@ func guardAlerts(c config.Config) bool {
 	return c.Production && !c.AlertAllowPrivateTargets
 }
 
-// listenAlerts registers the alert listeners (docs/api/monitoring.md#alerts):
-// email to admins through mailer (nil with MAIL_DRIVER=off), and the
-// webhook when ALERT_WEBHOOK_URL is set. Logs where alerts go, never a URL.
-func listenAlerts(bus *events.Bus, repository *store.Store, mailer *mail.Mailer, c config.Config) {
-	var webhook *alerts.Webhook
-	if c.AlertWebhookURL != "" {
-		webhook = &alerts.Webhook{URL: c.AlertWebhookURL, Format: c.AlertWebhookFormat, Client: alerts.NewClient(alerts.WebhookTimeout, guardAlerts(c))}
-		if c.AlertWebhookSecret != "" {
-			webhook.Secret = []byte(c.AlertWebhookSecret)
-		}
+// alertSealer opens the webhooks' and heartbeats' sealed URLs and keys.
+func alertSealer(c config.Config) *auth.DestinationSealer {
+	sealer, err := auth.NewDestinationSealer(c.AppKey)
+	if err != nil {
+		panic("validated application key unavailable for alert destinations")
 	}
+	return sealer
+}
+
+// listenAlerts registers the alert listeners (docs/api/monitoring.md#alerts):
+// email to subscribed admins through mailer (nil with MAIL_DRIVER=off), and
+// the webhooks, always: which receivers exist is read from the database for
+// each delivery, so one added in the dashboard works with no restart.
+func listenAlerts(bus *events.Bus, repository *store.Store, mailer *mail.Mailer, c config.Config) {
+	webhook := &alerts.Webhook{Store: repository, Sealer: alertSealer(c), Production: c.Production, AllowPrivate: c.AlertAllowPrivateTargets,
+		Client: alerts.NewClient(alerts.WebhookTimeout, guardAlerts(c))}
 	alerts.Listen(bus, repository, mailer, webhook)
-	slog.Info("alerts go to", "adminEmail", mailer != nil, "webhook", webhook != nil, "webhookFormat", c.AlertWebhookFormat,
-		"webhookSigned", c.AlertWebhookSecret != "", "heartbeat", c.AlertHeartbeatURL != "")
+	slog.Info("alert listeners registered", "email", mailer != nil)
 }
 
 // runAlerts starts the alert loop: each minute this server evaluates if it
-// holds the alerts' lock, and pings ALERT_HEARTBEAT_URL after. The stop
-// it returns ends the loop and hands the lock back, before the database
-// closes.
+// holds the alerts' lock, and pings the heartbeats after. The stop it returns
+// ends the loop and hands the lock back, before the database closes.
 func runAlerts(ctx context.Context, db *bun.DB, repository *store.Store, c config.Config) (stop func()) {
-	runner := &alerts.Runner{DB: db, Evaluator: &alerts.Evaluator{Store: repository, Limits: httpapi.RateLimits, Rules: monitor.AlertRules}}
-	if c.AlertHeartbeatURL != "" {
-		runner.Heartbeat = &alerts.Heartbeat{URL: c.AlertHeartbeatURL, Client: alerts.NewClient(alerts.HeartbeatTimeout, guardAlerts(c))}
-	}
+	runner := &alerts.Runner{DB: db, Evaluator: &alerts.Evaluator{Store: repository, Limits: httpapi.RateLimits, Rules: monitor.AlertRules, MetricsStoreOff: c.MetricsStore == config.MetricsStoreOff}}
+	runner.Heartbeat = &alerts.Heartbeat{Store: repository, Sealer: alertSealer(c), Production: c.Production, AllowPrivate: c.AlertAllowPrivateTargets,
+		Client: alerts.NewClient(alerts.HeartbeatTimeout, guardAlerts(c))}
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {

@@ -50,13 +50,6 @@ const (
 	NotifiedQuiet  = "quiet"
 )
 
-// Admins' alert email settings (admins.alert_email).
-const (
-	AlertEmailAll      = "all"
-	AlertEmailCritical = "critical"
-	AlertEmailNone     = "none"
-)
-
 var (
 	// ErrAlertOpen: the signal already has an open alert.
 	ErrAlertOpen = errors.New("the signal already has an open alert")
@@ -68,6 +61,7 @@ var (
 )
 
 type alertRecord struct {
+	AlertHealth
 	bun.BaseModel  `bun:"table:alerts,alias:alt"`
 	ID             int64           `bun:",pk,autoincrement"`
 	PublicID       string          `bun:",nullzero"`
@@ -80,12 +74,18 @@ type alertRecord struct {
 	Notified       string          `bun:",notnull"`
 	LastNotifiedAt *time.Time
 	// MailTimes is read back with the row but written only by recordMail.
-	MailTimes      json.RawMessage `bun:"mail_times,type:jsonb,scanonly"`
-	AcknowledgedAt *time.Time
-	AcknowledgedBy *int64
-	SilencedUntil  *time.Time
-	SilencedBy     *int64
-	ResolvedAt     *time.Time
+	MailTimes           json.RawMessage `bun:"mail_times,type:jsonb,scanonly"`
+	AcknowledgedAt      *time.Time
+	AcknowledgedBy      *int64
+	SilencedUntil       *time.Time
+	SilencedBy          *int64
+	ResolvedAt          *time.Time
+	ReminderAnchor      time.Time `bun:",nullzero,default:current_timestamp"`
+	LastOpeningNoticeAt *time.Time
+	ExternalTitle       string `bun:",nullzero,default:'An alert'"`
+	ExternalUnit        string `bun:",nullzero,default:'count'"`
+	ExternalMeaning     string
+	cyclePublicID       string `bun:"-"`
 }
 
 // Alert is an alert as the evaluator, the listeners and the dashboard read
@@ -93,6 +93,7 @@ type alertRecord struct {
 // IDs, for the dashboard only. AcknowledgedBy and SilencedBy are nil once
 // that account is gone, or when not done.
 type Alert struct {
+	AlertHealth
 	ID             int64           `json:"-"`
 	PublicID       string          `json:"id"`
 	Signal         string          `json:"signal"`
@@ -121,7 +122,8 @@ func (a Alert) Silenced(at time.Time) bool {
 // alertOf is a stored alert as read.
 func alertOf(r alertRecord) Alert {
 	return Alert{
-		ID: r.ID, PublicID: r.PublicID, Signal: r.Signal, Level: r.Level, OpenedAt: r.OpenedAt,
+		AlertHealth: r.AlertHealth,
+		ID:          r.ID, PublicID: r.PublicID, Signal: r.Signal, Level: r.Level, OpenedAt: r.OpenedAt,
 		LastValue: r.LastValue, PeakValue: r.PeakValue, Details: r.Details, Notified: r.Notified,
 		LastNotifiedAt: r.LastNotifiedAt, AcknowledgedAt: r.AcknowledgedAt, SilencedUntil: r.SilencedUntil,
 		ResolvedAt: r.ResolvedAt, acknowledgedByID: r.AcknowledgedBy, silencedByID: r.SilencedBy,
@@ -143,11 +145,14 @@ func (s *Store) IndexOpenAlerts(ctx context.Context) ([]Alert, error) {
 // NewAlert is an alert to open: its signal, level and value now, and its
 // details (the drill-down, an integrity check's samples).
 type NewAlert struct {
-	Signal  string
-	Level   string
-	Value   float64
-	Details map[string]any
-	At      time.Time
+	Signal               string
+	Level                string
+	Value                float64
+	Details              map[string]any
+	At                   time.Time
+	Hourly               bool
+	RawLevel             string
+	Title, Unit, Meaning string
 }
 
 // OpenAlert opens an alert for n.Signal at n.At, deciding how it's told
@@ -170,14 +175,31 @@ func (s *Store) OpenAlert(ctx context.Context, n NewAlert) (Alert, error) {
 		if err := database.LockAlertWrites(ctx, tx); err != nil {
 			return err
 		}
-		open, err := tx.NewSelect().Model((*alertRecord)(nil)).Where("signal = ? AND resolved_at IS NULL", n.Signal).Exists(ctx)
-		if err != nil {
+		if n.At.IsZero() {
+			if err := tx.NewSelect().ColumnExpr("clock_timestamp()").Scan(ctx, &n.At); err != nil {
+				return err
+			}
+		}
+		var previous alertRecord
+		err := tx.NewSelect().Model(&previous).Where("signal = ?", n.Signal).For("UPDATE").Scan(ctx)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		if open {
+		if err == nil && previous.ResolvedAt == nil {
 			return ErrAlertOpen
 		}
-		row := alertRecord{Signal: n.Signal, Level: n.Level, OpenedAt: n.At, LastValue: n.Value, PeakValue: n.Value, Details: details}
+		row := alertRecord{Signal: n.Signal, Level: n.Level, OpenedAt: n.At, LastValue: n.Value, PeakValue: n.Value, Details: details,
+			AlertHealth:    AlertHealth{State: "active", CurrentLevel: n.Level, RawLevel: n.RawLevel, Hourly: n.Hourly, Revision: 1, LastCheckedAt: &n.At, LastSuccessfulAt: &n.At},
+			ReminderAnchor: n.At, ExternalTitle: n.Title, ExternalUnit: n.Unit, ExternalMeaning: n.Meaning}
+		if row.RawLevel == "" {
+			row.RawLevel = n.Level
+		}
+		if previous.ID != 0 {
+			row.ID, row.PublicID = previous.ID, previous.PublicID
+			row.Revision = previous.Revision + 1
+			row.TransitionSequence = previous.TransitionSequence
+			row.LastOpeningNoticeAt = previous.LastOpeningNoticeAt
+		}
 		if row.SilencedUntil, row.SilencedBy, err = runningSilence(ctx, tx, n.Signal, n.At); err != nil {
 			return err
 		}
@@ -187,7 +209,19 @@ func (s *Store) OpenAlert(ctx context.Context, n NewAlert) (Alert, error) {
 		if row.Notified == NotifiedMail {
 			row.LastNotifiedAt = &n.At
 		}
-		if _, err := tx.NewInsert().Model(&row).Returning("id, public_id").Exec(ctx); err != nil {
+		if row.Notified != NotifiedQuiet {
+			row.LastOpeningNoticeAt = &n.At
+		}
+		if row.ID == 0 {
+			if _, err := tx.NewInsert().Model(&row).Returning("*").Exec(ctx); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.NewUpdate().Model(&row).WherePK().Exec(ctx); err != nil {
+				return err
+			}
+		}
+		if err := s.createAlertCycle(ctx, tx, &row); err != nil {
 			return err
 		}
 		if row.Notified == NotifiedMail {
@@ -195,9 +229,21 @@ func (s *Store) OpenAlert(ctx context.Context, n NewAlert) (Alert, error) {
 				return err
 			}
 		}
+		row.TransitionSequence++
+		if err := saveAlertHealth(ctx, tx, &row); err != nil {
+			return err
+		}
 		out = alertOf(row)
 		e := events.AlertOpened{Alert: row.PublicID, Signal: row.Signal, Level: row.Level, Value: n.Value,
 			Mail: row.Notified == NotifiedMail, Webhook: row.Notified == NotifiedMail || row.Notified == NotifiedHeld}
+		e.Webhook, err = reserveAlertWebhook(ctx, tx, row, n.At, e.Webhook)
+		if err != nil {
+			return err
+		}
+		e.Snapshot = alertSnapshot(row, n.At)
+		if previous.ID != 0 {
+			return s.record(ctx, tx, events.NewAlertReopened(e, "recurrence"), EventScope{})
+		}
 		return s.record(ctx, tx, e, EventScope{})
 	})
 	return out, err
@@ -222,7 +268,7 @@ func openingNotice(ctx context.Context, tx bun.Tx, signal string, at time.Time, 
 		return NotifiedQuiet, nil
 	}
 	recent, err := tx.NewSelect().Model((*alertRecord)(nil)).
-		Where("signal = ? AND opened_at > ?", signal, at.Add(-AlertCooldown)).Exists(ctx)
+		Where("signal = ? AND last_opening_notice_at > ?", signal, at.Add(-AlertCooldown)).Exists(ctx)
 	if err != nil || recent {
 		return NotifiedQuiet, err
 	}
@@ -266,7 +312,7 @@ func mailAllowed(ctx context.Context, tx bun.Tx, signal string, at time.Time) (b
 // recordMail notes that an email about alert id went at at.
 func recordMail(ctx context.Context, tx bun.Tx, id int64, at time.Time) error {
 	_, err := tx.NewUpdate().Model((*alertRecord)(nil)).
-		Set("mail_times = mail_times || jsonb_build_array(?::text)", at.UTC().Format(time.RFC3339Nano)).
+		Set("mail_times = COALESCE((SELECT jsonb_agg(t) FROM jsonb_array_elements_text(mail_times) t WHERE t::timestamptz > ?), '[]'::jsonb) || jsonb_build_array(?::text)", at.Add(-AlertCooldown), at.UTC().Format(time.RFC3339Nano)).
 		Set("last_notified_at = ?", at).
 		Where("id = ?", id).Exec(ctx)
 	return err
@@ -329,50 +375,6 @@ func (s *Store) EscalateAlert(ctx context.Context, id int64, value float64, at t
 	return escalated, err
 }
 
-// ResolveAlert closes an open alert at at, recording alert.resolved: an
-// alert that was emailed is emailed again to say so, one that was posted
-// is posted, unless silenced. False when it isn't open any more.
-func (s *Store) ResolveAlert(ctx context.Context, id int64, at time.Time) (bool, error) {
-	resolved := false
-	err := s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		if err := database.LockAlertWrites(ctx, tx); err != nil {
-			return err
-		}
-		var row alertRecord
-		err := tx.NewUpdate().Model(&row).
-			Set("resolved_at = GREATEST(opened_at, ?)", at).
-			Where("id = ? AND resolved_at IS NULL", id).
-			Returning("id, public_id, signal, level, opened_at, notified, silenced_until, resolved_at").
-			Scan(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		resolved = true
-		silenced := alertOf(row).Silenced(at)
-		// Emailed again only if its opening was emailed, within the caps.
-		mail := false
-		if !silenced && row.Notified == NotifiedMail {
-			if mail, err = mailAllowed(ctx, tx, row.Signal, at); err != nil {
-				return err
-			}
-		}
-		if mail {
-			if err := recordMail(ctx, tx, row.ID, at); err != nil {
-				return err
-			}
-		}
-		e := events.AlertResolved{Alert: row.PublicID, Signal: row.Signal, Level: row.Level,
-			OpenFor: int(row.ResolvedAt.Sub(row.OpenedAt).Seconds()),
-			Mail:    mail,
-			Webhook: !silenced && row.Notified != NotifiedQuiet}
-		return s.record(ctx, tx, e, EventScope{})
-	})
-	return resolved, err
-}
-
 // RemindAlerts emails again, at at, every critical alert still open,
 // neither acknowledged nor silenced, that was told of (not quiet), last
 // emailed (or opened, if it never was) AlertRemindEvery ago or more and
@@ -387,10 +389,12 @@ func (s *Store) RemindAlerts(ctx context.Context, at time.Time) (int, error) {
 		var rows []alertRecord
 		err := tx.NewSelect().Model(&rows).
 			Where("resolved_at IS NULL AND level = ? AND acknowledged_at IS NULL", events.AlertCritical).
+			Where("state = 'active' AND last_successful_at >= ?", at.Add(-2*time.Minute)).
 			Where("(silenced_until IS NULL OR silenced_until <= ?)", at).
 			Where("coalesce(last_notified_at, opened_at) <= ?", at.Add(-AlertRemindEvery)).
+			Where("reminder_anchor <= ?", at.Add(-AlertRemindEvery)).
 			Where("notified <> ?", NotifiedQuiet).
-			OrderExpr("id").
+			OrderExpr("id").For("UPDATE").
 			Scan(ctx)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
@@ -400,13 +404,21 @@ func (s *Store) RemindAlerts(ctx context.Context, at time.Time) (int, error) {
 			if err != nil {
 				return err
 			}
-			if !ok {
-				continue
+			if ok {
+				if err := recordMail(ctx, tx, row.ID, at); err != nil {
+					return err
+				}
 			}
-			if err := recordMail(ctx, tx, row.ID, at); err != nil {
+			row.ReminderAnchor = at
+			row.TransitionSequence++
+			if err := saveAlertHealth(ctx, tx, &row); err != nil {
 				return err
 			}
-			e := events.AlertReminded{Alert: row.PublicID, Signal: row.Signal, Level: row.Level, Value: row.LastValue}
+			webhook, err := reserveAlertWebhook(ctx, tx, row, at, true)
+			if err != nil {
+				return err
+			}
+			e := events.AlertReminded{Alert: row.PublicID, Signal: row.Signal, Level: row.Level, Value: row.LastValue, Mail: ok, Webhook: webhook, Snapshot: alertSnapshot(row, at)}
 			if err := s.record(ctx, tx, e, EventScope{}); err != nil {
 				return err
 			}

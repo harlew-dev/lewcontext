@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/uptrace/bun"
+	"lewcontext/api/internal/database"
 	"lewcontext/api/internal/events"
 	"time"
 )
@@ -26,6 +27,17 @@ const (
 type AlertFilter struct {
 	State  string
 	Before string
+	// Search matches a title or signal name, any case, wildcards literal.
+	Search string
+	// Level is the alert's level, warn or critical; Health its recovery
+	// state (active, confirming, recovered, unknown), as last stored.
+	Level, Health string
+	// Signals narrows to those signals' alerts.
+	Signals []string
+	// Acknowledged and Silenced are "yes" or "no"; empty doesn't filter.
+	Acknowledged, Silenced string
+	// From (inclusive) and To (exclusive) bound when it opened.
+	From, To *time.Time
 }
 
 // AlertPage is one page of alerts and the cursor for the next, older one
@@ -46,11 +58,42 @@ func (s *Store) IndexAlerts(ctx context.Context, f AlertFilter, perPage int) (Al
 		if f.Before != "" {
 			return AlertPage{}, ErrNoCursor
 		}
-		q = q.Where("alt.resolved_at IS NULL").OrderExpr("alt.level = ? DESC, alt.opened_at DESC, alt.id DESC", events.AlertCritical)
+		q = q.Where("alt.resolved_at IS NULL").OrderExpr("(alt.state = 'recovered' AND alt.last_successful_at >= now() - CASE WHEN alt.hourly THEN interval '65 minutes' ELSE interval '2 minutes' END) ASC, alt.level = ? DESC, alt.opened_at DESC, alt.id DESC", events.AlertCritical)
 	case AlertStateResolved:
 		q = q.Where("alt.resolved_at IS NOT NULL").OrderExpr("alt.opened_at DESC, alt.id DESC")
 	default:
 		q = q.OrderExpr("alt.opened_at DESC, alt.id DESC")
+	}
+	if f.Search != "" {
+		pattern := containsPattern(f.Search)
+		q = q.Where(`(alt.external_title ILIKE ? ESCAPE '\' OR alt.signal ILIKE ? ESCAPE '\')`, pattern, pattern)
+	}
+	if f.Level != "" {
+		q = q.Where("alt.level = ?", f.Level)
+	}
+	if f.Health != "" {
+		q = q.Where("alt.state = ?", f.Health)
+	}
+	if len(f.Signals) > 0 {
+		q = q.Where("alt.signal IN (?)", bun.In(f.Signals))
+	}
+	switch f.Acknowledged {
+	case "yes":
+		q = q.Where("alt.acknowledged_at IS NOT NULL")
+	case "no":
+		q = q.Where("alt.acknowledged_at IS NULL")
+	}
+	switch f.Silenced {
+	case "yes":
+		q = q.Where("alt.silenced_until > now()")
+	case "no":
+		q = q.Where("(alt.silenced_until IS NULL OR alt.silenced_until <= now())")
+	}
+	if f.From != nil {
+		q = q.Where("alt.opened_at >= ?", *f.From)
+	}
+	if f.To != nil {
+		q = q.Where("alt.opened_at < ?", *f.To)
 	}
 	if f.Before != "" {
 		var cursor alertRecord
@@ -74,7 +117,8 @@ func (s *Store) IndexAlerts(ctx context.Context, f AlertFilter, perPage int) (Al
 		page.Next = &next
 	}
 	for _, r := range rows {
-		page.Data = append(page.Data, alertOf(r))
+		a := alertOf(r)
+		page.Data = append(page.Data, a)
 	}
 	return page, s.nameAlertPeople(ctx, page.Data)
 }
@@ -93,6 +137,13 @@ func (s *Store) FindAlert(ctx context.Context, publicID string) (Alert, error) {
 // nameAlertPeople names who acknowledged and silenced each alert, nil once
 // that account is gone.
 func (s *Store) nameAlertPeople(ctx context.Context, alerts []Alert) error {
+	at, clockErr := s.FindAlertEvaluationTime(ctx)
+	if clockErr != nil {
+		return clockErr
+	}
+	for i := range alerts {
+		alerts[i].AlertHealth = alerts[i].AlertHealth.At(at)
+	}
 	var ids []int64
 	for _, a := range alerts {
 		for _, id := range []*int64{a.acknowledgedByID, a.silencedByID} {
@@ -202,6 +253,9 @@ func (s *Store) SilenceAlert(ctx context.Context, publicID string, d time.Durati
 // there's none; ErrAlertResolved when it's resolved.
 func lockOpenAlert(ctx context.Context, tx bun.Tx, publicID string) (alertRecord, error) {
 	var row alertRecord
+	if err := database.LockAlertWrites(ctx, tx); err != nil {
+		return row, err
+	}
 	if err := tx.NewSelect().Model(&row).Where("public_id = ?", publicID).For("UPDATE").Scan(ctx); err != nil {
 		return row, err
 	}
@@ -209,80 +263,4 @@ func lockOpenAlert(ctx context.Context, tx bun.Tx, publicID string) (alertRecord
 		return row, ErrAlertResolved
 	}
 	return row, nil
-}
-
-// ResolveErrorGroup marks the grouped error publicID (err_…) resolved,
-// recording admin.error.resolved; its next occurrence opens it again
-// (RecordErrors). sql.ErrNoRows when there's none; ErrAlreadyDone when
-// it's resolved already.
-func (s *Store) ResolveErrorGroup(ctx context.Context, publicID string, admin User) error {
-	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		var row appErrorRecord
-		err := tx.NewSelect().Model(&row).Column("id", "resolved_at").Where("public_id = ?", publicID).For("UPDATE").Scan(ctx)
-		if err != nil {
-			return err
-		}
-		if !row.ResolvedAt.IsZero() {
-			return ErrAlreadyDone
-		}
-		if _, err := tx.NewUpdate().Model((*appErrorRecord)(nil)).Set("resolved_at = now()").Where("id = ?", row.ID).Exec(ctx); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, events.AdminErrorResolved{Admin: admin.PublicID, Error: publicID}, EventScope{ActorID: admin.ID})
-	})
-}
-
-// FindAdminAlertEmail is which alerts admin is emailed (AlertEmailAll,
-// AlertEmailCritical, AlertEmailNone). ErrNotAdmin when they aren't an
-// admin.
-func (s *Store) FindAdminAlertEmail(ctx context.Context, admin User) (string, error) {
-	var setting string
-	err := s.DB.NewSelect().Model((*adminRecord)(nil)).Column("alert_email").Where("user_id = ?", admin.ID).Scan(ctx, &setting)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotAdmin
-	}
-	return setting, err
-}
-
-// UpdateAdminAlertEmail sets which alerts admin is emailed, their own
-// setting, recording admin.updated (changes.alertEmail, the admin as
-// actor) when it changed. ErrNotAdmin when they aren't an admin.
-func (s *Store) UpdateAdminAlertEmail(ctx context.Context, admin User, setting string) error {
-	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		var row adminRecord
-		err := tx.NewSelect().Model(&row).Where("user_id = ?", admin.ID).For("UPDATE").Scan(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotAdmin
-		}
-		if err != nil || row.AlertEmail == setting {
-			return err
-		}
-		if _, err := tx.NewUpdate().Model((*adminRecord)(nil)).Set("alert_email = ?", setting).Where("user_id = ?", admin.ID).Exec(ctx); err != nil {
-			return err
-		}
-		changes := events.Changes{}
-		changes.Add("alertEmail", row.AlertEmail, setting)
-		e := events.AdminUpdated{User: admin.PublicID, Changes: changes}
-		return s.record(ctx, tx, e, EventScope{ActorID: admin.ID, UserID: admin.ID})
-	})
-}
-
-// AlertRecipient is an admin the alert listener may email: their address
-// and their setting.
-type AlertRecipient struct {
-	Email      string `bun:"email"`
-	AlertEmail string `bun:"alert_email"`
-}
-
-// IndexAlertRecipients lists the admins who get any alert email (their
-// setting isn't none), oldest grant first.
-func (s *Store) IndexAlertRecipients(ctx context.Context) ([]AlertRecipient, error) {
-	out := []AlertRecipient{}
-	err := s.DB.NewSelect().Model((*adminRecord)(nil)).
-		ColumnExpr("u.email, adm.alert_email").
-		Join("JOIN users AS u ON u.id = adm.user_id").
-		Where("adm.alert_email <> ?", AlertEmailNone).
-		OrderExpr("adm.created_at, adm.user_id").
-		Scan(ctx, &out)
-	return out, err
 }

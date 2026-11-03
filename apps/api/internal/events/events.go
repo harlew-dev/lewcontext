@@ -49,8 +49,11 @@ var Catalogue = []Event{
 	AdminIPBlocked{}, AdminIPUnblocked{}, AdminIPBlockListed{}, AdminAdminSignedOut{},
 	AdminUserErased{}, AdminUserExported{}, AdminEventExported{},
 	AdminAlertListed{}, AdminAlertViewed{}, AdminAlertAcknowledged{}, AdminAlertSilenced{}, AdminErrorResolved{},
+	AdminAlertRuleListed{}, AdminAlertWebhookCreated{}, AdminAlertWebhookUpdated{}, AdminAlertWebhookDeleted{}, AdminAlertWebhookListed{}, AdminAlertWebhookViewed{},
 	PruneCompleted{},
-	AlertOpened{}, AlertEscalated{}, AlertResolved{}, AlertReminded{}, AlertDigested{},
+	AdminAlertCommented{}, AdminErrorCommented{}, AdminAlertRedacted{}, AdminErrorRedacted{},
+	AlertOpened{}, AlertEscalated{}, AlertRecovered{}, AlertReopened{}, AlertResolved{}, AlertReminded{}, AlertDigested{},
+	AdminAlertResolved{},
 }
 
 // Change is a field's value before and after an update.

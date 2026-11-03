@@ -53,6 +53,9 @@ func (s *Store) record(ctx context.Context, db bun.IDB, e events.Event, scope Ev
 // recordID is record, returning the event's public ID (evt_…), for a row
 // that a listener of the event must find.
 func (s *Store) recordID(ctx context.Context, db bun.IDB, e events.Event, scope EventScope) (string, error) {
+	if err := events.FreezeAlertSnapshot(e); err != nil {
+		return "", err
+	}
 	payload, err := json.Marshal(e)
 	if err != nil {
 		return "", err

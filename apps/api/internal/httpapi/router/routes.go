@@ -180,9 +180,18 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	failedDeliveries := admin.FailedDeliveries{Server: s}
 	ipBlocks := admin.IPBlocks{Server: s}
 	adminSessions := admin.AdminSessions{Server: s}
-	me := admin.Me{Server: s}
+	alertSubscriptions := admin.AlertSubscriptions{Server: s}
 	adminAlerts := admin.Alerts{Server: s}
 	alertSilence := admin.AlertSilence{Server: s}
+	alertCycles := admin.AlertCycles{Server: s}
+	errorCycles := admin.ErrorCycles{Server: s}
+	alertMessages := admin.AlertMessages{Server: s}
+	errorMessages := admin.ErrorMessages{Server: s}
+	alertMessageRedaction := admin.AlertMessageRedaction{Server: s}
+	errorMessageRedaction := admin.ErrorMessageRedaction{Server: s}
+	alertRules := admin.AlertRules{Server: s}
+	alertWebhooks := admin.AlertWebhooks{Server: s}
+	alertWebhookSigningKey := admin.AlertWebhookSigningKey{Server: s}
 	// Any other path or method under /api/admin is an unknown route, with
 	// the right key or without it.
 	mux.Handle("/api/admin/", s.RequireAdminKey(http.HandlerFunc(httpapi.NotFound)))
@@ -197,7 +206,18 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	signedIn.HandleFunc("GET", "/me", sessions.Me)
 	// Which alerts you're emailed: your own inbox, so every admin may, with
 	// no code.
-	signedIn.Role("PATCH", "/me", auth.AdminViewer, me.Update)
+	signedIn.Role("PATCH", "/alert-subscriptions", auth.AdminViewer, s.LimitAdmin(httpapi.AlertSubscriptionPerUser, alertSubscriptions.Update))
+	// Personal catalog and shared redacted delivery settings are audited reads.
+	signedIn.HandleFunc("GET", "/alert-rules", alertRules.Index)
+	// Alert receivers: any admin reads them (never a URL, host or key); every
+	// change, and reading a webhook's own signing key, is an operator's action
+	// behind a fresh code.
+	signedIn.HandleFunc("GET", "/alert-webhooks", alertWebhooks.Index)
+	signedIn.Action("POST", "/alert-webhooks", alertWebhooks.Store)
+	signedIn.Action("PATCH", "/alert-webhooks/{webhook}", alertWebhooks.Update)
+	signedIn.Action("DELETE", "/alert-webhooks/{webhook}", alertWebhooks.Destroy)
+	signedIn.Action("GET", "/alert-webhooks/{webhook}/signing-key", alertWebhookSigningKey.Show)
+	signedIn.Action("POST", "/alert-webhooks/{webhook}/signing-key", alertWebhookSigningKey.Store)
 	// Signing out, and signing out your other admin sessions, only take
 	// your own access away: every admin may, whatever their role.
 	signedIn.OwnSessions("POST", "/logout", sessions.Logout)
@@ -231,6 +251,16 @@ func adminRoutes(s *httpapi.Server, mux *http.ServeMux) {
 	// The alerts, each read recorded.
 	signedIn.HandleFunc("GET", "/alerts", adminAlerts.Index)
 	signedIn.HandleFunc("GET", "/alerts/{alert}", adminAlerts.Show)
+	// Discussion reads are audited; all admins may comment under the shared
+	// quota/feature budget. Redaction remains an operator step-up Action.
+	signedIn.HandleFunc("GET", "/alerts/{alert}/cycles", alertCycles.Index)
+	signedIn.HandleFunc("GET", "/errors/{error}/cycles", errorCycles.Index)
+	signedIn.HandleFunc("GET", "/alerts/{alert}/messages", alertMessages.Index)
+	signedIn.HandleFunc("GET", "/errors/{error}/messages", errorMessages.Index)
+	signedIn.Role("POST", "/alerts/{alert}/messages", auth.AdminViewer, s.LimitAdmin(httpapi.IncidentCommentPerUser, alertMessages.Store))
+	signedIn.Role("POST", "/errors/{error}/messages", auth.AdminViewer, s.LimitAdmin(httpapi.IncidentCommentPerUser, errorMessages.Store))
+	signedIn.Action("POST", "/alerts/{alert}/messages/{message}/redaction", alertMessageRedaction.Store)
+	signedIn.Action("POST", "/errors/{error}/messages/{message}/redaction", errorMessageRedaction.Store)
 	// A fresh code opens the session's 5-minute step-up window. Only the
 	// actions need it, and they need an operator, so it does too; the code
 	// counts against mfa:per-account, as at the door.
@@ -466,10 +496,12 @@ func (g routeGroup) Action(method, path string, h http.HandlerFunc) {
 // Housekeeping: an operator's routine actions that touch no account,
 // address or delivery, so they need no fresh code. Each with its reason.
 var housekeepingRoutes = map[string]bool{
-	// Acknowledging an alert: it only stops the alert's reminder emails;
-	// the alert stays open, and its webhook posts go on.
+	// A PATCH of an alert is one of two actions: acknowledging (it only
+	// stops the alert's reminder emails; the alert stays open) or resolving a
+	// recovered alert with a comment (refused unless recovery is fresh).
 	"PATCH /alerts/{alert}": true,
-	// Resolving an error group: its next occurrence opens it again.
+	// Resolving an error group with a comment: a genuinely newer occurrence
+	// opens a new cycle.
 	"PATCH /errors/{error}": true,
 }
 

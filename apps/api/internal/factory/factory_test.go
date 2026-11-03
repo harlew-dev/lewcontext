@@ -139,6 +139,12 @@ func TestEveryTableHasAFactory(t *testing.T) {
 	if _, err := AdminSessions.State(AdminSessionFor(user.ID)).CreateOne(ctx, db, f); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := AdminAlertSubscriptions.State(func(p *AdminAlertSubscription) { p.AdminUserID = user.ID }).CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AlertWebhooks.CreateOne(ctx, db, f); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := EmailBlockLinks.Create(ctx, db, f, 2); err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +166,17 @@ func TestEveryTableHasAFactory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := AppErrors.Create(ctx, db, f, 2); err != nil {
+		t.Fatal(err)
+	}
+	incidentError, err := AppErrors.CreateOne(ctx, db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycle, err := IncidentCycles.State(func(c *IncidentCycle) { c.AppErrorID = incidentError.ID }).CreateOne(ctx, db, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IncidentMessages.State(func(m *IncidentMessage) { m.CycleID = cycle.ID; m.AuthorID = &user.ID }).CreateOne(ctx, db, f); err != nil {
 		t.Fatal(err)
 	}
 	alert, err := Alerts.State(AlertAcknowledgedBy(user.ID)).CreateOne(ctx, db, f)

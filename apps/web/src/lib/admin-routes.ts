@@ -23,7 +23,7 @@ import {
   defaultEventWindow,
   defaultMonitoringWindow,
   type DeliveryPageQuery,
-  type AlertState,
+  type AlertListQuery,
   type EventFilters,
   type MonitoringWindow,
 } from "@/types/admin";
@@ -70,10 +70,8 @@ export const adminRoutes = {
   },
   // The alerts the evaluator opened, and one alert.
   alerts: {
-    index: (key: string, state?: AlertState) =>
-      url(`/admin/${key}/alerts`, {
-        state: state === "open" ? undefined : state,
-      }),
+    index: (key: string, query: AlertListQuery = {}) =>
+      eventsUrl(`/admin/${key}/alerts`, alertUrlQuery(query)),
     show: (key: string, alert: string) => `/admin/${key}/alerts/${alert}`,
   },
   // Who holds admin: roles, MFA, last sign-in, live sessions.
@@ -250,6 +248,23 @@ export function eventQuery(filters: EventFilters) {
     from: filters.from,
     to: filters.to,
     before: filters.before,
+  };
+}
+// The Alerts list's filters as URL parameters: open and every unset one left
+// out, and the window left out when a range is given.
+export function alertUrlQuery(query: AlertListQuery) {
+  return {
+    state: query.state === "open" ? undefined : query.state,
+    q: query.q || undefined,
+    level: query.level,
+    health: query.health,
+    signals: query.signals?.length ? query.signals.join(",") : undefined,
+    acknowledged: query.acknowledged,
+    silenced: query.silenced,
+    window: query.from || query.to ? undefined : query.window,
+    from: query.from,
+    to: query.to,
+    before: query.before,
   };
 }
 // `url`, keeping the name list's commas readable ("auth.*,project.*").

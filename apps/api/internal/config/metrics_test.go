@@ -92,9 +92,6 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		"SMTP_USERNAME":            "zq8vkx3m7tpw@rl9.qmx",
 		"SMTP_PASSWORD":            "Hy4!Rk9wQz2#Lm7xVt5pBn3cJd8",
 		"DB_PASSWORD":              "Pq2Xz7Wk4Vm9Lt3Rn8Bc5Jh1Gd6",
-		"ALERT_WEBHOOK_URL":        "https://zk4hooks.relayq.io/services/T0X9QW7/B5RZ3KM/q8Vn2Lp4Xt6Wz9Rk",
-		"ALERT_WEBHOOK_SECRET":     "Fv8Qn3Lz6Wt1Xr9Kp4Mb7Jc2Hd5Gs0Ae",
-		"ALERT_HEARTBEAT_URL":      "https://hcq-ping.watchdg.io/6b1e7c2a-93f4-4d0b-8e5f-2a7c9d3b1f60",
 		"CAPTCHA_SECRET_KEY":       "0x4AAAAAAAk7Rq9ZtW2mXvB8nYc3HdF6jS",
 		// Public, but the summary keeps only whether it's set.
 		"CAPTCHA_SITE_KEY": "1x4BsitekeyPublicVq7Zr2",
@@ -119,9 +116,6 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		"CAPTCHA_SITE_KEY":         secrets["CAPTCHA_SITE_KEY"],
 		"CAPTCHA_SECRET_KEY":       secrets["CAPTCHA_SECRET_KEY"],
 		"POLICIES":                 "on",
-		"ALERT_WEBHOOK_URL":        secrets["ALERT_WEBHOOK_URL"],
-		"ALERT_WEBHOOK_SECRET":     secrets["ALERT_WEBHOOK_SECRET"],
-		"ALERT_HEARTBEAT_URL":      secrets["ALERT_HEARTBEAT_URL"],
 	})
 	c, err := Load()
 	if err != nil {
@@ -165,8 +159,7 @@ func TestSummaryHoldsNoSecret(t *testing.T) {
 		!got.MetricsAddr || !got.MetricsToken || got.SMTP == nil || got.SMTP.Host != "smtp.example.com" || got.SMTP.Port != 587 ||
 		got.EmailVerification != "optional" || got.Migrations.Applied != 25 || got.SlowQueryMs != 500 ||
 		got.CaptchaProvider != "turnstile" || !got.CaptchaSiteKey || !got.CaptchaSecretKey ||
-		got.CaptchaTestKeys || got.PerIPLimits != "on" || got.Policies != "on" ||
-		!got.AlertWebhook || !got.AlertWebhookSigned || !got.AlertHeartbeat || got.AlertWebhookFormat != "json" {
+		got.CaptchaTestKeys || got.PerIPLimits != "on" || got.Policies != "on" {
 		t.Fatalf("summary: %s", text)
 	}
 }

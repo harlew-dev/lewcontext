@@ -1,6 +1,6 @@
 # Workspace and personal API keys
 
-Status: **proposed 2026-11-01; decisions awaiting confirmation**. Investigation and implementation plan only. Builds on [workspace permissions](implemented/workspace-permissions.md), [rate limits](implemented/rate-limits.md) and the existing session-authenticated SPA. No API-key functionality exists yet.
+Status: **proposed 2026-11-01; reviewed 2026-11-03 with follow-up security and UI decisions confirmed; remaining decisions awaiting confirmation**. Investigation and implementation plan only. Builds on [workspace permissions](implemented/workspace-permissions.md), [rate limits](implemented/rate-limits.md) and the existing session-authenticated SPA. No API-key functionality exists yet. The confirmed follow-up decisions are recorded below; they do not approve every earlier recommendation or the proposed idempotency details.
 
 ## Why
 
@@ -23,7 +23,18 @@ Ownership, project selection and action permissions are three different things. 
 | Recovery | Password changes/resets, MFA recovery, suspension, account deletion and membership removal already have explicit transactional rules. API-key lifetime must join those rules deliberately. |
 | Observability | Events identify a human actor and workspace but not the credential used. Error scrubbing recognises existing public-ID prefixes and token shapes; the new key format needs explicit coverage. |
 
-The local page-folders proposal (`plans/features/page-folders.md`, currently untracked) is still unconfirmed. This plan only moves account settings into a folder when it actually gains a child page; recheck that proposal and the source tree before implementation.
+The [page-folders plan](implemented/page-folders.md) shipped on 2026-11-02. Account settings already lives in `pages/app/settings/index.tsx`; new API-key pages must likewise use `api-keys/index.tsx`. Adding account tabs requires a layout, not another move of the General page.
+
+### Review discoveries and cross-plan requirements (2026-11-03)
+
+- **Transactional credential management:** fresh proof alone does not establish that the initiating session or manager still has authority. Recheck the live session, account state, current membership and required management permission inside every management mutation transaction, including revocation. See the session-bound checks in [email change](implemented/change-email.md#transactions-and-interactions).
+- **Implicit locks matter:** [deletion](implemented/deletion.md#store) and [membership mutations](implemented/workspace-members.md#store) cannot be composed safely merely by sorting explicitly locked rows. Current account deletion locks the user before owned workspaces; membership mutations lock the workspace and then insert an event referencing the target user. That event's foreign-key check can wait on the user while deletion waits on the workspace. Key-owner/creator FKs, event actor/subject FKs and cascading deletion add similar dependencies. Resolve and test the combined locking design before implementing key writes; do not copy a historical plan's no-deadlock claim without accounting for those locks.
+- **Browser project writes also need the strict boundary:** current project mutations rely on middleware authorization, unlike membership mutations' in-transaction role recheck. The user confirmed that both browser and integration project writes must recheck current authority in their mutation transaction. This is an intentional extension to the [permissions plan](implemented/workspace-permissions.md), not just v1 hardening.
+- **IP ceilings must not dominate valid throughput:** the former 300 / 5-minute pre-auth budget on every request would cap even one valid key below its 1,000-read allowance and combine unrelated callers behind shared egress. The user confirmed separate failed-auth protection and coarse pre-auth flood protection, followed by authenticated budgets.
+- **Expiry is not a memory-capacity bound:** the existing in-memory limiter sweeps expired entries but does not cap simultaneously live entries. Anonymous IP counters require explicit capacity and fail-closed saturation behavior; never silently fall back to an unbounded map.
+- **Rotation at capacity is deliberately constrained:** the user confirmed strict quotas, without a replacement slot or quota bypass. At capacity, free a slot first; replacing the old key itself can require downtime. The UI and rotation documentation must state this tradeoff.
+- **Personal identity policy:** email changes preserve personal keys, while required email verification temporarily denies their use. These are different effects and must be covered in lifecycle tests.
+- **Public create retries need idempotency:** the user confirmed duplicate-safe project creation. The additional contract, storage, retention and concurrency details below remain proposed until confirmed.
 
 One existing documentation discrepancy: `docs/api/endpoints.md` says “Next proxy”, while the application and `docs/ui/api.md` use Vite in development and the embedded Go server in production. Correct that sentence when documenting these routes; do not base this design on Next.js.
 
@@ -81,9 +92,9 @@ These are API-key scopes, not additional role grants. Reuse the existing role ch
 - Generate 32 random secret bytes with `crypto/rand`. Suggested wire format: `lc_wk_<apk_public_id>_<43-character base64url secret>` or `lc_pk_<apk_public_id>_<secret>`. `apk_` plus 14 base62 is the key record's PostgreSQL-generated public ID; it is not the secret. The parser checks the exact fixed structure and kind. No JWT, password hashing or new crypto dependency.
 - Look up by public ID and compare SHA-256 digests of the full canonical credential in constant time. Only the digest is stored. An unknown ID uses a dummy comparison; malformed/unknown/wrong-kind/revoked/expired credentials share a generic 401. Never include the credential in an error.
 - Return the secret in the **201 creation response only**, with `Cache-Control: no-store`. Lists, edits, exports, events, logs and admin views never return a digest or secret. Display kind + public ID as the non-secret identifier; no need to retain secret suffix characters.
-- Require a name (trimmed, 1–80 characters, `input.ValidText`) and expiration: default 90 days, minimum 1 hour, maximum 365 days from creation. No never-expiring choice in the initial release. PATCH may rename, replace grants/selections or shorten expiry; it cannot change ownership/workspace/kind, replace the secret or extend expiry. Expired/revoked keys cannot be edited or reactivated.
+- Require a name (trimmed, 1–80 characters, `input.ValidText`). **Confirmed expiry choice: Never is available for both key kinds**, represented by `expiresAt: null`, not a sentinel date. Retain the proposed default of 90 days and finite-duration bounds of 1 hour–365 days from creation unless changed during remaining decision confirmation; Never is the longest option, so there is no mandatory lifetime cap. PATCH may rename, replace grants/selections or shorten expiry, including changing Never to a finite date; it cannot change ownership/workspace/kind, replace the secret, extend a finite expiry or change a finite expiry to Never. Expired/revoked keys cannot be edited or reactivated. Null expiry never overrides revocation, ownership or personal-account eligibility.
 - Revocation sets `revoked_at` and clears the digest in the same transaction as its event. No positive authentication cache: later requests see revocation directly in PostgreSQL. A read already admitted may finish; a write must recheck under the locks below.
-- Rotation is **create replacement → deploy replacement → revoke old key**. Both may work during the explicit overlap. Do not automatically revoke the old key before its replacement reaches the integration. A lost creation response means revoke that record and create another; no recover-secret endpoint or automatic POST retry.
+- Below the live-key quota, rotation is **create replacement → deploy replacement → revoke old key**. Both may work during the explicit overlap. Do not automatically revoke the old key before its replacement reaches the integration. **Confirmed exception at capacity:** the user must explicitly free a slot first, accepting possible downtime if they revoke this integration's old key. A lost creation response means revoke that record and create another; no recover-secret endpoint or automatic POST retry.
 - Update `last_used_at` approximately, at most once per hour with a conditional update after valid authentication and workspace matching. It indicates credential use, not a successful business operation, and must not turn into a write/event per request. Do not update `users.last_seen_at` from automation: that remains human app activity.
 
 ### Recovery and revocation rules
@@ -96,8 +107,12 @@ These are API-key scopes, not additional role grants. Reuse the existing role ch
 | Leave/remove membership | Permanently revoke that user's keys for that workspace, even if they later rejoin | Stay valid |
 | Delete account | Delete personal keys; clear creator references on workspace keys | Stay valid |
 | Delete workspace | Delete every key and selection in it | Delete every key and selection in it |
+| Complete email-address change | Stay valid, attached to the same user ID; verification eligibility below still applies | Stay valid |
+| Owner must verify email under the current verification configuration | Temporarily deny access; verification restores access only if the key is otherwise valid, unexpired and unrevoked | Stay valid; no human owner eligibility to inherit |
 
 The UI explains that API keys are separate long-lived credentials and do not prompt for MFA on API calls. Credential issuance/broadening requires fresh proof: the current password when MFA is off, an authenticator/recovery code when MFA is on, checked in the same transaction as issuance/grant change. Reuse existing password concurrency and auth/MFA limits; never trust a prior `/password/verify` call or introduce an admin session. Renaming, reducing access, shortening expiry and revoking need only the normal session + CSRF so recovery remains available.
+
+**Confirmed personal-account eligibility:** require a present, unsuspended owner, a known current workspace role and live membership. Apply the same effective required-email-verification policy as browser access on every personal-key request, including after configuration changes. A verification-gated owner receives a generic 401 under this API's credential-eligibility contract, without disclosing the owner's email or a browser redirect. Verification gating does not revoke the key. Email changes neither rotate its secret nor revoke it; if the replacement becomes unverified while verification is off, later enabling the required gate must deny it until verification. Workspace credentials remain independent. Browser management retains the existing exact unverified-route allowlist; this feature does not add an issuance bypass to it.
 
 ### Public API contract
 
@@ -124,6 +139,20 @@ Lists apply the credential's project predicate **before** search, counts, sortin
 
 Version policy: keep v1's documented fields, validation and semantics stable. Additive optional fields/endpoints are normally compatible; removing/renaming fields, adding required inputs or changing semantics requires a new major version or an explicit deprecation/migration policy. Internal SPA changes must not silently change v1's DTOs or behavior. Authentication is a reusable layer; `v1` is not an authentication mode.
 
+### Idempotent project creation
+
+**Confirmed:** public project creation must support retries after uncertain network outcomes without creating duplicate projects. This does not permit replaying the one-time key-creation secret; browser credential issuance remains non-retryable as described above.
+
+**Proposed technical defaults, awaiting confirmation:**
+
+- Require one bounded `Idempotency-Key` header on v1 project POSTs: 16–128 ASCII characters from a documented safe alphabet, randomly generated by the client and reused only for the same logical creation. Missing/malformed headers get 400. Never put it in a URL or log it.
+- Namespace by authenticated credential, bound workspace and fixed operation. Store a SHA-256 digest of the supplied value and a digest of the canonical validated input; never the raw header. The same value on another credential does not discover or replay the first credential's work.
+- Reserve/check the idempotency record, create the project and save the explicit v1 response snapshot in one database transaction. A unique namespace/digest constraint serializes competing retries. A rollback leaves no committed reservation; a committed create remains replayable if its response is lost. Do not perform nested pool checkouts or hold locks across external work.
+- Within a proposed **24-hour** retention window, identical input returns the original 201 response without another project, quota slot or project-created event. Reusing the value with different validated input gives 409. If the original project has since been deleted, return 409 rather than replaying stale project content or recreating it. After retention ends, reuse can create a new project; document this bounded guarantee.
+- Every retry authenticates and counts against ordinary request budgets. Recheck current credential validity, verification eligibility, grants and project access under the same locks as a fresh write before returning any stored result. Revoked/expired keys and demoted owners cannot recover formerly accessible response data through replay. Only a genuinely new creation consumes the project-create feature allowance; a replay must still work when the workspace's project quota is now full.
+- A concurrent request waits only within the normal request deadline; if it times out, the client retries with the same header. No fabricated success or automatic client retry using a fresh value. Authentication/validation failures are not persisted as replayable responses.
+- Storage, response personal-data retention, cleanup, capacity, FK lock order and concurrency tests are required parts of this feature, not a later follow-up. Confirm these defaults before implementation.
+
 ### Browser management API
 
 These remain session-only under `/api`, with the existing exact Origin, JSON and CSRF rules. An API key cannot create, inspect, edit or revoke keys, including itself.
@@ -140,6 +169,10 @@ These remain session-only under `/api`, with the existing exact Origin, JSON and
 | DELETE | `/api/auth/api-keys/{key}` | `account.ApiKeys.Destroy` | Session + ownership; still available to revoke a key that has lost effective access |
 
 Creation body: `{name, projectAccess: "all"|"selected", projects: ["prj_..."], scopes: [...], expiresAt, password? or code?}`, plus `workspace` for personal creation. All projects requires an empty `projects` array. Update replaces the editable grant configuration explicitly, without accepting a kind or owner field. Compare old and new effective grants under lock to decide if fresh proof is needed; switching selected → all or adding a project/scope is broadening. Wrong proof is 422 on its field, not session-expiry 401.
+
+`expiresAt` is an explicit timestamp or null (Never) in creation, update, metadata and export DTOs. Reject an omitted creation expiry rather than silently issuing an unlimited credential; the form supplies its selected default. PATCH preserves the no-extension rule, with Never ordered after every finite expiry. Authentication uses `expires_at IS NULL OR expires_at > <fresh current time>` alongside every other validity predicate.
+
+Every management mutation revalidates the initiating session's ownership, idle/absolute expiry and revocation, the locked account's eligibility, and current workspace membership/permission before committing. Workspace managers cannot act on a stale middleware role after demotion/removal; personal mutations verify ownership again. Fresh proof is checked against locked current MFA/password state, with recovery-code consumption atomic with a successful issuance/broadening. A session revoked before the mutation obtains its authorization locks cannot issue or broaden credentials, even if the submitted factor is correct. Define session-row/cascade ordering with the combined lock design below; middleware-only checks are insufficient. Own-key revocation retains its explicitly documented recovery access when effective project grants have been lost.
 
 List metadata: `{id, kind, name, workspace: {id, name}, owner: {id, name}|null, createdBy: {id, name}|null, projectAccess, projects: [{id, name}], scopes, effectiveScopes, createdAt, expiresAt, lastUsedAt, revokedAt}`. No emails, internal IDs or computed role pretending a service key is a member. Creator/owner names are shown only within the authorized management view. Personal lists compute effective scopes for the current owner; workspace managers may inspect that same metadata for their workspace. Omit inaccessible project names if future ACLs narrow the manager's access.
 
@@ -159,7 +192,11 @@ Keep all route declarations in `router/routes.go`. Add an explicit public-v1 gro
 
 **Transaction guarantee:** a v1 write rechecks key validity, expiry, grants and (personal) current membership/account state inside its mutation transaction. Do not let a middleware check followed by an unguarded store write race revocation or demotion. Extend project write methods with transaction-aware shared helpers so authorization and mutation share the same transaction.
 
+**Confirmed extension to browser writes:** the shared mutation helpers also re-read the browser actor's live account/membership and required project permission in the transaction. Do not allow an omitted credential predicate to bypass this check. Demotion/removal that commits first prevents a waiting browser write just as it prevents a personal-key write. Keep the distinct human/service principals and transport-specific errors while sharing the business rules.
+
 Use this lock order wherever applicable: personal owner's user row (or the human manager's row for management), workspace rows in ID order, credential rows in ID order, project rows. Personal API writes lock the owner before the workspace; workspace API writes start at the workspace. Membership changes already hold the workspace and revoke affected keys after it; they must not acquire a new user lock after the workspace. Password reset/suspension holds the user then revokes personal keys, never acquires a workspace lock after locking a credential. Conditional last-used writes acquire no later locks. Creation/quota checks, project-selection edits, revocation and deletion follow the same ordering. Explicitly test manager-vs-owner operations and account-deletion cascades for deadlocks.
+
+**Blocking design requirement:** the preceding explicit order is a starting constraint, not a completed deadlock proof. Before code, complete a lock matrix covering session rows, MFA rows, membership rows, event actor/subject/workspace FK checks, creator `SET NULL`, owner/workspace cascades, project-selection deletion and idempotency reservations. Resolve the discovered user → workspace / workspace → event-subject-user cycle across existing membership/deletion and new management writes. Select compatible row-lock modes and/or restructure transactions so implicit FK locks cannot reverse the order; do not solve it by dropping audit attribution or weakening the authorization boundary. Record the final order and deterministic interleavings here before implementation. Expiry/session checks after waiting for locks must use a fresh clock value, not a transaction-start timestamp that predates the wait.
 
 A revocation/demotion/removal that commits first must prevent a waiting write; a write that obtains the relevant locks first can commit before the revocation completes. Already-admitted reads may complete under their statement's snapshot. This is the documented boundary, not a promise to cancel network responses already in flight.
 
@@ -172,7 +209,7 @@ One create migration pair, with:
 - Internal bigint primary key; unique `public_id DEFAULT public_id('apk')` with the normal format CHECK.
 - `workspace_id NOT NULL` (`CASCADE`); `kind` (`workspace`, `personal`); `owner_user_id` (personal only, `CASCADE`); `created_by` (nullable user FK, `SET NULL`). CHECK personal requires an owner and workspace kind has none. Creator is attribution only, never authority.
 - `name`, `token_hash` (unique while present, exact digest shape; null only when revoked), `project_access` (`all`, `selected`), nonempty `scopes text[]` constrained to the fixed catalogue; reject duplicates in validation. CHECK prohibits `project.store` in selected mode.
-- `created_at`, `updated_at`, mandatory `expires_at`, nullable `last_used_at`, `revoked_at`; CHECK creation-relative expiry bounds and a revoked key having no digest. API validation uses the same durations.
+- `created_at`, `updated_at`, nullable `expires_at` (null means Never), nullable `last_used_at`, `revoked_at`; CHECK creation-relative bounds only for finite expiry, and a revoked key having no digest. API validation uses the same durations. Factories cover finite, Never, expired and revoked states; null expiry is an intentional state, not missing validation.
 - Indexes beginning with `workspace_id` and personal `owner_user_id` for management lists/quotas; expiry/revocation cleanup indexes. Unique `(id, workspace_id)` supports selection FKs. No uniqueness on a user-chosen name: multiple integrations may legitimately share a label.
 
 ### `api_key_projects`
@@ -180,6 +217,12 @@ One create migration pair, with:
 One create migration pair: bigint primary key for the existing factory/table tooling, `workspace_id`, `api_key_id`, `project_id`, unique `(api_key_id, project_id)`. Composite FKs `(api_key_id, workspace_id)` → keys and `(project_id, workspace_id)` → projects prevent cross-workspace selections at the database boundary; add the corresponding unique project key to its squashed create migration. Both cascade. Index starting with `workspace_id`, plus a project-leading index for project deletion. No public ID: selection rows are never addressed individually.
 
 Store transactions enforce selected mode's nonempty selection on creation/edit and all mode's empty selection; project deletion may reduce selected mode to zero. Never infer `all` from an empty join table.
+
+### `api_idempotency_requests` (proposed)
+
+The confirmed idempotency capability requires durable replay state. Proposed table: an internal bigint primary key, `workspace_id`, `api_key_id`, fixed operation, idempotency-value digest, canonical-input digest, resulting project reference, explicit v1 response snapshot, `created_at` and `expires_at`. No public ID or raw header. Use a composite key/workspace FK, a unique credential/workspace/operation/value-digest constraint and an expiry index. Workspace/key deletion cascades the replay records; project deletion must leave a tombstone/reference state that yields the documented conflict rather than replaying deleted data. Resolve these FK interactions in the lock matrix.
+
+Add a separate migration pair, factory and entries in `DataTables`, `WorkspaceTables`, monitoring and the compliance data map. Response snapshots contain project content and must be scoped like the project, removed on workspace/key deletion, never exported as another person's content, and retained only for the approved replay window. Cleanup runs in bounded batches; expired records are never replayable even before cleanup. Bound retained rows and snapshot size from the allowed create rate and workspace retention window; cleanup failure must not permit unbounded reservation growth. The exact capacity and refusal policy remain implementation-design decisions to resolve before coding. Do not claim the earlier two-table estimate still covers the feature.
 
 ### Credential attribution on existing events
 
@@ -189,7 +232,7 @@ Update the event model, factory, safe admin event detail/CSV representation and 
 
 ### Retention, export and registries
 
-- Keep active keys until expiry/revocation or their owning workspace/account is deleted. Keep expired/revoked metadata for 90 days after its effective end (the earlier of expiry and revocation), then bounded cleanup deletes it and its selections. Revocation clears the digest immediately; an expired record's digest is removed with the record at cleanup. Authentication always refuses expiry, independently of cleanup.
+- Keep active keys until expiry/revocation or their owning workspace/account is deleted. Never-expiring keys stay until revocation or applicable ownership deletion. Keep ended metadata for 90 days after its effective end: the earlier of finite expiry and revocation when both exist, or whichever exists. An unrevoked Never key has no end and is excluded from ended-key cleanup. Then bounded cleanup deletes the metadata and selections. Revocation clears the digest immediately; an expired record's digest is removed with the record at cleanup. Authentication always refuses finite expiry, independently of cleanup. Do not apply SQL null handling that accidentally removes active Never keys or retains revoked Never keys forever.
 - Personal metadata is visible to its owner and the workspace's managers; workspace-key metadata to managers. Digests are never visible. Add both tables to the compliance data map, `DataTables`, `WorkspaceTables`, table-size monitoring and their factories. Seeding must not create usable credentials.
 - Download my data adds the account's own personal-key metadata, never secret/digest. Do not export other members' keys or workspace-key secrets/creator details from an account export. Erasure cascades personal keys and clears workspace-key creator attribution; retained event rules continue to apply.
 - Lifecycle events: `workspace.api_key.created`, `.updated`, `.revoked` for workspace-owned credentials; `auth.api_key.created`, `.updated`, `.revoked` for personal credentials, with key/workspace public IDs, bounded scopes/selections/changes and a fixed reason for automatic revocation. No secret, digest or credential string. Workspace managers revoking a personal key remain the actor of its `auth.api_key.revoked` event.
@@ -203,7 +246,8 @@ Machine traffic has its own budgets, so a busy/leaked key cannot exhaust the bro
 
 | Limit | Initial budget | Storage |
 | --- | --- | --- |
-| `api-key-auth:per-ip` | 300 / 5 minutes, before credential lookup on every v1 request | In-memory, bounded counters; edge limiting across servers |
+| `api-key-ingress:per-ip` | Proposed 10,000 / 5 minutes, before credential lookup; coarse flood ceiling, not the normal authenticated throughput budget | In-memory with an explicit capacity; edge limiting across servers |
+| `api-key-auth:per-ip` | 300 failed authentications / 5 minutes; check before lookup, increment only on a failed credential authentication | In-memory with an explicit capacity; shared egress can still be affected during sustained credential failures |
 | `api-key-read:per-key` | 1,000 / 5 minutes | In-memory, like existing read budgets |
 | `api-key-write:per-key` | 300 / 15 minutes | Existing PostgreSQL counters |
 | `api-key-read:per-workspace` | 5,000 / 5 minutes, both key kinds combined | In-memory |
@@ -214,9 +258,13 @@ Machine traffic has its own budgets, so a busy/leaked key cannot exhaust the bro
 | `api-key-project:per-workspace` | 100 project creates / hour, both kinds combined | PostgreSQL, in addition to normal project quota |
 | `api-key-revoke:per-user` | 60 / hour, browser revocation; counted by the authenticated browser session, as session recovery already is | PostgreSQL |
 
-All have block levels only, 429 with `Retry-After`; no CAPTCHA or new global challenge budget. After the pre-auth IP budget, count authenticated per-key, then personal-owner when applicable, then workspace budgets; scope/authorization still precedes business side effects. Invalid credentials must never spend a guessed key's/user's/workspace's quota or create unbounded per-token counters. Global/anonymous floods remain the edge's responsibility. `PER_IP_LIMITS` and `RATE_LIMITS` retain their documented behavior.
+All have block levels only, 429 with `Retry-After`; no CAPTCHA or new global challenge budget. **Confirmed traffic policy:** separate coarse ingress protection from failed-authentication limiting, then count valid authenticated traffic by key, personal owner when applicable, and workspace. The proposed ingress value above still needs confirmation and deployment validation, particularly for shared egress; it replaces the former 300-request ceiling on all valid traffic. Successful authentication does not increment the failed-auth counter. Once that failure window is blocked, requests from the address can still be refused before lookup; document this deliberate shared-egress abuse boundary. Scope/authorization still precedes business side effects. Invalid credentials must never spend a guessed key's/user's/workspace's quota or create unbounded per-token counters. Global/anonymous floods remain the edge's responsibility. `PER_IP_LIMITS` and `RATE_LIMITS` retain their documented behavior.
 
-Quota: at most 100 live keys total per workspace (both kinds combined), and 50 live personal keys per user across workspaces. “Live” means unrevoked and unexpired. Enforce in creation transactions under the user/workspace locks, plus the 100 selected-project bound and existing 1,000-project quota. Revoked metadata does not consume a live slot but its growth is bounded by issuance rate and retention.
+Anonymous memory counters need a hard total entry cap, fixed-size normalized subjects and bounded sweep work. Proposed saturation behavior: refuse new untracked subjects with a generic 503 and bounded `Retry-After` until capacity is available, keep enforcing existing windows, and emit bounded metrics/warnings without IP labels. Never evict live blocked subjects just to admit arbitrary new addresses, allocate an unbounded fallback, or create one event per unknown address at saturation. Select and document the cap and capacity tests before implementation; the existing expiry-only map does not meet this requirement.
+
+Quota: at most 100 live keys total per workspace (both kinds combined), and 50 live personal keys per user across workspaces. “Live” means unrevoked and either Never-expiring or not yet expired. Enforce in creation transactions under the user/workspace locks, plus the 100 selected-project bound and existing 1,000-project quota. Revoked metadata does not consume a live slot but its growth is bounded by issuance rate and retention. Never keys consume live slots until revoked or deleted.
+
+**Confirmed rotation policy:** these quotas are strict during rotation too. No reserved replacement slot, quota bypass or automatic revoke is added. At capacity, the user must revoke another key or the key being replaced before issuing a replacement; the latter can interrupt its integrations. Show this before rotation instructions and on quota refusal. Below capacity, retain create → deploy → revoke with explicit overlap.
 
 Management reads/revocation use session authentication outside the ordinary browser read/write budgets, with bounded dedicated management-read limits (1,000 / 5 minutes per session) and the revocation limit above. Key writes cannot call management at all. This keeps the owner able to find/revoke keys after their ordinary SPA budget has been exhausted. Creation/edit retain normal browser budgets and fresh-proof limits. Session-specific recovery counting follows the existing documented precedent rather than letting another session exhaust recovery for the owner.
 
@@ -228,18 +276,19 @@ In-memory read budgets are per process; N servers multiply those ceilings. This 
 
 ### Workspace settings → API Keys
 
-Page `/app/:workspace/settings/api-keys`, `pages/app/[workspace]/settings/api-keys.tsx`, default `WorkspaceApiKeyIndex`; page constant `routes.workspaceApiKeys.index(ws)`. Add it under the existing settings layout and build tab visibility from each tab's permission. Non-managers see no key data and fetch none, including when navigating directly.
+Page `/app/:workspace/settings/api-keys`, `pages/app/[workspace]/settings/api-keys/index.tsx`, default `WorkspaceApiKeyIndex`; page constant `routes.workspaceApiKeys.index(ws)`. **Confirmed tabs: General · Members · API Keys**, preserving existing tabs and building visibility from each tab's permission. Non-managers see no key data and fetch none, including when navigating directly.
 
-- Workspace-owned list, with **Create API key** in its section header; a separate **Personal keys in this workspace** list for review/revocation. Each follows the server's pagination and search. Both use the same metadata row primitive where appropriate.
+- Workspace-owned list, with **Add API Key** in its section header; a separate **Personal keys in this workspace** list for review/revocation. Each follows the server's pagination and search. Both use the same metadata row primitive where appropriate.
 - Columns: Name, identifier, project access, permissions, owner/creator where applicable, created, expires/status, last used (“Never” initially), and a right-aligned row menu. Use words for Active / Expired / Revoked, not color alone.
-- Workspace-key row actions: Edit and Revoke while active. Personal-key rows: Revoke only; explain the key belongs to the member and is limited by their current access.
+- Workspace-key row actions: **Edit** and **Revoke** while active, inside a right-aligned three-dot `Dropdown`, never loose row buttons. Revoke is a `DropdownItem variant="danger"`; Edit is the default variant. Personal-key rows in the workspace view: Revoke only in the same menu; explain the key belongs to the member and is limited by their current access. Hide the menu when no actions are available. Give its trigger an accessible name identifying the key.
 - Explain workspace credentials survive staff changes and are for shared integrations; personal credentials are for personal scripts.
 
 ### Account & security → API Keys
 
-Page `/app/settings/api-keys`, `pages/app/settings/api-keys.tsx`, default `UserApiKeyIndex`; page constant `routes.userApiKeys.index()`. Introduce `pages/app/settings/layout.tsx` with General / API Keys tabs and move the existing account page to `settings/index.tsx`. `/app/settings` remains the General URL. No new sidebar item; the account menu remains selected on both pages.
+Page `/app/settings/api-keys`, `pages/app/settings/api-keys/index.tsx`, default `UserApiKeyIndex`; page constant `routes.userApiKeys.index()`. Introduce `pages/app/settings/layout.tsx` with the confirmed **Settings · API Keys** tabs around the existing `settings/index.tsx` page. `/app/settings` remains the Settings URL. No new sidebar item; the account menu remains selected on both pages.
 
 - List only the signed-in user's personal keys, with workspace as a column. Creation chooses one current workspace, then the same project/action controls. Users with no remaining workspaces cannot create; retain the existing onboarding gate, whose recovery/account-deletion paths still work.
+- **Add API Key** opens the shared dialog. Active personal keys have Edit and danger-variant Revoke in the same three-dot row menu; revoked/expired rows have no edit action. Display null expiry as **Never**, separately from the last-used value **Never**.
 - The project picker fetches normal session-authorized projects from the chosen workspace; server validates every selection again. Changing workspace clears project choices. Page/search project options through the existing API; do not assume its first 20/100 projects are the whole workspace. Preserve selected IDs across option pages and offer Retry for failed loads.
 - Only offer actions the workspace response allows, but the server enforces the same rule. A viewer can create a read-only personal key. Refresh failures preserve available data with Retry.
 
@@ -247,7 +296,11 @@ Page `/app/settings/api-keys`, `pages/app/settings/api-keys.tsx`, default `UserA
 
 Shared form, metadata rows and one-time secret UI go in `components/app/api-keys/` because both settings areas use them; each page's unique content stays local. Use existing `Dialog`, `ConfirmationDialog`, `Listbox`/`Combobox`, `Checkbox`, `Input`, `Reveal`, `CopyButton`, `PaginatedTable`, notices, skeletons and toasts. If the project picker needs remote-option behavior, extend the existing combobox API rather than introducing another interactive library.
 
-Create dialog: name, workspace (personal only), Project access, project selector when selected, action checkboxes, expiration, fresh proof. Cancel · **Create API key**, primary last. On success move to a one-time secret panel that is masked with a decoy until revealed, supports Copy while masked, and says it cannot be shown again. Explicit Done discards it; closing early warns that it will be lost. A close after a committed create does not revoke the record automatically.
+**Confirmed Add API Key flow:** open a `Dialog` with Name, Expiry (including **Never** as the longest option), Permissions, and the necessary access fields: workspace for personal keys only, Project access, and a project picker when Selected projects is chosen. Fresh password/MFA proof remains required before issuance. Cancel · **Add API Key**, primary last.
+
+**Permissions** uses the existing searchable grouped multi-select `Combobox`, matching the admin Events filters' listbox-style interaction, not a new multi-select library or a set of loose action checkboxes. A **Projects** group contains **Read**, **Create**, **Update**, **Delete**; Read maps to index + show scopes. Preserve group toggle, partial-selection state, removable chips, labels, keyboard navigation and focus behavior. Personal choices are bounded by current role; Create is unavailable with Selected projects, with an explanation. Group selection must never include unavailable actions. Reuse the generic primitive and interaction pattern without importing admin-only modules into the app build.
+
+On success, the same dialog moves to a one-time secret step: a **gray/zinc callout with Copy** (preferred), or an existing read-only `Textarea` with Copy for selectable text. Reuse `Reveal` and `CopyButton`/`CopyFailure`: masked with a decoy until revealed, Copy works while masked, and the raw secret is never in the masked DOM. Say **Copy this key now. You won't be able to see it again.** Explicit **Done** discards it; closing early warns that it will be lost. A close after a committed create does not revoke the record automatically. If copy fails, reveal/select/manual copy remains available. Never put the credential in a toast.
 
 Keep the secret only in local component state for that creation flow; never SWR, module state, history, URL, local/session storage, analytics or client-error payloads. Clear it on Done, navigation, workspace switch and sign-out. Use a secret-shaped placeholder for screenshots/fixtures, never a usable credential. Include a curl example referencing `$LEWCONTEXT_API_KEY`, the chosen workspace ID and `/api/v1` base URL; do not render a ready-to-share command containing the secret.
 
@@ -262,7 +315,7 @@ Revoke uses `ConfirmationDialog variant="danger"`: “Integrations using this ke
 | Cross-workspace/project access or leaked totals | Workspace binding, composite FKs, access predicates before counts/paging, same 404 for absent and inaccessible records, write predicates rechecked transactionally. |
 | Personal key outlives authority | Live role/account/membership intersection; permanent revocation on removal, suspension and recovery; no revival on rejoin/unsuspension. |
 | Creator's permissions silently define service access | Workspace key has explicit grants and workspace ownership, no creator-derived authority; managers review/revoke it. |
-| Stolen browser session creates durable access | Fresh password or MFA proof for issuance/broadening, normal CSRF/Origin and auth limits, bounded expiry and audit events. |
+| Stolen browser session creates durable access | Fresh password or MFA proof for issuance/broadening, live-session/permission rechecks, normal CSRF/Origin and auth limits, explicit expiry choice (Never supported), revocation and audit events. |
 | Secret leaks in errors, logs or UI cache | Digest only, creation-only response, dedicated whole-credential scrubbing, no-store, local ephemeral state, regression scans of exports/logs/events/error reports. |
 | Flood or key multiplication | Pre-auth IP/edge protection, bounded headers/counters, per-key plus aggregate workspace/personal-owner budgets, live-key quotas and cleanup. |
 | Concurrent revoke/demotion still permits a later write | Consistent locks and in-transaction recheck; adversarial concurrency tests. |
@@ -277,13 +330,19 @@ Revoke uses `ConfirmationDialog variant="danger"`: “Integrations using this ke
 - Selected/all filtering before pagination counts/search/sort; cross-workspace selections rejected atomically; details/writes for unselected or missing projects identical 404; an empty/deleted selection never becomes all; selected + create rejected; future project included only for all.
 - Stored grants capped on create/edit; demotion removes actions immediately; promotion adds no unsaved actions; removal/rejoin, suspension/unsuspension, password change/reset, CLI/dashboard MFA reset and deletion follow the lifecycle table. Creator removal/deletion/suspension leaves workspace keys working with no false human actor.
 - Concurrent create at quota, revoke vs write, edit/narrowing vs write, demotion/removal vs write, password reset/suspension vs personal create/write, manager revoking another user's key and account/workspace deletion: deterministic boundaries, no deadlock, no post-revocation mutation. Existing project validation/quota/events still apply to both APIs.
+- Browser project writes obey the same commit/lock boundary after demotion/removal. Credential management vs sign-out/session revocation, manager demotion/removal, MFA state changes and suspension: stale middleware state or a correct factor never rescues an ended session or lost permission. Include event-FK locks, creator `SET NULL`, cascading deletion and the concrete membership-audit vs account-deletion cycle in deterministic held-lock/barrier tests.
+- Personal keys survive email changes with the same secret/user identity; verification-required configuration gates existing keys immediately and successful verification restores only otherwise-valid access. Workspace keys remain independent.
+- Idempotency: same key/input concurrently creates one project and one event, changed input conflicts, credential/workspace namespaces isolate replays, lost response can be retried, rollback leaves no reservation, replay works at full project quota without consuming another create allowance, deleted project conflicts, retention expiry and bounded cleanup/capacity work. Revocation, scope narrowing, demotion, suspension and verification gating prevent replay of formerly accessible data. Test request timeout while waiting and operation with one database connection.
 - Dedicated and aggregate budgets, two keys sharing workspace/owner caps, browser recovery after exhausted budgets, bounded invalid-auth counter subjects, trusted proxy/IPv6 behavior, 429/Retry-After and one rate-limit event per window. No CAPTCHA for v1.
+- Valid traffic behind one IP can reach the documented authenticated allowance without spending failed-auth counters; failed credentials do spend them. Test coarse ingress protection separately, hard anonymous-counter capacity/saturation and bounded telemetry. At live-key capacity, replacement issuance is refused until a slot is freed; no hidden rotation bypass.
 - Metadata retention and bounded cleanup; clearing secret material; composite FKs/checks/indexes; a factory per table and registries/data-map complete. Account export/erasure contains no credential/hash or other people's keys; security lifecycle retention one year.
+- Never expiry round-trips as null in API/store/export; remains valid beyond finite lifetime bounds but is still revocable and subject to personal eligibility. Quotas count active Never keys, cleanup preserves them and removes revoked Never metadata after 90 days. Never → finite is permitted narrowing; finite → Never and finite extensions are refused. Idempotency expiry remains finite and independent of credential expiry.
 - Project events carry the credential public ID and correct human/null actor; automatic revocation has a fixed reason and actual manager actor where applicable. Logs/events/CSV/errors never contain full/partial credentials or digests. Whole-credential scrubbing includes adversarial alphabet shapes. Metrics have no identifier-valued labels; unknown `/api/v1` and `/api/v2` paths are JSON 404s, never SPA HTML.
 
 ### Vitest and Playwright
 
 - Per-tab permissions and direct-navigation denial without fetching; workspace manager review/revoke, own-only personal list, workspace reset of selection, paginated project options, viewer restrictions and server field errors.
+- Exact workspace/account tab labels, Add API Key dialog entry points, grouped permissions with partial selection and unavailable-action rules, Never expiry display/submission, and Edit/Revoke only in keyboard-accessible three-dot row menus. Revoke uses the danger menu item and existing danger confirmation, with focus returning to the menu trigger.
 - Duplicate create submits once; creation timeout preserves a warning to inspect/revoke the possibly created record; create→secret→Done, reveal/copy with existing feedback, no raw secret in DOM while masked, no secret retained in cache/history/storage or after navigation/sign-out.
 - Empty/loading/refresh failure with retained data and Retry; edit/broadening proof, expiry, confirmation/failure/success for revoke; mobile/desktop, keyboard focus, reduced motion and unchanged admin-build isolation.
 - E2E: create a selected-project key in UI; use it with an HTTP client to read/update only that project and inspect scoped totals; revoke in UI and confirm 401. Repeat with a personal key, then demote/remove its owner and confirm changed access. Verify SPA cookie+CSRF still works and no page error/CSP violation. Save screenshots of settings/form/confirmation with secrets concealed.
@@ -292,9 +351,9 @@ Implementation checks: `make test`, `make check`, `make build`, `make test-e2e E
 
 ## Implementation order
 
-1. Confirm the decisions below, including the deliberate extensions to the current session-only/workspace-member rules and rate-limit vocabulary. Update the plan with the answers before writing code.
-2. Add key primitives/scopes, schema/factories/registries, metadata CRUD, lifecycle revocation and audit attribution/retention. Cover persistence, recovery and lock ordering first.
-3. Introduce the distinct v1 security boundary and project access predicate, then the five public project routes. Keep SPA behavior behind its existing session boundary; complete the authorization/concurrency matrix before exposing v1.
+1. Confirm the remaining decisions below, including idempotency details, anonymous-counter bounds, the deliberate extensions to the current session-only/workspace-member rules and rate-limit vocabulary. Complete the FK-aware lock matrix and resolve the inherited membership/deletion cycle. Update the plan with the answers and final lock design before writing code.
+2. Add key primitives/scopes, schema/factories/registries, metadata CRUD with live-session/current-permission checks, lifecycle revocation and audit attribution/retention. Cover persistence, recovery, verification eligibility and implicit/explicit lock ordering first.
+3. Introduce the distinct v1 security boundary and project access predicate, then the five public project routes with durable project-create idempotency. Bring browser project writes under the same transactional authorization boundary. Keep SPA behavior behind its existing session boundary; complete the authorization/concurrency/retry matrix before exposing v1.
 4. Add both settings pages and shared key UI/typed client, then end-to-end integration and revocation flows. Document v1 requests, rotation and compatibility.
 5. Run the checks, record screenshots with secrets concealed, document deviations, set Status to implemented with date, and move this plan into `implemented/` with fixed links.
 
@@ -303,15 +362,15 @@ Implementation checks: `make test`, `make check`, `make build`, `make test-e2e E
 - `docs/api/api-keys.md` (new): both ownership models, effective access, wire/header format, management/public API examples, expiry, rotation, revocation/recovery, rates and compatibility policy. Add its rows to `docs/README.md` and AGENTS.md.
 - `docs/naming.md`, `docs/checks.md`: optional version prefix keeps controllers in their domain area; approved per-key/per-workspace limit kinds and corresponding exact validation. No new controller actions or store-verb exceptions are needed.
 - `docs/api/README.md`, `docs/api/endpoints.md`, `docs/api/auth.md`: route/security split, session-only management, typed credential principal, browser safeguards, permissions, lifecycle and public contract; fix the stale Next proxy sentence.
-- `docs/api/rate-limits.md`, `docs/api/database.md`, `docs/api/seeding.md`: dedicated/aggregate/recovery budgets, quotas, tables/constraints/indexes, cleanup, factories and no usable seeded keys.
+- `docs/api/rate-limits.md`, `docs/api/database.md`, `docs/api/seeding.md`: dedicated/aggregate/recovery budgets, split ingress/failed-auth protection, hard counter capacities/saturation, strict rotation quotas, tables/constraints/indexes including idempotency state, cleanup, factories, FK-aware locking and no usable seeded keys.
 - `docs/api/events.md`, `docs/api/observability.md`, `docs/api/admin.md`, `docs/api/monitoring.md`: credential attribution in existing event detail/CSV, actor rules, lifecycle retention/audit lines, safe logs/scrubbing, table/limit registry coverage, recovery action effects. No secret visibility or new dashboard powers.
 - `docs/compliance.md`, `docs/incident-response.md`, `docs/deployment.md`: data map, retention/export/erasure, keys as an incident-containment surface, revocation/rotation, API path routing/Authorization forwarding and scaled read-limit caveat.
 - `docs/ui/README.md`, `docs/ui/pages.md`, `docs/ui/api.md`, `docs/ui/design.md`, `docs/ui/forms-and-actions.md`, API/UI testing docs: new routes/layout/tabs, permission-aware controls, typed metadata clients, one-time secret UI, actions and behavior coverage.
 - AGENTS.md's architecture/security rules: private browser endpoints still require sessions; the explicit supported v1 routes use key authentication/workspace binding instead. Workspace data's human-membership rule gains this intentional service-principal case. All other session, role, scope and admin invariants remain enforced.
 
-## Decisions to confirm
+## Decisions and confirmation status
 
-All rows below are recommendations, not approved decisions. The first six set the main product behavior; the rest make the security/lifecycle contract implementable.
+The original recommendations below remain awaiting confirmation except where the confirmed follow-up decisions explicitly settle a point. Confirmation of a follow-up is not blanket approval of unrelated choices in its original row.
 
 | # | Question | Recommendation |
 | --- | --- | --- |
@@ -321,13 +380,34 @@ All rows below are recommendations, not approved decisions. The first six set th
 | 4 | What does All projects mean? | Current **and future** projects in that one workspace, subject to a personal owner's live access; Selected is an explicit allowlist. No per-project human ACL in this feature. |
 | 5 | Actions and first public endpoints | Read / Create / Update / Delete project scopes, read-only default; initial public API is project CRUD only. Selected-project keys cannot create projects. |
 | 6 | Workspace visibility/control of personal keys | Workspace owners/admins can inspect metadata and revoke personal keys for their workspace, but cannot edit grants or recover secrets. |
-| 7 | Expiry and rotation | Default 90 days, mandatory maximum 365 days, no expiry extension/reactivation; rotate by creating a replacement, deploying it, then revoking the old key. |
+| 7 | Expiry and rotation | F7 confirms Never expiry, superseding mandatory expiry. Default 90 days and finite bounds 1 hour–365 days remain proposed; no expiry extension/reactivation. Below quota, create replacement → deploy → revoke old. F5 confirms strict quotas and possible downtime at capacity. |
 | 8 | Issuance/broadening proof | Current password if MFA off, authenticator/recovery code if on; no extra proof for narrowing or revocation. |
 | 9 | Recovery/offboarding | Permanent personal revocation on password change/reset, operator MFA reset, suspension or leaving/removal. Browser logout doesn't revoke keys; workspace keys survive creator changes. |
 | 10 | Grants after role changes | Live intersection: demotion removes effective actions; later promotion can restore **saved** actions only. Removed/revoked credentials never revive. |
 | 11 | Limits and new vocabulary | Adopt the proposed budgets/quotas, max 100 selected projects, and explicitly approve `per-key`/`per-workspace` counting kinds. Per-process read limits initially, documented edge requirement when scaled. |
 | 12 | Retention/attribution | One-year security lifecycle events for both kinds; key public-ID snapshot on existing project events, no fabricated service actor; ended metadata retained 90 days, no secret/hash export. |
-| 13 | Settings locations | Workspace settings → API Keys, and Account & security → API Keys, with the dedicated pages/layout described above. |
+| 13 | Settings locations | Confirmed by F8: workspace settings adds API Keys; account settings has Settings · API Keys, with the dedicated pages/layout described above. |
+
+### Follow-up decisions confirmed by the user (2026-11-03)
+
+| # | Question | Confirmed decision |
+| --- | --- | --- |
+| F1 | Personal keys after completed email change | **Keep them**, attached to the same user identity. Workspace keys also stay valid; current verification eligibility still applies. |
+| F2 | Required-email-verification gate | **Apply it to personal keys**, temporarily denying access until verification. Do not permanently revoke merely for this gate. Workspace keys remain independent. |
+| F3 | Browser vs API-key concurrent authorization | **Use the same strict transactional boundary** for both project-write paths. A removal/demotion/revocation that commits first prevents a waiting write. |
+| F4 | Public project creation after a lost response | **Add idempotency support.** Header requirements, 24-hour retention, response storage and retry/conflict details above are proposed defaults, not yet approved. |
+| F5 | Key rotation at live-key quota | **Keep quotas strict.** Free a slot before replacement issuance; accept possible downtime when the old key must be revoked first. No replacement-slot bypass. |
+| F6 | Throughput behind shared public IPs | **Favor authenticated throughput:** separate tighter failed-auth limiting from coarse pre-auth flood protection, then key/owner/workspace budgets. Exact ingress ceiling and memory-capacity defaults remain to be finalized. |
+| F7 | Longest expiry | **Never**, for both key kinds. Represent it as nullable expiry consistently in storage, API, quotas, authentication and retention; supersedes the original mandatory maximum lifetime. |
+| F8 | Tabs and creation flow | Workspace tabs add **API Keys**; account tabs are **Settings · API Keys**. **Add API Key** opens the dialog with Name, Expiry and grouped multi-select Permissions matching admin Events filters, plus project/workspace selection and fresh proof where needed. Success shows the one-time key in a gray callout with Copy, or a read-only textarea. |
+| F9 | Row actions | **Edit** and **Revoke** live in a three-dot dropdown. Revoke uses the danger variant and opens the existing danger confirmation. Workspace managers cannot edit another person's personal key. |
+
+### Remaining design gates before implementation
+
+- Confirm the original recommendations not explicitly resolved by F1–F9, including rate-limit counting vocabulary and the proposed default/finite expiry choices (Never is confirmed).
+- Confirm the proposed idempotency contract and data/retention design; resolve its hard storage cap/refusal behavior and project-create allowance reservation within the transaction.
+- Confirm coarse ingress numbers and anonymous-counter capacity/saturation defaults.
+- Complete the combined explicit/FK/cascade lock matrix and record the resolved order. This is a technical correctness requirement, not permission to weaken attribution or authorization.
 
 ## Not included
 

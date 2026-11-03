@@ -17,9 +17,12 @@ import (
 type Deliveries struct{ *httpapi.Server }
 
 // deliveryCursor reads a deliveries cursor, evt_…:listener.
-func deliveryCursor(raw string) (event, listener string, ok bool) {
-	event, listener, found := strings.Cut(raw, ":")
-	return event, listener, found && input.PublicID("evt", event) && listener != "" && len(listener) <= 100
+// An alert webhook's delivery adds its receiver: evt_…:listener:whk_….
+func deliveryCursor(raw string) (event, listener, target string, ok bool) {
+	event, rest, found := strings.Cut(raw, ":")
+	listener, target, hasTarget := strings.Cut(rest, ":")
+	ok = found && input.PublicID("evt", event) && listener != "" && len(listener) <= 100 && (!hasTarget || input.PublicID("whk", target))
+	return event, listener, target, ok
 }
 
 // adminDeliveryQuery parses the deliveries list's query string.
@@ -35,7 +38,7 @@ func (h Deliveries) query(r *http.Request) (store.AdminDeliveryFilter, int, even
 	valid = valid && (f.Status == "" || store.DeliveryStatus(f.Status))
 	valid = valid && (f.Listener == "" || slices.Contains(listeners(h.Server), f.Listener))
 	if params["before"] != "" {
-		f.BeforeEvent, f.BeforeListener, ok = deliveryCursor(params["before"])
+		f.BeforeEvent, f.BeforeListener, f.BeforeTarget, ok = deliveryCursor(params["before"])
 		valid = valid && ok
 	}
 	f.From, ok = timeFilter(params["from"])

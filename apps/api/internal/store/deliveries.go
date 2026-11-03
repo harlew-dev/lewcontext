@@ -7,6 +7,7 @@ import (
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/events"
 	"lewcontext/api/internal/observe"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -20,11 +21,16 @@ type deliveryRecord struct {
 	bun.BaseModel `bun:"table:event_deliveries,alias:d"`
 	EventID       int64  `bun:",pk"`
 	Listener      string `bun:",pk"`
-	Attempts      int
-	NextAttemptAt time.Time `bun:",nullzero,notnull,default:current_timestamp"`
-	DeliveredAt   time.Time `bun:",nullzero"`
-	FailedAt      time.Time `bun:",nullzero"`
-	LastError     string
+	// Target is the receiver this delivery is for (an alert webhook's whk_ ID),
+	// empty for a listener's only one; TargetRevision is that receiver's
+	// delivery_revision when this was queued.
+	Target         string `bun:",pk"`
+	TargetRevision int64
+	Attempts       int
+	NextAttemptAt  time.Time `bun:",nullzero,notnull,default:current_timestamp"`
+	DeliveredAt    time.Time `bun:",nullzero"`
+	FailedAt       time.Time `bun:",nullzero"`
+	LastError      string
 }
 
 // maxLastError matches the last_error column's CHECK.
@@ -36,6 +42,12 @@ func (s *Store) queueDeliveries(ctx context.Context, db bun.IDB, eventID int64, 
 		return nil
 	}
 	names := s.Listeners.ListenersFor(event)
+	if strings.HasPrefix(event, "alert.") {
+		var err error
+		if names, err = s.queueAlertEvent(ctx, db, eventID, event, names); err != nil {
+			return err
+		}
+	}
 	if len(names) == 0 {
 		return nil
 	}
@@ -47,15 +59,53 @@ func (s *Store) queueDeliveries(ctx context.Context, db bun.IDB, eventID int64, 
 	return err
 }
 
+// queueAlertEvent queues an alert event's webhook deliveries itself, one per
+// matching webhook (queueAlertWebhooks), and returns the listeners that
+// get an ordinary delivery: everything but the webhook listeners.
+func (s *Store) queueAlertEvent(ctx context.Context, db bun.IDB, eventID int64, event string, names []string) ([]string, error) {
+	plain := make([]string, 0, len(names))
+	var webhook []string
+	for _, name := range names {
+		if strings.HasPrefix(name, "alert.webhook") {
+			webhook = append(webhook, name)
+		} else {
+			plain = append(plain, name)
+		}
+	}
+	if len(webhook) == 0 {
+		return plain, nil
+	}
+	var e struct {
+		Signal    string    `bun:"signal"`
+		Webhook   bool      `bun:"webhook"`
+		CreatedAt time.Time `bun:"created_at"`
+	}
+	err := db.NewSelect().Model((*eventRecord)(nil)).
+		ColumnExpr("COALESCE(payload->>'signal', '') AS signal, COALESCE((payload->>'webhook')::boolean, false) AS webhook, created_at").
+		Where("id = ?", eventID).Scan(ctx, &e)
+	if err != nil || !e.Webhook || e.Signal == "" {
+		return plain, err
+	}
+	kind := strings.TrimPrefix(event, "alert.")
+	for _, name := range webhook {
+		if err := s.queueAlertWebhooks(ctx, db, eventID, name, e.Signal, kind, e.CreatedAt); err != nil {
+			return nil, err
+		}
+	}
+	return plain, nil
+}
+
 // claimedRow is a claimed delivery with its event, as RETURNING gives it.
 type claimedRow struct {
-	EventID   int64
-	Listener  string
-	Attempts  int
-	PublicID  string
-	Name      string
-	Payload   []byte
-	CreatedAt time.Time
+	EventID        int64
+	Listener       string
+	Target         string
+	TargetRevision int64
+	Attempts       int
+	PublicID       string
+	Name           string
+	Payload        []byte
+	CreatedAt      time.Time
 }
 
 // Claim leases up to limit due deliveries, oldest first. FOR UPDATE SKIP
@@ -63,7 +113,7 @@ type claimedRow struct {
 // or waiting on them; the row locks end with the statement.
 func (s *Store) Claim(ctx context.Context, limit int, lease time.Duration) ([]events.Delivery, error) {
 	due := s.DB.NewSelect().Model((*deliveryRecord)(nil)).
-		Column("event_id", "listener").
+		Column("event_id", "listener", "target").
 		Where("delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()").
 		OrderExpr("next_attempt_at, event_id").
 		Limit(int64(limit)).
@@ -76,13 +126,13 @@ func (s *Store) Claim(ctx context.Context, limit int, lease time.Duration) ([]ev
 		TableExpr("events AS e").
 		Set("attempts = d.attempts + 1").
 		Set("next_attempt_at = now() + ? * interval '1 millisecond'", lease.Milliseconds()).
-		Where("d.event_id = due.event_id AND d.listener = due.listener").
+		Where("d.event_id = due.event_id AND d.listener = due.listener AND d.target = due.target").
 		Where("e.id = d.event_id").
-		Returning("d.event_id, d.listener, d.attempts, e.public_id, e.name, e.payload, e.created_at").
+		Returning("d.event_id, d.listener, d.target, d.target_revision, d.attempts, e.public_id, e.name, e.payload, e.created_at").
 		Scan(ctx, &rows)
 	claimed := make([]events.Delivery, len(rows))
 	for i, r := range rows {
-		claimed[i] = events.Delivery{EventID: r.EventID, Listener: r.Listener, Attempts: r.Attempts, PublicID: r.PublicID, Event: r.Name, Payload: r.Payload, CreatedAt: r.CreatedAt}
+		claimed[i] = events.Delivery{EventID: r.EventID, Listener: r.Listener, Target: r.Target, TargetRevision: r.TargetRevision, Attempts: r.Attempts, PublicID: r.PublicID, Event: r.Name, Payload: r.Payload, CreatedAt: r.CreatedAt}
 	}
 	return claimed, err
 }
@@ -105,7 +155,7 @@ func (s *Store) Fail(ctx context.Context, d events.Delivery, cause error) error 
 func (s *Store) updateDelivery(ctx context.Context, d events.Delivery, set string, args ...any) error {
 	_, err := s.DB.NewUpdate().Model((*deliveryRecord)(nil)).
 		Set(set, args...).
-		Where("event_id = ? AND listener = ?", d.EventID, d.Listener).
+		Where("event_id = ? AND listener = ? AND target = ?", d.EventID, d.Listener, d.Target).
 		Exec(ctx)
 	return err
 }
@@ -169,9 +219,12 @@ func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, 
 		if err != nil {
 			return err
 		}
+		// An alert event has one delivery per receiver: retry the failed ones.
 		var d deliveryRecord
 		err = tx.NewSelect().Model(&d).
 			Where("d.event_id = ? AND d.listener = ?", event.ID, listener).
+			OrderExpr("(d.failed_at IS NULL), d.target").
+			Limit(1).
 			For("UPDATE").
 			Scan(ctx)
 		if err != nil {
@@ -183,7 +236,7 @@ func (s *Store) RequeueDelivery(ctx context.Context, publicID, listener string, 
 		if event.MinimisedAt.Valid {
 			return ErrDeliveryMinimised
 		}
-		if _, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).Where("event_id = ? AND listener = ?", d.EventID, listener).Exec(ctx); err != nil {
+		if _, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).Where("event_id = ? AND listener = ? AND failed_at IS NOT NULL", d.EventID, listener).Exec(ctx); err != nil {
 			return err
 		}
 		e := events.AdminDeliveryRetried{Admin: a.Admin.PublicID, Reason: a.Reason, Listener: listener, Event: publicID, Count: 1}
@@ -210,7 +263,7 @@ func (s *Store) RequeueFailedDeliveries(ctx context.Context, listener string, si
 			Limit(MaxDeliveriesRetried).
 			For("UPDATE OF e, d")
 		res, err := requeue(tx.NewUpdate().Model((*deliveryRecord)(nil))).
-			Where("listener = ? AND event_id IN (?)", listener, failed).
+			Where("listener = ? AND failed_at IS NOT NULL AND event_id IN (?)", listener, failed).
 			Exec(ctx)
 		if err != nil {
 			return err

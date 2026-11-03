@@ -26,6 +26,26 @@ type Alert struct {
 	SilencedUntil  *time.Time
 	SilencedBy     *int64
 	ResolvedAt     *time.Time
+	// Recovery and notification state: database defaults, read back only.
+	State                  string     `bun:",scanonly"`
+	CurrentLevel           string     `bun:",scanonly"`
+	RawLevel               string     `bun:",scanonly"`
+	HealthySince           *time.Time `bun:",scanonly"`
+	HealthyChecks          int        `bun:",scanonly"`
+	RecoveredAt            *time.Time `bun:",scanonly"`
+	LastCheckedAt          *time.Time `bun:",scanonly"`
+	LastSuccessfulAt       *time.Time `bun:",scanonly"`
+	LastBucket             *time.Time `bun:",scanonly"`
+	Hourly                 bool       `bun:",scanonly"`
+	RecoveryInterrupted    bool       `bun:",scanonly"`
+	RecoveryPendingRelapse bool       `bun:",scanonly"`
+	Revision               int64      `bun:",scanonly"`
+	TransitionSequence     int64      `bun:",scanonly"`
+	ReminderAnchor         time.Time  `bun:",scanonly"`
+	LastOpeningNoticeAt    *time.Time `bun:",scanonly"`
+	ExternalTitle          string     `bun:",scanonly"`
+	ExternalUnit           string     `bun:",scanonly"`
+	ExternalMeaning        string     `bun:",scanonly"`
 }
 
 // Alerts builds open warnings on the failed sign-ins signal, opened in the

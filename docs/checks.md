@@ -21,6 +21,8 @@ The naming rules in [naming.md](naming.md) and the docs' links are checked by or
 
 ## Terminology
 
+The approved alert-webhooks plan registers `admin.alert_webhook` in `storedResources` (`TestEventResources`), because the operator-managed alert webhooks and heartbeats are a stored resource an admin acts on; no regex or convention rule was loosened. The store's webhook methods use the ordinary `Index`, `Find`, `Create`, `Update` and `Delete` verbs (`UpdateAlertWebhookKey` rotates a key) and need no domain verb.
+
 The confirmed email-change feature registers `auth.email_change` in `storedResources` because `email_changes` is a stored session-bound singleton. The account client's singleton remains covered by the existing auth-area action convention; its four CRUD methods/typed paths have explicit client coverage. The exact unverified-route check is now `TestOnlyNineRoutesAllowUnverified`, including only the four additional email-change routes. No naming regex or convention rule was loosened.
 
 | Say | Not | Where |

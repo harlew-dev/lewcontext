@@ -2,6 +2,18 @@
 
 Tailwind CSS v4 utilities in markup on top of Base UI behaviour, in a Catalyst-like style: restrained zinc, light and dark modes following the system setting, Inter, and Heroicons.
 
+## Disclosure
+
+`Disclosure` (`components/ui/disclosure.tsx`) is one collapsible item on Base UI's Collapsible: a full-width header (title, an optional `summary`, a chevron that turns), a panel whose height animates, collapsed unless `defaultOpen`, `bordered` for a card of its own. Lists of them are separated by `divide-y` on the wrapper. Used by the Alerts catalog's rules and the webhook dialog's example payloads. A raw `<details>` isn't used.
+
+## Radio group
+
+`RadioGroup` (`components/ui/radio-group.tsx`) is a choice of one among a few on Base UI's RadioGroup and Radio, styled like `Checkbox`: each option is its own label with an optional description, arrow keys move between them, and the group is named by its `label`. Use it for two to four options that should all be visible (the Subscribe dialog's level and format); a longer list is a `Listbox`.
+
+## Incident thread
+
+`IncidentThread` (`components/app/admin/incident-thread.tsx`) is the one discussion family for an alert's and an error group's page, built from `Button`, `Textarea`, `Badge`, `ListSkeleton`, `Notice` and the dialogs: cycle boundaries with the **Resolved incident** badge on the chosen comment, older cycles kept, comments as plain text (never a link), loading, empty, error-with-Retry and older-page states. The page file keeps its own health or occurrence content.
+
 ## Styling rules
 
 - **Tailwind utilities only.** Use the default palette (zinc), default spacing, mobile-first breakpoints (`sm:`, `lg:`) and `dark:` variants. No per-component CSS files or custom colour tokens.

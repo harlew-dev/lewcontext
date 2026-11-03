@@ -13,13 +13,18 @@ import (
 
 // Delivery is one event queued for one listener, as the queue hands it out.
 type Delivery struct {
-	EventID   int64 // internal; identifies the row with Listener
-	PublicID  string
-	Event     string
-	Listener  string
-	Payload   []byte
-	CreatedAt time.Time
-	Attempts  int // including the one being made
+	EventID  int64 // internal; identifies the row with Listener
+	PublicID string
+	Event    string
+	Listener string
+	// Target is the receiver the delivery is for (an alert webhook's whk_ ID),
+	// empty for a listener's only one; TargetRevision is its delivery_revision
+	// when the delivery was queued.
+	Target         string
+	TargetRevision int64
+	Payload        []byte
+	CreatedAt      time.Time
+	Attempts       int // including the one being made
 }
 
 // Queue is where deliveries wait: the event_deliveries table, implemented
@@ -172,7 +177,7 @@ func (w *Worker) run(ctx context.Context, handle handler, d Delivery) (err error
 			observe.Report(ctx, observe.Problem{Source: observe.SourceWorker, Route: d.Listener, Err: err, Stack: stack})
 		}
 	}()
-	return handle(ctx, d.Payload, Delivered{EventID: d.PublicID, OccurredAt: d.CreatedAt, Attempt: d.Attempts})
+	return handle(ctx, d.Payload, Delivered{EventID: d.PublicID, OccurredAt: d.CreatedAt, Attempt: d.Attempts, Target: d.Target, TargetRevision: d.TargetRevision})
 }
 
 // listenerPanic is the error a listener's panic fails its delivery with.

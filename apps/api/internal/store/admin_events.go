@@ -74,7 +74,9 @@ type AdminEventPage struct {
 
 // AdminDelivery is one listener's delivery of an event.
 type AdminDelivery struct {
-	Listener      string     `json:"listener"`
+	Listener string `json:"listener"`
+	// Target is the receiver of an alert webhook delivery (whk_…), else empty.
+	Target        string     `json:"target,omitempty"`
 	Status        string     `json:"status"`
 	Attempts      int        `json:"attempts"`
 	NextAttemptAt *time.Time `json:"nextAttemptAt"`

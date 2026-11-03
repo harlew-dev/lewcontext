@@ -377,6 +377,17 @@ describe("the Errors page", () => {
   });
 });
 const one: ErrorView = {
+  currentCycle: {
+    id: "inc_00000000000001",
+    number: 1,
+    openedAt: "2026-11-01T12:00:00Z",
+    resolvedAt: null,
+    resolutionSource: null,
+    resolver: null,
+    resolutionMessage: null,
+  },
+  cycles: [],
+  nextCycle: null,
   window,
   group: {
     ...group({ source: "client", message: userText, lastVersion: "" }),

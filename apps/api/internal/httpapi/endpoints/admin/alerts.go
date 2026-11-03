@@ -9,7 +9,10 @@ import (
 	"lewcontext/api/internal/monitor"
 	"lewcontext/api/internal/store"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Alerts are the admin dashboard's /api/admin/alerts
@@ -67,18 +70,30 @@ type alertPage struct {
 // first), resolved or all (newest first, a cursor page: before, perPage).
 // Recorded as admin.alert.listed. GET /api/admin/alerts.
 func (h Alerts) Index(w http.ResponseWriter, r *http.Request) {
-	params, ok := input.Query(r, "state", "before", "perPage")
+	params, ok := input.Query(r, "state", "before", "perPage", "q", "level", "health", "signals", "acknowledged", "silenced", "from", "to")
 	if !ok {
 		httpapi.Fail(w, 400, "Check the filters.")
 		return
 	}
-	f := store.AlertFilter{State: params["state"], Before: params["before"]}
+	f := store.AlertFilter{State: params["state"], Before: params["before"], Search: strings.TrimSpace(params["q"]), Level: params["level"],
+		Health: params["health"], Acknowledged: params["acknowledged"], Silenced: params["silenced"]}
+	var okSearch, okFrom, okTo, okSignals bool
+	okSearch = utf8.RuneCountInString(f.Search) <= 100 && input.ValidText(f.Search, false)
+	f.From, okFrom = timeFilter(params["from"])
+	f.To, okTo = timeFilter(params["to"])
+	f.Signals, okSignals = alertSignals(params["signals"])
 	if f.State == "" {
 		f.State = store.AlertStateOpen
 	}
 	perPage, okPage := input.Int(params["perPage"], alertsPerPage, maxAlertsPerPage)
 	switch {
-	case !okPage, f.State != store.AlertStateOpen && f.State != store.AlertStateResolved && f.State != store.AlertStateAll,
+	case !okPage, !okSearch, !okFrom, !okTo, !okSignals,
+		f.Level != "" && f.Level != "warn" && f.Level != "critical",
+		f.Health != "" && !slices.Contains([]string{"active", "confirming", "recovered", "unknown"}, f.Health),
+		f.Acknowledged != "" && f.Acknowledged != "yes" && f.Acknowledged != "no",
+		f.Silenced != "" && f.Silenced != "yes" && f.Silenced != "no",
+		f.From != nil && f.To != nil && !f.From.Before(*f.To),
+		f.State != store.AlertStateOpen && f.State != store.AlertStateResolved && f.State != store.AlertStateAll,
 		f.Before != "" && !input.PublicID("alt", f.Before):
 		httpapi.Fail(w, 400, "Check the filters.")
 		return
@@ -92,7 +107,8 @@ func (h Alerts) Index(w http.ResponseWriter, r *http.Request) {
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	e := events.AdminAlertListed{Admin: httpapi.Admin(r).User.PublicID, State: f.State, Before: f.Before}
+	e := events.AdminAlertListed{Admin: httpapi.Admin(r).User.PublicID, State: f.State, Before: f.Before, Filters: events.AlertListFilters{
+		Search: f.Search, Level: f.Level, Health: f.Health, Signals: f.Signals, Acknowledged: f.Acknowledged, Silenced: f.Silenced, From: f.From, To: f.To}}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
 		httpapi.InternalError(w, r, err)
 		return
@@ -102,6 +118,29 @@ func (h Alerts) Index(w http.ResponseWriter, r *http.Request) {
 		out.Data[i] = viewOf(a)
 	}
 	httpapi.JSON(w, 200, out)
+}
+
+// maxAlertSignalFilters bounds the signals one list request may name.
+const maxAlertSignalFilters = 50
+
+// alertSignals reads a comma-separated list of alert signals, each one in the
+// catalogue, without repeats.
+func alertSignals(raw string) ([]string, bool) {
+	if raw == "" {
+		return nil, true
+	}
+	list := strings.Split(raw, ",")
+	if len(list) > maxAlertSignalFilters {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for _, s := range list {
+		if _, known := monitor.FindAlertRule(s); !known || seen[s] {
+			return nil, false
+		}
+		seen[s] = true
+	}
+	return list, true
 }
 
 // Show is one alert, recorded as admin.alert.viewed. 404 for an unknown
@@ -134,7 +173,11 @@ func (h Alerts) Show(w http.ResponseWriter, r *http.Request) {
 // acknowledgeInput is Update's body: {"acknowledged": true}, the one
 // change it makes.
 type acknowledgeInput struct {
-	Acknowledged bool `json:"acknowledged"`
+	Acknowledged bool   `json:"acknowledged"`
+	Resolved     bool   `json:"resolved"`
+	Cycle        string `json:"cycle"`
+	Message      string `json:"message"`
+	Revision     int64  `json:"revision"`
 }
 
 // Update acknowledges an open alert ({"acknowledged": true}), which stops
@@ -152,11 +195,17 @@ func (h Alerts) Update(w http.ResponseWriter, r *http.Request) {
 	if !httpapi.Decode(w, r, &in) {
 		return
 	}
-	if !in.Acknowledged {
-		httpapi.FailField(w, 422, "acknowledged", "Only acknowledging an alert is supported.")
+	if in.Acknowledged == in.Resolved || (in.Acknowledged && (in.Cycle != "" || in.Message != "" || in.Revision != 0)) || (in.Resolved && (!input.PublicID("inc", in.Cycle) || !input.PublicID("msg", in.Message) || in.Revision < 1)) {
+		httpapi.FailField(w, 422, "resolved", "Choose one action and a current-cycle comment and revision for resolution.")
 		return
 	}
-	alert, err := h.Repo.AcknowledgeAlert(r.Context(), id, httpapi.Admin(r).User)
+	var alert store.Alert
+	var err error
+	if in.Resolved {
+		alert, err = h.Repo.ResolveRecoveredAlert(r.Context(), id, store.AlertResolution{Cycle: in.Cycle, Message: in.Message, Revision: in.Revision}, httpapi.Admin(r).User)
+	} else {
+		alert, err = h.Repo.AcknowledgeAlert(r.Context(), id, httpapi.Admin(r).User)
+	}
 	if failAlert(w, err) {
 		return
 	}
@@ -188,6 +237,8 @@ func failAlert(w http.ResponseWriter, err error) bool {
 		httpapi.Fail(w, 409, "This alert is resolved.")
 	case errors.Is(err, store.ErrAlreadyDone):
 		httpapi.Fail(w, 409, "This alert is acknowledged already.")
+	case errors.Is(err, store.ErrIncidentConflict):
+		httpapi.Fail(w, 409, "This incident changed or does not have fresh confirmed recovery. Reload before resolving.")
 	default:
 		return false
 	}

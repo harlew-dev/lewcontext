@@ -34,7 +34,6 @@ function me(role: AdminRole): AdminSession {
     role,
     csrfToken: "admin-csrf",
     expiresAt: "",
-    alertEmail: "critical" as const,
     openAlerts: 0,
   };
 }

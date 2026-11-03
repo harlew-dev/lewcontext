@@ -36,10 +36,29 @@ CREATE TABLE alerts (
  silenced_until timestamptz,
  silenced_by bigint REFERENCES users(id) ON DELETE SET NULL,
  resolved_at timestamptz,
+ state text NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'confirming', 'recovered', 'unknown', 'resolved')),
+ current_level text NOT NULL DEFAULT 'unknown' CHECK (current_level IN ('ok', 'warn', 'critical', 'unknown')),
+ raw_level text NOT NULL DEFAULT 'unknown' CHECK (raw_level IN ('ok', 'warn', 'critical', 'unknown')),
+ healthy_since timestamptz,
+ healthy_checks integer NOT NULL DEFAULT 0 CHECK (healthy_checks >= 0),
+ recovered_at timestamptz,
+ last_checked_at timestamptz,
+ last_successful_at timestamptz,
+ last_bucket timestamptz,
+ hourly boolean NOT NULL DEFAULT false,
+ recovery_interrupted boolean NOT NULL DEFAULT false,
+ recovery_pending_relapse boolean NOT NULL DEFAULT false,
+ revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+ transition_sequence bigint NOT NULL DEFAULT 0 CHECK (transition_sequence >= 0),
+ reminder_anchor timestamptz NOT NULL DEFAULT now(),
+ last_opening_notice_at timestamptz,
+ external_title text NOT NULL DEFAULT 'An alert',
+ external_unit text NOT NULL DEFAULT 'count',
+ external_meaning text NOT NULL DEFAULT '',
  CHECK (resolved_at IS NULL OR resolved_at >= opened_at)
 );
 -- One open alert per signal.
-CREATE UNIQUE INDEX alerts_open_signal_idx ON alerts(signal) WHERE resolved_at IS NULL;
+CREATE UNIQUE INDEX alerts_open_signal_idx ON alerts(signal);
 -- The Alerts page, newest first, and its cursor.
 CREATE INDEX alerts_opened_idx ON alerts(opened_at DESC, id DESC);
 -- A signal's recent alerts: the hour's cooldown, a silence carried over.

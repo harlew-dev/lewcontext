@@ -7,6 +7,9 @@ import (
 	"lewcontext/api/internal/factory"
 	"lewcontext/api/internal/httpapi/apitest"
 	"lewcontext/api/internal/httpapi/router"
+	"slices"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,7 +58,7 @@ func TestAdminAlerts(t *testing.T) {
 	if second := list("?state=all&perPage=2&before="+*first.Next, 200); len(second.Data) != 1 || second.Next != nil {
 		t.Fatalf("all, page 2: %+v", second)
 	}
-	for _, bad := range []string{"?state=x", "?perPage=0", "?perPage=1000", "?before=nope", "?state=open&before=" + crit.PublicID, "?q=1", "?state=all&state=open", "?state=all&before=alt_00000000000000"} {
+	for _, bad := range []string{"?state=x", "?perPage=0", "?perPage=1000", "?before=nope", "?state=open&before=" + crit.PublicID, "?level=info", "?health=resolved", "?signals=nope", "?signals=http.latency_p95,http.latency_p95", "?acknowledged=maybe", "?from=yesterday", "?from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z", "?q=" + strings.Repeat("a", 101), "?state=all&state=open", "?state=all&before=alt_00000000000000"} {
 		list(bad, 400)
 	}
 	if reads := apitest.EventsNamed(t, db, "admin.alert.listed"); len(reads) != 4 || reads[0].Payload["state"] != "open" || reads[0].Payload["admin"] != viewerAccount.User.PublicID || reads[0].UserID.Valid || reads[0].WorkspaceID.Valid {
@@ -75,26 +78,12 @@ func TestAdminAlerts(t *testing.T) {
 	if v := apitest.OnlyEvent(t, db, "admin.alert.viewed"); v.Payload["alert"] != crit.PublicID {
 		t.Fatalf("admin.alert.viewed: %+v", v.Payload)
 	}
-	// /me: the count and the setting; changing it is the admin's own.
-	me := func() map[string]any {
-		var out map[string]any
-		_ = json.Unmarshal(adminCall(t, h, "GET", "/api/admin/me", "", "", 200, viewer.Cookie()).Body.Bytes(), &out)
-		return out
-	}
-	if m := me(); m["openAlerts"] != float64(2) || m["alertEmail"] != "critical" {
+	// /me: the count of open alerts (and no email setting: alert email is
+	// opt-in, by subscription).
+	var m map[string]any
+	_ = json.Unmarshal(adminCall(t, h, "GET", "/api/admin/me", "", "", 200, viewer.Cookie()).Body.Bytes(), &m)
+	if _, has := m["alertEmail"]; m["openAlerts"] != float64(2) || has {
 		t.Fatalf("me: %+v", m)
-	}
-	for _, bad := range []string{`{"alertEmail":"sometimes"}`, `{}`} {
-		adminCall(t, h, "PATCH", "/api/admin/me", bad, viewer.CSRFToken, 422, viewer.Cookie())
-	}
-	adminCall(t, h, "PATCH", "/api/admin/me", `{"alertEmail":"all"}`, viewer.CSRFToken, 204, viewer.Cookie())
-	adminCall(t, h, "PATCH", "/api/admin/me", `{"alertEmail":"all"}`, viewer.CSRFToken, 204, viewer.Cookie())
-	adminCall(t, h, "PATCH", "/api/admin/me", `{"alertEmail":"none"}`, "wrong", 403, viewer.Cookie())
-	if m := me(); m["alertEmail"] != "all" {
-		t.Fatalf("me: %+v", m)
-	}
-	if e := apitest.OnlyEvent(t, db, "admin.updated"); e.Payload["changes"].(map[string]any)["alertEmail"] == nil || !e.ActorID.Valid {
-		t.Fatalf("admin.updated: %+v", e)
 	}
 	// Without a session, nothing.
 	adminCall(t, h, "GET", "/api/admin/alerts", "", "", 401)
@@ -155,13 +144,19 @@ func TestAdminAlertHousekeeping(t *testing.T) {
 	// An error group: resolved once, recorded, reopened by a new occurrence
 	// (store tests); a refusal records nothing.
 	group := apitest.Must(factory.AppErrors.CreateOne(ctx, db, f))(t)
+	cycle := apitest.Must(factory.IncidentCycles.State(func(c *factory.IncidentCycle) { c.AppErrorID = group.ID }).CreateOne(ctx, db, f))(t)
+	message := apitest.Must(factory.IncidentMessages.State(func(m *factory.IncidentMessage) { m.CycleID = cycle.ID }).CreateOne(ctx, db, f))(t)
+	resolution, marshalErr := json.Marshal(map[string]any{"resolved": true, "cycle": cycle.PublicID, "message": message.PublicID, "lastSeenAt": group.LastSeenAt})
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
 	errPath := "/api/admin/errors/" + group.PublicID
 	adminCall(t, h, "PATCH", errPath, `{"resolved":true}`, viewer.CSRFToken, 403, viewer.Cookie())
 	adminCall(t, h, "PATCH", errPath, `{"resolved":false}`, session.CSRFToken, 422, session.Cookie())
-	adminCall(t, h, "PATCH", "/api/admin/errors/err_00000000000000", `{"resolved":true}`, session.CSRFToken, 404, session.Cookie())
+	adminCall(t, h, "PATCH", "/api/admin/errors/err_00000000000000", string(resolution), session.CSRFToken, 404, session.Cookie())
 	adminCall(t, h, "PATCH", "/api/admin/errors/nope", `{"resolved":true}`, session.CSRFToken, 404, session.Cookie())
-	adminCall(t, h, "PATCH", errPath, `{"resolved":true}`, session.CSRFToken, 204, session.Cookie())
-	adminCall(t, h, "PATCH", errPath, `{"resolved":true}`, session.CSRFToken, 409, session.Cookie())
+	adminCall(t, h, "PATCH", errPath, string(resolution), session.CSRFToken, 204, session.Cookie())
+	adminCall(t, h, "PATCH", errPath, string(resolution), session.CSRFToken, 409, session.Cookie())
 	if e := apitest.OnlyEvent(t, db, "admin.error.resolved"); e.Payload["error"] != group.PublicID || e.Payload["admin"] != operator.User.PublicID {
 		t.Fatalf("admin.error.resolved: %+v", e.Payload)
 	}
@@ -169,4 +164,70 @@ func TestAdminAlertHousekeeping(t *testing.T) {
 	busy, busySession := operatorSignedIn(t, db, f)
 	apitest.Must(factory.RateLimits.State(factory.ForLimit("admin-action:per-user", busy.User.PublicID)).State(factory.Exhausted(60)).CreateOne(ctx, db, f))(t)
 	adminCall(t, h, "PATCH", "/api/admin/alerts/"+resolved.PublicID, `{"acknowledged":true}`, busySession.CSRFToken, 429, busySession.Cookie())
+}
+
+// The Alerts list's filters combine: a search of the signal or title (any
+// case, wildcards literal), level, recovery state, signals, acknowledged and
+// silenced, and when it opened; each is recorded with the read.
+func TestAdminAlertFilters(t *testing.T) {
+	_, db := server(t)
+	h := router.New(serverWith(t, db, func(*config.Config) {}))
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	account, viewer := adminSignedIn(t, db, f)
+	now := time.Now().UTC()
+	make := func(signal, level string, opened time.Time, more ...func(*factory.Alert)) string {
+		states := factory.Alerts.State(factory.AlertOn(signal, level)).State(factory.AlertOpenedAt(opened))
+		for _, m := range more {
+			states = states.State(m)
+		}
+		return apitest.Must(states.CreateOne(ctx, db, f))(t).PublicID
+	}
+	latency := make("http.latency_p95", "warn", now.Add(-time.Hour))
+	door := make("admin.door_refusals", "critical", now.Add(-2*time.Hour), factory.AlertAcknowledgedBy(account.User.ID))
+	panics := make("errors.new_panics", "warn", now.Add(-72*time.Hour), factory.AlertSilencedUntil(now.Add(time.Hour), account.User.ID))
+	done := make("auth.possible_takeovers", "critical", now.Add(-96*time.Hour), factory.AlertResolvedAt(now.Add(-90*time.Hour)))
+	ids := func(query string) []string {
+		t.Helper()
+		var p struct{ Data []struct{ ID string } }
+		w := adminCall(t, h, "GET", "/api/admin/alerts"+query, "", "", 200, viewer.Cookie())
+		if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, a := range p.Data {
+			out = append(out, a.ID)
+		}
+		sort.Strings(out)
+		return out
+	}
+	same := func(query string, want ...string) {
+		t.Helper()
+		sort.Strings(want)
+		if got := ids(query); !slices.Equal(got, want) {
+			t.Errorf("%s: %v, want %v", query, got, want)
+		}
+	}
+	same("?state=all&q=LATENCY", latency)
+	same("?state=all&q=door", door)
+	same("?state=all&q=%25")
+	same("?state=all&q=x_y")
+	same("?state=all&q=p95", latency)
+	same("?state=all&level=critical", door, done)
+	same("?state=all&signals=http.latency_p95,errors.new_panics", latency, panics)
+	same("?state=all&acknowledged=yes", door)
+	same("?acknowledged=no", latency, panics)
+	same("?silenced=yes", panics)
+	same("?state=all&silenced=no", latency, door, done)
+	same("?health=active", latency, door, panics)
+	same("?health=recovered")
+	same("?state=all&from="+now.Add(-3*time.Hour).Format(time.RFC3339), latency, door)
+	same("?state=all&from="+now.Add(-100*time.Hour).Format(time.RFC3339)+"&to="+now.Add(-80*time.Hour).Format(time.RFC3339), done)
+	same("?state=all&level=critical&signals=admin.door_refusals", door)
+	// The filters used are recorded with the read.
+	reads := apitest.EventsNamed(t, db, "admin.alert.listed")
+	last := reads[len(reads)-1].Payload["filters"].(map[string]any)
+	if last["level"] != "critical" || last["signals"].([]any)[0] != "admin.door_refusals" {
+		t.Fatalf("recorded filters: %+v", last)
+	}
 }

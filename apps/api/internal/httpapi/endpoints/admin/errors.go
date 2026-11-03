@@ -10,6 +10,7 @@ import (
 	"lewcontext/api/internal/monitor"
 	"lewcontext/api/internal/store"
 	"net/http"
+	"time"
 )
 
 // Errors is one grouped error's page on the Monitoring pages,
@@ -41,18 +42,28 @@ func (h Errors) Show(w http.ResponseWriter, r *http.Request) {
 	if failBounded(w, r, err) {
 		return
 	}
+	thread, err := h.Repo.FindIncidentThread(r.Context(), store.IncidentTarget{Kind: "error", PublicID: id})
+	if failIncident(w, r, err) {
+		return
+	}
 	e := events.AdminErrorViewed{Admin: admin, Error: view.Group.ID, Window: window.Name}
 	if err := h.Repo.Record(r.Context(), e, store.EventScope{}); err != nil {
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	httpapi.JSON(w, 200, view)
+	httpapi.JSON(w, 200, struct {
+		monitor.ErrorView
+		store.IncidentThread
+	}{view, thread})
 }
 
 // resolveInput is Update's body: {"resolved": true}, the one change it
 // makes.
 type resolveInput struct {
-	Resolved bool `json:"resolved"`
+	Resolved   bool      `json:"resolved"`
+	Cycle      string    `json:"cycle"`
+	Message    string    `json:"message"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
 }
 
 // Update marks the group resolved ({"resolved": true}), recording
@@ -74,12 +85,20 @@ func (h Errors) Update(w http.ResponseWriter, r *http.Request) {
 		httpapi.FailField(w, 422, "resolved", "Only resolving an error group is supported.")
 		return
 	}
-	err := h.Repo.ResolveErrorGroup(r.Context(), id, httpapi.Admin(r).User)
+	if in.Cycle == "" || in.Message == "" || in.LastSeenAt.IsZero() {
+		httpapi.Fail(w, 422, "Choose a resolution comment and current occurrence snapshot.")
+		return
+	}
+	if !input.PublicID("inc", in.Cycle) || !input.PublicID("msg", in.Message) {
+		httpapi.Fail(w, 404, "Incident or comment not found.")
+		return
+	}
+	err := h.Repo.ResolveErrorGroup(r.Context(), id, in.Cycle, in.Message, in.LastSeenAt, httpapi.Admin(r).User)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		httpapi.Fail(w, 404, "Error not found.")
-	case errors.Is(err, store.ErrAlreadyDone):
-		httpapi.Fail(w, 409, "This error is resolved already.")
+	case errors.Is(err, store.ErrIncidentConflict):
+		httpapi.Fail(w, 409, "This incident changed or a newer occurrence arrived. Reload before resolving.")
 	case err != nil:
 		httpapi.InternalError(w, r, err)
 	default:

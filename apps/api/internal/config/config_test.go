@@ -44,10 +44,6 @@ func setEnv(t *testing.T, vars map[string]string) {
 		// doesn't leak into a test.
 		"CLIENT_IP_HEADER":            "",
 		"TRUSTED_PROXIES":             "",
-		"ALERT_WEBHOOK_URL":           "",
-		"ALERT_WEBHOOK_FORMAT":        "",
-		"ALERT_WEBHOOK_SECRET":        "",
-		"ALERT_HEARTBEAT_URL":         "",
 		"ALERT_ALLOW_PRIVATE_TARGETS": "",
 		"LOG_FORMAT":                  "",
 		"LOG_LEVEL":                   "",

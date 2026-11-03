@@ -68,6 +68,8 @@ func TestRateLimitLevels(t *testing.T) {
 		"client-error:global":            {0, 500},
 		"export:per-user":                {0, 5},
 		"admin-action:per-user":          {0, 60},
+		"incident-comment:per-user":      {0, 60},
+		"alert-subscription:per-user":    {0, 60},
 	}
 	if len(RateLimits) != len(want) {
 		t.Fatalf("%d limits, want %d", len(RateLimits), len(want))

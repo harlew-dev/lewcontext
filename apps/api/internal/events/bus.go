@@ -15,6 +15,10 @@ type Delivered struct {
 	OccurredAt time.Time
 	// Attempt counts from 1.
 	Attempt int
+	// Target and TargetRevision: the receiver this delivery is for and its
+	// revision when queued (alert webhooks); empty and 0 otherwise.
+	Target         string
+	TargetRevision int64
 }
 
 // handler decodes a stored payload and calls a listener with it.

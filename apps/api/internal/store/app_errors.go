@@ -2,11 +2,13 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/uptrace/bun"
 	"lewcontext/api/internal/observe"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -17,7 +19,8 @@ import (
 // written only by RecordErrors (docs/api/observability.md#grouped-errors).
 type appErrorRecord struct {
 	bun.BaseModel `bun:"table:app_errors,alias:ae"`
-	ID            int64 `bun:",pk,autoincrement"`
+	ID            int64  `bun:",pk,autoincrement"`
+	PublicID      string `bun:",nullzero"`
 	Fingerprint   string
 	Source        string
 	Route         string
@@ -80,28 +83,63 @@ func (s *Store) upsertErrors(ctx context.Context, groups []observe.ErrorGroup) e
 	if len(groups) == 0 {
 		return nil
 	}
-	rows := make([]appErrorRecord, len(groups))
-	for i, g := range groups {
-		rows[i] = appErrorRecord{
-			Fingerprint: g.Fingerprint, Source: g.Source, Route: g.Route,
-			Message: g.Message, Stack: g.Stack, Count: g.Count,
-			FirstSeenAt: g.FirstSeen, LastSeenAt: g.LastSeen,
-			LastRequestID: g.LastRequestID, LastVersion: g.LastVersion,
+	// Stable lock order across collectors/servers, without mutating the caller's
+	// buffer. Parent locks precede cycle locks in resolution and pruning too.
+	ordered := append([]observe.ErrorGroup(nil), groups...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Fingerprint < ordered[j].Fingerprint })
+	return s.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		for _, g := range ordered {
+			incoming := appErrorRecord{Fingerprint: g.Fingerprint, Source: g.Source, Route: g.Route, Message: g.Message, Stack: g.Stack, Count: g.Count, FirstSeenAt: g.FirstSeen, LastSeenAt: g.LastSeen, LastRequestID: g.LastRequestID, LastVersion: g.LastVersion}
+			result, err := tx.NewInsert().Model(&incoming).On("CONFLICT (fingerprint) DO NOTHING").Exec(ctx)
+			if err != nil {
+				return err
+			}
+			inserted, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			var row appErrorRecord
+			if err := tx.NewSelect().Model(&row).Where("ae.fingerprint = ?", g.Fingerprint).For("UPDATE").Scan(ctx); err != nil {
+				return err
+			}
+			parent := IncidentParent{AppErrorID: row.ID}
+			cycle, err := FindCurrentIncidentCycle(ctx, tx, parent, true)
+			if errors.Is(err, sql.ErrNoRows) {
+				cycle, err = CreateIncidentCycle(ctx, tx, parent, row.FirstSeenAt)
+				if err == nil && !row.ResolvedAt.IsZero() {
+					_, err = tx.NewUpdate().Model(&cycle).Set("resolved_at = ?", row.ResolvedAt).Set("resolution_source = 'unknown_legacy'").WherePK().Exec(ctx)
+				}
+			}
+			if err != nil {
+				return err
+			}
+			if inserted > 0 {
+				continue
+			}
+			if !row.ResolvedAt.IsZero() && g.LastSeen.After(row.ResolvedAt) {
+				if _, err := CreateIncidentCycle(ctx, tx, parent, g.LastSeen); err != nil {
+					return err
+				}
+				row.ResolvedAt = time.Time{}
+			}
+			row.Count += g.Count
+			if g.FirstSeen.Before(row.FirstSeenAt) {
+				row.FirstSeenAt = g.FirstSeen
+			}
+			if !g.LastSeen.Before(row.LastSeenAt) {
+				row.LastSeenAt = g.LastSeen
+				row.LastRequestID = g.LastRequestID
+				row.LastVersion = g.LastVersion
+				if g.Stack != "" {
+					row.Stack = g.Stack
+				}
+			}
+			if _, err := tx.NewUpdate().Model(&row).Column("count", "first_seen_at", "last_seen_at", "last_request_id", "last_version", "stack", "resolved_at").WherePK().Exec(ctx); err != nil {
+				return err
+			}
 		}
-	}
-	latest := "EXCLUDED.last_seen_at >= ae.last_seen_at"
-	_, err := s.DB.NewInsert().Model(&rows).
-		ExcludeColumn("id", "resolved_at").
-		On("CONFLICT (fingerprint) DO UPDATE").
-		Set("count = ae.count + EXCLUDED.count").
-		Set("first_seen_at = LEAST(ae.first_seen_at, EXCLUDED.first_seen_at)").
-		Set("last_seen_at = GREATEST(ae.last_seen_at, EXCLUDED.last_seen_at)").
-		Set("last_request_id = CASE WHEN " + latest + " THEN EXCLUDED.last_request_id ELSE ae.last_request_id END").
-		Set("last_version = CASE WHEN " + latest + " THEN EXCLUDED.last_version ELSE ae.last_version END").
-		Set("stack = CASE WHEN " + latest + " AND EXCLUDED.stack <> '' THEN EXCLUDED.stack ELSE ae.stack END").
-		Set("resolved_at = NULL").
-		Exec(ctx)
-	return err
+		return nil
+	})
 }
 
 // dataError reports whether PostgreSQL refused a statement for what it

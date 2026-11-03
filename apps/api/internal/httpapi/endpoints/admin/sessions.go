@@ -302,24 +302,18 @@ func (h Sessions) startAdminSession(w http.ResponseWriter, r *http.Request, user
 	httpapi.JSON(w, status, body)
 }
 
-// Me is the signed-in admin's session and role, which alerts they're
-// emailed (alertEmail) and how many alerts are open (openAlerts, the
+// Me is the signed-in admin's session and role and how many alerts are open (openAlerts, the
 // sidebar's badge: a count, not a recorded read); the admin pages' first
 // call, which answers 401 without one. GET /api/admin/me.
 func (h Sessions) Me(w http.ResponseWriter, r *http.Request) {
 	session := httpapi.Admin(r)
-	setting, err := h.Repo.FindAdminAlertEmail(r.Context(), session.User)
-	if err != nil {
-		httpapi.InternalError(w, r, err)
-		return
-	}
 	open, err := h.Repo.CountOpenAlerts(r.Context())
 	if err != nil {
 		httpapi.InternalError(w, r, err)
 		return
 	}
 	httpapi.JSON(w, 200, map[string]any{"user": adminUser(session.User), "role": session.Role, "csrfToken": session.CSRF, "expiresAt": session.ExpiresAt,
-		"alertEmail": setting, "openAlerts": open})
+		"openAlerts": open})
 }
 
 // sessionUser is the signed-in admin as the admin pages see them: who they

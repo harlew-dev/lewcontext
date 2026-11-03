@@ -33,6 +33,15 @@ export function AlertBadges({ alert }: { alert: AdminAlert }): ReactNode {
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <LevelBadge level={alert.level} />
+      {!alert.resolvedAt && alert.state === "recovered" && (
+        <Badge color="lime">Recovered; awaiting review</Badge>
+      )}
+      {!alert.resolvedAt && alert.state === "confirming" && (
+        <Badge color="zinc">Confirming recovery</Badge>
+      )}
+      {!alert.resolvedAt && alert.state === "unknown" && (
+        <Badge color="zinc">Unknown</Badge>
+      )}
       {alert.resolvedAt && <Badge color="lime">Resolved</Badge>}
       {!alert.resolvedAt && alert.acknowledgedAt && (
         <Badge color="zinc">Acknowledged</Badge>

@@ -43,7 +43,7 @@ func DeliveryStatus(status string) bool {
 // adminDelivery is a delivery as the dashboard shows it, with its status;
 // the next attempt only while it's waiting.
 func adminDelivery(r deliveryRecord) AdminDelivery {
-	d := AdminDelivery{Listener: r.Listener, Attempts: r.Attempts, LastError: r.LastError}
+	d := AdminDelivery{Listener: r.Listener, Target: r.Target, Attempts: r.Attempts, LastError: r.LastError}
 	switch {
 	case !r.DeliveredAt.IsZero():
 		d.Status, d.DeliveredAt = DeliveryDelivered, &r.DeliveredAt
@@ -65,6 +65,7 @@ type AdminDeliveryFilter struct {
 	From, To       *time.Time
 	BeforeEvent    string
 	BeforeListener string
+	BeforeTarget   string
 }
 
 // AdminEventSummary names a delivery's event.
@@ -91,7 +92,7 @@ type AdminDeliveryPage struct {
 
 // deliveryOrder is newest event first, then listener; every key is unique
 // together, so the cursor never repeats or skips a row.
-const deliveryOrder = "e.created_at DESC, e.id DESC, d.listener DESC"
+const deliveryOrder = "e.created_at DESC, e.id DESC, d.listener DESC, d.target DESC"
 
 // IndexAdminDeliveries returns up to perPage deliveries matching f, and the
 // cursor for the next page. ErrNoCursor when the cursor's event is unknown.
@@ -124,7 +125,7 @@ func (s *Store) IndexAdminDeliveries(ctx context.Context, f AdminDeliveryFilter,
 		if err != nil {
 			return AdminDeliveryPage{}, err
 		}
-		q = q.Where("(e.created_at, e.id, d.listener) < (?, ?, ?)", cursor.CreatedAt, cursor.ID, f.BeforeListener)
+		q = q.Where("(e.created_at, e.id, d.listener, d.target) < (?, ?, ?, ?)", cursor.CreatedAt, cursor.ID, f.BeforeListener, f.BeforeTarget)
 	}
 	var rows []struct {
 		deliveryRecord `bun:",extend"`
@@ -141,6 +142,9 @@ func (s *Store) IndexAdminDeliveries(ctx context.Context, f AdminDeliveryFilter,
 		rows = rows[:perPage]
 		last := rows[perPage-1]
 		next := last.EventPublicID + ":" + last.Listener
+		if last.Target != "" {
+			next += ":" + last.Target
+		}
 		page.Next = &next
 	}
 	for _, r := range rows {

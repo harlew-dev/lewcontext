@@ -248,9 +248,12 @@ func (AdminIPViewed) EventName() string { return "admin.ip.viewed" }
 // Errors, one group's page) over Window: its message and stack. Error is
 // the group's err_ ID.
 type AdminErrorViewed struct {
-	Admin  string `json:"admin"`
-	Error  string `json:"error"`
-	Window string `json:"window"`
+	Admin   string `json:"admin"`
+	Error   string `json:"error"`
+	Window  string `json:"window"`
+	Section string `json:"section,omitempty"`
+	Cycle   string `json:"cycle,omitempty"`
+	Before  string `json:"before,omitempty"`
 }
 
 func (AdminErrorViewed) EventName() string { return "admin.error.viewed" }
@@ -463,20 +466,36 @@ type AdminEventExported struct {
 
 func (AdminEventExported) EventName() string { return "admin.event.exported" }
 
+// AlertListFilters are the Alerts list's filters that were used.
+type AlertListFilters struct {
+	Search       string     `json:"q,omitempty"`
+	Level        string     `json:"level,omitempty"`
+	Health       string     `json:"health,omitempty"`
+	Signals      []string   `json:"signals,omitempty"`
+	Acknowledged string     `json:"acknowledged,omitempty"`
+	Silenced     string     `json:"silenced,omitempty"`
+	From         *time.Time `json:"from,omitempty"`
+	To           *time.Time `json:"to,omitempty"`
+}
+
 // AdminAlertListed: an admin loaded a page of the Alerts list: State
-// (open, resolved, all) and Before, the cursor, when given.
+// (open, resolved, all), Before, the cursor, when given, and the Filters used.
 type AdminAlertListed struct {
-	Admin  string `json:"admin"`
-	State  string `json:"state"`
-	Before string `json:"before,omitempty"`
+	Admin   string           `json:"admin"`
+	State   string           `json:"state"`
+	Before  string           `json:"before,omitempty"`
+	Filters AlertListFilters `json:"filters"`
 }
 
 func (AdminAlertListed) EventName() string { return "admin.alert.listed" }
 
 // AdminAlertViewed: an admin opened one alert (its alt_ ID).
 type AdminAlertViewed struct {
-	Admin string `json:"admin"`
-	Alert string `json:"alert"`
+	Admin   string `json:"admin"`
+	Alert   string `json:"alert"`
+	Section string `json:"section,omitempty"`
+	Cycle   string `json:"cycle,omitempty"`
+	Before  string `json:"before,omitempty"`
 }
 
 func (AdminAlertViewed) EventName() string { return "admin.alert.viewed" }
@@ -509,8 +528,10 @@ func (AdminAlertSilenced) EventName() string { return "admin.alert.silenced" }
 // AdminErrorResolved: an operator marked a grouped error (its err_ ID)
 // resolved; a new occurrence opens it again (housekeeping).
 type AdminErrorResolved struct {
-	Admin string `json:"admin"`
-	Error string `json:"error"`
+	Admin   string `json:"admin"`
+	Error   string `json:"error"`
+	Cycle   string `json:"cycle"`
+	Message string `json:"message"`
 }
 
 func (AdminErrorResolved) EventName() string { return "admin.error.resolved" }

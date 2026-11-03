@@ -48,6 +48,7 @@ type Evaluator struct {
 	Signals func(name string) (monitor.Signal, bool)
 	// Budget and Deadline: SignalBudget and PageDeadline when zero.
 	Budget, Deadline time.Duration
+	MetricsStoreOff  bool
 
 	since      map[string]time.Time
 	okSince    map[string]time.Time
@@ -58,8 +59,11 @@ type Evaluator struct {
 type Evaluation struct {
 	Read, Unavailable           int
 	Opened, Escalated, Resolved int
-	Reminded, Digested          int
-	Hourly                      bool
+	// Recovered counts alerts whose signal confirmed fresh recovery this
+	// turn; they stay open until an operator resolves them.
+	Recovered          int
+	Reminded, Digested int
+	Hourly             bool
 }
 
 // Reset forgets what the evaluator remembered: a server that lost the lock
@@ -70,7 +74,8 @@ func (e *Evaluator) Reset() {
 
 // Evaluate reads the rules due at now (every minute rule, and the hourly
 // ones once an hour) and applies what changed, then sends the reminders
-// and the digest due. An error means something couldn't be read or
+// and the digest due. now is the database's clock in production (the
+// Runner reads it, Store.FindAlertEvaluationTime); tests give their own. An error means something couldn't be read or
 // written (a signal that only ran out of time isn't one): no heartbeat.
 func (e *Evaluator) Evaluate(ctx context.Context, now time.Time) (Evaluation, error) {
 	if e.since == nil {
@@ -95,9 +100,27 @@ func (e *Evaluator) Evaluate(ctx context.Context, now time.Time) (Evaluation, er
 		if r.Hourly && !out.Hourly {
 			continue
 		}
+		if r.Hourly {
+			due, dueErr := e.Store.CheckAlertHourlyDue(ctx, r.Signal, now)
+			if dueErr != nil {
+				return out, dueErr
+			}
+			if !due {
+				continue
+			}
+		}
 		reading, ok := readings[r.Signal]
+		if e.MetricsStoreOff && metricBackedRule(r.Signal) {
+			reading.Unavailable = true
+		}
 		if !ok || reading.Unavailable {
 			out.Unavailable++
+			delete(e.since, r.Signal)
+			if a, exists := byID[r.Signal]; exists {
+				if _, err := e.Store.UpdateAlertHealth(ctx, store.AlertObservation{ID: a.ID, Revision: a.Revision, At: now, Unavailable: true}); err != nil {
+					return out, err
+				}
+			}
 			continue
 		}
 		out.Read++
@@ -136,6 +159,15 @@ func (e *Evaluator) read(ctx context.Context, env monitor.Env, hourly bool) (map
 	for _, r := range e.Rules {
 		if r.Hourly && !hourly {
 			continue
+		}
+		if r.Hourly {
+			due, err := e.Store.CheckAlertHourlyDue(ctx, r.Signal, env.Now)
+			if err != nil {
+				return nil, err
+			}
+			if !due {
+				continue
+			}
 		}
 		find := e.Signals
 		if find == nil {
@@ -176,7 +208,7 @@ func readPage(ctx context.Context, env monitor.Env, signals []monitor.Signal, bu
 		case timedOut:
 			out[sig.Name] = monitor.Result{Name: sig.Name, Unavailable: true}
 		default:
-			return err
+			out[sig.Name] = monitor.Result{Name: sig.Name, Unavailable: true}
 		}
 	}
 	return nil
@@ -185,24 +217,25 @@ func readPage(ctx context.Context, env monitor.Env, signals []monitor.Signal, bu
 // apply moves one rule's alert on from what its signal reads now.
 func (e *Evaluator) apply(ctx context.Context, env monitor.Env, r monitor.AlertRule, reading monitor.Result, open *store.Alert, now time.Time, out *Evaluation) error {
 	level := r.Level(reading.Level)
+	if open != nil {
+		transition, err := e.Store.UpdateAlertHealth(ctx, store.AlertObservation{ID: open.ID, Revision: open.Revision, At: now, Level: string(level), RawLevel: string(reading.Level), Value: reading.Value})
+		switch transition {
+		case "alert.recovered":
+			out.Recovered++
+		case "alert.escalated":
+			out.Escalated++
+		case "alert.reopened":
+			out.Opened++
+		}
+		return err
+	}
 	if level == monitor.LevelOK {
 		delete(e.since, r.Signal)
 		if open == nil {
 			delete(e.okSince, r.Signal)
 			return nil
 		}
-		if _, ok := e.okSince[r.Signal]; !ok {
-			e.okSince[r.Signal] = now
-		}
-		if !r.Hourly && now.Sub(e.okSince[r.Signal]) < Hysteresis {
-			return e.Store.UpdateAlertValue(ctx, open.ID, reading.Value)
-		}
-		resolved, err := e.Store.ResolveAlert(ctx, open.ID, now)
-		if resolved {
-			out.Resolved++
-			delete(e.okSince, r.Signal)
-		}
-		return err
+		return nil
 	}
 	delete(e.okSince, r.Signal)
 	if open != nil {
@@ -221,7 +254,8 @@ func (e *Evaluator) apply(ctx context.Context, env monitor.Env, r monitor.AlertR
 	if now.Sub(e.since[r.Signal]) < r.For {
 		return nil
 	}
-	_, err := e.Store.OpenAlert(ctx, store.NewAlert{Signal: r.Signal, Level: string(level), Value: reading.Value, At: now,
+	about := AboutSignal(r.Signal)
+	_, err := e.Store.OpenAlert(ctx, store.NewAlert{Signal: r.Signal, Level: string(level), Value: reading.Value, At: now, Hourly: r.Hourly, RawLevel: string(reading.Level), Title: about.Title, Unit: about.Unit, Meaning: about.Meaning,
 		Details: details(env, reading)})
 	if errors.Is(err, store.ErrAlertOpen) {
 		return nil
@@ -231,6 +265,14 @@ func (e *Evaluator) apply(ctx context.Context, env monitor.Env, r monitor.AlertR
 		delete(e.since, r.Signal)
 	}
 	return err
+}
+
+func metricBackedRule(signal string) bool {
+	switch signal {
+	case "http.server_error_share", "http.latency_p95", "db.pool_wait_minutes", "auth.password_hash_busy":
+		return true
+	}
+	return false
 }
 
 // details are what an alert keeps for its page: the drill-down behind its

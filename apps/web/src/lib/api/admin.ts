@@ -1,13 +1,19 @@
 import { useMemo } from "react";
 import { useOptionalAdmin } from "@/lib/admin";
 import { url, type Page } from "@/lib/pagination";
-import { addressSegment, eventQuery, eventsUrl } from "@/lib/admin-routes";
+import {
+  addressSegment,
+  alertUrlQuery,
+  eventQuery,
+  eventsUrl,
+} from "@/lib/admin-routes";
 import type { Project, ProjectSort } from "@/types/projects";
 import { defaultSort as defaultProjectSort } from "@/types/projects";
 import type { SignedIn } from "./auth";
 import type { MfaSetup, RecoveryCodes } from "./auth";
 import { ApiError, httpWith, type Http } from "./http";
 import { path } from "./paths";
+import type { IncidentCycle, IncidentMessage } from "@/types/admin";
 import {
   defaultAdminEmailBlockSort,
   defaultAdminUserSort,
@@ -15,9 +21,14 @@ import {
   type AdminAccount,
   type AdminAlert,
   type AdminAlertPage,
-  type AlertEmail,
+  type AlertSubscription,
+  type AlertWebhook,
+  type AlertWebhookInput,
+  type AlertWebhookKind,
+  type AlertWebhookSigningKey,
+  type AlertCatalog,
   type AlertSilence,
-  type AlertState,
+  type AlertListQuery,
   type AdminCatalogue,
   type AdminDeliveryRow,
   type AdminEmailBlock,
@@ -92,6 +103,18 @@ export type AdminEmailBlockIndexQuery = {
   q?: string;
   sort?: AdminEmailBlockSort;
 };
+export type IncidentKind = "alert" | "error";
+export type IncidentPageQuery = { before?: string; perPage?: number };
+export type IncidentMessageQuery = IncidentPageQuery & { cycle: string };
+export type IncidentResolution = {
+  cycle: string;
+  message: string;
+  lastSeenAt: string;
+};
+
+function incidentPath(kind: IncidentKind, parent: string) {
+  return `${base}/${kind === "alert" ? "alerts" : "errors"}/${encodeURIComponent(parent)}`;
+}
 // Unblocking an address: the address in the body (never a path), and why.
 export type AdminUnblock = { email: string; reason: string };
 // The Events CSV: the file's text, and whether rows were left out past
@@ -131,6 +154,21 @@ export type AdminSetupDone = AdminSignedIn & RecoveryCodes;
 const base = "/api/admin";
 // Typed paths, for SWR keys: adminPaths.users.index({ page: 2 }).
 export const adminPaths = {
+  alertRules: { index: () => path<AlertCatalog>(`${base}/alert-rules`) },
+  alertSubscriptions: { update: () => `${base}/alert-subscriptions` },
+  alertWebhooks: {
+    index: () => path<{ data: AlertWebhook[] }>(`${base}/alert-webhooks`),
+    store: () => `${base}/alert-webhooks`,
+    update: (webhook: string) => `${base}/alert-webhooks/${webhook}`,
+    destroy: (webhook: string) => `${base}/alert-webhooks/${webhook}`,
+  },
+  alertWebhookSigningKey: (webhook: string) => ({
+    show: () =>
+      path<AlertWebhookSigningKey>(
+        `${base}/alert-webhooks/${webhook}/signing-key`,
+      ),
+    store: () => `${base}/alert-webhooks/${webhook}/signing-key`,
+  }),
   me: () => path<AdminSession>(`${base}/me`),
   login: () => `${base}/login`,
   loginMfaSetup: () => `${base}/login/mfa/setup`,
@@ -236,12 +274,12 @@ export const adminPaths = {
   },
   // The alerts, a cursor page (open ones all at once), and one alert.
   alerts: {
-    index: ({ state, before }: { state?: AlertState; before?: string } = {}) =>
+    index: (query: AlertListQuery = {}) =>
       path<AdminAlertPage>(
-        url(`${base}/alerts`, {
-          state: state === "open" ? undefined : state,
-          before,
-        }),
+        url(
+          `${base}/alerts`,
+          alertUrlQuery({ ...query, window: undefined }),
+        ).replaceAll("%2C", ","),
       ),
     show: (alert: string) => path<AdminAlert>(`${base}/alerts/${alert}`),
     update: (alert: string) => `${base}/alerts/${alert}`,
@@ -253,8 +291,27 @@ export const adminPaths = {
   errorGroup: (error: string) => ({
     update: () => `${base}/errors/${encodeURIComponent(error)}`,
   }),
-  // The signed-in admin's own settings.
-  settings: { update: () => `${base}/me` },
+  incidentCycles: (kind: IncidentKind, parent: string) => ({
+    index: (query: IncidentPageQuery = {}) =>
+      path<CursorPage<IncidentCycle>>(
+        url(`${incidentPath(kind, parent)}/cycles`, query),
+      ),
+  }),
+  incidentMessages: (kind: IncidentKind, parent: string) => ({
+    index: (query: IncidentMessageQuery) =>
+      path<CursorPage<IncidentMessage>>(
+        url(`${incidentPath(kind, parent)}/messages`, query),
+      ),
+    store: () => `${incidentPath(kind, parent)}/messages`,
+  }),
+  incidentMessageRedaction: (
+    kind: IncidentKind,
+    parent: string,
+    message: string,
+  ) => ({
+    store: () =>
+      `${incidentPath(kind, parent)}/messages/${encodeURIComponent(message)}/redaction`,
+  }),
   // The Admins page: every admin, one list (no paging).
   admins: {
     index: () => path<{ data: AdminAccount[] }>(`${base}/admins`),
@@ -305,6 +362,45 @@ export const adminPaths = {
 };
 export function adminClient(http: Http) {
   return {
+    alertRules: () => ({
+      index: () => http.get(adminPaths.alertRules.index()),
+    }),
+    // Your own alert email: signals you subscribed to, or (off) left.
+    alertSubscriptions: () => ({
+      update: (signals: AlertSubscription[]) =>
+        http.send<void>("PATCH", adminPaths.alertSubscriptions.update(), {
+          signals,
+        }),
+    }),
+    // The shared webhooks and heartbeats: an operator's actions.
+    alertWebhooks: () => ({
+      index: () => http.get(adminPaths.alertWebhooks.index()),
+      store: (kind: AlertWebhookKind, input: AlertWebhookInput) =>
+        http.send<AlertWebhook>("POST", adminPaths.alertWebhooks.store(), {
+          kind,
+          ...input,
+        }),
+      update: (webhook: string, revision: number, input: AlertWebhookInput) =>
+        http.send<AlertWebhook>(
+          "PATCH",
+          adminPaths.alertWebhooks.update(webhook),
+          { revision, ...input },
+        ),
+      destroy: (webhook: string, reason: string) =>
+        http.send<void>("DELETE", adminPaths.alertWebhooks.destroy(webhook), {
+          reason,
+        }),
+    }),
+    // One webhook's own signing key: read to copy, or rotated.
+    alertWebhookSigningKey: (webhook: string) => ({
+      show: () => http.get(adminPaths.alertWebhookSigningKey(webhook).show()),
+      store: (revision: number, reason: string) =>
+        http.send<AlertWebhook>(
+          "POST",
+          adminPaths.alertWebhookSigningKey(webhook).store(),
+          { revision, reason },
+        ),
+    }),
     // Loads any typed admin path, for SWR.
     get: http.get,
     me: () => http.get(adminPaths.me()),
@@ -460,12 +556,15 @@ export function adminClient(http: Http) {
     }),
     // Acknowledging an alert (housekeeping: no code, no reason).
     alerts: () => ({
-      index: (query: { state?: AlertState; before?: string } = {}) =>
+      index: (query: AlertListQuery = {}) =>
         http.get(adminPaths.alerts.index(query)),
-      update: (alert: string) =>
-        http.send<AdminAlert>("PATCH", adminPaths.alerts.update(alert), {
-          acknowledged: true,
-        }),
+      update: (
+        alert: string,
+        input:
+          | { resolved: true; cycle: string; message: string; revision: number }
+          | { acknowledged: true } = { acknowledged: true },
+      ) =>
+        http.send<AdminAlert>("PATCH", adminPaths.alerts.update(alert), input),
     }),
     // Silencing an alert's signal, an action: a code and a reason.
     alertSilence: (alert: string) => ({
@@ -477,15 +576,39 @@ export function adminClient(http: Http) {
     }),
     // Resolving an error group (housekeeping).
     errorGroup: (error: string) => ({
-      update: () =>
+      update: ({ cycle, message, lastSeenAt }: IncidentResolution) =>
         http.send<void>("PATCH", adminPaths.errorGroup(error).update(), {
           resolved: true,
+          cycle,
+          message,
+          lastSeenAt,
         }),
     }),
-    // The admin's own alert email setting.
-    settings: () => ({
-      update: (alertEmail: AlertEmail) =>
-        http.send<void>("PATCH", adminPaths.settings.update(), { alertEmail }),
+    incidentCycles: (kind: IncidentKind, parent: string) => ({
+      index: (query: IncidentPageQuery = {}) =>
+        http.get(adminPaths.incidentCycles(kind, parent).index(query)),
+    }),
+    incidentMessages: (kind: IncidentKind, parent: string) => ({
+      index: (query: IncidentMessageQuery) =>
+        http.get(adminPaths.incidentMessages(kind, parent).index(query)),
+      store: ({ cycle, body }: { cycle: string; body: string }) =>
+        http.send<IncidentMessage>(
+          "POST",
+          adminPaths.incidentMessages(kind, parent).store(),
+          { cycle, body },
+        ),
+    }),
+    incidentMessageRedaction: (
+      kind: IncidentKind,
+      parent: string,
+      message: string,
+    ) => ({
+      store: (reason: string) =>
+        http.send<IncidentMessage>(
+          "POST",
+          adminPaths.incidentMessageRedaction(kind, parent, message).store(),
+          { reason },
+        ),
     }),
     // Signs another admin out of every admin and app session.
     adminSessions: (user: string) => ({

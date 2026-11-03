@@ -15,7 +15,7 @@ import {
   DescriptionTerm,
 } from "@/components/ui/description-list";
 import { Field, Label } from "@/components/ui/fieldset";
-import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
+import { ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading } from "@/components/ui/heading";
 import { Listbox, ListboxLabel, ListboxOption } from "@/components/ui/listbox";
 import { Code, Text, TextLink } from "@/components/ui/text";
@@ -127,6 +127,47 @@ function Detail({
           {alertValue(alert, alert.lastValue)} (peak{" "}
           {alertValue(alert, alert.peakValue)})
         </DescriptionDetails>
+        <DescriptionTerm>Current health</DescriptionTerm>
+        <DescriptionDetails>
+          {alert.state}. Current effective level: {alert.currentLevel}; raw
+          signal level: {alert.rawLevel}. Cycle highest severity: {alert.level}.
+        </DescriptionDetails>
+        <DescriptionTerm>Recovery evidence</DescriptionTerm>
+        <DescriptionDetails>
+          {alert.healthySince ? (
+            <>
+              Below alert threshold since {formatDateTime(alert.healthySince)};{" "}
+              {alert.healthyChecks} distinct healthy checks. Observed through{" "}
+              {alert.lastSuccessfulAt
+                ? formatDateTime(alert.lastSuccessfulAt)
+                : "unknown"}
+              .
+            </>
+          ) : (
+            "No continuous below-threshold evidence."
+          )}
+          {alert.recoveredAt && (
+            <> Confirmed {formatDateTime(alert.recoveredAt)}.</>
+          )}
+        </DescriptionDetails>
+        <DescriptionTerm>Check cadence</DescriptionTerm>
+        <DescriptionDetails>
+          {alert.hourly
+            ? "Hourly; one successful healthy reading confirms recovery"
+            : "Every minute; 11 healthy checks spanning 10 minutes confirm recovery"}
+          .
+        </DescriptionDetails>
+        <DescriptionTerm>Last check</DescriptionTerm>
+        <DescriptionDetails>
+          {alert.lastCheckedAt
+            ? formatDateTime(alert.lastCheckedAt)
+            : "Not checked"}
+          . Last successful:{" "}
+          {alert.lastSuccessfulAt
+            ? formatDateTime(alert.lastSuccessfulAt)
+            : "unknown"}
+          .
+        </DescriptionDetails>
         <DescriptionTerm>Opened</DescriptionTerm>
         <DescriptionDetails>
           {formatDateTime(alert.openedAt)}
@@ -188,9 +229,6 @@ function Detail({
             ))}
           </ul>
         </>
-      )}
-      {!open && samples.length === 0 && !drill && (
-        <EmptyState title="Resolved" description="Nothing more to do here." />
       )}
       <SilenceDialog
         key={opened}
