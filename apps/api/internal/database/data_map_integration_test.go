@@ -13,8 +13,9 @@ import (
 )
 
 // dataMapRow is a row of docs/compliance.md's data map: its first cell is
-// a table's name in backquotes.
-var dataMapRow = regexp.MustCompile("^\\| `([a-z_]+)` \\|")
+// a table's name in backquotes. The cell is padded to the column's width
+// (Prettier stretches the table), so spaces after the name are fine.
+var dataMapRow = regexp.MustCompile("^\\| `([a-z_]+)` +\\|")
 
 // dataMapTables reads the tables docs/compliance.md's "Data map" section
 // lists.
