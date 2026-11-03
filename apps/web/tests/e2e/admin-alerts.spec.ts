@@ -140,6 +140,93 @@ test("an operator acknowledges and silences an alert and resolves an error group
     ),
   ).toBe("Planned maintenance of the admin host tonight.");
 
+  // Discussion is available before recovery, but resolution is not. Seed the
+  // evaluator's confirmed observation so the browser needn't wait ten minutes;
+  // the API still rechecks the durable evidence on the database clock.
+  const alertURL = admin.url();
+  const alertComment = "Latency is below threshold; verified the deployed fix.";
+  await admin.getByLabel("Comment").fill(alertComment);
+  await admin.getByRole("button", { name: "Post comment" }).click();
+  await expect(admin.getByText(alertComment)).toBeVisible();
+  await expect(
+    admin.getByRole("button", { name: "Mark as resolved" }),
+  ).toBeDisabled();
+  const health =
+    "state = 'recovered', current_level = 'ok', raw_level = 'ok', healthy_since = now() - interval '10 minutes', healthy_checks = 11, recovered_at = now(), last_checked_at = now(), last_successful_at = now(), revision = revision + 1";
+  sql(
+    `UPDATE alerts SET ${health} WHERE signal = 'http.latency_p95'; UPDATE incident_cycles SET ${health} WHERE alert_id = (SELECT id FROM alerts WHERE signal = 'http.latency_p95') AND resolved_at IS NULL`,
+  );
+  await admin.reload();
+  await expect(
+    admin.getByRole("button", { name: "Mark as resolved" }),
+  ).toBeEnabled();
+  await admin.getByRole("button", { name: "Mark as resolved" }).click();
+  await admin
+    .getByRole("dialog")
+    .getByRole("button", { name: "Mark as resolved" })
+    .click();
+  await expect(admin.getByText("Resolved incident")).toBeVisible();
+  await admin.reload();
+  await expect(admin.getByText("Resolved incident")).toBeVisible();
+  expect(
+    sql(
+      `SELECT resolved_at IS NOT NULL FROM alerts WHERE signal = 'http.latency_p95'`,
+    ),
+  ).toBe("t");
+  expect(
+    sql(`SELECT count(*) FROM events WHERE name = 'admin.alert.resolved'`),
+  ).toBe("1");
+  expect(
+    sql(
+      `SELECT count(*) FROM events WHERE payload::text LIKE '%${alertComment}%'`,
+    ),
+  ).toBe("0");
+  await admin
+    .getByRole("region", { name: "Incident discussion" })
+    .scrollIntoViewIfNeeded();
+  await shoot(admin, "alert-resolved-thread");
+  await admin.setViewportSize({ width: 390, height: 844 });
+  await admin
+    .getByRole("textbox", { name: "Comment", exact: true })
+    .scrollIntoViewIfNeeded();
+  expect(
+    await admin.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await shoot(admin, "alert-thread-mobile");
+  await admin.setViewportSize({ width: 1280, height: 900 });
+
+  // A recurrence retains the parent URL and the earlier resolution marker.
+  sql(
+    `UPDATE alerts SET state = 'active', resolved_at = NULL, current_level = 'warn', raw_level = 'warn', healthy_since = NULL, healthy_checks = 0, recovered_at = NULL, last_successful_at = now(), opened_at = now(), acknowledged_at = NULL, acknowledged_by = NULL, revision = revision + 1 WHERE signal = 'http.latency_p95'; INSERT INTO incident_cycles (alert_id, number, level) SELECT id, 2, 'warn' FROM alerts WHERE signal = 'http.latency_p95'`,
+  );
+  await admin.goto(alertURL);
+  await expect(
+    admin.getByRole("combobox", { name: "Incident cycle" }),
+  ).toContainText("Cycle 2");
+  await expect(admin.getByText("No comments yet")).toBeVisible();
+  await admin.getByRole("combobox", { name: "Incident cycle" }).click();
+  await admin.getByRole("option", { name: "Cycle 1 · Resolved" }).click();
+  await expect(admin.getByText("Resolved incident")).toBeVisible();
+  await expect(admin.getByText(alertComment)).toBeVisible();
+  await expect(
+    admin.getByRole("button", { name: "Mark as resolved" }),
+  ).toHaveCount(0);
+  // Redacting the chosen resolution leaves both the marker and tombstone.
+  await admin.getByRole("button", { name: "Comment actions" }).click();
+  await admin.getByRole("menuitem", { name: "Redact comment" }).click();
+  await admin
+    .getByRole("dialog")
+    .getByLabel("Reason")
+    .fill("Remove investigation detail after review.");
+  await admin
+    .getByRole("dialog")
+    .getByRole("button", { name: "Redact comment" })
+    .click();
+  await expect(admin.getByText("Resolution comment redacted")).toBeVisible();
+  await expect(admin.getByText("Resolved incident")).toBeVisible();
+
   // Resolving an error group takes a comment: post one, choose it, confirm.
   const group = sql(
     `SELECT public_id FROM app_errors WHERE fingerprint = '${fingerprint}'`,

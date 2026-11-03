@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { useParams } from "react-router";
+import { useEffect, useState } from "react";
+import { useParams, useRevalidator } from "react-router";
+import { useSWRConfig } from "swr";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
+import { IncidentThread } from "@/components/app/admin/incident-thread";
 import {
   AlertBadges,
   alertValue,
@@ -31,6 +33,7 @@ import { useOpenCount } from "@/lib/use-open-count";
 import {
   alertSilences,
   type AdminAlert,
+  type AdminAlertDetail,
   type AlertSilence,
 } from "@/types/admin";
 // One alert (docs/api/monitoring.md#alerts): its signal, level, value and
@@ -69,15 +72,38 @@ export default function Show() {
   );
 }
 function Detail({
-  alert,
+  alert: loaded,
   onChanged,
 }: {
-  alert: AdminAlert;
+  alert: AdminAlertDetail;
   onChanged: () => void;
 }) {
   const key = useAdminKey();
   const api = useAdminApi();
-  const operator = adminCan(useAdminSession().role, "operator");
+  const session = useAdminSession();
+  const operator = adminCan(session.role, "operator");
+  const { mutate } = useSWRConfig();
+  const revalidator = useRevalidator();
+  const state = useAlertState(loaded);
+  const alert: AdminAlertDetail = {
+    ...loaded,
+    state,
+    currentLevel: state === "unknown" ? "unknown" : loaded.currentLevel,
+  };
+  function changed(refresh = true) {
+    if (refresh) onChanged();
+    // Only this admin's cached alert lists and the layout's sidebar count.
+    const index = adminPaths.alerts.index();
+    void mutate(
+      (cacheKey) =>
+        Array.isArray(cacheKey) &&
+        cacheKey[0] === "admin" &&
+        cacheKey[1] === session.user.id &&
+        typeof cacheKey[2] === "string" &&
+        (cacheKey[2] === index || cacheKey[2].startsWith(`${index}?`)),
+    );
+    void revalidator.revalidate();
+  }
   const [silencing, setSilencing] = useState(false);
   const opened = useOpenCount(silencing);
   const acknowledge = useAction(() => api.alerts().update(alert.id), {
@@ -89,7 +115,7 @@ function Detail({
   async function acknowledged() {
     if (!(await acknowledge.run()).ok) return;
     toast.success("Acknowledged. It won’t be emailed again.");
-    onChanged();
+    changed();
   }
   const open = alert.resolvedAt === null;
   const href = signalHref(key, alert.page);
@@ -230,15 +256,77 @@ function Detail({
           </ul>
         </>
       )}
+      <IncidentThread
+        key={alert.id}
+        kind="alert"
+        parent={alert.id}
+        thread={alert}
+        canResolve={
+          state === "recovered" &&
+          alert.currentLevel === "ok" &&
+          alert.recoveredAt !== null
+        }
+        resolveReason={resolutionReason(state)}
+        onResolve={async (cycle, message) => {
+          await api.alerts().update(alert.id, {
+            resolved: true,
+            cycle,
+            message,
+            revision: alert.revision,
+          });
+          changed(false);
+        }}
+        onChanged={onChanged}
+      />
       <SilenceDialog
         key={opened}
         open={silencing}
         alert={alert}
         onClose={() => setSilencing(false)}
-        onDone={onChanged}
+        onDone={() => changed()}
       />
     </>
   );
+}
+// Expire the displayed evidence locally without polling or recording another
+// read. The server independently checks freshness using the database clock.
+function useAlertState(alert: AdminAlert): AdminAlert["state"] {
+  const [now, setNow] = useState(Date.now);
+  const observed = alert.lastSuccessfulAt
+    ? Date.parse(alert.lastSuccessfulAt)
+    : NaN;
+  const deadline = observed + (alert.hourly ? 65 : 2) * 60_000;
+  useEffect(() => {
+    const remaining = deadline - Date.now();
+    if (alert.state === "resolved") return;
+    const update = () => setNow(Date.now());
+    // Rebase after new evidence arrives, then wake once when it expires.
+    const current = window.setTimeout(update, 0);
+    const expiry =
+      Number.isFinite(remaining) && remaining >= 0
+        ? window.setTimeout(() => setNow(deadline + 1), remaining + 1)
+        : undefined;
+    return () => {
+      window.clearTimeout(current);
+      window.clearTimeout(expiry);
+    };
+  }, [deadline, alert.state]);
+  if (alert.state === "resolved") return "resolved";
+  return !Number.isFinite(deadline) || now < observed || now > deadline
+    ? "unknown"
+    : alert.state;
+}
+function resolutionReason(state: AdminAlert["state"]): string | undefined {
+  switch (state) {
+    case "active":
+      return "This alert is still active. Resolution requires fresh, confirmed recovery.";
+    case "confirming":
+      return "Recovery is still being confirmed. Wait for the required healthy checks before resolving.";
+    case "unknown":
+      return "Health evidence is unavailable or stale. Reload to check for fresh, confirmed recovery before resolving.";
+    default:
+      return undefined;
+  }
 }
 // How its opening was told, in words.
 function toldBy(alert: AdminAlert): string {

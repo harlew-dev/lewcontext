@@ -906,7 +906,8 @@ export type AdminAlert = {
   acknowledgedBy: AdminAlertPerson | null;
   silencedUntil: string | null;
   silencedBy: AdminAlertPerson | null;
-} & Partial<IncidentThreadData>;
+};
+export type AdminAlertDetail = AdminAlert & IncidentThreadData;
 export const alertStates = ["open", "resolved", "all"] as const;
 export type AlertState = (typeof alertStates)[number];
 // The Alerts list's filters, as the page's URL and the API take them: the

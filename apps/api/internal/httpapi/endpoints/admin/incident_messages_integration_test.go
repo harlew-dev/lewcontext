@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"lewcontext/api/internal/config"
 	"lewcontext/api/internal/factory"
@@ -12,6 +13,45 @@ import (
 	"lewcontext/api/internal/httpapi/router"
 	"lewcontext/api/internal/store"
 )
+
+func TestAdminAlertDetailIncludesThread(t *testing.T) {
+	_, db := server(t)
+	h := router.New(serverWith(t, db, func(*config.Config) {}))
+	ctx := context.Background()
+	f := factory.TestFaker(t)
+	_, viewer := adminSignedIn(t, db, f)
+	alert := apitest.Must(factory.Alerts.CreateOne(ctx, db, f))(t)
+	resolved := time.Now().Add(-time.Hour)
+	source := "unknown_legacy"
+	cycles := apitest.Must(factory.IncidentCycles.Sequence(func(i int, c *factory.IncidentCycle) {
+		c.AlertID, c.Number = alert.ID, i+1
+		if i < 20 {
+			c.ResolvedAt, c.ResolutionSource = &resolved, &source
+		}
+	}).Create(ctx, db, f, 21))(t)
+	secret := "Investigation text belongs only in messages"
+	apitest.Must(factory.IncidentMessages.State(func(m *factory.IncidentMessage) {
+		m.CycleID, m.Body = cycles[20].ID, &secret
+	}).CreateOne(ctx, db, f))(t)
+	w := adminCall(t, h, "GET", "/api/admin/alerts/"+alert.PublicID, "", "", 200, viewer.Cookie())
+	var detail struct {
+		ID string `json:"id"`
+		store.IncidentThread
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ID != alert.PublicID || detail.CurrentCycle.PublicID != cycles[20].PublicID || len(detail.Cycles) != 20 || detail.NextCycle == nil || *detail.NextCycle != cycles[1].PublicID || strings.Contains(w.Body.String(), secret) {
+		t.Fatalf("detail: %s", w.Body.String())
+	}
+	if e := apitest.OnlyEvent(t, db, "admin.alert.viewed"); e.Payload["alert"] != alert.PublicID || e.Payload["section"] != nil {
+		t.Fatalf("detail should record one parent read: %+v", e.Payload)
+	}
+	list := adminCall(t, h, "GET", "/api/admin/alerts", "", "", 200, viewer.Cookie())
+	if strings.Contains(list.Body.String(), "currentCycle") || strings.Contains(list.Body.String(), secret) {
+		t.Fatalf("list includes discussion: %s", list.Body.String())
+	}
+}
 
 func TestAdminIncidentDiscussions(t *testing.T) {
 	for _, kind := range []string{"alert", "error"} {

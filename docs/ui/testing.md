@@ -86,6 +86,8 @@ API-key dialog tests cover creation-only local secret state, no credential in ma
 
 ## Tips
 
+Alert detail regression coverage in `pages/admin/alerts.test.tsx` checks viewer posting, health-specific resolution restrictions, local freshness expiry without reads, operator resolution using another admin's comment, sidebar count revalidation, and a conflict retaining the dialog/draft/original revision. `admin-alerts.spec.ts` posts while unhealthy, supplies the evaluator's confirmed-recovery fixture, resolves through the real API, reloads the persistent marker, checks desktop/mobile layouts, and supplies a recurrence fixture to inspect/redact the earlier cycle's resolution. Evaluator recovery timing and recurrence transitions are covered by the Go tests; the browser uses durable fixtures to avoid waiting for scheduled evaluations.
+
 - The search box has role `searchbox` (it's `type="search"`), not `textbox`.
 - Search applies 300 ms after typing stops. After `fill()`, wait for the URL (`toHaveURL(`${projects}?q=…`)`) before the next step. Otherwise a refresh (a `focus` event) runs against the previous query. SWR ignores focus for 5 s after a list mounts, so retry the `focus` event with `expect(…).toPass()` rather than sleeping.
 - `page.route(`**/api/workspaces/${ws}/projects`)` matches only the bare path. Use a regex such as `new RegExp(`/api/workspaces/${ws}/projects(\\?.*)?$`)` to catch list requests with query strings.

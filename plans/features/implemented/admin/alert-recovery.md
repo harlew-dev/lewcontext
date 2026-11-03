@@ -2,6 +2,8 @@
 
 Status: **implemented 2026-11-02**. Built as planned: a stable alert per signal with per-cycle recovery evidence, recovered-only resolution, immutable notice snapshots and signal-wide email and webhook caps. Differs: the health fields are mirrored on the alert and its cycle; a data-preserving conversion of existing alerts is not included (development and test databases are rebuilt). Docs updated: [monitoring](../../../../docs/api/monitoring.md), [admin](../../../../docs/api/admin.md), [events](../../../../docs/api/events.md), [mail](../../../../docs/api/mail.md), [deployment](../../../../docs/deployment.md).
 
+Follow-up 2026-11-03: completed the omitted alert detail wiring: thread summaries in the detail response, the shared discussion and recovered-only comment resolution, local evidence expiry, scoped list/sidebar revalidation and browser regression coverage. Updated [monitoring](../../../../docs/api/monitoring.md), [admin](../../../../docs/api/admin.md), [API tests](../../../../docs/api/testing.md) and [UI tests](../../../../docs/ui/testing.md).
+
 Builds on [alerts](alerts.md), [actions](actions.md) and [resolve-messages](resolve-messages.md). Build the discussion/cycle groundwork first, then ship this lifecycle and its comment-based resolution together. [Subscriptions](alert-subscriptions.md) follows this plan and applies to every notification kind defined here. Names follow [naming.md](../../../../docs/naming.md).
 
 ## Why

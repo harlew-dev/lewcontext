@@ -315,6 +315,269 @@ describe("resolving an error group", () => {
     ).toBeNull();
   });
 });
+describe("an alert's discussion and resolution", () => {
+  const path = "/api/admin/alerts/alt_00000000000001";
+  const cycle = {
+    id: "inc_00000000000001",
+    number: 1,
+    openedAt: "2026-11-01T10:00:00Z",
+    resolvedAt: null,
+    resolutionSource: null,
+    resolver: null,
+    resolutionMessage: null,
+  };
+  const thread = { currentCycle: cycle, cycles: [cycle], nextCycle: null };
+  const comment = {
+    id: "msg_00000000000001",
+    body: "Confirmed the recovery after investigation.",
+    createdAt: "2026-11-01T12:00:00Z",
+    author: { id: "usr_00000000000002", name: "Ada Viewer" },
+    redactedAt: null,
+    redactor: null,
+  };
+  const recovered = () => ({
+    ...alert({
+      state: "recovered",
+      currentLevel: "ok",
+      rawLevel: "ok",
+      recoveredAt: new Date().toISOString(),
+      lastSuccessfulAt: new Date().toISOString(),
+    }),
+    ...thread,
+  });
+  const messages = {
+    [`GET ${path}/messages`]: { body: { data: [comment], next: null } },
+  };
+  it.each([
+    ["active", /still active/],
+    ["confirming", /still being confirmed/],
+    ["unknown", /unavailable or stale/],
+  ] as const)(
+    "explains why a %s alert cannot be resolved",
+    async (state, reason) => {
+      stubApi({
+        "GET /api/admin/me": { body: me("operator") },
+        [`GET ${path}`]: { body: { ...recovered(), state } },
+        ...messages,
+      });
+      renderAdmin(`/admin/${key}/alerts/alt_00000000000001`);
+      expect(await screen.findByText(reason, { selector: "p" })).toBeVisible();
+      expect(
+        await screen.findByRole("button", { name: "Mark as resolved" }),
+      ).toBeDisabled();
+      fireEvent.change(screen.getByLabelText("Comment"), {
+        target: { value: "Investigation continues" },
+      });
+      expect(
+        screen.getByRole("button", { name: "Post comment" }),
+      ).toBeEnabled();
+    },
+  );
+  it("lets a viewer post plain text but offers no incident controls", async () => {
+    const api = stubApi({
+      "GET /api/admin/me": { body: me("viewer") },
+      [`GET ${path}`]: { body: recovered() },
+      [`GET ${path}/messages`]: [
+        { body: { data: [], next: null } },
+        { body: { data: [comment], next: null } },
+      ],
+      [`POST ${path}/messages`]: { status: 201, body: comment },
+    });
+    renderAdmin(`/admin/${key}/alerts/alt_00000000000001`);
+    await screen.findByText("No comments yet");
+    fireEvent.change(screen.getByLabelText("Comment"), {
+      target: { value: comment.body },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    expect(await screen.findByText(comment.body)).toBeVisible();
+    expect(screen.getByLabelText("Comment")).toHaveValue("");
+    expect(api.sent("POST")[0]).toMatchObject({
+      url: `${path}/messages`,
+      body: { cycle: cycle.id, body: comment.body },
+      csrf: "admin-csrf",
+      adminKey: key,
+    });
+    expect(
+      screen.queryByRole("button", { name: "Mark as resolved" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Comment actions" }),
+    ).toBeNull();
+  });
+  it("resolves with another admin's comment and refreshes the sidebar count", async () => {
+    const view = recovered();
+    const closed = {
+      ...cycle,
+      resolvedAt: new Date().toISOString(),
+      resolutionSource: "admin",
+      resolver: { id: admin.user.id, name: admin.user.name },
+      resolutionMessage: comment.id,
+    };
+    const api = stubApi({
+      "GET /api/admin/me": [
+        { body: me("operator", 1) },
+        { body: me("operator", 0) },
+      ],
+      [`GET ${path}`]: [
+        { body: view },
+        {
+          body: {
+            ...view,
+            state: "resolved",
+            resolvedAt: closed.resolvedAt,
+            currentCycle: closed,
+            cycles: [closed],
+          },
+        },
+      ],
+      ...messages,
+      [`PATCH ${path}`]: { body: alert({ state: "resolved" }) },
+    });
+    renderAdmin(`/admin/${key}/alerts/alt_00000000000001`);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Mark as resolved" }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Mark as resolved",
+      }),
+    );
+    expect(await screen.findByText("Resolved incident")).toBeVisible();
+    expect(api.sent("PATCH")[0]).toMatchObject({
+      body: {
+        resolved: true,
+        cycle: cycle.id,
+        message: comment.id,
+        revision: view.revision,
+      },
+      csrf: "admin-csrf",
+      adminKey: key,
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("link", { name: /Alerts\s*1\s*open/ }),
+      ).toBeNull(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Mark as resolved" }),
+    ).toBeNull();
+  });
+  it("keeps the dialog, draft and original revision after a conflict", async () => {
+    const view = recovered();
+    const nextCycle = { ...cycle, id: "inc_00000000000002", number: 2 };
+    const api = stubApi({
+      "GET /api/admin/me": { body: me("operator") },
+      [`GET ${path}`]: [
+        { body: view },
+        {
+          body: {
+            ...view,
+            revision: 2,
+            state: "active",
+            currentCycle: nextCycle,
+            cycles: [
+              nextCycle,
+              { ...cycle, resolvedAt: new Date().toISOString() },
+            ],
+          },
+        },
+      ],
+      ...messages,
+      [`PATCH ${path}`]: {
+        status: 409,
+        body: { error: "The incident changed. Reload before resolving." },
+      },
+    });
+    renderAdmin(`/admin/${key}/alerts/alt_00000000000001`);
+    await screen.findByText(comment.body);
+    fireEvent.change(screen.getByLabelText("Comment"), {
+      target: { value: "Keep this draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mark as resolved" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Mark as resolved" }),
+    );
+    expect(
+      await within(dialog).findByText(/The incident changed/),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(api.sent("GET").filter((r) => r.url === path)).toHaveLength(2),
+    );
+    expect(api.sent("PATCH")).toHaveLength(1);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Mark as resolved" }),
+    );
+    await waitFor(() => expect(api.sent("PATCH")).toHaveLength(2));
+    expect(api.sent("PATCH")[1]!.body).toEqual(api.sent("PATCH")[0]!.body);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByLabelText("Comment")).toHaveValue("Keep this draft");
+  });
+  it.each([false, true])(
+    "expires recovery evidence without polling (hourly: %s)",
+    async (hourly) => {
+      const view = recovered();
+      view.hourly = hourly;
+      view.lastSuccessfulAt = new Date(
+        Date.now() - (hourly ? 65 : 2) * 60_000 + 1_000,
+      ).toISOString();
+      const api = stubApi({
+        "GET /api/admin/me": { body: me("operator") },
+        [`GET ${path}`]: { body: view },
+        ...messages,
+      });
+      renderAdmin(`/admin/${key}/alerts/alt_00000000000001`);
+      expect(
+        await screen.findByRole("button", { name: "Mark as resolved" }),
+      ).toBeEnabled();
+      expect(
+        await screen.findByText(
+          /Health evidence is unavailable or stale/,
+          {
+            selector: "p",
+          },
+          { timeout: 3000 },
+        ),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("button", { name: "Mark as resolved" }),
+      ).toBeDisabled();
+      expect(api.sent("GET").filter((r) => r.url === path)).toHaveLength(1);
+    },
+  );
+  it("retries a failed discussion read and preserves a refused comment draft", async () => {
+    const api = stubApi({
+      "GET /api/admin/me": { body: me("viewer") },
+      [`GET ${path}`]: { body: recovered() },
+      [`GET ${path}/messages`]: [
+        { status: 429, body: { error: "Discussion is busy. Try again." } },
+        { body: { data: [], next: null } },
+        { body: { data: [comment], next: null } },
+      ],
+      [`POST ${path}/messages`]: [
+        { status: 422, body: { error: "Comment could not be accepted." } },
+        { status: 201, body: comment },
+      ],
+    });
+    renderAdmin(`/admin/${key}/alerts/alt_00000000000001`);
+    await screen.findByText("Discussion is busy. Try again.");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText("No comments yet");
+    fireEvent.change(screen.getByLabelText("Comment"), {
+      target: { value: comment.body },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    expect(
+      await screen.findByText("Comment could not be accepted."),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Comment")).toHaveValue(comment.body);
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" }));
+    expect(await screen.findByText(comment.body)).toBeVisible();
+    expect(api.sent("POST")).toHaveLength(2);
+    expect(screen.getByLabelText("Comment")).toHaveValue("");
+  });
+});
 const rules = [
   {
     signal: "http.latency_p95",

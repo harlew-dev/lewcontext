@@ -20,6 +20,7 @@ import {
   defaultAdminWorkspaceSort,
   type AdminAccount,
   type AdminAlert,
+  type AdminAlertDetail,
   type AdminAlertPage,
   type AlertSubscription,
   type AlertWebhook,
@@ -281,7 +282,7 @@ export const adminPaths = {
           alertUrlQuery({ ...query, window: undefined }),
         ).replaceAll("%2C", ","),
       ),
-    show: (alert: string) => path<AdminAlert>(`${base}/alerts/${alert}`),
+    show: (alert: string) => path<AdminAlertDetail>(`${base}/alerts/${alert}`),
     update: (alert: string) => `${base}/alerts/${alert}`,
   },
   alertSilence: (alert: string) => ({

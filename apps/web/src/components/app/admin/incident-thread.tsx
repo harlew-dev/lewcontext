@@ -53,7 +53,11 @@ type ThreadProps = {
 export function IncidentThread(props: ThreadProps) {
   const { kind, parent, thread } = props;
   const api = useAdminApi();
-  const [selected, setSelected] = useState<string | null>(null);
+  // Keep the selected cycle when a conflict reload discovers a recurrence;
+  // switching the keyed messages view would discard its draft and dialog.
+  const [selected, setSelected] = useState<string | null>(
+    thread.currentCycle?.id ?? null,
+  );
   const [olderCycles, setOlderCycles] = useState<IncidentCycle[]>([]);
   const [next, setNext] = useState<string | null | undefined>(undefined);
   const loadOlder = useAction(async () => {
@@ -291,7 +295,7 @@ function CycleMessages({
         onError={failed}
       />
       <ConfirmationDialog
-        key={resolutionOpened}
+        key={`resolution-${resolutionOpened}`}
         open={resolution !== null}
         onClose={() => setResolution(null)}
         title="Resolve this incident?"
@@ -305,7 +309,7 @@ function CycleMessages({
         }}
       />
       <AdminActionDialog
-        key={redactionOpened}
+        key={`redaction-${redactionOpened}`}
         open={redaction !== null}
         onClose={() => setRedaction(null)}
         title="Redact this comment?"

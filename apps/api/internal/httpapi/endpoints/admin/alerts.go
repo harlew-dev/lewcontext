@@ -163,11 +163,18 @@ func (h Alerts) Show(w http.ResponseWriter, r *http.Request) {
 		httpapi.InternalError(w, r, err)
 		return
 	}
+	thread, err := h.Repo.FindIncidentThread(r.Context(), store.IncidentTarget{Kind: "alert", PublicID: id})
+	if failIncident(w, r, err) {
+		return
+	}
 	if err := h.Repo.Record(r.Context(), events.AdminAlertViewed{Admin: httpapi.Admin(r).User.PublicID, Alert: id}, store.EventScope{}); err != nil {
 		httpapi.InternalError(w, r, err)
 		return
 	}
-	httpapi.JSON(w, 200, viewOf(alert))
+	httpapi.JSON(w, 200, struct {
+		alertView
+		store.IncidentThread
+	}{viewOf(alert), thread})
 }
 
 // acknowledgeInput is Update's body: {"acknowledged": true}, the one

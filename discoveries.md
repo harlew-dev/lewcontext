@@ -1,8 +1,9 @@
 getting started like tembo, is in sidebar shows items like - Create a project, Invite a member, create an API key, in like a `getting started progress` card bottom of sidebar? 
 
 
-there's an issue with the admin sidebar, when you scroll down on the page content.
-select a admin sidebar item. the sidebar selected/hover movement goes from bottom to top, even when the previously selected item was above it. can you investigate, no fix needed yet.
+account locking feature when too many attempts / brute force attack. Unblockable via email.  
+- But for the person attempting, they still recieve the same usual error message, but when successful they are blocked from logging in with 'This account has been blocked due to repeated failed login attempts. Check your email to unblock.'  so the end-user doesn't actually know when an account is blocked, and this feature can't be used to tell if an account is 'active' as if we returned it early, they would see the 'block' and then try again next day and see the 'not blocked' message, thats why we need to not inform the attacker its blocked.  
+On the subsequent successful login attempts during an active blocked account, we should send an email to the user saying that a login has been successful but your account is blocked. If this way you [Unblock account], if it wasn't we recommend resetting your password [Reset Password] and enabling two-factor authentication.
 
   
 Task/Notes
