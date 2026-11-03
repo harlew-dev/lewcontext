@@ -54,6 +54,8 @@ export default defineConfig({
     baseURL: origin,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // E2E_VIDEO=1 records every test as a WebM in test-results/<test>/video.webm.
+    video: process.env.E2E_VIDEO ? "on" : "off",
   },
   // Builds and starts the server for this run. It never reuses one already
   // on the port, which may be another run's, unless E2E_REUSE=1 asks to.
