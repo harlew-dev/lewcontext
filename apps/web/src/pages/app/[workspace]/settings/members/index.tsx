@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useSWRConfig } from "swr";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  LinkSlashIcon,
+  PencilSquareIcon,
+  UserMinusIcon,
+} from "@heroicons/react/16/solid";
 import {
   RemoveDialog,
   RoleDialog,
@@ -266,6 +271,7 @@ function MemberRow({
                 <DropdownItem
                   onClick={() => onAction({ kind: "role", member })}
                 >
+                  <PencilSquareIcon />
                   <DropdownLabel>Change role</DropdownLabel>
                 </DropdownItem>
               )}
@@ -274,6 +280,7 @@ function MemberRow({
                   variant="danger"
                   onClick={() => onAction({ kind: "remove", member })}
                 >
+                  <UserMinusIcon />
                   <DropdownLabel>Remove from workspace</DropdownLabel>
                 </DropdownItem>
               )}
@@ -413,6 +420,7 @@ function InvitationRow({
                 variant="danger"
                 onClick={() => onRevoke(invitation)}
               >
+                <LinkSlashIcon />
                 <DropdownLabel>Revoke invitation</DropdownLabel>
               </DropdownItem>
             </DropdownMenu>

@@ -1,5 +1,9 @@
 import { Fragment } from "react";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  NoSymbolIcon,
+  PencilSquareIcon,
+} from "@heroicons/react/16/solid";
 import { EventLog } from "@/components/app/events/event-log";
 import { RequestId } from "@/components/app/events/event-details";
 import { MemberLink } from "@/components/app/members/member-link";
@@ -86,6 +90,7 @@ export function KeyPage({
                 <DropdownMenu anchor="bottom end">
                   {editable && (
                     <DropdownItem onClick={() => actions.edit(data)}>
+                      <PencilSquareIcon />
                       Edit
                     </DropdownItem>
                   )}
@@ -93,6 +98,7 @@ export function KeyPage({
                     variant="danger"
                     onClick={() => actions.revoke(data)}
                   >
+                    <NoSymbolIcon />
                     Revoke
                   </DropdownItem>
                 </DropdownMenu>

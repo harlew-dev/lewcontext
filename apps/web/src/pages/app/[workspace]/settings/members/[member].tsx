@@ -1,7 +1,11 @@
 import { Fragment, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useSWRConfig } from "swr";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  PencilSquareIcon,
+  UserMinusIcon,
+} from "@heroicons/react/16/solid";
 import { KeyList } from "@/components/app/api-keys/key-list";
 import { EventLog } from "@/components/app/events/event-log";
 import {
@@ -122,6 +126,7 @@ function Member({ id }: { id: string }) {
                 <DropdownMenu anchor="bottom end">
                   {canChange && (
                     <DropdownItem onClick={() => setDialog("role")}>
+                      <PencilSquareIcon />
                       <DropdownLabel>Change role</DropdownLabel>
                     </DropdownItem>
                   )}
@@ -130,6 +135,7 @@ function Member({ id }: { id: string }) {
                       variant="danger"
                       onClick={() => setDialog("remove")}
                     >
+                      <UserMinusIcon />
                       <DropdownLabel>Remove from workspace</DropdownLabel>
                     </DropdownItem>
                   )}

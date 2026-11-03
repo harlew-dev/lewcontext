@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  ArrowPathIcon,
+  EllipsisHorizontalIcon,
+} from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   DeliveryStatusBadge,
@@ -761,6 +764,7 @@ function DeliveryTable({
                       </DropdownButton>
                       <DropdownMenu anchor="bottom end">
                         <DropdownItem onClick={() => setRetrying(row)}>
+                          <ArrowPathIcon />
                           <DropdownLabel>Retry delivery</DropdownLabel>
                         </DropdownItem>
                       </DropdownMenu>

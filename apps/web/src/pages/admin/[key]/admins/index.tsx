@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ArrowDownTrayIcon,
+  ArrowRightStartOnRectangleIcon,
   EllipsisHorizontalIcon,
 } from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
@@ -186,6 +187,7 @@ function AdminTable({
                           variant="danger"
                           onClick={() => setSigningOut(admin)}
                         >
+                          <ArrowRightStartOnRectangleIcon />
                           <DropdownLabel>Sign out</DropdownLabel>
                         </DropdownItem>
                       </DropdownMenu>

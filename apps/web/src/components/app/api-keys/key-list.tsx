@@ -1,5 +1,10 @@
 import { useLocation, useSearchParams } from "react-router";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  EyeIcon,
+  NoSymbolIcon,
+  PencilSquareIcon,
+} from "@heroicons/react/16/solid";
 import { MemberLink } from "@/components/app/members/member-link";
 import { KeyAccess, KeyStatus } from "./key-display";
 import { useKeyActions } from "./key-actions";
@@ -179,12 +184,19 @@ function KeyRow({
             <EllipsisHorizontalIcon data-slot="icon" />
           </DropdownButton>
           <DropdownMenu anchor="bottom end">
-            <DropdownItem href={page}>View</DropdownItem>
+            <DropdownItem href={page}>
+              <EyeIcon />
+              View
+            </DropdownItem>
             {active && (!workspace || key.kind === "workspace") && (
-              <DropdownItem onClick={onEdit}>Edit</DropdownItem>
+              <DropdownItem onClick={onEdit}>
+                <PencilSquareIcon />
+                Edit
+              </DropdownItem>
             )}
             {active && (
               <DropdownItem variant="danger" onClick={onRevoke}>
+                <NoSymbolIcon />
                 Revoke
               </DropdownItem>
             )}

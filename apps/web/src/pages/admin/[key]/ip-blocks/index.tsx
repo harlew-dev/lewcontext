@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  LockOpenIcon,
+  QueueListIcon,
+} from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import { IPBlockDialog } from "@/components/app/admin/ip-block-dialog";
 import { Button } from "@/components/ui/button";
@@ -157,6 +161,7 @@ function BlockTable({
                       window: "all",
                     })}
                   >
+                    <QueueListIcon />
                     <DropdownLabel>Show activity</DropdownLabel>
                   </DropdownItem>
                   {operator && (
@@ -164,6 +169,7 @@ function BlockTable({
                       variant="danger"
                       onClick={() => onUnblock(block)}
                     >
+                      <LockOpenIcon />
                       <DropdownLabel>Unblock</DropdownLabel>
                     </DropdownItem>
                   )}

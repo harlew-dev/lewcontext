@@ -1,6 +1,11 @@
 import { useNavigate, useSearchParams } from "react-router";
 import { useId, useMemo, useState, type FormEvent } from "react";
-import { EllipsisHorizontalIcon, FunnelIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  FunnelIcon,
+  PencilSquareIcon,
+  TrashIcon,
+} from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   alertBadges,
@@ -1018,12 +1023,14 @@ function SubscriptionsView({
                         </DropdownButton>
                         <DropdownMenu anchor="bottom end">
                           <DropdownItem onClick={() => onChange(hook)}>
+                            <PencilSquareIcon />
                             <DropdownLabel>Edit</DropdownLabel>
                           </DropdownItem>
                           <DropdownItem
                             variant="danger"
                             onClick={() => setRemoving(hook)}
                           >
+                            <TrashIcon />
                             <DropdownLabel>Delete</DropdownLabel>
                           </DropdownItem>
                         </DropdownMenu>

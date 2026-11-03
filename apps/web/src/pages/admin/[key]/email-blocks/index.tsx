@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { EllipsisHorizontalIcon } from "@heroicons/react/16/solid";
+import {
+  EllipsisHorizontalIcon,
+  LockOpenIcon,
+  QueueListIcon,
+} from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "@/components/app/admin/admin-action-dialog";
 import {
   AdminTableHead,
@@ -183,10 +187,12 @@ function BlockRow({
                 window: "all",
               })}
             >
+              <QueueListIcon />
               <DropdownLabel>Show activity</DropdownLabel>
             </DropdownItem>
             {canUnblock && (
               <DropdownItem variant="danger" onClick={() => onUnblock(block)}>
+                <LockOpenIcon />
                 <DropdownLabel>Unblock</DropdownLabel>
               </DropdownItem>
             )}

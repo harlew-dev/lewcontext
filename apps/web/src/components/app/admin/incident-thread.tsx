@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import { EyeSlashIcon } from "@heroicons/react/16/solid";
 import { AdminActionDialog } from "./admin-action-dialog";
 import { formatEventTime } from "./event-filters";
 import { Badge } from "@/components/ui/badge";
@@ -214,6 +215,7 @@ function CycleMessages({
                           variant="danger"
                           onClick={() => setRedaction(message)}
                         >
+                          <EyeSlashIcon />
                           Redact comment
                         </DropdownItem>
                       </DropdownMenu>
