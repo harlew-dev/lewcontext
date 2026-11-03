@@ -157,16 +157,11 @@ describe("workspace logs", () => {
     expect(within(list).getByText("req_00000000000001")).toBeInTheDocument();
     expect(api.fetch.mock.calls.length).toBe(before);
   });
-  it("opens a change's page from its ⋯ menu", async () => {
+  it("opens a change's page from its time", async () => {
     stubLogs(page([renamed]));
     renderAs("owner");
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /Actions for Ada Lovelace updated a project/,
-      }),
-    );
     expect(
-      await screen.findByRole("menuitem", { name: "View event" }),
+      await screen.findByRole("link", { name: "Oct 31, 2026, 2:05 PM" }),
     ).toHaveAttribute(
       "href",
       "/app/wsp_2yEHYLwiwPVhLW/settings/events/evt_00000000000001",
@@ -182,15 +177,16 @@ describe("workspace logs", () => {
     expect(apiUrls(api)).toContain(
       `${events}?name=projects%2Cworkspace&actor=usr_00000000000001&project=prj_00000000000001&q=api+key&window=30d&before=evt_00000000000009`,
     );
-    // The applied filters are badges, the time range is its own control.
+    // Every filter, including the date, is a badge.
     const applied = screen.getByRole("list", { name: "Applied filters" });
     expect(
       within(applied).getByText("Type: Projects, Workspace"),
     ).toBeVisible();
     expect(within(applied).getByText("Person: A person")).toBeVisible();
+    expect(within(applied).getByText("Date: Last 30 days")).toBeVisible();
     expect(within(applied).getByText("Search: api key")).toBeVisible();
     expect(screen.getByRole("button", { name: /Filters/ })).toHaveTextContent(
-      "4",
+      "5",
     );
   });
   it("takes a custom range from the URL", async () => {
@@ -203,9 +199,34 @@ describe("workspace logs", () => {
     expect(apiUrls(api)).toContain(
       `${events}?from=2026-10-01T00%3A00%3A00Z&to=2026-10-03T00%3A00%3A00Z`,
     );
+    expect(screen.getByText("Date: Oct 1 – Oct 2 UTC")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Filter changes",
+    });
     expect(
-      screen.getByRole("combobox", { name: "Time range" }),
+      within(dialog).getByRole("combobox", { name: "Date" }),
     ).toHaveTextContent("Oct 1 – Oct 2 UTC");
+  });
+  it("keeps the date badge when nothing else is applied", async () => {
+    stubLogs(page([renamed]));
+    renderAs("owner");
+    await screen.findByText("updated a project");
+    expect(screen.getByText("Date: Last 7 days")).toBeVisible();
+  });
+  it("opens a custom date from inside the Filters dialog", async () => {
+    stubLogs(page([renamed]));
+    renderAs("owner");
+    await screen.findByText("updated a project");
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Filter changes",
+    });
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Date" }));
+    pick(await screen.findByRole("option", { name: "Custom range…" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Custom range" }),
+    ).toBeInTheDocument();
   });
   it("removes a filter from its badge, or all of them, and goes back to the newest", async () => {
     stubLogs(page([renamed]));
@@ -227,7 +248,7 @@ describe("workspace logs", () => {
       "/app/wsp_2yEHYLwiwPVhLW/settings/events",
     );
   });
-  it("clears every filter at once, keeping the period", async () => {
+  it("clears every filter at once, including the date", async () => {
     stubLogs(page([renamed]));
     renderAs(
       "owner",
@@ -236,7 +257,7 @@ describe("workspace logs", () => {
     await screen.findByText("updated a project");
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     expect(screen.getByTestId("where").textContent).toBe(
-      "/app/wsp_2yEHYLwiwPVhLW/settings/events?window=30d",
+      "/app/wsp_2yEHYLwiwPVhLW/settings/events",
     );
   });
   it("applies the Filters dialog's person and drops the cursor", async () => {

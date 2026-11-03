@@ -89,9 +89,11 @@ export function indexQuery(query: EventQuery): EventIndexQuery {
     before: query.before || undefined,
   };
 }
-// What the time range says: a preset's name, or the custom range.
-export function timeLabel(query: EventQuery): string | null {
-  return isCustomRange(query) ? rangeLabel(query.from, query.to) : null;
+// What the date filter says: the custom range, or the preset's name.
+export function dateLabel(query: EventQuery): string {
+  return isCustomRange(query)
+    ? rangeLabel(query.from, query.to)
+    : (eventWindows.find((w) => w.id === query.window)?.label ?? query.window);
 }
 // Picked event names as the URL writes them: a group's ID when all its
 // events are picked, then the names left over.

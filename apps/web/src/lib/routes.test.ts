@@ -87,6 +87,7 @@ const plainPages = [
   "register",
   "registerVerify",
   "forgotPassword",
+  "docs",
   // The policy pages: two fixed documents, prerendered, not a resource.
   "termsOfService",
   "privacyPolicy",

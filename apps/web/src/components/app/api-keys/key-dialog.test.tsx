@@ -304,6 +304,19 @@ describe("API key creation", () => {
       projectAccess: "all",
       scopes: ["project.index", "project.show"],
     });
+    const request = screen.getByRole("button", { name: "Example request" });
+    expect(request).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(request);
+    expect(request).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("link", { name: "API Documentation" }),
+    ).toHaveAttribute("href", "/docs");
+    expect(
+      screen.getByRole("link", { name: "API Documentation" }),
+    ).toHaveAttribute("target", "_blank");
+    expect(
+      screen.getByRole("link", { name: "API Documentation" }),
+    ).toHaveAttribute("rel", "noopener noreferrer");
     fireEvent.click(screen.getByRole("button", { name: "Copy API key" }));
     await waitFor(() => expect(clipboard).toHaveBeenCalledWith(secret));
     expect(document.body.textContent).not.toContain(secret);

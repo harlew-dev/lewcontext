@@ -17,6 +17,7 @@ import { webBuild } from "../web-build.ts";
 // each dev server runs it (plans/features/implemented/admin/separate-build.md).
 const appRoutes = [
   index("pages/home/index.tsx"),
+  route("docs", "pages/docs/index.tsx"),
   route("policy/terms-of-service", "pages/policy/terms-of-service/index.tsx"),
   route("policy/privacy-policy", "pages/policy/privacy-policy/index.tsx"),
   route("auth/login", "pages/auth/login/index.tsx"),

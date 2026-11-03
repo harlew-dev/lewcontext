@@ -78,13 +78,13 @@ test("an owner reads the workspace's changes, filters them and sees no addresses
   await expect(page.getByText(/created the project/)).toHaveCount(0);
   await expect(page.getByText("updated a project")).toBeVisible();
 
-  // The ⋯ menu opens the change's own page, with the request ID to quote.
+  // The change's time opens its own page, with the request ID to quote.
   await page.getByRole("searchbox", { name: "Search changes" }).fill("");
   await expect(page).not.toHaveURL(/q=marketing/);
   await page
-    .getByRole("button", { name: /Actions for Log reader updated a project/ })
+    .getByRole("link", { name: /\d{1,2}:\d{2} [AP]M/ })
+    .first()
     .click();
-  await page.getByRole("menuitem", { name: "View event" }).click();
   await expect(page).toHaveURL(/\/settings\/events\/evt_/);
   await expect(
     page.getByRole("heading", { name: "Log reader updated a project" }),

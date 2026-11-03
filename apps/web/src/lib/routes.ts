@@ -44,6 +44,8 @@ export const routes = {
     index: () => "/app/settings/api-keys",
     show: (key: string) => `/app/settings/api-keys/${key}`,
   },
+  // The public API documentation, prerendered.
+  docs: "/docs",
   // The terms of service and privacy policy, prerendered; Go serves them
   // only with POLICIES=on.
   termsOfService: "/policy/terms-of-service",

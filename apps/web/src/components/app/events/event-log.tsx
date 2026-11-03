@@ -1,18 +1,9 @@
 import { Fragment, useId, useState } from "react";
 import { useSearchParams } from "react-router";
-import {
-  ChevronRightIcon,
-  EllipsisHorizontalIcon,
-} from "@heroicons/react/16/solid";
+import { ChevronRightIcon } from "@heroicons/react/16/solid";
 import { MemberLink } from "@/components/app/members/member-link";
 import { Button } from "@/components/ui/button";
 import { CursorNav } from "@/components/ui/cursor-nav";
-import {
-  Dropdown,
-  DropdownButton,
-  DropdownItem,
-  DropdownMenu,
-} from "@/components/ui/dropdown";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import {
   FilterBadges,
@@ -20,7 +11,6 @@ import {
   useFocusAfterRemove,
   type FilterBadge,
 } from "@/components/ui/filter-bar";
-import { RangeDialog } from "@/components/ui/range-dialog";
 import { SearchField } from "@/components/ui/search-field";
 import {
   Table,
@@ -30,7 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TimeRange } from "@/components/ui/time-range";
 import { TextLink } from "@/components/ui/text";
 import type { ApiPath, EventIndexQuery } from "@/lib/api";
 import { cx } from "@/lib/cx";
@@ -44,8 +33,8 @@ import { formatDateTime } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { useResource } from "@/lib/use-resource";
 import {
+  defaultEventWindow,
   eventTypes,
-  eventWindows,
   type EventPage,
   type EventQuery,
   type WorkspaceEvent,
@@ -57,17 +46,18 @@ import {
   type FilterPatch,
 } from "./event-filters-dialog";
 import {
+  dateLabel,
   eventQuery,
   eventSearch,
   indexQuery,
-  timeLabel,
 } from "./event-filters";
 // A list of a workspace's changes with its controls, shared by the Logs tab,
-// a member's Logs and an API key's Logs: a search, the time range and
-// Filters in the header, the applied filters as badges, then the changes
-// newest first, each opening in place and, in its ⋯ menu, to its own page.
-// The state is in the URL (other parameters, a page's ?tab=, are kept), so a
-// link opens the same view. Reading it records nothing.
+// a member's Logs and an API key's Logs: a search and Filters in the header
+// (the date and the other filters live in the dialog), the applied filters as
+// badges, then the changes newest first, each opening in place and, through
+// its time, to its own page. The state is in the URL (other parameters, a
+// page's ?tab=, are kept), so a link opens the same view. Reading it records
+// nothing.
 export function EventLog({
   label,
   pathFor,
@@ -87,7 +77,7 @@ export function EventLog({
   const [search, setSearch] = useSearchParams();
   const query = eventQuery(search);
   const list = useResource(pathFor(indexQuery(query)));
-  const [dialog, setDialog] = useState<"filters" | "range" | null>(null);
+  const [dialog, setDialog] = useState<"filters" | null>(null);
   const filtersButton = useId();
   const focusAfter = useFocusAfterRemove(search, filtersButton);
   const go = (patch: Partial<EventQuery>, replace = false) =>
@@ -97,6 +87,7 @@ export function EventLog({
     });
   const refs = list.data?.refs;
   const badges = appliedBadges(query, refs);
+  const narrowed = badges.some((badge) => badge.id !== "date");
   const apply = (patch: FilterPatch) => {
     setDialog(null);
     go(patch);
@@ -111,13 +102,6 @@ export function EventLog({
             onSearch={(q) => go({ q }, true)}
           />
         </div>
-        <TimeRange
-          value={query.window}
-          presets={eventWindows}
-          custom={timeLabel(query)}
-          onPreset={(window) => go({ window, from: "", to: "" })}
-          onCustom={() => setDialog("range")}
-        />
         <FiltersButton
           id={filtersButton}
           count={badges.length}
@@ -132,7 +116,15 @@ export function EventLog({
         }}
         onClearAll={() => {
           focusAfter("filters");
-          go({ types: [], actor: "", project: "", q: "" });
+          go({
+            types: [],
+            actor: "",
+            project: "",
+            q: "",
+            window: defaultEventWindow,
+            from: "",
+            to: "",
+          });
         }}
         onOpen={() => setDialog("filters")}
       />
@@ -161,21 +153,29 @@ export function EventLog({
         ) : list.data ? (
           <EmptyState
             title={
-              badges.length > 0
+              narrowed
                 ? "No changes match these filters"
                 : "No changes in this period"
             }
             description={
-              badges.length > 0
+              narrowed
                 ? "Try a different search, type or person."
                 : "Changes to the workspace, its members, invitations, projects and API keys appear here."
             }
             action={
-              badges.length > 0 ? (
+              narrowed ? (
                 <Button
                   outline
                   onClick={() =>
-                    go({ types: [], actor: "", project: "", q: "" })
+                    go({
+                      types: [],
+                      actor: "",
+                      project: "",
+                      q: "",
+                      window: defaultEventWindow,
+                      from: "",
+                      to: "",
+                    })
                   }
                 >
                   Clear filters
@@ -192,20 +192,12 @@ export function EventLog({
           types: query.types,
           actor: query.actor,
           project: query.project,
+          window: query.window,
+          from: query.from,
+          to: query.to,
         }}
         choices={namedChoices(choices, refs)}
         onApply={apply}
-      />
-      <RangeDialog
-        open={dialog === "range"}
-        onClose={() => setDialog(null)}
-        from={query.from || undefined}
-        to={query.to || undefined}
-        description="Days and times in UTC. Changes are kept for 90 days."
-        onApply={(from, to) => {
-          setDialog(null);
-          go({ from, to });
-        }}
       />
     </>
   );
@@ -215,10 +207,11 @@ function without(id: string): Partial<EventQuery> {
   if (id === "types") return { types: [] };
   if (id === "actor") return { actor: "" };
   if (id === "project") return { project: "" };
+  if (id === "date") return { window: defaultEventWindow, from: "", to: "" };
   return { q: "" };
 }
-// One badge per applied filter, in the dialog's order. The time range is
-// not one: it has its own control.
+// One badge per applied filter, in the dialog's order. The date is always
+// shown, so the filter kept inside the dialog stays visible.
 function appliedBadges(
   query: EventQuery,
   refs: EventPage["refs"] | undefined,
@@ -244,6 +237,7 @@ function appliedBadges(
       id: "project",
       text: `Project: ${refs?.project?.id === query.project && refs.project.name ? refs.project.name : query.project}`,
     });
+  badges.push({ id: "date", text: `Date: ${dateLabel(query)}` });
   if (query.q) badges.push({ id: "q", text: `Search: ${query.q}` });
   return badges;
 }
@@ -278,11 +272,10 @@ function EventTable({
           <TableHeader className="w-0">
             <span className="sr-only">Details</span>
           </TableHeader>
-          <TableHeader>Time (UTC)</TableHeader>
-          <TableHeader>Change</TableHeader>
-          <TableHeader className="w-0">
-            <span className="sr-only">Actions</span>
+          <TableHeader className="w-0 whitespace-nowrap">
+            Time (UTC)
           </TableHeader>
+          <TableHeader className="w-full">Change</TableHeader>
         </TableRow>
       </TableHead>
       <TableBody>
@@ -294,7 +287,7 @@ function EventTable({
   );
 }
 // A change in one line, opening in place to its details (the list already
-// holds them: nothing more is loaded), and a ⋯ menu to its page.
+// holds them: nothing more is loaded), and its time links to its page.
 function EventRow({
   event,
   links,
@@ -330,15 +323,15 @@ function EventRow({
             />
           </Button>
         </TableCell>
-        <TableCell className="align-top whitespace-nowrap tabular-nums">
+        <TableCell className="whitespace-nowrap align-middle tabular-nums">
           {page ? (
             <TextLink href={page}>{shortTime(event.createdAt)}</TextLink>
           ) : (
             shortTime(event.createdAt)
           )}
         </TableCell>
-        <TableCell className="max-w-0 whitespace-normal">
-          <div className="break-words">
+        <TableCell className="w-full whitespace-normal">
+          <div className="line-clamp-2 wrap-anywhere">
             {event.actor ? (
               <MemberLink
                 workspace={links?.members ? links.workspace : null}
@@ -349,32 +342,17 @@ function EventRow({
               <span className="font-medium">{who}</span>
             )}{" "}
             {sentence}
+            {summary && (
+              <span className="block text-zinc-500 dark:text-zinc-400">
+                {summary}
+              </span>
+            )}
           </div>
-          {summary && (
-            <div className="truncate text-zinc-500 dark:text-zinc-400">
-              {summary}
-            </div>
-          )}
-        </TableCell>
-        <TableCell className="w-0 text-right">
-          {page && (
-            <Dropdown>
-              <DropdownButton
-                plain
-                aria-label={`Actions for ${who} ${sentence}`}
-              >
-                <EllipsisHorizontalIcon data-slot="icon" />
-              </DropdownButton>
-              <DropdownMenu>
-                <DropdownItem href={page}>View event</DropdownItem>
-              </DropdownMenu>
-            </Dropdown>
-          )}
         </TableCell>
       </TableRow>
       {open && (
         <TableRow id={detailsId}>
-          <TableCell colSpan={4} className="whitespace-normal">
+          <TableCell colSpan={3} className="whitespace-normal">
             <EventDetails event={event} links={links} />
           </TableCell>
         </TableRow>

@@ -16,5 +16,5 @@ export default {
   prerender:
     build === "admin"
       ? false
-      : ["/", "/policy/terms-of-service", "/policy/privacy-policy"],
+      : ["/", "/docs", "/policy/terms-of-service", "/policy/privacy-policy"],
 } satisfies Config;

@@ -84,8 +84,9 @@ export function useCopy(
 // same `copy`, where the page has room for it.
 //
 // `variant`: "icon" is an InputButton for an InputGroup's InputActions,
-// named `label` and with a "Copy" tooltip on hover; "button" is an outline
-// Button reading `label` ("Copy codes").
+// named `label` and with a "Copy" tooltip on hover; "plain" is a ghost Button
+// with the icon alone, for a callout's corner; "button" is an outline Button
+// reading `label` ("Copy codes").
 export function CopyButton({
   copy,
   label,
@@ -93,7 +94,7 @@ export function CopyButton({
 }: {
   copy: Copy;
   label: string;
-  variant?: "icon" | "button";
+  variant?: "icon" | "plain" | "button";
 }) {
   const icon = copy.copied ? <CheckIcon /> : <DocumentDuplicateIcon />;
   const run = () => void copy.copy();
@@ -109,6 +110,10 @@ export function CopyButton({
           <InputButton aria-label={label} onClick={run}>
             {icon}
           </InputButton>
+        ) : variant === "plain" ? (
+          <Button plain aria-label={label} onClick={run}>
+            {icon}
+          </Button>
         ) : (
           <Button outline onClick={run}>
             {icon}

@@ -10,6 +10,7 @@ export function TimeRange<T extends string>({
   onPreset,
   onCustom,
   className = "sm:w-60",
+  "aria-label": ariaLabel = "Time range",
 }: {
   // The preset in use, ignored while `custom` is set.
   value: T;
@@ -19,10 +20,12 @@ export function TimeRange<T extends string>({
   onPreset: (preset: T) => void;
   onCustom: () => void;
   className?: string;
+  // The control's accessible name ("Time range", or "Date" in a filter form).
+  "aria-label"?: string;
 }) {
   return (
     <Listbox<string>
-      aria-label="Time range"
+      aria-label={ariaLabel}
       value={custom ? "custom" : value}
       onChange={(v) => (v === "custom" ? onCustom() : onPreset(v as T))}
       className={className}

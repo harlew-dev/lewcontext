@@ -1,4 +1,5 @@
 import { useCallback, useState, type FormEvent } from "react";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/16/solid";
 import { PasswordField } from "@/components/app/account/password-fields";
 import { AppOrRecoveryCode } from "@/components/app/mfa/mfa-setup";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   DialogActions,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Disclosure } from "@/components/ui/disclosure";
 import { ErrorNotice, Notice } from "@/components/ui/feedback";
 import {
   Field,
@@ -24,9 +26,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Listbox, ListboxOption, ListboxLabel } from "@/components/ui/listbox";
 import { Reveal } from "@/components/ui/reveal";
-import { Text } from "@/components/ui/text";
+import { Text, TextLink } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { ApiError, paths, useApi } from "@/lib/api";
+import { routes } from "@/lib/routes";
 import { useSession } from "@/lib/session";
 import { useAction } from "@/lib/use-action";
 import { useResource } from "@/lib/use-resource";
@@ -327,12 +330,6 @@ export function KeyDialog({ workspace, editing, onClose, onSaved }: Props) {
                       <ErrorMessage>{fieldErrors.scopes}</ErrorMessage>
                     )}
                   </Field>
-                  <Text>
-                    At capacity, revoke a key to free a slot before replacing
-                    it. Revoking the old key first can interrupt its
-                    integrations. Below capacity: create a replacement, deploy
-                    it, then revoke the old key.
-                  </Text>
                   {needsProof && !session.user.mfaEnabledAt && (
                     <PasswordField
                       label="Current password"
@@ -564,28 +561,45 @@ function SecretStep({
   const copy = useCopy(secret);
   return (
     <div className="space-y-5">
-      <div className="rounded-lg bg-zinc-100 p-4 dark:bg-zinc-800">
-        <Reveal
-          label="Reveal API key"
-          hideLabel="Hide API key"
-          announcement="API key shown."
-          placeholder={
-            <div className="break-all font-mono">
-              lc_wk_apk_00000000000000_•••••••••••••••••••••••••••••••••••••••••••
-            </div>
-          }
-        >
-          <code className="block break-all select-all">{secret}</code>
-        </Reveal>
-        <div className="mt-4 flex justify-end">
-          <CopyButton copy={copy} label="Copy API key" variant="button" />
+      <div className="relative rounded-lg bg-zinc-100 p-4 dark:bg-zinc-800">
+        <div className="absolute top-2 right-2">
+          <CopyButton copy={copy} label="Copy API key" variant="plain" />
+        </div>
+        <div className="pr-10">
+          <Reveal
+            label="Reveal API key"
+            hideLabel="Hide API key"
+            announcement="API key shown."
+            placeholder={
+              <div className="break-all font-mono">
+                lc_wk_apk_00000000000000_•••••••••••••••••••••••••••••••••••••••••••
+              </div>
+            }
+          >
+            <code className="block break-all select-all">{secret}</code>
+          </Reveal>
         </div>
         <CopyFailure copy={copy}>
           Reveal the key, select it, and copy it manually instead.
         </CopyFailure>
       </div>
-      <Text>Workspace: {workspace}</Text>
-      <pre className="overflow-x-auto rounded-lg bg-zinc-100 p-4 text-sm whitespace-pre-wrap dark:bg-zinc-800">{`curl '${window.location.origin}/api/v1/workspaces/${workspace}/projects' \\\n  -H "Authorization: Bearer $LEWCONTEXT_API_KEY"`}</pre>
+      <Disclosure title="Example request">
+        <pre className="overflow-x-auto rounded-lg bg-zinc-100 p-4 text-sm whitespace-pre-wrap dark:bg-zinc-800">{`curl '${window.location.origin}/api/v1/workspaces/${workspace}/projects' \\\n  -H "Authorization: Bearer $LEWCONTEXT_API_KEY"`}</pre>
+      </Disclosure>
+      <Text>
+        <TextLink
+          href={routes.docs}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1"
+        >
+          API Documentation
+          <ArrowTopRightOnSquareIcon
+            aria-hidden="true"
+            className="size-4 shrink-0"
+          />
+        </TextLink>
+      </Text>
     </div>
   );
 }

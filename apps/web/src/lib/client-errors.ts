@@ -19,6 +19,7 @@ import { browserHttp } from "@/lib/api/http";
 // client-errors.test.ts checks the three agree.
 export const clientRoutePatterns = [
   "/",
+  "/docs",
   "/policy/terms-of-service",
   "/policy/privacy-policy",
   "/auth/login",
