@@ -130,8 +130,11 @@ describe("workspace logs", () => {
         "/app/wsp_2yEHYLwiwPVhLW/settings/members/usr_00000000000001",
       );
       expect(
-        screen.getByText("API key apk_00000000000001"),
-      ).toBeInTheDocument();
+        screen.getByRole("link", { name: "apk_00000000000001" }),
+      ).toHaveAttribute(
+        "href",
+        "/app/wsp_2yEHYLwiwPVhLW/settings/api-keys/apk_00000000000001",
+      );
       expect(
         screen.getByText(/removed Bob Member \(member\) from the workspace/),
       ).toBeInTheDocument();
@@ -152,7 +155,12 @@ describe("workspace logs", () => {
     expect(
       within(list).getByText("Website → <b>Marketing</b>"),
     ).toBeInTheDocument();
-    expect(within(list).getByText("prj_00000000000001")).toBeInTheDocument();
+    expect(
+      within(list).getByRole("link", { name: "prj_00000000000001" }),
+    ).toHaveAttribute(
+      "href",
+      "/app/wsp_2yEHYLwiwPVhLW/projects/prj_00000000000001",
+    );
     expect(within(list).getByText("Request ID")).toBeInTheDocument();
     expect(within(list).getByText("req_00000000000001")).toBeInTheDocument();
     expect(api.fetch.mock.calls.length).toBe(before);

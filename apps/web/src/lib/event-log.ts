@@ -36,52 +36,90 @@ function changeList(
 export function changesOf(details: Record<string, unknown>): string[] {
   return changeList(details).map((c) => `${c.field}: ${c.from} → ${c.to}`);
 }
-// What happened, after the person's name: "renamed the project “Website”".
-export function eventSentence(event: WorkspaceEvent): string {
+// What happened, after the person's name, as text and the API key's ID where
+// the renderer may link it: "renamed the project “Website”", or "created the
+// API key " followed by the key's ID.
+export type EventSentencePart =
+  { text: string } | { key: string; personal: boolean };
+function keySentence(
+  details: Record<string, unknown>,
+  before: string,
+  after: string,
+  personal: boolean,
+): EventSentencePart[] {
+  const key = text(details.key);
+  if (!key) return [{ text: `${before}${after}`.trim() }];
+  return [
+    { text: before },
+    { key, personal },
+    ...(after ? [{ text: after }] : []),
+  ];
+}
+export function eventSentenceParts(event: WorkspaceEvent): EventSentencePart[] {
   const d = event.details;
   const subject = event.subject?.name ?? "a member";
   const address = text(d.email) || "an address";
   const role = text(d.role);
   switch (event.name) {
     case "workspace.created":
-      return `created the workspace ${quoted(d.name)}`.trim();
+      return [{ text: `created the workspace ${quoted(d.name)}`.trim() }];
     case "workspace.renamed":
-      return "renamed the workspace";
+      return [{ text: "renamed the workspace" }];
     case "workspace.deleted":
-      return "deleted the workspace";
+      return [{ text: "deleted the workspace" }];
     case "workspace.member.updated":
-      return `changed ${subject}’s role`;
+      return [{ text: `changed ${subject}’s role` }];
     case "workspace.member.removed":
-      return `removed ${subject}${role ? ` (${role})` : ""} from the workspace`;
+      return [
+        {
+          text: `removed ${subject}${role ? ` (${role})` : ""} from the workspace`,
+        },
+      ];
     case "workspace.member.left":
-      return "left the workspace";
+      return [{ text: "left the workspace" }];
     case "workspace.invitation.created":
-      return `invited ${address}${role ? ` as ${role}` : ""}`;
+      return [{ text: `invited ${address}${role ? ` as ${role}` : ""}` }];
     case "workspace.invitation.revoked":
-      return `revoked the invitation to ${address}`;
+      return [{ text: `revoked the invitation to ${address}` }];
     case "workspace.invitation.accepted":
-      return `accepted an invitation${role ? ` and joined as ${role}` : ""}`;
+      return [
+        {
+          text: `accepted an invitation${role ? ` and joined as ${role}` : ""}`,
+        },
+      ];
     case "project.created":
-      return `created the project ${quoted(d.name)}`.trim();
+      return [{ text: `created the project ${quoted(d.name)}`.trim() }];
     case "project.updated":
-      return "updated a project";
+      return [{ text: "updated a project" }];
     case "project.deleted":
-      return `deleted the project ${quoted(d.name)}`.trim();
+      return [{ text: `deleted the project ${quoted(d.name)}`.trim() }];
     case "workspace.api_key.created":
-      return `created the API key ${text(d.key)}`.trim();
+      return keySentence(d, "created the API key ", "", false);
     case "workspace.api_key.updated":
-      return `changed the API key ${text(d.key)}`.trim();
+      return keySentence(d, "changed the API key ", "", false);
     case "workspace.api_key.revoked":
-      return `revoked the API key ${text(d.key)}`.trim();
+      return keySentence(d, "revoked the API key ", "", false);
     case "auth.api_key.created":
-      return `created a personal API key ${text(d.key)} for this workspace`;
+      return keySentence(
+        d,
+        "created a personal API key ",
+        " for this workspace",
+        true,
+      );
     case "auth.api_key.updated":
-      return `changed a personal API key ${text(d.key)}`;
+      return keySentence(d, "changed a personal API key ", "", true);
     case "auth.api_key.revoked":
-      return `revoked a personal API key ${text(d.key)}`;
+      return keySentence(d, "revoked a personal API key ", "", true);
     default:
-      return event.name;
+      return [{ text: event.name }];
   }
+}
+// The same sentence as plain text, for a form's or list row's accessible
+// name: "Ada Lovelace created the API key apk_…".
+export function eventSentence(event: WorkspaceEvent): string {
+  return eventSentenceParts(event)
+    .map((part) => ("text" in part ? part.text : part.key))
+    .join("");
 }
 // A short line of what changed, for under the sentence.
 export function eventSummary(event: WorkspaceEvent): string {
@@ -111,12 +149,13 @@ const labels: Record<string, string> = {
 };
 // Field order in a list of details.
 const order = Object.keys(labels);
+// A detail row's field, for the ones whose value is a public ID the renderer
+// may link (the key, project and member IDs), or none for a change and text.
+export type DetailRow = { field?: string; label: string; value: string };
 // The details as label/value rows, changes first as from → to. A value is
 // text. An address the retention rules removed says so.
-export function detailRows(
-  details: Record<string, unknown>,
-): { label: string; value: string }[] {
-  const rows = changeList(details).map((c) => ({
+export function detailRows(details: Record<string, unknown>): DetailRow[] {
+  const rows: DetailRow[] = changeList(details).map((c) => ({
     label: `${labels[c.field] ?? c.field} changed`,
     value: `${c.from} → ${c.to}`,
   }));
@@ -124,6 +163,7 @@ export function detailRows(
     const value = details[field];
     if (value === undefined || value === null || value === "") continue;
     rows.push({
+      field,
       label: labels[field],
       value: Array.isArray(value) ? value.join(", ") : String(value),
     });

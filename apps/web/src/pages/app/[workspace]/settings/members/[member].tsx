@@ -235,6 +235,7 @@ function Overview({ member }: { member: MemberDetail }) {
 // What they did, and what was done to them (a role change, their removal).
 function MemberLog({ member }: { member: MemberDetail }) {
   const workspace = useWorkspace();
+  const session = useSession();
   const projects = useResource(
     paths.projects(workspace.id).index({ perPage: 100, sort: "name" }),
   );
@@ -248,6 +249,8 @@ function MemberLog({ member }: { member: MemberDetail }) {
         workspace: workspace.id,
         members: can(workspace, "workspace.member.show"),
         events: can(workspace, "workspace.event.show"),
+        apiKeys: can(workspace, "workspace.api_key.show"),
+        viewer: session.user.id,
       }}
       choices={{
         people: null,

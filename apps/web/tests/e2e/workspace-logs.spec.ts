@@ -162,5 +162,6 @@ test("an API key's page shows its overview and its own log", async ({
   await expect(page.getByRole("heading", { name: "Deploy bot" })).toBeVisible();
   await expect(page.getByText("List, View", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Logs", exact: true }).last().click();
-  await expect(page.getByText(`created the API key ${key.id}`)).toBeVisible();
+  await expect(page.getByText("created the API key")).toBeVisible();
+  await expect(page.getByRole("link", { name: key.id })).toBeVisible();
 });

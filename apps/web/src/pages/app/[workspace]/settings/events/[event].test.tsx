@@ -61,10 +61,87 @@ describe("a change's page", () => {
     const related = screen.getByText("Other changes in this request")
       .parentElement as HTMLElement;
     expect(
+      within(related).getByText(/revoked a personal API key/),
+    ).toBeInTheDocument();
+    expect(within(related).getByText("apk_00000000000001")).toBeInTheDocument();
+    expect(
       within(related).getByRole("link", {
-        name: /revoked a personal API key apk_00000000000001/,
+        name: "Oct 31, 2026, 2:05 PM UTC",
       }),
     ).toHaveAttribute("href", `/app/${ws}/settings/events/evt_00000000000002`);
+  });
+  it("links a workspace API key in the heading and the details", async () => {
+    const key = "apk_00000000000001";
+    stubApi({
+      [`GET /api/workspaces/${ws}/events/${id}`]: {
+        body: {
+          ...base,
+          id,
+          name: "workspace.api_key.created",
+          details: { key, scopes: ["project.index"] },
+          related: [],
+        },
+      },
+    });
+    open();
+    expect(
+      await screen.findByRole("heading", {
+        name: `Olive Owner created the API key ${key}`,
+      }),
+    ).toBeInTheDocument();
+    const details = screen.getByText("Done by").closest("dl") as HTMLElement;
+    expect(within(details).getByRole("link", { name: key })).toHaveAttribute(
+      "href",
+      `/app/${ws}/settings/api-keys/${key}`,
+    );
+  });
+  it("links a personal API key only for its owner", async () => {
+    const key = "apk_00000000000001";
+    stubApi({
+      [`GET /api/workspaces/${ws}/events/${id}`]: {
+        body: {
+          ...base,
+          id,
+          name: "auth.api_key.created",
+          subject: { id: "usr_00000000000002", name: "Olive Owner" },
+          details: { key, scopes: ["project.index"] },
+          related: [],
+        },
+      },
+    });
+    open();
+    await screen.findByRole("heading", {
+      name: `Olive Owner created a personal API key ${key} for this workspace`,
+    });
+    const details = screen.getByText("Done by").closest("dl") as HTMLElement;
+    expect(
+      within(details).queryByRole("link", { name: key }),
+    ).not.toBeInTheDocument();
+    expect(within(details).getByText(key)).toBeInTheDocument();
+  });
+  it("links a personal API key to its owner's page", async () => {
+    const key = "apk_00000000000001";
+    stubApi({
+      [`GET /api/workspaces/${ws}/events/${id}`]: {
+        body: {
+          ...base,
+          id,
+          name: "auth.api_key.created",
+          subject: { id: "usr_00000000000001", name: "Ada Lovelace" },
+          details: { key, scopes: ["project.index"] },
+          related: [],
+        },
+      },
+    });
+    open();
+    await screen.findByRole("heading", {
+      name: `Olive Owner created a personal API key ${key} for this workspace`,
+    });
+    const details = screen.getByText("Done by").closest("dl") as HTMLElement;
+    expect(within(details).getByRole("link", { name: key })).toHaveAttribute(
+      "href",
+      `/app/settings/api-keys/${key}`,
+    );
   });
   it("says so when nothing else was recorded with it", async () => {
     stubApi({

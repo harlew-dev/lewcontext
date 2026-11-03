@@ -7,17 +7,16 @@ import {
   DescriptionTerm,
 } from "@/components/ui/description-list";
 import { Code } from "@/components/ui/text";
-import { detailRows, whoIs } from "@/lib/event-log";
+import { detailRows, type DetailRow } from "@/lib/event-log";
 import { formatDateTime } from "@/lib/format";
 import type { WorkspaceEvent } from "@/types/events";
-// What a list of a workspace's changes links to: the workspace whose member
-// and change pages to open, and which of them the viewer may. Null where they
-// can't open any (a personal key's own log).
-export type EventLinks = {
-  workspace: string;
-  members: boolean;
-  events: boolean;
-};
+import {
+  ApiKeyLink,
+  MemberIdLink,
+  ProjectLink,
+  type EventLinks,
+} from "./event-refs";
+import { EventWho } from "./event-text";
 // A request's ID with a button to copy it, to quote when asking about a
 // change: it is the `requestId` of a failed request and in the server's logs.
 export function RequestId({ id }: { id: string }) {
@@ -30,7 +29,8 @@ export function RequestId({ id }: { id: string }) {
   );
 }
 // One change as labelled values: when, who, whom it is about, the request
-// and the event's own fields, changes as from → to. All of it is text.
+// and the event's own fields, changes as from → to. A key, project or
+// member's public ID links to its page where the viewer may open it.
 export function EventDetails({
   event,
   links,
@@ -45,11 +45,7 @@ export function EventDetails({
       <DescriptionDetails>{formatDateTime(event.createdAt)}</DescriptionDetails>
       <DescriptionTerm>Done by</DescriptionTerm>
       <DescriptionDetails>
-        {event.actor ? (
-          <MemberLink workspace={member} member={event.actor} />
-        ) : (
-          whoIs(null, event.apiKey)
-        )}
+        <EventWho event={event} links={links} />
       </DescriptionDetails>
       {event.subject?.name && (
         <>
@@ -63,7 +59,7 @@ export function EventDetails({
         <Fragment key={row.label}>
           <DescriptionTerm>{row.label}</DescriptionTerm>
           <DescriptionDetails className="break-words">
-            {row.value}
+            <DetailValue event={event} row={row} links={links} />
           </DescriptionDetails>
         </Fragment>
       ))}
@@ -77,4 +73,30 @@ export function EventDetails({
       )}
     </DescriptionList>
   );
+}
+// A detail whose value is a public ID links to that record where the viewer
+// may open it: the key, the project or the member. Other values stay text.
+function DetailValue({
+  event,
+  row,
+  links,
+}: {
+  event: WorkspaceEvent;
+  row: DetailRow;
+  links: EventLinks | null;
+}) {
+  if (row.field === "key")
+    return (
+      <ApiKeyLink
+        id={row.value}
+        personal={event.name.startsWith("auth.api_key.")}
+        owner={event.subject?.id}
+        links={links}
+      />
+    );
+  if (row.field === "project")
+    return <ProjectLink id={row.value} links={links} />;
+  if (row.field === "user")
+    return <MemberIdLink id={row.value} links={links} />;
+  return <>{row.value}</>;
 }

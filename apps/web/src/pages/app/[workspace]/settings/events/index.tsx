@@ -3,6 +3,7 @@ import { Notice } from "@/components/ui/feedback";
 import { Subheading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
 import { can } from "@/types/workspaces";
@@ -21,6 +22,7 @@ export default function EventIndex() {
 }
 function Logs() {
   const workspace = useWorkspace();
+  const session = useSession();
   const members = useResource(
     paths.members(workspace.id).index({ perPage: 100 }),
   );
@@ -43,6 +45,8 @@ function Logs() {
           workspace: workspace.id,
           members: can(workspace, "workspace.member.show"),
           events: can(workspace, "workspace.event.show"),
+          apiKeys: can(workspace, "workspace.api_key.show"),
+          viewer: session.user.id,
         }}
         choices={{
           people: (members.data?.data ?? []).map(({ id, name }) => ({

@@ -1,7 +1,6 @@
 import { Fragment, useId, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ChevronRightIcon } from "@heroicons/react/16/solid";
-import { MemberLink } from "@/components/app/members/member-link";
 import { Button } from "@/components/ui/button";
 import { CursorNav } from "@/components/ui/cursor-nav";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
@@ -39,7 +38,9 @@ import {
   type EventQuery,
   type WorkspaceEvent,
 } from "@/types/events";
-import { EventDetails, type EventLinks } from "./event-details";
+import { EventDetails } from "./event-details";
+import type { EventLinks } from "./event-refs";
+import { EventSentence, EventWho } from "./event-text";
 import {
   EventFiltersDialog,
   type FilterChoices,
@@ -332,16 +333,10 @@ function EventRow({
         </TableCell>
         <TableCell className="w-full whitespace-normal">
           <div className="line-clamp-2 wrap-anywhere">
-            {event.actor ? (
-              <MemberLink
-                workspace={links?.members ? links.workspace : null}
-                member={event.actor}
-                className="font-medium"
-              />
-            ) : (
-              <span className="font-medium">{who}</span>
-            )}{" "}
-            {sentence}
+            <span className="font-medium">
+              <EventWho event={event} links={links} />
+            </span>{" "}
+            <EventSentence event={event} links={links} />
             {summary && (
               <span className="block text-zinc-500 dark:text-zinc-400">
                 {summary}

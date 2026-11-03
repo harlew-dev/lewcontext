@@ -26,6 +26,7 @@ import { Text } from "@/components/ui/text";
 import { paths } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { routes } from "@/lib/routes";
+import { useSession } from "@/lib/session";
 import { useResource } from "@/lib/use-resource";
 import { apiKeyActive, scopeNames, type ApiKey } from "@/types/api-keys";
 import { can, type Workspace } from "@/types/workspaces";
@@ -215,6 +216,7 @@ function KeyLog({
   apiKey: ApiKey;
   workspace?: Workspace;
 }) {
+  const session = useSession();
   return (
     <>
       <Text className="mb-6">
@@ -234,6 +236,8 @@ function KeyLog({
                 workspace: workspace.id,
                 members: can(workspace, "workspace.member.show"),
                 events: can(workspace, "workspace.event.show"),
+                apiKeys: can(workspace, "workspace.api_key.show"),
+                viewer: session.user.id,
               }
             : null
         }

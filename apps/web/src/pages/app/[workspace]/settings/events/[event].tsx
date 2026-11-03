@@ -1,14 +1,15 @@
 import { useParams } from "react-router";
 import { EventDetails, RequestId } from "@/components/app/events/event-details";
+import { EventSentence, EventWho } from "@/components/app/events/event-text";
 import { BackLink } from "@/components/ui/back-link";
 import { EmptyState, ListSkeleton, Notice } from "@/components/ui/feedback";
 import { Heading, Subheading } from "@/components/ui/heading";
 import { Text, TextLink } from "@/components/ui/text";
 import { paths } from "@/lib/api";
-import { eventSentence, whoIs } from "@/lib/event-log";
 import { formatDateTime } from "@/lib/format";
 import { parsePublicId } from "@/lib/ids";
 import { routes } from "@/lib/routes";
+import { useSession } from "@/lib/session";
 import { useResource } from "@/lib/use-resource";
 import { useWorkspace } from "@/lib/workspace";
 import { can } from "@/types/workspaces";
@@ -29,12 +30,15 @@ export default function EventShow() {
 }
 function Content({ id }: { id: string }) {
   const workspace = useWorkspace();
+  const session = useSession();
   const event = useResource(paths.events(workspace.id).show(id));
   if (event.missing) return <NotFound />;
   const links = {
     workspace: workspace.id,
     members: can(workspace, "workspace.member.show"),
     events: true,
+    apiKeys: can(workspace, "workspace.api_key.show"),
+    viewer: session.user.id,
   };
   const data = event.data;
   return (
@@ -48,7 +52,8 @@ function Content({ id }: { id: string }) {
       {data ? (
         <>
           <Heading className="mt-4">
-            {whoIs(data.actor, data.apiKey)} {eventSentence(data)}
+            <EventWho event={data} links={links} />{" "}
+            <EventSentence event={data} links={links} />
           </Heading>
           <Text className="mt-1">{formatDateTime(data.createdAt)}</Text>
           <div className="mt-8">
@@ -65,14 +70,14 @@ function Content({ id }: { id: string }) {
                 <ul className="mt-4 divide-y divide-zinc-950/5 dark:divide-white/5">
                   {data.related.map((other) => (
                     <li key={other.id} className="py-3 text-sm/6">
-                      <TextLink
-                        href={routes.events.show(workspace.id, other.id)}
-                      >
-                        {whoIs(other.actor, other.apiKey)}{" "}
-                        {eventSentence(other)}
-                      </TextLink>
+                      <EventWho event={other} links={links} />{" "}
+                      <EventSentence event={other} links={links} />
                       <span className="ml-2 text-zinc-500 dark:text-zinc-400">
-                        {formatDateTime(other.createdAt)}
+                        <TextLink
+                          href={routes.events.show(workspace.id, other.id)}
+                        >
+                          {formatDateTime(other.createdAt)}
+                        </TextLink>
                       </span>
                     </li>
                   ))}
